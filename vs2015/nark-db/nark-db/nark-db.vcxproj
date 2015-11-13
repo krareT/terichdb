@@ -75,6 +75,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -82,6 +83,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
+    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -153,23 +155,23 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\..\src\nark\db\data_index.hpp" />
-    <ClInclude Include="..\..\..\..\src\nark\db\data_store.hpp" />
-    <ClInclude Include="..\..\..\..\src\nark\db\db_conf.hpp" />
-    <ClInclude Include="..\..\..\..\src\nark\db\db_table.hpp" />
-    <ClInclude Include="..\..\..\..\src\nark\db\mock_db_engine.hpp" />
-    <ClInclude Include="..\..\..\..\src\nark\db\record_data.hpp" />
-    <ClInclude Include="..\..\..\..\src\nark\db\seg_db.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\data_index.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\data_store.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\db_conf.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\db_table.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\mock_db_engine.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\record_data.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\seg_db.hpp" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\..\src\nark\db\data_index.cpp" />
-    <ClCompile Include="..\..\..\..\src\nark\db\data_store.cpp" />
-    <ClCompile Include="..\..\..\..\src\nark\db\db_conf.cpp" />
-    <ClCompile Include="..\..\..\..\src\nark\db\db_table.cpp" />
-    <ClCompile Include="..\..\..\..\src\nark\db\mock_db_engine.cpp" />
-    <ClCompile Include="..\..\..\..\src\nark\db\seg_db.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\data_index.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\data_store.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\db_conf.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\db_table.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\seg_db.cpp" />
     <ClCompile Include="dllmain.cpp">
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -187,7 +189,7 @@
     <ClCompile Include="stdafx.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\..\nark\vs2015\nark-fsa\nark-fsa\nark-fsa.vcxproj">
+    <ProjectReference Include="..\..\..\..\nark\vs2015\nark-fsa\nark-fsa\nark-fsa.vcxproj">
       <Project>{c5ecd2a1-c18e-4c04-b2fa-c5c6f206f5ae}</Project>
     </ProjectReference>
   </ItemGroup>

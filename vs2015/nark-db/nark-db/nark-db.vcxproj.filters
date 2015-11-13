@@ -36,25 +36,25 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\nark\db\data_index.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\data_index.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\nark\db\data_store.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\data_store.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\nark\db\db_conf.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\db_conf.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\nark\db\db_table.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\db_table.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\nark\db\mock_db_engine.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\mock_db_engine.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\nark\db\record_data.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\record_data.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\nark\db\seg_db.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\seg_db.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
   </ItemGroup>
@@ -65,22 +65,22 @@
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\src\nark\db\data_index.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\data_index.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\src\nark\db\data_store.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\data_store.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\src\nark\db\db_conf.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\db_conf.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\src\nark\db\db_table.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\db_table.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\src\nark\db\mock_db_engine.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\src\nark\db\seg_db.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\seg_db.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
   </ItemGroup>

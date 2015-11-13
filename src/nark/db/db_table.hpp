@@ -11,6 +11,7 @@
 #include "data_index.hpp"
 #include "data_store.hpp"
 #include <nark/util/sortable_strvec.hpp>
+#include <tbb/queuing_rw_mutex.h>
 
 namespace nark {
 
@@ -136,17 +137,19 @@ public:
 	const Schema& getTableSchema() const { return *m_rowSchema; }
 
 protected:
-	void maybeCreateNewSegment();
+	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
+	llong insertRowImpl(fstring row, bool syncIndex, tbb::queuing_rw_mutex::scoped_lock&);
 
 protected:
-	std::mutex m_mutex;
-	std::string m_name;
-	std::string m_dir;
+	mutable tbb::queuing_rw_mutex m_rwMutex;
 	valvec<llong>  m_rowNumVec;
 	valvec<uint32_t>  m_deletedWrIdSet;
-
 	valvec<ReadableSegmentPtr> m_segments;
 	WritableSegmentPtr m_wrSeg;
+
+	// constant once constructed
+	std::string m_name;
+	std::string m_dir;
 	SchemaPtr m_rowSchema; // full-row schema
 	SchemaPtr m_nonIndexRowSchema;
 	SchemaSetPtr m_indexSchemaSet;

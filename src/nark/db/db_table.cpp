@@ -470,14 +470,17 @@ void CompositeTable::loadTable(fstring dir, fstring name) {
 }
 
 llong CompositeTable::numDataRows() const {
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	return m_rowNumVec.back() + m_wrSeg->numDataRows();
 }
 
 llong CompositeTable::dataStorageSize() const {
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	return m_readonlyDataMemSize + m_wrSeg->dataStorageSize();
 }
 
 void CompositeTable::getValue(llong id, valvec<byte>* val) const {
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong baseId = m_rowNumVec[j-1];
@@ -485,37 +488,60 @@ void CompositeTable::getValue(llong id, valvec<byte>* val) const {
 	m_segments[j-1]->getValue(subId, val);
 }
 
-void CompositeTable::maybeCreateNewSegment() {
+void CompositeTable::maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock& lock) {
 	if (m_wrSeg->dataStorageSize() >= m_maxWrSegSize) {
 		llong newReadonlyRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
 		m_rowNumVec.push_back(newReadonlyRowNum);
-		AutoGrownMemIO buf(1024);
+		AutoGrownMemIO buf(256);
 		buf.printf("%s/%s/wr-%04d",
 			m_dir.c_str(), m_name.c_str(), int(m_segments.size()));
 		fstring dirBaseName = (const char*)buf.begin();
-		m_wrSeg = createWritableSegment(dirBaseName);
+		WritableSegmentPtr seg = createWritableSegment(dirBaseName);
+		lock.upgrade_to_writer();
+		m_wrSeg = seg;
 		m_segments.push_back(m_wrSeg);
+		lock.downgrade_to_reader();
 	}
 }
 
 llong CompositeTable::insertRow(fstring row, bool syncIndex) {
-	maybeCreateNewSegment();
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
+	return insertRowImpl(row, syncIndex, lock);
+}
+
+llong CompositeTable::
+insertRowImpl(fstring row, bool syncIndex, tbb::queuing_rw_mutex::scoped_lock& lock) {
+	maybeCreateNewSegment(lock);
 	llong wrBaseId = m_rowNumVec.back();
 	llong subId;
 	if (m_deletedWrIdSet.empty()) {
+		lock.upgrade_to_writer();
 		subId = m_wrSeg->append(row);
-	}
-	else {
-		subId = m_deletedWrIdSet.pop_val();
+		if (subId >= m_wrSeg->m_isDel.size()) {
+			if (subId >= m_wrSeg->m_isDel.capacity()) {
+				m_wrSeg->m_isDel.reserve(std::max<size_t>(1024, 2*subId));
+			}
+			m_wrSeg->m_isDel.push_back(false);
+		} else {
+		//	m_wrSeg->m_isDel.set0(subId);
+			assert(m_wrSeg->m_isDel.is0(subId));
+		}
+	} else {
 		if (syncIndex) {
-			valvec<byte> key;
+			valvec<byte> key(256, valvec_reserve());
 			valvec<ColumnData> columns(this->columnNum(), valvec_reserve());
 			m_rowSchema->parseRow(row, &columns);
-			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
+			lock.upgrade_to_writer();
+			subId = m_deletedWrIdSet.pop_val();
+			size_t indexNum = m_wrSeg->m_indices.size();
+			for (size_t i = 0; i < indexNum; ++i) {
 				auto wrIndex = m_wrSeg->m_indices[i].get();
 				getIndexKey(i, columns, &key);
 				wrIndex->insert(key, subId);
 			}
+		} else {
+			lock.upgrade_to_writer();
+			subId = m_deletedWrIdSet.pop_val();
 		}
 		m_wrSeg->insert(subId, row);
 	}
@@ -524,11 +550,11 @@ llong CompositeTable::insertRow(fstring row, bool syncIndex) {
 }
 
 llong CompositeTable::replaceRow(llong id, fstring row, bool syncIndex) {
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
-	std::lock_guard<std::mutex> lock(m_mutex);
 	if (j == m_rowNumVec.size()) {
 		if (syncIndex) {
 			valvec<byte> oldrow, oldkey;
@@ -538,7 +564,9 @@ llong CompositeTable::replaceRow(llong id, fstring row, bool syncIndex) {
 			valvec<ColumnData> newcols(this->columnNum(), valvec_reserve());
 			m_rowSchema->parseRow(oldrow, &oldcols);
 			m_rowSchema->parseRow(newrow, &newcols);
-			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
+			size_t indexNum = m_wrSeg->m_indices.size();
+			lock.upgrade_to_writer();
+			for (size_t i = 0; i < indexNum; ++i) {
 				getIndexKey(i, oldcols, &oldkey);
 				getIndexKey(i, newcols, &newkey);
 				if (!valvec_equalTo(oldkey, newkey)) {
@@ -547,27 +575,33 @@ llong CompositeTable::replaceRow(llong id, fstring row, bool syncIndex) {
 					wrIndex->insert(newkey, subId);
 				}
 			}
+		} else {
+			lock.upgrade_to_writer();
 		}
 		m_wrSeg->replace(subId, row);
 		return id; // id is not changed
 	}
 	else {
-		m_wrSeg->m_isDel.set1(subId);
-		return insertRow(row, syncIndex); // id is changed
+		lock.upgrade_to_writer();
+		m_wrSeg->m_isDel.set1(subId); // this is an atom op on x86(use bts)
+		lock.downgrade_to_reader();
+		return insertRowImpl(row, syncIndex, lock); // id is changed
 	}
 }
 
 void CompositeTable::removeRow(llong id, bool syncIndex) {
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	if (j == m_rowNumVec.size()) {
 		if (syncIndex) {
-			valvec<byte> row, key;
+			valvec<byte> row, key(256, valvec_reserve());
 			valvec<ColumnData> columns(this->columnNum(), valvec_reserve());
 			m_wrSeg->getValue(subId, &row);
 			m_rowSchema->parseRow(row, &columns);
+			lock.upgrade_to_writer();
 			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
 				auto wrIndex = m_wrSeg->m_indices[i].get();
 				getIndexKey(i, columns, &key);
@@ -577,6 +611,7 @@ void CompositeTable::removeRow(llong id, bool syncIndex) {
 		m_wrSeg->remove(subId);
 	}
 	else {
+		lock.upgrade_to_writer();
 		m_wrSeg->m_isDel.set1(subId);
 	}
 }
@@ -588,6 +623,7 @@ void CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id) {
 			"Invalid indexId=%lld, indexNum=%lld",
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 	llong minWrRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
 	if (id < minWrRowNum) {
 		THROW_STD(invalid_argument,
@@ -603,6 +639,7 @@ void CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id) {
 			"Invalid indexId=%lld, indexNum=%lld",
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 	llong minWrRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
 	if (id < minWrRowNum) {
 		THROW_STD(invalid_argument,
@@ -618,6 +655,10 @@ void CompositeTable::indexReplace(size_t indexId, fstring indexKey, llong oldId,
 			"Invalid indexId=%lld, indexNum=%lld",
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
+	if (oldId == newId) {
+		return;
+	}
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 	llong minWrRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
 	if (oldId < minWrRowNum) {
 		THROW_STD(invalid_argument,
@@ -658,26 +699,43 @@ const {
 }
 
 void CompositeTable::compact() {
-	if (m_segments.size() < 2) {
-		return;
-	}
-	size_t firstWrSegIdx = m_segments.size() - 2;
+	ReadonlySegmentPtr newSeg;
+	ReadableSegmentPtr srcSeg;
+	AutoGrownMemIO buf(1024);
+	size_t firstWrSegIdx, lastWrSegIdx;
+	fstring dirBaseName;
 	{
-		std::lock_guard<std::mutex> lock(m_mutex);
+		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
+		if (m_segments.size() < 2) {
+			return;
+		}
+		// don't include m_segments.back(), it is the working wrseg: m_wrSeg
+		lastWrSegIdx = m_segments.size() - 1;
+		firstWrSegIdx = lastWrSegIdx;
 		for (; firstWrSegIdx > 0; firstWrSegIdx--) {
-			if (m_segments[firstWrSegIdx]->getWritableStore() == nullptr)
+			if (m_segments[firstWrSegIdx-1]->getWritableStore() == nullptr)
 				break;
 		}
+		if (firstWrSegIdx == lastWrSegIdx) {
+			goto MergeReadonlySeg;
+		} else {
+			const char* dir = m_dir.c_str();
+			const char* name = m_name.c_str();
+			buf.printf("%s/%s/rd-%04d", dir, name, int(firstWrSegIdx));
+			srcSeg = m_segments[firstWrSegIdx];
+		}
 	}
-	for (size_t i = firstWrSegIdx; i < m_segments.size(); ++i) {
-		AutoGrownMemIO buf(1024);
-		buf.printf("%s/%s/rd-%04d", m_dir.c_str(), m_name.c_str(), int(i));
-		fstring dirBaseName = (const char*)buf.begin();
-		ReadonlySegmentPtr newSeg = createReadonlySegment(dirBaseName);
-		ReadableSegmentPtr srcSeg = m_segments[i];
-		llong baseId = m_rowNumVec[i];
-		newSeg->convFrom(*srcSeg, *m_rowSchema);
+	dirBaseName = (const char*)buf.begin();
+	newSeg = createReadonlySegment(dirBaseName);
+	newSeg->convFrom(*srcSeg, *m_rowSchema);
+	{
+		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
+		m_segments[firstWrSegIdx] = newSeg;
 	}
+
+MergeReadonlySeg:
+	// now don't merge
+	return;
 }
 
 } // namespace nark

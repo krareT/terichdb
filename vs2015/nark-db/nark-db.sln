@@ -5,7 +5,7 @@ VisualStudioVersion = 14.0.23107.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nark-db", "nark-db\nark-db.vcxproj", "{9261644E-D0AD-43C5-AD8F-280B92F26B4D}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nark-fsa", "..\..\..\..\nark\vs2015\nark-fsa\nark-fsa\nark-fsa.vcxproj", "{C5ECD2A1-C18E-4C04-B2FA-C5C6F206F5AE}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nark-fsa", "..\..\..\nark\vs2015\nark-fsa\nark-fsa\nark-fsa.vcxproj", "{C5ECD2A1-C18E-4C04-B2FA-C5C6F206F5AE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
