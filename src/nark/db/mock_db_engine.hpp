@@ -18,12 +18,12 @@ public:
 	MockReadableIndex();
 	~MockReadableIndex();
 
-	StoreIterator* makeStoreIter() const override;
+	StoreIterator* createStoreIter() const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
-	void getValue(llong id, valvec<byte>* key) const override;
+	void getValue(llong id, valvec<byte>* key, BaseContextPtr&) const override;
 
-	IndexIterator* makeIndexIter() const override;
+	IndexIterator* createIndexIter() const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 };
@@ -32,20 +32,18 @@ class MockWritableIndex : public WritableIndex {
 	typedef std::pair<std::string, llong> kv_t;
 	std::set<kv_t> m_kv;
 public:
-	IndexIterator* makeIndexIter() const override;
+	IndexIterator* createIndexIter() const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
-	size_t remove(fstring key) override;
-	size_t remove(fstring key, llong id) override;
-	size_t insert(fstring key, llong id) override;
-	size_t replace(fstring key, llong oldId, llong newId) override;
+	size_t remove(fstring key, BaseContextPtr&) override;
+	size_t remove(fstring key, llong id, BaseContextPtr&) override;
+	size_t insert(fstring key, llong id, BaseContextPtr&) override;
+	size_t replace(fstring key, llong oldId, llong newId, BaseContextPtr&) override;
 	void flush() override;
 };
 
-class MockCompositeIndex : public CompositeIndex {
+class MockCompositeIndex : public CompositeTable {
 public:
-	ReadableIndex* mergeToReadonly(const valvec<ReadableIndexPtr>& input) const override;
-	WritableIndex* createWritable() const override;
 };
 
 } // namespace nark

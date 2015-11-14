@@ -63,7 +63,7 @@ MockReadableIndex::MockReadableIndex() {
 MockReadableIndex::~MockReadableIndex() {
 }
 
-ReadableStore::StoreIterator* MockReadableIndex::makeStoreIter() const {
+ReadableStore::StoreIterator* MockReadableIndex::createStoreIter() const {
 	return nullptr;
 }
 llong MockReadableIndex::numDataRows() const {
@@ -73,7 +73,7 @@ llong MockReadableIndex::dataStorageSize() const {
 	return m_idToKey.used_mem_size();
 }
 
-void MockReadableIndex::getValue(llong id, valvec<byte>* key) const {
+void MockReadableIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) const {
 	assert(m_idToKey.size() == m_keyVec.size());
 	assert(id < (llong)m_idToKey.size());
 	assert(id >= 0);
@@ -82,7 +82,7 @@ void MockReadableIndex::getValue(llong id, valvec<byte>* key) const {
 	key->assign(key1.udata(), key1.size());
 }
 
-IndexIterator* MockReadableIndex::makeIndexIter() const {
+IndexIterator* MockReadableIndex::createIndexIter() const {
 	return new MockReadableIndexIterator();
 }
 
@@ -96,7 +96,7 @@ llong MockReadableIndex::indexStorageSize() const {
 
 //////////////////////////////////////////////////////////////////
 
-IndexIterator* MockWritableIndex::makeIndexIter() const {
+IndexIterator* MockWritableIndex::createIndexIter() const {
 	return new MockReadableIndexIterator();
 }
 
@@ -109,18 +109,18 @@ llong MockWritableIndex::indexStorageSize() const {
 	return m_kv.size() * (sizeof(kv_t) + 4 * sizeof(void*));
 }
 
-size_t MockWritableIndex::insert(fstring key, llong id) {
+size_t MockWritableIndex::insert(fstring key, llong id, BaseContextPtr&) {
 	auto ib = m_kv.insert(std::make_pair(key.str(), id));
 	return ib.second;
 }
-size_t MockWritableIndex::replace(fstring key, llong oldId, llong newId) {
+size_t MockWritableIndex::replace(fstring key, llong oldId, llong newId, BaseContextPtr&) {
 	if (oldId != newId) {
 		m_kv.erase(std::make_pair(key.str(), oldId));
 	}
 	auto ib = m_kv.insert(std::make_pair(key.str(), newId));
 	return ib.second;
 }
-size_t MockWritableIndex::remove(fstring key) {
+size_t MockWritableIndex::remove(fstring key, BaseContextPtr&) {
 	std::string key1 = key.str();
 	auto iter = m_kv.lower_bound(std::make_pair(key1, 0));
 	size_t cnt = 0;
@@ -132,36 +132,11 @@ size_t MockWritableIndex::remove(fstring key) {
 	}
 	return cnt;
 }
-size_t MockWritableIndex::remove(fstring key, llong id) {
+size_t MockWritableIndex::remove(fstring key, llong id, BaseContextPtr&) {
 	return m_kv.erase(std::make_pair(key.str(), id));
 }
 void MockWritableIndex::flush() {
 	// do nothing
-}
-
-ReadableIndex*
-MockCompositeIndex::mergeToReadonly(const valvec<ReadableIndexPtr>& input)
-const {
-	auto merged = new MockReadableIndex();
-	SortableStrVec& vec = merged->m_keyVec;
-	valvec<byte> key;
-	llong id;
-	for (size_t i = 0; i < input.size(); ++i) {
-		std::unique_ptr<IndexIterator> iter(input[i]->makeIndexIter());
-		while (iter->increment()) {
-			iter->getIndexKey(&id, &key);
-			vec.push_back(key);
-			vec.m_index.back().seq_id = id;
-		}
-	}
-	vec.compress_strpool(1); // compress level 1
-	vec.sort();
-	return merged;
-}
-
-WritableIndex*
-MockCompositeIndex::createWritable() const {
-	return new MockWritableIndex();
 }
 
 } // namespace nark

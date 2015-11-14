@@ -23,8 +23,9 @@ public:
 	};
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
-	virtual void getValue(llong id, valvec<byte>* val) const = 0;
-	virtual StoreIterator* makeStoreIter() const = 0;
+	virtual void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const = 0;
+	virtual StoreIterator* createStoreIter() const = 0;
+	virtual BaseContextPtr createStoreContext() const = 0;
 	virtual class WritableStore* getWritableStore();
 };
 typedef boost::intrusive_ptr<ReadableStore> ReadableStorePtr;
@@ -32,10 +33,10 @@ typedef boost::intrusive_ptr<ReadableStore> ReadableStorePtr;
 class WritableStore {
 public:
 	virtual ~WritableStore();
-	virtual llong append(fstring row) = 0;
-	virtual void  insert(llong id, fstring row) = 0;
-	virtual void  replace(llong id, fstring row) = 0;
-	virtual void  remove(llong id) = 0;
+	virtual llong append(fstring row, BaseContextPtr&) = 0;
+	virtual void  insert(llong id, fstring row, BaseContextPtr&) = 0;
+	virtual void  replace(llong id, fstring row, BaseContextPtr&) = 0;
+	virtual void  remove(llong id, BaseContextPtr&) = 0;
 };
 //typedef boost::intrusive_ptr<WritableStore> WritableStorePtr;
 /*

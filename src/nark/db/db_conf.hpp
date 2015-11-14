@@ -19,6 +19,12 @@ namespace nark {
 		const std::string& operator()(const T& x) const { return x.name; }
 	};
 
+	enum class SortOrder : unsigned char {
+		Ascending,
+		Descending,
+		UnOrdered,
+	};
+
 	enum class ColumnType : unsigned char {
 		// all number types are LittleEndian
 		WholeRow,
@@ -102,6 +108,11 @@ namespace nark {
 	struct DbConf {
 		std::string dir;
 	};
+
+	class BaseContext : public RefCounter {
+	public:
+	};
+	typedef boost::intrusive_ptr<BaseContext> BaseContextPtr;
 
 } // namespace
 

@@ -56,11 +56,16 @@ public:
 	ReadonlySegment();
 	~ReadonlySegment();
 
+	struct ReadonlyStoreContext : public BaseContext {
+		valvec<byte> buf;
+	};
+
 	const ReadableIndex* getReadableIndex(size_t nth) const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
-	void getValue(llong id, valvec<byte>* val) const override;
-	StoreIterator* makeStoreIter() const override;
+	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	StoreIterator* createStoreIter() const override;
+	BaseContextPtr createStoreContext() const override;
 
 	void mergeFrom(const valvec<const ReadonlySegment*>& input);
 	void convFrom(const ReadableSegment& input, const Schema& schema);
@@ -86,6 +91,7 @@ typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 class WritableSegment : public ReadableSegment, public WritableStore {
 public:
 	WritableStore* getWritableStore() override;
+	const ReadableIndex* getReadableIndex(size_t nth) const override;
 
  	const WritableIndex*
 	nthWritableIndex(size_t nth) const { return m_indices[nth].get(); }
@@ -95,10 +101,19 @@ protected:
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
-struct ProjectWorkBuf {
-	valvec<byte> buf;
-	valvec<ColumnData> columns;
+class TableContext : public BaseContext {
+public:
+	valvec<byte> row1;
+	valvec<byte> row2;
+	valvec<byte> key1;
+	valvec<byte> key2;
+	valvec<ColumnData> cols1;
+	valvec<ColumnData> cols2;
+	valvec<BaseContextPtr> wrIndexContext;
+	BaseContextPtr wrStoreContext;
+	BaseContextPtr readonlyContext;
 };
+typedef boost::intrusive_ptr<TableContext> TableContextPtr;
 
 // is not a WritableStore
 class CompositeTable : public ReadableStore {
@@ -111,21 +126,23 @@ public:
 
 	void loadTable(fstring dir, fstring name);
 
+	BaseContextPtr createStoreContext() const override;
+
 	virtual ReadonlySegmentPtr createReadonlySegment(fstring dirBaseName) const = 0;
 	virtual WritableSegmentPtr createWritableSegment(fstring dirBaseName) const = 0;
 
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
-	void getValue(llong id, valvec<byte>* val) const override;
+	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
 
-	llong insertRow(fstring row, bool syncIndex);
-	llong replaceRow(llong id, fstring row, bool syncIndex);
-	void  removeRow(llong id, bool syncIndex);
+	llong insertRow(fstring row, bool syncIndex, BaseContextPtr&);
+	llong replaceRow(llong id, fstring row, bool syncIndex, BaseContextPtr&);
+	void  removeRow(llong id, bool syncIndex, BaseContextPtr&);
 
-	void indexInsert(size_t indexId, fstring indexKey, llong id);
-	void indexRemove(size_t indexId, fstring indexKey, llong id);
-	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId);
+	void indexInsert(size_t indexId, fstring indexKey, llong id, BaseContextPtr&);
+	void indexRemove(size_t indexId, fstring indexKey, llong id, BaseContextPtr&);
+	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, BaseContextPtr&);
 
 	size_t columnNum() const;
 
@@ -135,10 +152,11 @@ public:
 
 	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
 	const Schema& getTableSchema() const { return *m_rowSchema; }
+	const size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
 
 protected:
 	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
-	llong insertRowImpl(fstring row, bool syncIndex, tbb::queuing_rw_mutex::scoped_lock&);
+	llong insertRowImpl(fstring row, bool syncIndex, BaseContextPtr&, tbb::queuing_rw_mutex::scoped_lock&);
 
 protected:
 	mutable tbb::queuing_rw_mutex m_rwMutex;

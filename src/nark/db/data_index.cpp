@@ -13,6 +13,7 @@ ReadableIndex::~ReadableIndex() {
 IndexIterator::~IndexIterator() {
 }
 
+#if 0
 //
 class CompositeIterator : public IndexIterator {
 	friend class CompositeIndex;
@@ -26,7 +27,7 @@ public:
 	CompositeIterator(const CompositeIndex* owner) {
 		m_readonly.reserve(owner->m_readonly.size());
 		for (auto index : owner->m_readonly) {
-			m_readonly.push_back(index->makeIndexIter());
+			m_readonly.push_back(index->createIndexIter());
 		}
 		m_index = owner;
 		m_idx = 0;
@@ -176,7 +177,7 @@ llong CompositeIndex::numIndexRows() const {
 	return sum;
 }
 
-IndexIterator* CompositeIndex::makeIndexIter() const {
+IndexIterator* CompositeIndex::createIndexIter() const {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	CompositeIterator* iter = new CompositeIterator(this);
 	return iter;
@@ -204,7 +205,7 @@ void CompositeIndex::compact() {
 			if (iter->m_idx == m_readonly.size()) { // absolute end
 				iter->m_idx++; // new absolute end
 			}
-			iter->m_readonly.push_back(m_writable->makeIndexIter());
+			iter->m_readonly.push_back(m_writable->createIndexIter());
 		}
 		m_readonly.emplace_back(m_writable);
 	}
@@ -217,7 +218,7 @@ void CompositeIndex::compact() {
 				delete iter->m_readonly[i];
 				iter->m_readonly[i] = nullptr;
 			}
-			IndexIterator* subIter = merged->makeIndexIter();
+			IndexIterator* subIter = merged->createIndexIter();
 			size_t& idx = iter->m_idx;
 			if (idx >= start && idx < start + input.size()) {
 				idx = start;
@@ -236,5 +237,6 @@ void CompositeIndex::compact() {
 	}
 }
 
+#endif
 
 } // namespace nark

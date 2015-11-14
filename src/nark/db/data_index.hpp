@@ -24,12 +24,6 @@ public:
 	virtual void getIndexKey(llong* id, valvec<byte>* key) const = 0;
 };
 
-enum class SortOrder : unsigned char {
-	Ascending,
-	Descending,
-	UnOrdered,
-};
-
 class ReadableIndex : virtual public RefCounter {
 protected:
 	SortOrder m_sortOrder;
@@ -40,7 +34,8 @@ public:
 	SortOrder sortOrder() const { return m_sortOrder; }
 	bool isUnique() const { return m_isUnique; }
 
-	virtual IndexIterator* makeIndexIter() const = 0;
+	virtual IndexIterator* createIndexIter() const = 0;
+	virtual BaseContext* createIndexContext() const = 0;
 	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
 };
@@ -48,14 +43,15 @@ typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
 class WritableIndex : public ReadableIndex {
 public:
-	virtual size_t remove(fstring key) = 0;
-	virtual size_t remove(fstring key, llong id) = 0;
-	virtual size_t insert(fstring key, llong id) = 0;
-	virtual size_t replace(fstring key, llong id, llong newId) = 0;
+	virtual size_t remove(fstring key, BaseContextPtr&) = 0;
+	virtual size_t remove(fstring key, llong id, BaseContextPtr&) = 0;
+	virtual size_t insert(fstring key, llong id, BaseContextPtr&) = 0;
+	virtual size_t replace(fstring key, llong id, llong newId, BaseContextPtr&) = 0;
 	virtual void flush() = 0;
 };
 typedef boost::intrusive_ptr<WritableIndex> WritableIndexPtr;
 
+/*
 class CompositeIndex : public WritableIndex {
 	friend class CompositeIterator;
 	std::string m_myDir;
@@ -69,7 +65,7 @@ class CompositeIndex : public WritableIndex {
 public:
 	CompositeIndex(fstring dir, const valvec<llong>* rowNumVec, const febitvec* isDel);
 	llong numIndexRows() const override;
-	IndexIterator* makeIndexIter() const override;
+	IndexIterator* createIndexIter() const override;
 	llong indexStorageSize() const override;
 
 	size_t remove(fstring key) override;
@@ -82,7 +78,7 @@ public:
 	virtual WritableIndex* createWritable() const = 0;
 };
 typedef boost::intrusive_ptr<CompositeIndex> CompositeIndexPtr;
-
+*/
 
 } // namespace nark
 
