@@ -425,6 +425,9 @@ void CompositeTable::openTable(fstring dir, fstring name) {
 	} else {
 		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
 	}
+	m_segments.reserve(std::max(DEFAULT_maxSegNum, segNum*2));
+	m_rowNumVec.reserve(std::max(DEFAULT_maxSegNum+1, segNum*2 + 1));
+
 	valvec<fstring> F;
 	MatchContext ctx;
 	m_rowSchema.reset(new Schema());
@@ -478,19 +481,24 @@ void CompositeTable::openTable(fstring dir, fstring name) {
 			THROW_STD(invalid_argument, "invalid index schema");
 		}
 	});
+	llong rowNum = 0;
 	for (size_t i = 0; i < minWrSeg; ++i) { // load readonly segments
 		buf.rewind();
 		buf.printf("%s/%s/rd-%04d", dir.c_str(), name.c_str(), int(i));
 		fstring dirBaseName = (const char*)buf.begin();
 		ReadableSegmentPtr seg(this->openReadonlySegment(dirBaseName));
+		rowNum += seg->numDataRows();
 		m_segments.push_back(seg);
+		m_rowNumVec.push_back(rowNum);
 	}
 	for (size_t i = minWrSeg; i < segNum ; ++i) { // load writable segments
 		buf.rewind();
 		buf.printf("%s/%s/wr-%04d", dir.c_str(), name.c_str(), int(i));
 		fstring dirBaseName = (const char*)buf.begin();
 		ReadableSegmentPtr seg(this->openWritableSegment(dirBaseName));
+		rowNum += seg->numDataRows();
 		m_segments.push_back(seg);
+		m_rowNumVec.push_back(rowNum);
 	}
 	if (minWrSeg < segNum && m_segments.back()->totalStorageSize() < m_maxWrSegSize) {
 		auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
@@ -502,6 +510,8 @@ void CompositeTable::openTable(fstring dir, fstring name) {
 		buf.printf("%s/%s/wr-%04d", dir.c_str(), name.c_str(), int(segNum));
 		fstring dirBaseName = (const char*)buf.begin();
 		m_wrSeg = this->createWritableSegment(dirBaseName);
+		m_segments.push_back(m_wrSeg);
+		m_rowNumVec.push_back(rowNum); // m_rowNumVec[-2] == m_rowNumVec[-1]
 	}
 }
 
@@ -664,7 +674,6 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 	maybeCreateNewSegment(lock);
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
-	llong wrBaseId = m_rowNumVec.back();
 	llong subId;
 	if (syncIndex) {
 		m_rowSchema->parseRow(row, &ttx.cols1);
@@ -689,6 +698,7 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 			wrIndex->insert(ttx.key1, subId, ttx.wrIndexContext[i]);
 		}
 	}
+	llong wrBaseId = m_rowNumVec.end()[-2];
 	llong id = wrBaseId + subId;
 	return id;
 }
@@ -703,6 +713,7 @@ CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
 	assert(m_rowNumVec.size() == m_segments.size());
 	assert(id < m_rowNumVec.back());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
+	assert(j < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	if (j == m_rowNumVec.size()-1) { // id is in m_wrSeg
@@ -746,6 +757,7 @@ CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
+	assert(j < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	if (j == m_rowNumVec.size()) {
