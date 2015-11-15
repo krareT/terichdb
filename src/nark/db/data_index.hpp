@@ -11,7 +11,7 @@
 
 namespace nark {
 
-class IndexIterator {
+class IndexIterator : public RefCounter {
 protected:
 	const class ReadableIndex* m_index = nullptr;
 public:
@@ -23,6 +23,7 @@ public:
 	virtual bool seekLowerBound(fstring key) = 0;
 	virtual void getIndexKey(llong* id, valvec<byte>* key) const = 0;
 };
+typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
 class ReadableIndex : virtual public RefCounter {
 protected:
@@ -34,8 +35,8 @@ public:
 	SortOrder sortOrder() const { return m_sortOrder; }
 	bool isUnique() const { return m_isUnique; }
 
-	virtual IndexIterator* createIndexIter() const = 0;
-	virtual BaseContext* createIndexContext() const = 0;
+	virtual IndexIteratorPtr createIndexIter() const = 0;
+	virtual BaseContextPtr createIndexContext() const = 0;
 	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
 };

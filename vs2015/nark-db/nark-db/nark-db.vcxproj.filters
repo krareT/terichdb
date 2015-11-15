@@ -80,8 +80,5 @@
     <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\seg_db.cpp">
-      <Filter>Source Files\nark\db</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>

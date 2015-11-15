@@ -76,6 +76,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -84,6 +85,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -171,7 +173,6 @@
     <ClCompile Include="..\..\..\src\nark\db\db_conf.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\db_table.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp" />
-    <ClCompile Include="..\..\..\src\nark\db\seg_db.cpp" />
     <ClCompile Include="dllmain.cpp">
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

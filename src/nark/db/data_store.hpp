@@ -11,24 +11,26 @@
 
 namespace nark {
 
+typedef boost::intrusive_ptr<class ReadableStore> ReadableStorePtr;
 class ReadableStore : virtual public RefCounter {
 public:
-	class StoreIterator {
+	class StoreIterator : public RefCounter {
 	protected:
-		const ReadableStore* m_store = nullptr;
+		ReadableStorePtr m_store;
 	public:
 		virtual ~StoreIterator();
 		virtual bool increment() = 0;
 		virtual void getKeyVal(llong* idKey, valvec<byte>* val) const = 0;
 	};
+	typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
+
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const = 0;
-	virtual StoreIterator* createStoreIter() const = 0;
+	virtual StoreIteratorPtr createStoreIter() const = 0;
 	virtual BaseContextPtr createStoreContext() const = 0;
 	virtual class WritableStore* getWritableStore();
 };
-typedef boost::intrusive_ptr<ReadableStore> ReadableStorePtr;
 
 class WritableStore {
 public:

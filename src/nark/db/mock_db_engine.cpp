@@ -63,7 +63,8 @@ MockReadableIndex::MockReadableIndex() {
 MockReadableIndex::~MockReadableIndex() {
 }
 
-ReadableStore::StoreIterator* MockReadableIndex::createStoreIter() const {
+ReadableStore::StoreIteratorPtr MockReadableIndex::createStoreIter() const {
+	assert(!"Readonly column store did not define iterator");
 	return nullptr;
 }
 llong MockReadableIndex::numDataRows() const {
@@ -82,7 +83,7 @@ void MockReadableIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) c
 	key->assign(key1.udata(), key1.size());
 }
 
-IndexIterator* MockReadableIndex::createIndexIter() const {
+IndexIteratorPtr MockReadableIndex::createIndexIter() const {
 	return new MockReadableIndexIterator();
 }
 
@@ -96,7 +97,7 @@ llong MockReadableIndex::indexStorageSize() const {
 
 //////////////////////////////////////////////////////////////////
 
-IndexIterator* MockWritableIndex::createIndexIter() const {
+IndexIteratorPtr MockWritableIndex::createIndexIter() const {
 	return new MockReadableIndexIterator();
 }
 

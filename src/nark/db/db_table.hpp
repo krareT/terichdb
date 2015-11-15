@@ -6,7 +6,7 @@
 #include <nark/valvec.hpp>
 #include <nark/bitmap.hpp>
 #include <boost/intrusive_ptr.hpp>
-#include <mutex>
+#include <atomic>
 #include "db_conf.hpp"
 #include "data_index.hpp"
 #include "data_store.hpp"
@@ -20,23 +20,6 @@ public:
 };
 typedef boost::intrusive_ptr<ReadableStoreIndex> ReadableStoreIndexPtr;
 
-class BitVecRangeView {
-	const bm_uint_t* m_bitsPtr;
-	size_t m_baseIdx;
-	size_t m_bitsNum;
-public:
-	BitVecRangeView(const febitvec& bv, size_t baseIdx, size_t bitsNum) {
-		m_bitsPtr = bv.bldata();
-		m_baseIdx = baseIdx;
-		m_bitsNum = bitsNum;
-	}
-	bool operator[](size_t i) const {
-		assert(i < m_bitsNum);
-		return nark_bit_test(m_bitsPtr, i);
-	}
-	size_t size() const { return m_bitsNum; }
-};
-
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
 class ReadableSegment : public ReadableStore {
@@ -44,10 +27,11 @@ public:
 	~ReadableSegment();
 	virtual const ReadableIndex* getReadableIndex(size_t indexId) const = 0;
 	virtual llong totalStorageSize() const = 0;
+	virtual llong numDataRows() const override final;
 
+	febitvec      m_isDel;
 	SchemaPtr     m_rowSchema;
 	SchemaSetPtr  m_indexSchemaSet;
-	febitvec  m_isDel;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
@@ -61,14 +45,19 @@ public:
 	};
 
 	const ReadableIndex* getReadableIndex(size_t nth) const override;
-	llong numDataRows() const override;
+
 	llong dataStorageSize() const override;
+	llong totalStorageSize() const override;
+
 	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
-	StoreIterator* createStoreIter() const override;
+
+	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 
 	void mergeFrom(const valvec<const ReadonlySegment*>& input);
 	void convFrom(const ReadableSegment& input, const Schema& schema);
+
+	void getValueImpl(size_t partIdx, size_t id, llong subId, valvec<byte>* val, valvec<byte>* buf) const;
 
 protected:
 	virtual ReadableStoreIndexPtr
@@ -84,6 +73,7 @@ protected:
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 	valvec<ReadableStoreIndexPtr> m_indices; // parallel with m_indexSchemaSet
 	llong  m_dataMemSize;
+	llong  m_totalStorageSize;
 	size_t m_maxPartDataSize;
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
@@ -103,6 +93,9 @@ typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
 class TableContext : public BaseContext {
 public:
+	TableContext();
+	~TableContext();
+
 	valvec<byte> row1;
 	valvec<byte> row2;
 	valvec<byte> key1;
@@ -117,19 +110,27 @@ typedef boost::intrusive_ptr<TableContext> TableContextPtr;
 
 // is not a WritableStore
 class CompositeTable : public ReadableStore {
+	class MyStoreIterator;
+	friend class MyStoreIterator;
 public:
-	CompositeTable(SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet);
+	CompositeTable();
 
 	void setMaxWritableSegSize(llong size) { m_maxWrSegSize = size; }
 	void setReadonlySegBufSize(llong size) { m_readonlyDataMemSize = size; }
-	void setTableDirName(fstring dir, fstring name);
 
-	void loadTable(fstring dir, fstring name);
+	void createTable(fstring dir, fstring name,
+					 SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet);
 
+	void openTable(fstring dir, fstring name);
+
+	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 
 	virtual ReadonlySegmentPtr createReadonlySegment(fstring dirBaseName) const = 0;
 	virtual WritableSegmentPtr createWritableSegment(fstring dirBaseName) const = 0;
+
+	virtual ReadonlySegmentPtr openReadonlySegment(fstring dirBaseName) const = 0;
+	virtual WritableSegmentPtr openWritableSegment(fstring dirBaseName) const = 0;
 
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
@@ -148,7 +149,7 @@ public:
 
 	void getIndexKey(size_t indexId, const valvec<ColumnData>& columns, valvec<byte>* key) const;
 
-	void compact();
+	bool compact();
 
 	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
 	const Schema& getTableSchema() const { return *m_rowSchema; }
@@ -156,10 +157,12 @@ public:
 
 protected:
 	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
-	llong insertRowImpl(fstring row, bool syncIndex, BaseContextPtr&, tbb::queuing_rw_mutex::scoped_lock&);
+	llong insertRowImpl(fstring row, bool syncIndex,
+						BaseContextPtr&, tbb::queuing_rw_mutex::scoped_lock&);
 
 protected:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
+	mutable size_t m_tableScanningRefCount;
 	valvec<llong>  m_rowNumVec;
 	valvec<uint32_t>  m_deletedWrIdSet;
 	valvec<ReadableSegmentPtr> m_segments;

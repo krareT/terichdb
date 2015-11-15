@@ -398,6 +398,25 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 	return nth >= xCols && cur >= end;
 }
 
-
-
 } // namespace nark
+
+
+/* currently unused code
+class BitVecRangeView {
+	const bm_uint_t* m_bitsPtr;
+	size_t m_baseIdx;
+	size_t m_bitsNum;
+public:
+	BitVecRangeView(const febitvec& bv, size_t baseIdx, size_t bitsNum) {
+		m_bitsPtr = bv.bldata();
+		m_baseIdx = baseIdx;
+		m_bitsNum = bitsNum;
+	}
+	bool operator[](size_t i) const {
+		assert(i < m_bitsNum);
+		return nark_bit_test(m_bitsPtr, i);
+	}
+	size_t size() const { return m_bitsNum; }
+};
+*/
+

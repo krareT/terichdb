@@ -12,9 +12,14 @@ namespace nark {
 
 ReadableSegment::~ReadableSegment() {
 }
+llong ReadableSegment::numDataRows() const {
+	return m_isDel.size();
+}
 
 ReadonlySegment::ReadonlySegment() {
-	this->m_maxPartDataSize = 2LL * 1024*1024*1024;
+	m_dataMemSize = 0;
+	m_totalStorageSize = 0;
+	m_maxPartDataSize = 2LL * 1024*1024*1024;
 	m_parts.reserve(16);
 	m_rowNumVec.reserve(16);
 	m_rowNumVec.push_back(0);
@@ -26,12 +31,13 @@ ReadonlySegment::getReadableIndex(size_t nth) const {
 	return m_indices[nth].get();
 }
 
-llong ReadonlySegment::numDataRows() const {
-	return m_rowNumVec.back();
-}
 llong ReadonlySegment::dataStorageSize() const {
 	return m_dataMemSize;
 }
+llong ReadonlySegment::totalStorageSize() const {
+	return m_totalStorageSize;
+}
+
 void ReadonlySegment::getValue(llong id, valvec<byte>* val, BaseContextPtr& txn) const {
 	assert(txn.get() != nullptr);
 	assert(dynamic_cast<ReadonlyStoreContext*>(txn.get()) != nullptr);
@@ -45,17 +51,22 @@ void ReadonlySegment::getValue(llong id, valvec<byte>* val, BaseContextPtr& txn)
 	}
 	size_t upp = nark::upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong subId = id - m_rowNumVec[upp-1];
-	valvec<byte>& data = rdctx->buf;
+	getValueImpl(upp-1, id, subId, val, &rdctx->buf);
+}
+
+void ReadonlySegment::
+getValueImpl(size_t partIdx, size_t id, llong subId, valvec<byte>* val, valvec<byte>* buf)
+const {
 	val->resize(0);
 	// m_indices is also store index keys, so index keys will not be stored
 	// in m_parts(the main data store)
 	BaseContextPtr dummy;
 	for (auto& index : m_indices) {
-		index->getValue(id, &data, dummy);
-		val->append(data);
+		index->getValue(id, buf, dummy);
+		val->append(*buf);
 	}
-	m_parts[upp-1]->getValue(subId, &data, dummy); // get the main store
-	val->append(data);
+	m_parts[partIdx]->getValue(subId, buf, dummy); // get the main store
+	val->append(*buf);
 }
 
 class ReadonlySegment::MyStoreIterator : public ReadableStore::StoreIterator {
@@ -64,10 +75,10 @@ class ReadonlySegment::MyStoreIterator : public ReadableStore::StoreIterator {
 	mutable valvec<byte> m_buf;
 public:
 	explicit MyStoreIterator(const ReadonlySegment* owner) {
-		m_store = owner;
+		m_store.reset(const_cast<ReadonlySegment*>(owner));
 	}
 	bool increment() override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store);
+		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
 		assert(m_partIdx < owner->m_parts.size());
 		if (m_id >= owner->m_rowNumVec[m_partIdx + 1]) {
 			if (m_partIdx + 1 < owner->m_parts.size()) {
@@ -81,25 +92,16 @@ public:
 		return true;
 	}
 	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store);
+		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
 		assert(m_partIdx < owner->m_parts.size());
 		assert(m_id >= 0);
 		assert(m_id < owner->m_rowNumVec[m_partIdx+1]);
 		*idKey = m_id;
-		val->resize(0);
-		// m_indices is also store index keys, so index keys will not be stored
-		// in m_parts(the main data store)
-		BaseContextPtr dummy;
-		for (auto& index : owner->m_indices) {
-			index->getValue(m_id, &m_buf, dummy);
-			val->append(m_buf);
-		}
 		llong subId = m_id - owner->m_rowNumVec[m_partIdx];
-		owner->m_parts[m_partIdx]->getValue(subId, &m_buf, dummy);
-		val->append(m_buf);
+		owner->getValueImpl(m_partIdx, m_id, subId, val, &m_buf);
 	}
 };
-ReadableStore::StoreIterator* ReadonlySegment::createStoreIter() const {
+ReadableStore::StoreIteratorPtr ReadonlySegment::createStoreIter() const {
 	return new MyStoreIterator(this);
 }
 BaseContextPtr ReadonlySegment::createStoreContext() const {
@@ -244,7 +246,7 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 	SortableStrVec strVec;
 	llong inputRowNum = input.numDataRows();
 	assert(size_t(inputRowNum) == input.m_isDel.size());
-	std::unique_ptr<StoreIterator> iter(input.createStoreIter());
+	StoreIteratorPtr iter(input.createStoreIter());
 	while (iter->increment()) {
 		llong id = -1;
 		iter->getKeyVal(&id, &buf);
@@ -319,11 +321,40 @@ const ReadableIndex* WritableSegment::getReadableIndex(size_t nth) const {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+TableContext::TableContext() {
+}
+
+TableContext::~TableContext() {
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 const llong DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
 const llong DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
+const size_t DEFAULT_maxSegNum = 4095;
 
-CompositeTable::CompositeTable(SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet) {
+CompositeTable::CompositeTable() {
+	m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
+	m_maxWrSegSize = DEFAULT_maxWrSegSize;
+	m_tableScanningRefCount = 0;
+
+	m_segments.reserve(DEFAULT_maxSegNum);
+	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
+	m_rowNumVec.push_back(0);
+}
+
+void
+CompositeTable::createTable(fstring dir, fstring name,
+							SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet)
+{
+	assert(!dir.empty());
+	assert(!name.empty());
+	assert(rowSchema->columnNum() > 0);
+	assert(indexSchemaSet->m_nested.end_i() > 0);
+	if (!m_segments.empty()) {
+		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
+			long(m_segments.size()));
+	}
 	m_rowSchema = rowSchema;
 	m_indexSchemaSet = indexSchemaSet;
 	m_indexProjects.offsets.reserve(indexSchemaSet->m_nested.end_i());
@@ -351,18 +382,6 @@ CompositeTable::CompositeTable(SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet)
 			m_nonIndexRowSchema->m_columnsMeta.insert_i(colname, colmeta);
 		}
 	}
-	m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
-	m_maxWrSegSize = DEFAULT_maxWrSegSize;
-	m_segments.reserve(64);
-	m_rowNumVec.reserve(64);
-	m_rowNumVec.push_back(0);
-}
-
-void CompositeTable::setTableDirName(fstring dir, fstring name) {
-	if (!m_segments.empty()) {
-		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
-			long(m_segments.size()));
-	}
 	m_dir = dir.str();
 	m_name = name.str();
 
@@ -373,7 +392,7 @@ void CompositeTable::setTableDirName(fstring dir, fstring name) {
 	m_segments.push_back(m_wrSeg);
 }
 
-void CompositeTable::loadTable(fstring dir, fstring name) {
+void CompositeTable::openTable(fstring dir, fstring name) {
 	if (!m_segments.empty()) {
 		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
 			long(m_segments.size()));
@@ -463,14 +482,14 @@ void CompositeTable::loadTable(fstring dir, fstring name) {
 		buf.rewind();
 		buf.printf("%s/%s/rd-%04d", dir.c_str(), name.c_str(), int(i));
 		fstring dirBaseName = (const char*)buf.begin();
-		ReadableSegmentPtr seg(this->createReadonlySegment(dirBaseName));
+		ReadableSegmentPtr seg(this->openReadonlySegment(dirBaseName));
 		m_segments.push_back(seg);
 	}
-	for (size_t i = minWrSeg; i < segNum ; ++i) { // load readonly segments
+	for (size_t i = minWrSeg; i < segNum ; ++i) { // load writable segments
 		buf.rewind();
 		buf.printf("%s/%s/wr-%04d", dir.c_str(), name.c_str(), int(i));
 		fstring dirBaseName = (const char*)buf.begin();
-		ReadableSegmentPtr seg(this->createWritableSegment(dirBaseName));
+		ReadableSegmentPtr seg(this->openWritableSegment(dirBaseName));
 		m_segments.push_back(seg);
 	}
 	if (minWrSeg < segNum && m_segments.back()->totalStorageSize() < m_maxWrSegSize) {
@@ -478,6 +497,85 @@ void CompositeTable::loadTable(fstring dir, fstring name) {
 		assert(NULL != seg);
 		m_wrSeg.reset(seg);
 	}
+	else {
+		buf.rewind();
+		buf.printf("%s/%s/wr-%04d", dir.c_str(), name.c_str(), int(segNum));
+		fstring dirBaseName = (const char*)buf.begin();
+		m_wrSeg = this->createWritableSegment(dirBaseName);
+	}
+}
+
+class CompositeTable::MyStoreIterator : public ReadableStore::StoreIterator {
+	size_t  m_segIdx = 0;
+	llong   m_subId = -1;
+	StoreIteratorPtr m_curSegIter;
+public:
+	explicit MyStoreIterator(const CompositeTable* tab) {
+		this->m_store.reset(const_cast<CompositeTable*>(tab));
+		{
+		// MyStoreIterator creation is rarely used, lock it by m_rwMutex
+			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, true);
+			tab->m_tableScanningRefCount++;
+			lock.downgrade_to_reader();
+			assert(tab->m_segments.size() > 0);
+			m_curSegIter = tab->m_segments[0]->createStoreIter();
+		}
+	}
+	~MyStoreIterator() {
+		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		{
+			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, true);
+			tab->m_tableScanningRefCount--;
+		}
+	}
+	bool increment() override {
+		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		while (incrementImpl()) {
+			llong subId = -1;
+			m_curSegIter->getKeyVal(&subId, nullptr);
+			assert(subId >= 0);
+			assert(subId < tab->m_segments[m_segIdx]->numDataRows());
+			if (m_segIdx < tab->m_segments.size()-1) {
+				if (!tab->m_segments[m_segIdx]->m_isDel[subId])
+					return true;
+			}
+			else {
+				tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
+				if (!tab->m_segments[m_segIdx]->m_isDel[subId])
+					return true;
+			}
+		}
+		return false;
+	}
+	bool incrementImpl() {
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		if (!m_curSegIter->increment()) {
+			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
+			if (m_segIdx < tab->m_segments.size()-1) {
+				m_segIdx++;
+				tab->m_segments[m_segIdx]->createStoreIter().swap(m_curSegIter);
+				bool ret = m_curSegIter->increment();
+				assert(ret || tab->m_segments.size()-1 == m_segIdx);
+				return ret;
+			}
+		}
+		return true;
+	}
+	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
+		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		assert(m_segIdx < tab->m_segments.size());
+		llong subId = -1;
+		m_curSegIter->getKeyVal(&subId, val);
+		assert(subId >= 0);
+		*idKey = tab->m_rowNumVec[m_segIdx] + subId;
+	}
+};
+
+ReadableStore::StoreIteratorPtr CompositeTable::createStoreIter() const {
+	return new MyStoreIterator(this);
 }
 
 BaseContextPtr CompositeTable::createStoreContext() const {
@@ -492,6 +590,18 @@ BaseContextPtr CompositeTable::createStoreContext() const {
 	return ctx;
 }
 
+llong CompositeTable::totalStorageSize() const {
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
+	llong size = m_readonlyDataMemSize + m_wrSeg->dataStorageSize();
+	for (size_t i = 0; i < getIndexNum(); ++i) {
+		for (size_t i = 0; i < m_segments.size(); ++i) {
+			size += m_segments[i]->totalStorageSize();
+		}
+	}
+	size += m_wrSeg->totalStorageSize();
+	return size;
+}
+
 llong CompositeTable::numDataRows() const {
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	return m_rowNumVec.back() + m_wrSeg->numDataRows();
@@ -502,7 +612,9 @@ llong CompositeTable::dataStorageSize() const {
 	return m_readonlyDataMemSize + m_wrSeg->dataStorageSize();
 }
 
-void CompositeTable::getValue(llong id, valvec<byte>* val, BaseContextPtr& txn) const {
+void
+CompositeTable::getValue(llong id, valvec<byte>* val, BaseContextPtr& txn)
+const {
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
@@ -517,10 +629,15 @@ void CompositeTable::getValue(llong id, valvec<byte>* val, BaseContextPtr& txn) 
 		seg->getValue(subId, val, ttx.readonlyContext);
 }
 
-void CompositeTable::maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock& lock) {
+void
+CompositeTable::maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock& lock) {
 	if (m_wrSeg->dataStorageSize() >= m_maxWrSegSize) {
-		llong newReadonlyRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
-		m_rowNumVec.push_back(newReadonlyRowNum);
+		if (m_segments.size() == m_segments.capacity()) {
+			THROW_STD(invalid_argument,
+				"Reaching maxSegNum=%d", int(m_segments.capacity()));
+		}
+		llong newMaxRowNum = m_rowNumVec.back();
+		m_rowNumVec.push_back(newMaxRowNum);
 		AutoGrownMemIO buf(256);
 		buf.printf("%s/%s/wr-%04d",
 			m_dir.c_str(), m_name.c_str(), int(m_segments.size()));
@@ -533,68 +650,68 @@ void CompositeTable::maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock& l
 	}
 }
 
-llong CompositeTable::insertRow(fstring row, bool syncIndex, BaseContextPtr& txn) {
+llong
+CompositeTable::insertRow(fstring row, bool syncIndex, BaseContextPtr& txn) {
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	return insertRowImpl(row, syncIndex, txn, lock);
 }
 
-llong CompositeTable::
-insertRowImpl(fstring row, bool syncIndex, BaseContextPtr& txn, tbb::queuing_rw_mutex::scoped_lock& lock) {
+llong
+CompositeTable::insertRowImpl(fstring row, bool syncIndex,
+							  BaseContextPtr& txn,
+							  tbb::queuing_rw_mutex::scoped_lock& lock)
+{
 	maybeCreateNewSegment(lock);
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	llong wrBaseId = m_rowNumVec.back();
 	llong subId;
-	if (m_deletedWrIdSet.empty()) {
-		lock.upgrade_to_writer();
+	if (syncIndex) {
+		m_rowSchema->parseRow(row, &ttx.cols1);
+	}
+	lock.upgrade_to_writer();
+	if (m_deletedWrIdSet.empty() || m_tableScanningRefCount) {
 		subId = m_wrSeg->append(row, txn);
-		if (subId >= (llong)m_wrSeg->m_isDel.size()) {
-			if (subId >= (llong)m_wrSeg->m_isDel.capacity()) {
-				m_wrSeg->m_isDel.reserve(std::max<size_t>(1024, 2*subId));
-			}
-			m_wrSeg->m_isDel.push_back(false);
-		} else {
-		//	m_wrSeg->m_isDel.set0(subId);
-			assert(m_wrSeg->m_isDel.is0(subId));
-		}
-	} else {
-		if (syncIndex) {
-			valvec<byte> key(256, valvec_reserve());
-			valvec<ColumnData> columns(this->columnNum(), valvec_reserve());
-			m_rowSchema->parseRow(row, &columns);
-			lock.upgrade_to_writer();
-			subId = m_deletedWrIdSet.pop_val();
-			size_t indexNum = m_wrSeg->m_indices.size();
-			for (size_t i = 0; i < indexNum; ++i) {
-				auto wrIndex = m_wrSeg->m_indices[i].get();
-				getIndexKey(i, columns, &key);
-				wrIndex->insert(key, subId, ttx.wrIndexContext[i]);
-			}
-		} else {
-			lock.upgrade_to_writer();
-			subId = m_deletedWrIdSet.pop_val();
-		}
+		assert(subId == (llong)m_wrSeg->m_isDel.size());
+		m_wrSeg->m_isDel.push_back(false);
+		m_rowNumVec.back() = subId;
+	}
+	else {
+		subId = m_deletedWrIdSet.pop_val();
 		m_wrSeg->insert(subId, row, ttx.wrStoreContext);
+		m_wrSeg->m_isDel.set0(subId);
+	}
+	if (syncIndex) {
+		size_t indexNum = m_wrSeg->m_indices.size();
+		for (size_t i = 0; i < indexNum; ++i) {
+			auto wrIndex = m_wrSeg->m_indices[i].get();
+			getIndexKey(i, ttx.cols1, &ttx.key1);
+			wrIndex->insert(ttx.key1, subId, ttx.wrIndexContext[i]);
+		}
 	}
 	llong id = wrBaseId + subId;
 	return id;
 }
 
-llong CompositeTable::replaceRow(llong id, fstring row, bool syncIndex, BaseContextPtr& txn) {
+llong
+CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
+						   BaseContextPtr& txn)
+{
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size());
+	assert(id < m_rowNumVec.back());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
-	if (j == m_rowNumVec.size()) {
+	if (j == m_rowNumVec.size()-1) { // id is in m_wrSeg
 		if (syncIndex) {
 			valvec<byte> &oldrow = ttx.row1, &oldkey = ttx.key1;
 			valvec<byte> &newrow = ttx.row2, &newkey = ttx.key2;
-			m_wrSeg->getValue(subId, &oldrow, ttx.wrStoreContext);
 			valvec<ColumnData>& oldcols = ttx.cols1;
 			valvec<ColumnData>& newcols = ttx.cols2;
+			m_wrSeg->getValue(subId, &oldrow, ttx.wrStoreContext);
 			m_rowSchema->parseRow(oldrow, &oldcols);
 			m_rowSchema->parseRow(newrow, &newcols);
 			size_t indexNum = m_wrSeg->m_indices.size();
@@ -622,7 +739,8 @@ llong CompositeTable::replaceRow(llong id, fstring row, bool syncIndex, BaseCont
 	}
 }
 
-void CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
+void
+CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
@@ -651,8 +769,10 @@ void CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
 	}
 }
 
-void CompositeTable::
-indexInsert(size_t indexId, fstring indexKey, llong id, BaseContextPtr& txn) {
+void
+CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
+							BaseContextPtr& txn)
+{
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	assert(id >= 0);
@@ -672,8 +792,10 @@ indexInsert(size_t indexId, fstring indexKey, llong id, BaseContextPtr& txn) {
 		insert(indexKey, subId, ttx.wrIndexContext[indexId]);
 }
 
-void CompositeTable::
-indexRemove(size_t indexId, fstring indexKey, llong id, BaseContextPtr& txn) {
+void
+CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
+							BaseContextPtr& txn)
+{
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
@@ -692,8 +814,11 @@ indexRemove(size_t indexId, fstring indexKey, llong id, BaseContextPtr& txn) {
 		remove(indexKey, subId, ttx.wrIndexContext[indexId]);
 }
 
-void CompositeTable::
-indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, BaseContextPtr& txn) {
+void
+CompositeTable::indexReplace(size_t indexId, fstring indexKey,
+							 llong oldId, llong newId,
+							 BaseContextPtr& txn)
+{
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
@@ -724,8 +849,10 @@ size_t CompositeTable::columnNum() const {
 	return m_wrSeg->m_rowSchema->columnNum();
 }
 
-void CompositeTable::
-getIndexKey(size_t indexId, const valvec<ColumnData>& columns, valvec<byte>* key)
+void
+CompositeTable::getIndexKey(size_t indexId,
+							const valvec<ColumnData>& columns,
+							valvec<byte>* key)
 const {
 	assert(m_indexProjects.size() == m_wrSeg->m_indices.size());
 	auto proj = m_indexProjects[indexId];
@@ -745,7 +872,7 @@ const {
 	key->append(col.data(), col.size());
 }
 
-void CompositeTable::compact() {
+bool CompositeTable::compact() {
 	ReadonlySegmentPtr newSeg;
 	ReadableSegmentPtr srcSeg;
 	AutoGrownMemIO buf(1024);
@@ -753,8 +880,11 @@ void CompositeTable::compact() {
 	fstring dirBaseName;
 	{
 		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
+		if (m_tableScanningRefCount > 0) {
+			return false;
+		}
 		if (m_segments.size() < 2) {
-			return;
+			return false;
 		}
 		// don't include m_segments.back(), it is the working wrseg: m_wrSeg
 		lastWrSegIdx = m_segments.size() - 1;
@@ -782,7 +912,7 @@ void CompositeTable::compact() {
 
 MergeReadonlySeg:
 	// now don't merge
-	return;
+	return true;
 }
 
 } // namespace nark

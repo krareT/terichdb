@@ -18,12 +18,12 @@ public:
 	MockReadableIndex();
 	~MockReadableIndex();
 
-	StoreIterator* createStoreIter() const override;
+	StoreIteratorPtr createStoreIter() const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
 	void getValue(llong id, valvec<byte>* key, BaseContextPtr&) const override;
 
-	IndexIterator* createIndexIter() const override;
+	IndexIteratorPtr createIndexIter() const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 };
@@ -32,7 +32,7 @@ class MockWritableIndex : public WritableIndex {
 	typedef std::pair<std::string, llong> kv_t;
 	std::set<kv_t> m_kv;
 public:
-	IndexIterator* createIndexIter() const override;
+	IndexIteratorPtr createIndexIter() const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 	size_t remove(fstring key, BaseContextPtr&) override;
