@@ -57,6 +57,9 @@
     <ClInclude Include="..\..\..\src\nark\db\seg_db.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\db_segment.hpp">
+      <Filter>Header Files\nark\db</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -79,6 +82,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp">
       <Filter>Source Files\nark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\db_segment.cpp">
+      <Filter>Header Files\nark\db</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
