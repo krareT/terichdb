@@ -27,7 +27,6 @@ namespace nark {
 
 	enum class ColumnType : unsigned char {
 		// all number types are LittleEndian
-		WholeRow,
 		Uint08,
 		Sint08,
 		Uint16,
@@ -51,7 +50,7 @@ namespace nark {
 	struct ColumnMeta {
 		uint32_t fixedLen = 0;
 		static_bitmap<16, uint16_t> flags;
-		ColumnType type = ColumnType::WholeRow;
+		ColumnType type;
 	};
 	struct ColumnData : fstring {
 		ColumnType type;
@@ -59,7 +58,7 @@ namespace nark {
 		unsigned char postLen = 0;
 		size_t all_size() const { return fstring::n + preLen + postLen; }
 		const char* all_data() const { return fstring::p - preLen; }
-		ColumnData() : type(ColumnType::WholeRow) {}
+		ColumnData() : type(ColumnType::Binary) {}
 		explicit ColumnData(ColumnType t) : type(t) {}
 		ColumnData(const ColumnMeta& meta, fstring row);
 		const fstring& fstr() const { return *this; }

@@ -20,9 +20,6 @@ ColumnData::ColumnData(const ColumnMeta& meta, fstring row) {
 	default:
 		THROW_STD(runtime_error, "Invalid data row");
 		break;
-	case ColumnType::WholeRow: // at most one WholeRow column
-		this->n = row.n;
-		break;
 	case ColumnType::Uint08:
 	case ColumnType::Sint08:
 		CHECK_DATA_SIZE(1);
@@ -100,15 +97,6 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
 			break;
-		case ColumnType::WholeRow:
-			// at most one WholeRow column, and must be the last column
-			assert(m_columnsMeta.end_i()-1 == i);
-			if (m_columnsMeta.end_i()-1 != i) {
-				THROW_STD(invalid_argument, "WholeRow type must be the last column");
-			}
-			coldata.n = last - curr;
-			curr = last;
-			break;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
 			CHECK_CURR_LAST(1);
@@ -162,18 +150,31 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 			break;
 		case ColumnType::StrZero: // Zero ended string
 			coldata.n = strnlen((const char*)curr, last - curr);
-			CHECK_CURR_LAST(coldata.n + 1);
-			coldata.postLen = 1;
-			curr += coldata.n + 1;
+			if (i < m_columnsMeta.end_i() - 1) {
+				CHECK_CURR_LAST(coldata.n + 1);
+				coldata.postLen = 1;
+				curr += coldata.n + 1;
+			}
+			else { // the last column
+				if (coldata.n + 1 < last - curr) {
+					// '\0' is optional, if '\0' exists, it must at string end
+					THROW_STD(invalid_argument,
+						"'\0' in StrZero is not at string end");
+				}
+				coldata.postLen = last - curr - coldata.n;
+			}
 			break;
 		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
-			{
+			if (i < m_columnsMeta.end_i() - 1) {
 				const byte* next = nullptr;
 				coldata.n = load_var_uint64(curr, &next);
 				coldata.preLen = next - curr; // length of var_uint
 				CHECK_CURR_LAST(coldata.n);
 				curr = next + coldata.n;
+			}
+			else { // the last column
+				coldata.n = last - curr;
 			}
 			break;
 		}
@@ -223,13 +224,6 @@ size_t Schema::getFixedRowLen() const {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
 			break;
-		case ColumnType::WholeRow:
-			// at most one WholeRow column, and must be the last column
-			assert(m_columnsMeta.end_i()-1 == i);
-			if (m_columnsMeta.end_i()-1 != i) {
-				THROW_STD(invalid_argument, "WholeRow type must be the last column");
-			}
-			return 0;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
 			rowLen += 1;
@@ -276,7 +270,6 @@ namespace {
 	struct ColumnTypeMap : hash_strmap<ColumnType> {
 		ColumnTypeMap() {
 			auto& colname2val = *this;
-			colname2val["WholeRow"] = ColumnType::WholeRow;
 			colname2val["Uint08"] = ColumnType::Uint08;
 			colname2val["Sint08"] = ColumnType::Sint08;
 			colname2val["Uint16"] = ColumnType::Uint16;

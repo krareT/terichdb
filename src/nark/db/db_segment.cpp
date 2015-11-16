@@ -237,9 +237,15 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 		SchemaPtr indexSchema = m_indexSchemaSet->m_nested.elem_at(i);
 		indexTempFiles.unchecked_emplace_back(indexSchema->getFixedRowLen());
 	}
+
+	// k = indexColumnIdVec[i][j] select k'th col from rowSchema
+	// to indexSchemaSet[i][j]
 	basic_fstrvec<size_t> indexColumnIdVec;
 	indexColumnIdVec.reserve(indexNum);
+
+	// k = columnIdMap[i] select rowSchema[k] to m_nonIndexRowSchema[i]
 	valvec<size_t> columnIdMap(m_nonIndexRowSchema->columnNum(), size_t(-1));
+
 	for (size_t i = 0; i < m_nonIndexRowSchema->columnNum(); ++i) {
 		fstring columnName = m_nonIndexRowSchema->getColumnName(i);
 		size_t columnId = schema.getColumnId(columnName);
@@ -291,7 +297,8 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 		}
 		for (size_t i = 0; i < m_nonIndexRowSchema->columnNum(); i++) {
 			size_t columnId = columnIdMap[i];
-			strVec.back_append(columns[columnId]);
+			ColumnData col(columns[columnId]);
+			strVec.back_append(fstring(col.all_data(), col.all_size()));
 		}
 		if (strVec.mem_size() >= this->m_maxPartDataSize) {
 			m_parts.push_back(buildStore(strVec));
@@ -311,9 +318,9 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 	for (size_t i = 0; i < indexTempFiles.size(); ++i) {
 		SchemaPtr indexSchema = m_indexSchemaSet->m_nested.elem_at(i);
 		size_t indexColumnNum = indexSchema->columnNum();
-		ColumnMeta firstColumnMeta = indexSchema->m_columnsMeta.val(0);
 		if (indexTempFiles[i].fixedLen() == 0) {
 			NativeDataInput<InputBuffer> dio;
+			indexTempFiles[i].fp().disbuf();
 			dio.attach(&indexTempFiles[i].fp());
 			for (llong id = 0; id < inputRowNum; id++) {
 				dio >> buf;
@@ -348,6 +355,7 @@ void ReadonlySegment::save(fstring prefix) const {
 	}
 	ReadableSegment::save(prefix);
 }
+
 void ReadonlySegment::load(fstring prefix) {
 	if (!m_indices.empty()) {
 		THROW_STD(invalid_argument, "m_indices must be empty");
