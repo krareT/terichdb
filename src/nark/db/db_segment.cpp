@@ -215,9 +215,9 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 	}
 	basic_fstrvec<size_t> indexColumnIdVec;
 	indexColumnIdVec.reserve(indexNum);
-	valvec<size_t> columnIdMap(m_dataSchema->columnNum(), size_t(-1));
-	for (size_t i = 0; i < m_dataSchema->columnNum(); ++i) {
-		fstring columnName = m_dataSchema->getColumnName(i);
+	valvec<size_t> columnIdMap(m_nonIndexRowSchema->columnNum(), size_t(-1));
+	for (size_t i = 0; i < m_nonIndexRowSchema->columnNum(); ++i) {
+		fstring columnName = m_nonIndexRowSchema->getColumnName(i);
 		size_t columnId = schema.getColumnId(columnName);
 		if (columnId < schema.columnNum()) {
 			columnIdMap[i] = columnId;
@@ -265,7 +265,7 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 			}
 			indexTempFiles[i].dioWrite(indexColumns);
 		}
-		for (size_t i = 0; i < m_dataSchema->columnNum(); i++) {
+		for (size_t i = 0; i < m_nonIndexRowSchema->columnNum(); i++) {
 			size_t columnId = columnIdMap[i];
 			strVec.back_append(columns[columnId]);
 		}

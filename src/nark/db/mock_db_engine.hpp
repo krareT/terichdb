@@ -9,14 +9,25 @@
 
 namespace nark {
 
-class MockReadableIndex : public ReadableStoreIndex {
-	friend class MockReadableIndexIterator;
+class MockReadonlyStore : public ReadableStore {
+public:
+	fstrvec m_rows;
+
+	llong dataStorageSize() const override;
+	llong numDataRows() const override;
+	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	StoreIteratorPtr createStoreIter() const override;
+	BaseContextPtr createStoreContext() const override;
+};
+
+class MockReadonlyIndex : public ReadableStoreIndex {
+	friend class MockReadonlyIndexIterator;
 	friend class MockCompositeIndex;
 	SortableStrVec m_keyVec;
 	valvec<uint32_t> m_idToKey;
 public:
-	MockReadableIndex();
-	~MockReadableIndex();
+	MockReadonlyIndex();
+	~MockReadonlyIndex();
 
 	StoreIteratorPtr createStoreIter() const override;
 	llong numDataRows() const override;
@@ -42,8 +53,13 @@ public:
 	void flush() override;
 };
 
-class MockCompositeIndex : public CompositeTable {
+class MockCompositeTable : public CompositeTable {
 public:
+	ReadonlySegmentPtr createReadonlySegment(fstring dirBaseName) const override;
+	WritableSegmentPtr createWritableSegment(fstring dirBaseName) const override;
+
+	ReadonlySegmentPtr openReadonlySegment(fstring dirBaseName) const override;
+	WritableSegmentPtr openWritableSegment(fstring dirBaseName) const override;
 };
 
 } // namespace nark

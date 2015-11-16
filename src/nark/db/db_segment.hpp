@@ -68,7 +68,7 @@ protected:
 
 protected:
 	class MyStoreIterator;
-	SchemaPtr     m_dataSchema; // full-row schema except columns in indices
+	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
 	valvec<llong> m_rowNumVec;  // prallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 	valvec<ReadableStoreIndexPtr> m_indices; // parallel with m_indexSchemaSet

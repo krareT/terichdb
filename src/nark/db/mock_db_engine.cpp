@@ -2,12 +2,33 @@
 
 namespace nark {
 
-class MockReadableIndexIterator : public IndexIterator {
-	friend class MockReadableIndex;
+
+llong MockReadonlyStore::dataStorageSize() const {
+	return m_rows.used_mem_size();
+}
+llong MockReadonlyStore::numDataRows() const {
+	return m_rows.size();
+}
+void
+MockReadonlyStore::getValue(llong id, valvec<byte>* val, BaseContextPtr&)
+const {
+	assert(id >= 0);
+	assert(id < llong(m_rows.size()));
+	val->assign(m_rows[id]);
+}
+ReadableStore::StoreIteratorPtr MockReadonlyStore::createStoreIter() const {
+	return nullptr;
+}
+BaseContextPtr MockReadonlyStore::createStoreContext() const {
+	return nullptr;
+}
+
+class MockReadonlyIndexIterator : public IndexIterator {
+	friend class MockReadonlyIndex;
 	size_t m_pos = size_t(-1);
 public:
 	bool increment() override {
-		auto owner = static_cast<const MockReadableIndex*>(m_index);
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		if (size_t(-1) == m_pos) {
 			m_pos = 0;
 		}
@@ -18,7 +39,7 @@ public:
 		return false;
 	}
 	bool decrement() override {
-		auto owner = static_cast<const MockReadableIndex*>(m_index);
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		if (size_t(-1) == m_pos) {
 			m_pos = owner->m_keyVec.size() - 1;
 			return true;
@@ -33,7 +54,7 @@ public:
 		m_pos = size_t(-1);
 	}
 	bool seekExact(fstring key) override {
-		auto owner = static_cast<const MockReadableIndex*>(m_index);
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		const auto& keys = owner->m_keyVec;
 		size_t lo = nark::lower_bound_0<const SortableStrVec&>(keys, keys.size(), key);
 		if (lo < keys.size() && key == keys[lo]) {
@@ -43,13 +64,13 @@ public:
 		return false;
 	}
 	bool seekLowerBound(fstring key) override {
-		auto owner = static_cast<const MockReadableIndex*>(m_index);
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		const auto& keys = owner->m_keyVec;
 		m_pos = nark::lower_bound_0<const SortableStrVec&>(keys, keys.size(), key);
 		return m_pos < keys.size() && key == keys[m_pos];
 	}
 	void getIndexKey(llong* id, valvec<byte>* key) const override {
-		auto owner = static_cast<const MockReadableIndex*>(m_index);
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		assert(m_pos < owner->m_keyVec.size());
 		*id = owner->m_keyVec.m_index[m_pos].seq_id;
 		fstring k = owner->m_keyVec[m_pos];
@@ -57,24 +78,24 @@ public:
 	}
 };
 
-MockReadableIndex::MockReadableIndex() {
+MockReadonlyIndex::MockReadonlyIndex() {
 }
 
-MockReadableIndex::~MockReadableIndex() {
+MockReadonlyIndex::~MockReadonlyIndex() {
 }
 
-ReadableStore::StoreIteratorPtr MockReadableIndex::createStoreIter() const {
+ReadableStore::StoreIteratorPtr MockReadonlyIndex::createStoreIter() const {
 	assert(!"Readonly column store did not define iterator");
 	return nullptr;
 }
-llong MockReadableIndex::numDataRows() const {
+llong MockReadonlyIndex::numDataRows() const {
 	return m_idToKey.size();
 }
-llong MockReadableIndex::dataStorageSize() const {
+llong MockReadonlyIndex::dataStorageSize() const {
 	return m_idToKey.used_mem_size();
 }
 
-void MockReadableIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) const {
+void MockReadonlyIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) const {
 	assert(m_idToKey.size() == m_keyVec.size());
 	assert(id < (llong)m_idToKey.size());
 	assert(id >= 0);
@@ -83,22 +104,22 @@ void MockReadableIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) c
 	key->assign(key1.udata(), key1.size());
 }
 
-IndexIteratorPtr MockReadableIndex::createIndexIter() const {
-	return new MockReadableIndexIterator();
+IndexIteratorPtr MockReadonlyIndex::createIndexIter() const {
+	return new MockReadonlyIndexIterator();
 }
 
-llong MockReadableIndex::numIndexRows() const {
+llong MockReadonlyIndex::numIndexRows() const {
 	return m_keyVec.size();
 }
 
-llong MockReadableIndex::indexStorageSize() const {
+llong MockReadonlyIndex::indexStorageSize() const {
 	return m_keyVec.mem_size();
 }
 
 //////////////////////////////////////////////////////////////////
 
 IndexIteratorPtr MockWritableIndex::createIndexIter() const {
-	return new MockReadableIndexIterator();
+	return new MockReadonlyIndexIterator();
 }
 
 llong MockWritableIndex::numIndexRows() const {
@@ -138,6 +159,20 @@ size_t MockWritableIndex::remove(fstring key, llong id, BaseContextPtr&) {
 }
 void MockWritableIndex::flush() {
 	// do nothing
+}
+
+ReadonlySegmentPtr MockCompositeTable::createReadonlySegment(fstring dirBaseName) const {
+	return nullptr;
+}
+WritableSegmentPtr MockCompositeTable::createWritableSegment(fstring dirBaseName) const {
+	return nullptr;
+}
+
+ReadonlySegmentPtr MockCompositeTable::openReadonlySegment(fstring dirBaseName) const {
+	return nullptr;
+}
+WritableSegmentPtr MockCompositeTable::openWritableSegment(fstring dirBaseName) const {
+	return nullptr;
 }
 
 } // namespace nark
