@@ -84,7 +84,7 @@
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\nark\db\db_segment.cpp">
-      <Filter>Header Files\nark\db</Filter>
+      <Filter>Source Files\nark\db</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

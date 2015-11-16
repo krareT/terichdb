@@ -79,6 +79,8 @@ namespace nark {
 
 		static ColumnType parseColumnType(fstring str);
 
+		std::string joinColumnNames(char delim) const;
+
 		hash_strmap<ColumnMeta> m_columnsMeta;
 	};
 	typedef boost::intrusive_ptr<Schema> SchemaPtr;

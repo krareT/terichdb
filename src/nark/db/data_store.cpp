@@ -2,6 +2,13 @@
 
 namespace nark {
 
+void Permanentable::save(fstring) const {
+	THROW_STD(invalid_argument, "This method should not be called");
+}
+void Permanentable::load(fstring) {
+	THROW_STD(invalid_argument, "This method should not be called");
+}
+
 ReadableStore::StoreIterator::~StoreIterator() {
 }
 

@@ -11,8 +11,14 @@
 
 namespace nark {
 
+class Permanentable : public RefCounter {
+public:
+	virtual void save(fstring dirBaseName) const = 0;
+	virtual void load(fstring dirBaseName) = 0;
+};
+
 typedef boost::intrusive_ptr<class ReadableStore> ReadableStorePtr;
-class ReadableStore : virtual public RefCounter {
+class ReadableStore : virtual public Permanentable {
 public:
 	class StoreIterator : public RefCounter {
 	protected:
@@ -36,7 +42,6 @@ class WritableStore {
 public:
 	virtual ~WritableStore();
 	virtual llong append(fstring row, BaseContextPtr&) = 0;
-	virtual void  insert(llong id, fstring row, BaseContextPtr&) = 0;
 	virtual void  replace(llong id, fstring row, BaseContextPtr&) = 0;
 	virtual void  remove(llong id, BaseContextPtr&) = 0;
 };

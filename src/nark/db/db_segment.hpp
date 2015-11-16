@@ -29,9 +29,13 @@ public:
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
+	void save(fstring) const override;
+	void load(fstring) override;
+
 	febitvec      m_isDel;
 	SchemaPtr     m_rowSchema;
 	SchemaSetPtr  m_indexSchemaSet;
+	byte* m_isDelMmap = nullptr;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
@@ -43,6 +47,12 @@ public:
 	struct ReadonlyStoreContext : public BaseContext {
 		valvec<byte> buf;
 	};
+
+	void save(fstring) const override;
+	void load(fstring) override;
+
+	virtual ReadableStorePtr openPart(fstring path) const = 0;
+	virtual ReadableStoreIndexPtr openIndex(fstring path, const Schema&) const = 0;
 
 	const ReadableIndex* getReadableIndex(size_t nth) const override;
 
@@ -88,6 +98,7 @@ public:
 
 	valvec<WritableIndexPtr> m_indices;
 protected:
+	llong totalIndexSize() const;
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 

@@ -6,13 +6,37 @@
 #include <nark/io/MemStream.hpp>
 #include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
+#include <nark/util/mmap.hpp>
+#include <boost/filesystem.hpp>
 
 namespace nark {
 
 ReadableSegment::~ReadableSegment() {
+	if (m_isDelMmap) {
+		size_t bitBytes = m_isDel.capacity()/8;
+		mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);
+		m_isDel.risk_release_ownership();
+	}
 }
 llong ReadableSegment::numDataRows() const {
 	return m_isDel.size();
+}
+
+void ReadableSegment::save(fstring prefix) const {
+	std::string isDelFpath = prefix + "-isDel";
+	NativeDataOutput<FileStream> file;
+	file.open(isDelFpath.c_str(), "wb");
+	file << uint64_t(m_isDel.size());
+	file.ensureWrite(m_isDel.bldata(), m_isDel.mem_size());
+}
+void ReadableSegment::load(fstring prefix) {
+	std::string isDelFpath = prefix + "-isDel";
+	size_t bytes = 0;
+	m_isDelMmap = (byte*)mmap_load(isDelFpath.c_str(), &bytes);
+	uint64_t rowNum = *(uint64_t*)m_isDelMmap;
+	m_isDel.risk_mmap_from(m_isDelMmap + 8, bytes - 8);
+	assert(m_isDel.size() >= rowNum);
+	m_isDel.risk_set_size(size_t(rowNum));
 }
 
 ReadonlySegment::ReadonlySegment() {
@@ -309,6 +333,54 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 	m_dataMemSize = sum;
 }
 
+void ReadonlySegment::save(fstring prefix) const {
+	for (size_t i = 0; i < m_indices.size(); ++i) {
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema.joinColumnNames(',');
+		std::string p2 = prefix + "/index-" + colnames;
+		m_indices[i]->save(p2);
+	}
+	AutoGrownMemIO buf;
+	for (size_t i = 0; i < m_parts.size(); ++i) {
+		buf.rewind();
+		buf.printf("%s/store-%0ld", prefix.c_str(), long(i));
+		m_parts[i]->save(buf.c_str());
+	}
+	ReadableSegment::save(prefix);
+}
+void ReadonlySegment::load(fstring prefix) {
+	if (!m_indices.empty()) {
+		THROW_STD(invalid_argument, "m_indices must be empty");
+	}
+	if (!m_parts.empty()) {
+		THROW_STD(invalid_argument, "m_parts must be empty");
+	}
+	for (size_t i = 0; i < m_indices.size(); ++i) {
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema.joinColumnNames(',');
+		std::string path = prefix + "/index-" + colnames;
+		m_indices.push_back(this->openIndex(path, schema));
+	}
+	namespace fs = boost::filesystem;
+	for (auto& x : fs::directory_iterator(fs::path(prefix.c_str()))) {
+		std::string fname = x.path().filename().string();
+		long partIdx = -1;
+		if (sscanf(fname.c_str(), "store-%ld", &partIdx) <= 0) {
+			fprintf(stderr, "WARN: bad filename = %s\n", fname.c_str());
+			continue;
+		}
+		if (partIdx < 0) {
+			THROW_STD(invalid_argument,
+				"bad partIdx in fname = %s", fname.c_str());
+		}
+		if (m_parts.size() <= size_t(partIdx)) {
+			m_parts.resize(partIdx+1);
+		}
+		m_parts[partIdx] = this->openPart(x.path().string());
+	}
+	ReadableSegment::load(prefix);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 WritableStore* WritableSegment::getWritableStore() {
@@ -317,6 +389,14 @@ WritableStore* WritableSegment::getWritableStore() {
 const ReadableIndex* WritableSegment::getReadableIndex(size_t nth) const {
 	assert(nth < m_indices.size());
 	return m_indices[nth].get();
+}
+
+llong WritableSegment::totalIndexSize() const {
+	llong size = 0;
+	for (size_t i = 0; i < m_indices.size(); ++i) {
+		size += m_indices[i]->indexStorageSize();
+	}
+	return size;
 }
 
 } // namespace nark

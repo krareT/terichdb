@@ -39,6 +39,22 @@ public:
 	llong indexStorageSize() const override;
 };
 
+class MockWritableStore : public ReadableStore, public WritableStore {
+public:
+	valvec<valvec<byte> > m_rows;
+	llong m_dataSize;
+
+	llong dataStorageSize() const override;
+	llong numDataRows() const override;
+	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	StoreIteratorPtr createStoreIter() const override;
+	BaseContextPtr createStoreContext() const override;
+
+	llong append(fstring row, BaseContextPtr&) override;
+	void  replace(llong id, fstring row, BaseContextPtr&) override;
+	void  remove(llong id, BaseContextPtr&) override;
+};
+
 class MockWritableIndex : public WritableIndex {
 	typedef std::pair<std::string, llong> kv_t;
 	std::set<kv_t> m_kv;
@@ -55,8 +71,9 @@ public:
 
 class MockCompositeTable : public CompositeTable {
 public:
-	ReadonlySegmentPtr createReadonlySegment(fstring dirBaseName) const override;
+	ReadonlySegmentPtr createReadonlySegment() const override;
 	WritableSegmentPtr createWritableSegment(fstring dirBaseName) const override;
+	void saveReadonlySegment(ReadonlySegmentPtr, fstring dirBaseName) const override;
 
 	ReadonlySegmentPtr openReadonlySegment(fstring dirBaseName) const override;
 	WritableSegmentPtr openWritableSegment(fstring dirBaseName) const override;

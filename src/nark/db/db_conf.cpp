@@ -309,6 +309,18 @@ ColumnType Schema::parseColumnType(fstring str) {
 	}
 }
 
+std::string Schema::joinColumnNames(char delim) const {
+	std::string joined;
+	joined.reserve(m_columnsMeta.whole_strpool().size());
+	for (size_t i = 0; i < m_columnsMeta.end_i(); ++i) {
+		fstring colname = m_columnsMeta.key(i);
+		joined.append(colname.data(), colname.size());
+		joined.push_back(delim);
+	}
+	joined.pop_back();
+	return joined;
+}
+
 // An index can be a composite index, which have multiple columns as key,
 // so many indices may share columns, if the column share happens, we just
 // need one instance of the column to compose a row from multiple index.

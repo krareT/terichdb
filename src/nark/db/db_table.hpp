@@ -51,8 +51,10 @@ public:
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 
-	virtual ReadonlySegmentPtr createReadonlySegment(fstring dirBaseName) const = 0;
+	virtual ReadonlySegmentPtr createReadonlySegment() const = 0;
 	virtual WritableSegmentPtr createWritableSegment(fstring dirBaseName) const = 0;
+
+	virtual void saveReadonlySegment(ReadonlySegmentPtr, fstring dirBaseName) const = 0;
 
 	virtual ReadonlySegmentPtr openReadonlySegment(fstring dirBaseName) const = 0;
 	virtual WritableSegmentPtr openWritableSegment(fstring dirBaseName) const = 0;
@@ -84,6 +86,8 @@ protected:
 	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
 	llong insertRowImpl(fstring row, bool syncIndex,
 						BaseContextPtr&, tbb::queuing_rw_mutex::scoped_lock&);
+
+	fstring getDirBaseName(fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
 
 protected:
 	mutable tbb::queuing_rw_mutex m_rwMutex;

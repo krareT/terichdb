@@ -25,7 +25,7 @@ public:
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
-class ReadableIndex : virtual public RefCounter {
+class ReadableIndex : virtual public Permanentable {
 protected:
 	SortOrder m_sortOrder;
 	bool      m_isUnique;
