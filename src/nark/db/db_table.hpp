@@ -79,8 +79,10 @@ protected:
 	fstring getSegPath(fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
 	fstring getSegPath2(fstring dir, fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
 
+#if defined(NARK_DB_ENABLE_DFA_META)
 	void saveMetaDFA(fstring dir) const;
 	void loadMetaDFA(fstring dir);
+#endif
 	void loadMetaJson(fstring dir);
 	void saveMetaJson(fstring dir) const;
 

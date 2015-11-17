@@ -1,3 +1,7 @@
+#define NARK_DB_ENABLE_DFA_META
+#if defined(NARK_DB_ENABLE_DFA_META)
+#include <nark/fsa/nest_trie_dawg.hpp>
+#endif
 #include "db_table.hpp"
 #include <nark/util/autoclose.hpp>
 #include <nark/util/linebuf.hpp>
@@ -7,13 +11,10 @@
 #include <nark/io/MemStream.hpp>
 #include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
-#include <nark/fsa/nest_trie_dawg.hpp>
 #include <nlohmann/json.hpp>
 #include <boost/filesystem.hpp>
 
 namespace nark {
-
-using nlohmann::json;
 
 namespace fs = boost::filesystem;
 
@@ -90,6 +91,10 @@ void CompositeTable::load(fstring dir) {
 		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
 			long(m_segments.size()));
 	}
+	if (m_rowSchema && m_rowSchema->columnNum()) {
+		THROW_STD(invalid_argument, "Invalid: rowSchemaColumns=%ld is not empty",
+			long(m_rowSchema->columnNum()));
+	}
 	m_dir = dir.str();
 	loadMetaJson(dir);
 	for (auto& x : fs::directory_iterator(fs::path(m_dir))) {
@@ -125,6 +130,7 @@ void CompositeTable::load(fstring dir) {
 	m_wrSeg.reset(seg); // old wr seg at end
 }
 
+#if defined(NARK_DB_ENABLE_DFA_META)
 void CompositeTable::loadMetaDFA(fstring dir) {
 	std::string metaFile = dir + "/dbmeta.dfa";
 	std::unique_ptr<MatchingDFA> metaConf(MatchingDFA::load_from(metaFile));
@@ -246,18 +252,21 @@ void CompositeTable::saveMetaDFA(fstring dir) const {
 	}
 	NestLoudsTrieDAWG_SE_512 trie;
 }
+#endif
 
 void CompositeTable::loadMetaJson(fstring dir) {
 	std::string jsonFile = dir + "/dbmeta.json";
 	LineBuf alljson;
 	alljson.read_all(jsonFile.c_str());
 
+	using nlohmann::json;
 	const json meta = json::parse(alljson.p);
 	const json& rowSchema = meta["RowSchema"];
 	const json& cols = rowSchema["columns"];
 	if (!cols.is_array()) {
 		THROW_STD(invalid_argument, "json RowSchema/columns must be an array");
 	}
+	m_rowSchema.reset(new Schema());
 	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
 		const auto& col = *iter;
 		std::string name = col["name"];
@@ -285,16 +294,16 @@ void CompositeTable::loadMetaJson(fstring dir) {
 	} else {
 		m_maxWrSegSize = *iter;
 	}
-
 	const json& tableIndex = meta["TableIndex"];
 	if (!tableIndex.is_array()) {
 		THROW_STD(invalid_argument, "json TableIndex must be an array");
 	}
+	m_indexSchemaSet.reset(new SchemaSet());
 	for (const auto& index : tableIndex) {
 		SchemaPtr indexSchema(new Schema());
 		for (const auto& col : index) {
 			const std::string& colname = col;
-			size_t k = m_rowSchema->getColumnId(colname);
+			const size_t k = m_rowSchema->getColumnId(colname);
 			if (k == m_rowSchema->columnNum()) {
 				THROW_STD(invalid_argument,
 					"colname=%s is not in RowSchema", colname.c_str());
@@ -307,6 +316,7 @@ void CompositeTable::loadMetaJson(fstring dir) {
 }
 
 void CompositeTable::saveMetaJson(fstring dir) const {
+	using nlohmann::json;
 	json meta;
 	json& rowSchema = meta["RowSchema"];
 	json& cols = rowSchema["columns"];
