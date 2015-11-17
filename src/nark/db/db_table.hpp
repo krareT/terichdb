@@ -45,6 +45,7 @@ public:
 
 	void createTable(fstring dir, SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet);
 	void load(fstring dir) override;
+	void save(fstring dir) const override;
 
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
@@ -62,15 +63,13 @@ public:
 	void indexRemove(size_t indexId, fstring indexKey, llong id, BaseContextPtr&);
 	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, BaseContextPtr&);
 
-	size_t columnNum() const;
-
-	void getIndexKey(size_t indexId, const valvec<ColumnData>& columns, valvec<byte>* key) const;
-
+	void getIndexKey(size_t indexId, const valvec<ColumnData>& row, valvec<byte>* key) const;
 	bool compact();
 
 	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
 	const Schema& getTableSchema() const { return *m_rowSchema; }
 	const size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
+	size_t columnNum() const { return m_rowSchema->columnNum(); }
 
 protected:
 	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
@@ -80,8 +79,10 @@ protected:
 	fstring getSegPath(fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
 	fstring getSegPath2(fstring dir, fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
 
-	void save(fstring dir) const override;
-	void saveMetaData(fstring dir) const;
+	void saveMetaDFA(fstring dir) const;
+	void loadMetaDFA(fstring dir);
+	void loadMetaJson(fstring dir);
+	void saveMetaJson(fstring dir) const;
 
 	virtual ReadonlySegmentPtr createReadonlySegment() const = 0;
 	virtual WritableSegmentPtr createWritableSegment(fstring dirBaseName) const = 0;

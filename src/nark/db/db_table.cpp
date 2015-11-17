@@ -1,13 +1,21 @@
 #include "db_table.hpp"
 #include <nark/util/autoclose.hpp>
+#include <nark/util/linebuf.hpp>
 #include <nark/io/FileStream.hpp>
 #include <nark/io/StreamBuffer.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/io/MemStream.hpp>
 #include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
+#include <nark/fsa/nest_trie_dawg.hpp>
+#include <nlohmann/json.hpp>
+#include <boost/filesystem.hpp>
 
 namespace nark {
+
+using nlohmann::json;
+
+namespace fs = boost::filesystem;
 
 TableContext::TableContext() {
 }
@@ -83,6 +91,41 @@ void CompositeTable::load(fstring dir) {
 			long(m_segments.size()));
 	}
 	m_dir = dir.str();
+	loadMetaJson(dir);
+	for (auto& x : fs::directory_iterator(fs::path(m_dir))) {
+		std::string fname = x.path().filename().string();
+		long segIdx = -1;
+		ReadableSegmentPtr seg;
+		if (sscanf(fname.c_str(), "wr-%ld", &segIdx) > 0) {
+			if (segIdx < 0) {
+				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
+			}
+			seg = openWritableSegment(x.path().string());
+		}
+		else if (sscanf(fname.c_str(), "rd-%ld", &segIdx) > 0) {
+			if (segIdx < 0) {
+				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
+			}
+			seg = createReadonlySegment();
+			seg->load(x.path().string());
+		}
+		else {
+			continue;
+		}
+		if (m_segments.size() <= size_t(segIdx)) {
+			m_segments.resize(segIdx + 1);
+		}
+		m_segments[segIdx] = seg;
+	}
+	if (m_segments.size() == 0) {
+		THROW_STD(invalid_argument, "no any segment found");
+	}
+	auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
+	assert(NULL != seg);
+	m_wrSeg.reset(seg); // old wr seg at end
+}
+
+void CompositeTable::loadMetaDFA(fstring dir) {
 	std::string metaFile = dir + "/dbmeta.dfa";
 	std::unique_ptr<MatchingDFA> metaConf(MatchingDFA::load_from(metaFile));
 	std::string val;
@@ -190,7 +233,109 @@ void CompositeTable::load(fstring dir) {
 	}
 }
 
-void CompositeTable::saveMetaData(fstring dir) const {
+void CompositeTable::saveMetaDFA(fstring dir) const {
+	SortableStrVec meta;
+	AutoGrownMemIO buf;
+	size_t pos;
+//	pos = buf.printf("TotalSegNum\t%ld", long(m_segments.s));
+	pos = buf.printf("RowSchema\t");
+	for (size_t i = 0; i < m_rowSchema->columnNum(); ++i) {
+		buf.printf("%04ld", long(i));
+		meta.push_back(fstring(buf.begin(), buf.tell()));
+		buf.seek(pos);
+	}
+	NestLoudsTrieDAWG_SE_512 trie;
+}
+
+void CompositeTable::loadMetaJson(fstring dir) {
+	std::string jsonFile = dir + "/dbmeta.json";
+	LineBuf alljson;
+	alljson.read_all(jsonFile.c_str());
+
+	const json meta = json::parse(alljson.p);
+	const json& rowSchema = meta["RowSchema"];
+	const json& cols = rowSchema["columns"];
+	if (!cols.is_array()) {
+		THROW_STD(invalid_argument, "json RowSchema/columns must be an array");
+	}
+	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
+		const auto& col = *iter;
+		std::string name = col["name"];
+		std::string type = col["type"];
+		std::transform(type.begin(), type.end(), type.begin(), &::tolower);
+		ColumnMeta colmeta;
+		colmeta.type = Schema::parseColumnType(type);
+		if (ColumnType::Fixed == colmeta.type) {
+			colmeta.fixedLen = col["length"];
+		}
+		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
+		if (!ib.second) {
+			THROW_STD(invalid_argument, "duplicate RowName=%s", name.c_str());
+		}
+	}
+	auto iter = meta.find("ReadonlyDataMemSize");
+	if (meta.end() == iter) {
+		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
+	} else {
+		m_readonlyDataMemSize = *iter;
+	}
+	iter = meta.find("MaxWrSegSize");
+	if (meta.end() == iter) {
+		m_maxWrSegSize = DEFAULT_maxWrSegSize;
+	} else {
+		m_maxWrSegSize = *iter;
+	}
+
+	const json& tableIndex = meta["TableIndex"];
+	if (!tableIndex.is_array()) {
+		THROW_STD(invalid_argument, "json TableIndex must be an array");
+	}
+	for (const auto& index : tableIndex) {
+		SchemaPtr indexSchema(new Schema());
+		for (const auto& col : index) {
+			const std::string& colname = col;
+			size_t k = m_rowSchema->getColumnId(colname);
+			if (k == m_rowSchema->columnNum()) {
+				THROW_STD(invalid_argument,
+					"colname=%s is not in RowSchema", colname.c_str());
+			}
+			indexSchema->m_columnsMeta.
+				insert_i(colname, m_rowSchema->getColumnMeta(k));
+		}
+		m_indexSchemaSet->m_nested.insert_i(indexSchema);
+	}
+}
+
+void CompositeTable::saveMetaJson(fstring dir) const {
+	json meta;
+	json& rowSchema = meta["RowSchema"];
+	json& cols = rowSchema["columns"];
+	cols = json::array();
+	for (size_t i = 0; i < m_rowSchema->columnNum(); ++i) {
+		ColumnType coltype = m_rowSchema->getColumnType(i);
+		std::string colname = m_rowSchema->getColumnName(i).str();
+		std::string strtype = Schema::columnTypeStr(coltype);
+		json col;
+		col["name"] = colname;
+		col["type"] = strtype;
+		if (ColumnType::Fixed == coltype) {
+			col["length"] = m_rowSchema->getColumnMeta(i).fixedLen;
+		}
+		cols.push_back(col);
+	}
+	json& indexSet = meta["TableIndex"];
+	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		json indexCols;
+		for (size_t j = 0; j < schema.columnNum(); ++j) {
+			indexCols.push_back(schema.getColumnName(j).str());
+		}
+		indexSet.push_back(indexCols);
+	}
+	std::string jsonFile = dir + "/dbmeta.json";
+	std::string jsonStr = meta.dump(2);
+	FileStream fp(jsonFile.c_str(), "w");
+	fp.ensureWrite(jsonStr.data(), jsonStr.size());
 }
 
 class CompositeTable::MyStoreIterator : public ReadableStore::StoreIterator {
@@ -534,10 +679,6 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 		replace(indexKey, oldSubId, newSubId, ttx.wrIndexContext[indexId]);
 }
 
-size_t CompositeTable::columnNum() const {
-	return m_wrSeg->m_rowSchema->columnNum();
-}
-
 void
 CompositeTable::getIndexKey(size_t indexId,
 							const valvec<ColumnData>& columns,
@@ -643,7 +784,7 @@ void CompositeTable::save(fstring dir) const {
 			seg->save(getSegPath2(dir, "wr", segIdx, buf));
 		}
 	}
-	saveMetaData(dir);
+	saveMetaJson(dir);
 }
 
 } // namespace nark

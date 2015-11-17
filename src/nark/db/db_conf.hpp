@@ -77,6 +77,7 @@ namespace nark {
 		size_t getFixedRowLen() const; // return 0 if RowLen is not fixed
 
 		static ColumnType parseColumnType(fstring str);
+		static const char* columnTypeStr(ColumnType);
 
 		std::string joinColumnNames(char delim) const;
 

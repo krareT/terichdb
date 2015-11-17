@@ -192,6 +192,32 @@ ColumnType Schema::getColumnType(size_t columnId) const {
 	return m_columnsMeta.val(columnId).type;
 }
 
+const char* Schema::columnTypeStr(ColumnType t) {
+	switch (t) {
+	default:
+		THROW_STD(invalid_argument, "Bad column type = %d", int(t));
+	case ColumnType::Uint08:  return "uint08";
+	case ColumnType::Sint08:  return "sint08";
+	case ColumnType::Uint16:  return "uint16";
+	case ColumnType::Sint16:  return "sint16";
+	case ColumnType::Uint32:  return "uint32";
+	case ColumnType::Sint32:  return "sint32";
+	case ColumnType::Uint64:  return "uint64";
+	case ColumnType::Sint64:  return "sint64";
+	case ColumnType::Uint128: return "uint128";
+	case ColumnType::Sint128: return "sint128";
+	case ColumnType::Float32: return "float32";
+	case ColumnType::Float64: return "float64";
+	case ColumnType::Float128:return "float128";
+	case ColumnType::Uuid:    return "uuid";
+	case ColumnType::Fixed:   return "fixed";
+	case ColumnType::StrZero: return "strzero";
+	case ColumnType::StrUtf8: return "strutf8";
+	case ColumnType::Binary:  return "binary";
+	}
+}
+
+
 fstring Schema::getColumnName(size_t columnId) const {
 	assert(columnId < m_columnsMeta.end_i());
 	if (columnId >= m_columnsMeta.end_i()) {
@@ -270,24 +296,24 @@ namespace {
 	struct ColumnTypeMap : hash_strmap<ColumnType> {
 		ColumnTypeMap() {
 			auto& colname2val = *this;
-			colname2val["Uint08"] = ColumnType::Uint08;
-			colname2val["Sint08"] = ColumnType::Sint08;
-			colname2val["Uint16"] = ColumnType::Uint16;
-			colname2val["Sint16"] = ColumnType::Sint16;
-			colname2val["Uint32"] = ColumnType::Uint32;
-			colname2val["Sint32"] = ColumnType::Sint32;
-			colname2val["Uint64"] = ColumnType::Uint64;
-			colname2val["Sint64"] = ColumnType::Sint64;
-			colname2val["Uint128"] = ColumnType::Uint128;
-			colname2val["Sint128"] = ColumnType::Sint128;
-			colname2val["Float32"] = ColumnType::Float32;
-			colname2val["Float64"] = ColumnType::Float64;
-			colname2val["Float128"] = ColumnType::Float128;
-			colname2val["Uuid"] = ColumnType::Uuid;
-			colname2val["Fixed"] = ColumnType::Fixed;
-			colname2val["StrZero"] = ColumnType::StrZero;
-			colname2val["StrUtf8"] = ColumnType::StrUtf8;
-			colname2val["Binary"] = ColumnType::Binary;
+			colname2val["uint08"] = ColumnType::Uint08;
+			colname2val["sint08"] = ColumnType::Sint08;
+			colname2val["uint16"] = ColumnType::Uint16;
+			colname2val["sint16"] = ColumnType::Sint16;
+			colname2val["uint32"] = ColumnType::Uint32;
+			colname2val["sint32"] = ColumnType::Sint32;
+			colname2val["uint64"] = ColumnType::Uint64;
+			colname2val["sint64"] = ColumnType::Sint64;
+			colname2val["uint128"] = ColumnType::Uint128;
+			colname2val["sint128"] = ColumnType::Sint128;
+			colname2val["float32"] = ColumnType::Float32;
+			colname2val["float64"] = ColumnType::Float64;
+			colname2val["float128"] = ColumnType::Float128;
+			colname2val["uuid"] = ColumnType::Uuid;
+			colname2val["fixed"] = ColumnType::Fixed;
+			colname2val["strzero"] = ColumnType::StrZero;
+			colname2val["strutf8"] = ColumnType::StrUtf8;
+			colname2val["binary"] = ColumnType::Binary;
 		}
 	};
 }

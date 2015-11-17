@@ -44,6 +44,7 @@ public:
 	virtual llong append(fstring row, BaseContextPtr&) = 0;
 	virtual void  replace(llong id, fstring row, BaseContextPtr&) = 0;
 	virtual void  remove(llong id, BaseContextPtr&) = 0;
+	virtual void  flush() = 0;
 };
 //typedef boost::intrusive_ptr<WritableStore> WritableStorePtr;
 /*
