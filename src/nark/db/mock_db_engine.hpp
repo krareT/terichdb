@@ -13,6 +13,9 @@ class MockReadonlyStore : public ReadableStore {
 public:
 	fstrvec m_rows;
 
+	void save(fstring) const override;
+	void load(fstring) override;
+
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
@@ -29,6 +32,9 @@ public:
 	MockReadonlyIndex();
 	~MockReadonlyIndex();
 
+	void save(fstring) const override;
+	void load(fstring) override;
+
 	StoreIteratorPtr createStoreIter() const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
@@ -43,6 +49,9 @@ class MockWritableStore : public ReadableStore, public WritableStore {
 public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
+
+	void save(fstring) const override;
+	void load(fstring) override;
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
@@ -59,6 +68,9 @@ class MockWritableIndex : public WritableIndex {
 	typedef std::pair<std::string, llong> kv_t;
 	std::set<kv_t> m_kv;
 public:
+	void save(fstring) const override;
+	void load(fstring) override;
+
 	IndexIteratorPtr createIndexIter() const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
@@ -73,9 +85,6 @@ class MockCompositeTable : public CompositeTable {
 public:
 	ReadonlySegmentPtr createReadonlySegment() const override;
 	WritableSegmentPtr createWritableSegment(fstring dirBaseName) const override;
-	void saveReadonlySegment(ReadonlySegmentPtr, fstring dirBaseName) const override;
-
-	ReadonlySegmentPtr openReadonlySegment(fstring dirBaseName) const override;
 	WritableSegmentPtr openWritableSegment(fstring dirBaseName) const override;
 };
 

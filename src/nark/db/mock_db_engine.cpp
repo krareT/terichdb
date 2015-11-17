@@ -1,7 +1,12 @@
 #include "mock_db_engine.hpp"
+#include <nark/io/FileStream.hpp>
+#include <nark/io/StreamBuffer.hpp>
+#include <nark/io/DataIO.hpp>
+#include <boost/filesystem.hpp>
 
 namespace nark {
 
+namespace fs = boost::filesystem;
 
 llong MockReadonlyStore::dataStorageSize() const {
 	return m_rows.used_mem_size();
@@ -21,6 +26,21 @@ ReadableStore::StoreIteratorPtr MockReadonlyStore::createStoreIter() const {
 }
 BaseContextPtr MockReadonlyStore::createStoreContext() const {
 	return nullptr;
+}
+
+void MockReadonlyStore::save(fstring path1) const {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "wb");
+	fp.disbuf();
+	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
+	dio << m_rows;
+}
+void MockReadonlyStore::load(fstring path1) {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "rb");
+	fp.disbuf();
+	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
+	dio >> m_rows;
 }
 
 class MockReadonlyIndexIterator : public IndexIterator {
@@ -88,6 +108,25 @@ ReadableStore::StoreIteratorPtr MockReadonlyIndex::createStoreIter() const {
 	assert(!"Readonly column store did not define iterator");
 	return nullptr;
 }
+
+void MockReadonlyIndex::save(fstring path1) const {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "wb");
+	fp.disbuf();
+	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
+	dio << m_keyVec;
+	dio.ensureWrite(m_idToKey.data(), m_idToKey.used_mem_size());
+}
+void MockReadonlyIndex::load(fstring path1) {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "rb");
+	fp.disbuf();
+	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
+	dio >> m_keyVec;
+	m_idToKey.resize_no_init(m_keyVec.size());
+	dio.ensureRead(m_idToKey.data(), m_idToKey.used_mem_size());
+}
+
 llong MockReadonlyIndex::numDataRows() const {
 	return m_idToKey.size();
 }
@@ -230,15 +269,6 @@ MockCompositeTable::createWritableSegment(fstring dirBaseName) const {
 	return nullptr;
 }
 
-void
-MockCompositeTable::saveReadonlySegment(ReadonlySegmentPtr seg, fstring dirBaseName)
-const {
-}
-
-ReadonlySegmentPtr
-MockCompositeTable::openReadonlySegment(fstring dirBaseName) const {
-	return nullptr;
-}
 WritableSegmentPtr
 MockCompositeTable::openWritableSegment(fstring dirBaseName) const {
 	return nullptr;

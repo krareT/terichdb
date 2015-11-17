@@ -43,21 +43,11 @@ public:
 	void setMaxWritableSegSize(llong size) { m_maxWrSegSize = size; }
 	void setReadonlySegBufSize(llong size) { m_readonlyDataMemSize = size; }
 
-	void createTable(fstring dir, fstring name,
-					 SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet);
-
-	void openTable(fstring dir, fstring name);
+	void createTable(fstring dir, SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet);
+	void load(fstring dir) override;
 
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
-
-	virtual ReadonlySegmentPtr createReadonlySegment() const = 0;
-	virtual WritableSegmentPtr createWritableSegment(fstring dirBaseName) const = 0;
-
-	virtual void saveReadonlySegment(ReadonlySegmentPtr, fstring dirBaseName) const = 0;
-
-	virtual ReadonlySegmentPtr openReadonlySegment(fstring dirBaseName) const = 0;
-	virtual WritableSegmentPtr openWritableSegment(fstring dirBaseName) const = 0;
 
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
@@ -87,7 +77,15 @@ protected:
 	llong insertRowImpl(fstring row, bool syncIndex,
 						BaseContextPtr&, tbb::queuing_rw_mutex::scoped_lock&);
 
-	fstring getDirBaseName(fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
+	fstring getSegPath(fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
+	fstring getSegPath2(fstring dir, fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
+
+	void save(fstring dir) const override;
+	void saveMetaData(fstring dir) const;
+
+	virtual ReadonlySegmentPtr createReadonlySegment() const = 0;
+	virtual WritableSegmentPtr createWritableSegment(fstring dirBaseName) const = 0;
+	virtual WritableSegmentPtr openWritableSegment(fstring dirBaseName) const = 0;
 
 protected:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
@@ -98,7 +96,6 @@ protected:
 	WritableSegmentPtr m_wrSeg;
 
 	// constant once constructed
-	std::string m_name;
 	std::string m_dir;
 	SchemaPtr m_rowSchema; // full-row schema
 	SchemaPtr m_nonIndexRowSchema;

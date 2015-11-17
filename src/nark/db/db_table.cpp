@@ -32,11 +32,11 @@ CompositeTable::CompositeTable() {
 }
 
 void
-CompositeTable::createTable(fstring dir, fstring name,
-							SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet)
+CompositeTable::createTable(fstring dir,
+							SchemaPtr rowSchema,
+							SchemaSetPtr indexSchemaSet)
 {
 	assert(!dir.empty());
-	assert(!name.empty());
 	assert(rowSchema->columnNum() > 0);
 	assert(indexSchemaSet->m_nested.end_i() > 0);
 	if (!m_segments.empty()) {
@@ -71,25 +71,19 @@ CompositeTable::createTable(fstring dir, fstring name,
 		}
 	}
 	m_dir = dir.str();
-	m_name = name.str();
 
 	AutoGrownMemIO buf;
-	buf.printf("%s/%s/wr-%04d", dir.c_str(), name.c_str(), 0);
-	fstring dirBaseName = buf.c_str();
-	m_wrSeg = this->createWritableSegment(dirBaseName);
+	m_wrSeg = this->createWritableSegment(getSegPath("wr", 0, buf));
 	m_segments.push_back(m_wrSeg);
 }
 
-void CompositeTable::openTable(fstring dir, fstring name) {
+void CompositeTable::load(fstring dir) {
 	if (!m_segments.empty()) {
 		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
 			long(m_segments.size()));
 	}
 	m_dir = dir.str();
-	m_name = name.str();
-	AutoGrownMemIO buf(1024);
-	buf.printf("%s/%s/dbmeta.dfa", dir.c_str(), name.c_str(), 0);
-	fstring metaFile = buf.c_str();
+	std::string metaFile = dir + "/dbmeta.dfa";
 	std::unique_ptr<MatchingDFA> metaConf(MatchingDFA::load_from(metaFile));
 	std::string val;
 	size_t segNum = 0, minWrSeg = 0;
@@ -170,20 +164,16 @@ void CompositeTable::openTable(fstring dir, fstring name) {
 		}
 	});
 	llong rowNum = 0;
+	AutoGrownMemIO buf(1024);
 	for (size_t i = 0; i < minWrSeg; ++i) { // load readonly segments
-		buf.rewind();
-		buf.printf("%s/%s/rd-%04d", dir.c_str(), name.c_str(), int(i));
-		fstring dirBaseName = buf.c_str();
-		ReadableSegmentPtr seg(this->openReadonlySegment(dirBaseName));
+		ReadableSegmentPtr seg(createReadonlySegment());
+		seg->load(getSegPath("rd", i, buf));
 		rowNum += seg->numDataRows();
 		m_segments.push_back(seg);
 		m_rowNumVec.push_back(rowNum);
 	}
 	for (size_t i = minWrSeg; i < segNum ; ++i) { // load writable segments
-		buf.rewind();
-		buf.printf("%s/%s/wr-%04d", dir.c_str(), name.c_str(), int(i));
-		fstring dirBaseName = buf.c_str();
-		ReadableSegmentPtr seg(this->openWritableSegment(dirBaseName));
+		ReadableSegmentPtr seg(openWritableSegment(getSegPath("wr", i, buf)));
 		rowNum += seg->numDataRows();
 		m_segments.push_back(seg);
 		m_rowNumVec.push_back(rowNum);
@@ -191,16 +181,16 @@ void CompositeTable::openTable(fstring dir, fstring name) {
 	if (minWrSeg < segNum && m_segments.back()->totalStorageSize() < m_maxWrSegSize) {
 		auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
 		assert(NULL != seg);
-		m_wrSeg.reset(seg);
+		m_wrSeg.reset(seg); // old wr seg at end
 	}
 	else {
-		buf.rewind();
-		buf.printf("%s/%s/wr-%04d", dir.c_str(), name.c_str(), int(segNum));
-		fstring dirBaseName = buf.c_str();
-		m_wrSeg = this->createWritableSegment(dirBaseName);
-		m_segments.push_back(m_wrSeg);
+		m_wrSeg = createWritableSegment(getSegPath("wr", segNum, buf));
+		m_segments.push_back(m_wrSeg); // new empty wr seg at end
 		m_rowNumVec.push_back(rowNum); // m_rowNumVec[-2] == m_rowNumVec[-1]
 	}
+}
+
+void CompositeTable::saveMetaData(fstring dir) const {
 }
 
 class CompositeTable::MyStoreIterator : public ReadableStore::StoreIterator {
@@ -336,11 +326,9 @@ CompositeTable::maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock& lock) 
 		}
 		llong newMaxRowNum = m_rowNumVec.back();
 		m_rowNumVec.push_back(newMaxRowNum);
-		AutoGrownMemIO buf(256);
-		buf.printf("%s/%s/wr-%04d",
-			m_dir.c_str(), m_name.c_str(), int(m_segments.size()));
-		fstring dirBaseName = buf.c_str();
-		WritableSegmentPtr seg = createWritableSegment(dirBaseName);
+		AutoGrownMemIO buf(512);
+		size_t newSegIdx = m_segments.size();
+		auto seg = createWritableSegment(getSegPath("wr", newSegIdx, buf));
 		lock.upgrade_to_writer();
 		m_wrSeg = seg;
 		m_segments.push_back(m_wrSeg);
@@ -602,14 +590,13 @@ bool CompositeTable::compact() {
 		srcSeg = m_segments[firstWrSegIdx];
 		newSeg = createReadonlySegment();
 		newSeg->convFrom(*srcSeg, *m_rowSchema);
-		saveReadonlySegment(newSeg, getDirBaseName("rd", i, buf));
+		newSeg->save(getSegPath("rd", i, buf));
 		{
 			tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 			m_segments[firstWrSegIdx] = newSeg;
 		}
-		buf.printf("rm -rf %s/%s/wr-%04ld*",
-					m_dir.c_str(), m_name.c_str(), long(i));
-		system((const char*)buf.c_str());
+		buf.printf("rm -rf %s/%s/wr-%04ld*", m_dir.c_str(), long(i));
+		system(buf.c_str());
 	}
 
 MergeReadonlySeg:
@@ -618,12 +605,45 @@ MergeReadonlySeg:
 }
 
 fstring
-CompositeTable::getDirBaseName(fstring type, size_t segIdx, AutoGrownMemIO& buf)
+CompositeTable::getSegPath(fstring type, size_t segIdx, AutoGrownMemIO& buf)
+const {
+	return getSegPath2(m_dir, type, segIdx, buf);
+}
+
+fstring
+CompositeTable::getSegPath2(fstring dir, fstring type, size_t segIdx,
+							AutoGrownMemIO& buf)
 const {
 	buf.rewind();
-	size_t len = buf.printf("%s/%s/%s-%04ld",
-			m_dir.c_str(), m_name.c_str(), type.c_str(), long(segIdx));
+	size_t len = buf.printf("%s/%s-%04ld",
+			dir.c_str(), type.c_str(), long(segIdx));
 	return fstring(buf.c_str(), len);
+}
+
+void CompositeTable::save(fstring dir) const {
+	size_t segNum;
+	{
+		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
+		m_tableScanningRefCount++;
+		segNum = m_segments.size();
+	}
+	AutoGrownMemIO buf(1024);
+	for (size_t segIdx = 0; segIdx < segNum-1; ++segIdx) {
+		auto seg = m_segments[segIdx];
+		if (seg->getWritableStore())
+			seg->save(getSegPath2(dir, "wr", segIdx, buf));
+		else
+			seg->save(getSegPath2(dir, "rd", segIdx, buf));
+	}
+	{
+		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
+		for (size_t segIdx = segNum-1; segIdx < m_segments.size(); ++segIdx) {
+			auto seg = m_segments[segIdx];
+			assert(seg->getWritableStore());
+			seg->save(getSegPath2(dir, "wr", segIdx, buf));
+		}
+	}
+	saveMetaData(dir);
 }
 
 } // namespace nark
