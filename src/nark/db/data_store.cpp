@@ -9,7 +9,7 @@ void Permanentable::load(fstring) {
 	THROW_STD(invalid_argument, "This method should not be called");
 }
 
-ReadableStore::StoreIterator::~StoreIterator() {
+StoreIterator::~StoreIterator() {
 }
 
 WritableStore* ReadableStore::getWritableStore() {

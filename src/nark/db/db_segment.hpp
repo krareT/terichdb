@@ -15,14 +15,14 @@
 
 namespace nark {
 
-class ReadableStoreIndex : public ReadableStore, public ReadableIndex {
+class NARK_DB_DLL_EXPORT ReadableStoreIndex : public ReadableStore, public ReadableIndex {
 public:
 };
 typedef boost::intrusive_ptr<ReadableStoreIndex> ReadableStoreIndexPtr;
 
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
-class ReadableSegment : public ReadableStore {
+class NARK_DB_DLL_EXPORT ReadableSegment : public ReadableStore {
 public:
 	~ReadableSegment();
 	virtual const ReadableIndex* getReadableIndex(size_t indexId) const = 0;
@@ -34,12 +34,13 @@ public:
 
 	febitvec      m_isDel;
 	SchemaPtr     m_rowSchema;
+	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
 	SchemaSetPtr  m_indexSchemaSet;
 	byte* m_isDelMmap = nullptr;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
-class ReadonlySegment : public ReadableSegment {
+class NARK_DB_DLL_EXPORT ReadonlySegment : public ReadableSegment {
 public:
 	ReadonlySegment();
 	~ReadonlySegment();
@@ -51,7 +52,12 @@ public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
+	// Store can use different implementation for different data
+	// According to data content features
 	virtual ReadableStorePtr openPart(fstring path) const = 0;
+
+	// Index can use different implementation for different
+	// index schema and index content features
 	virtual ReadableStoreIndexPtr openIndex(fstring path, const Schema&) const = 0;
 
 	const ReadableIndex* getReadableIndex(size_t nth) const override;
@@ -78,7 +84,6 @@ protected:
 
 protected:
 	class MyStoreIterator;
-	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
 	valvec<llong> m_rowNumVec;  // prallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 	valvec<ReadableStoreIndexPtr> m_indices; // parallel with m_indexSchemaSet
@@ -88,7 +93,7 @@ protected:
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
-class WritableSegment : public ReadableSegment, public WritableStore {
+class NARK_DB_DLL_EXPORT WritableSegment : public ReadableSegment, public WritableStore {
 public:
 	WritableStore* getWritableStore() override;
 	const ReadableIndex* getReadableIndex(size_t nth) const override;

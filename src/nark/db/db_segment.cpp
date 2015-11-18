@@ -92,7 +92,7 @@ const {
 	val->append(*buf);
 }
 
-class ReadonlySegment::MyStoreIterator : public ReadableStore::StoreIterator {
+class ReadonlySegment::MyStoreIterator : public StoreIterator {
 	size_t m_partIdx = 0;
 	llong  m_id = -1;
 	mutable valvec<byte> m_buf;
@@ -124,7 +124,7 @@ public:
 		owner->getValueImpl(m_partIdx, m_id, subId, val, &m_buf);
 	}
 };
-ReadableStore::StoreIteratorPtr ReadonlySegment::createStoreIter() const {
+StoreIteratorPtr ReadonlySegment::createStoreIter() const {
 	return new MyStoreIterator(this);
 }
 BaseContextPtr ReadonlySegment::createStoreContext() const {

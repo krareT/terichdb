@@ -10,6 +10,43 @@
 #include <nark/util/refcount.hpp>
 #include <boost/intrusive_ptr.hpp>
 
+#if defined(_MSC_VER)
+
+#ifndef _CRT_SECURE_NO_WARNINGS
+# define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#ifndef _CRT_NONSTDC_NO_WARNINGS
+#define _CRT_NONSTDC_NO_WARNINGS
+#endif
+
+#  if defined(NARK_DB_CREATE_DLL)
+#    pragma warning(disable: 4251)
+#    define NARK_DB_DLL_EXPORT __declspec(dllexport)      // creator of dll
+#    if defined(_DEBUG) || !defined(NDEBUG)
+#//	   pragma message("creating nark-d.lib")
+#    else
+#//	   pragma message("creating nark-r.lib")
+#    endif
+#  elif defined(NARK_DB_USE_DLL)
+#    pragma warning(disable: 4251)
+#    define NARK_DB_DLL_EXPORT __declspec(dllimport)      // user of dll
+#    if defined(_DEBUG) || !defined(NDEBUG)
+//#	   pragma comment(lib, "nark-d.lib")
+#    else
+//#	   pragma comment(lib, "nark-r.lib")
+#    endif
+#  else
+#    define NARK_DB_DLL_EXPORT                            // static lib creator or user
+#  endif
+
+#else /* _MSC_VER */
+
+#  define NARK_DB_DLL_EXPORT
+
+#endif /* _MSC_VER */
+
+
 namespace nark {
 
 	struct ClassMember_name {
@@ -52,7 +89,7 @@ namespace nark {
 		static_bitmap<16, uint16_t> flags;
 		ColumnType type;
 	};
-	struct ColumnData : fstring {
+	struct NARK_DB_DLL_EXPORT ColumnData : fstring {
 		ColumnType type;
 		unsigned char preLen = 0;
 		unsigned char postLen = 0;
@@ -63,7 +100,7 @@ namespace nark {
 		ColumnData(const ColumnMeta& meta, fstring row);
 		const fstring& fstr() const { return *this; }
 	};
-	class Schema : virtual public RefCounter {
+	class NARK_DB_DLL_EXPORT Schema : virtual public RefCounter {
 	public:
 		void parseRow(fstring row, valvec<ColumnData>* columns) const;
 		void parseRowAppend(fstring row, valvec<ColumnData>* columns) const;
@@ -87,7 +124,7 @@ namespace nark {
 
 	// a set of schema, could be all indices of a table
 	// or all column groups of a table
-	class SchemaSet : virtual public RefCounter {
+	class NARK_DB_DLL_EXPORT SchemaSet : virtual public RefCounter {
 		struct Hash {
 			size_t operator()(const SchemaPtr& x) const;
 			size_t operator()(fstring x) const;
@@ -107,7 +144,7 @@ namespace nark {
 	};
 	typedef boost::intrusive_ptr<SchemaSet> SchemaSetPtr;
 
-	struct DbConf {
+	struct NARK_DB_DLL_EXPORT DbConf {
 		std::string dir;
 	};
 

@@ -21,7 +21,7 @@ const {
 	assert(id < llong(m_rows.size()));
 	val->assign(m_rows[id]);
 }
-ReadableStore::StoreIteratorPtr MockReadonlyStore::createStoreIter() const {
+StoreIteratorPtr MockReadonlyStore::createStoreIter() const {
 	return nullptr;
 }
 BaseContextPtr MockReadonlyStore::createStoreContext() const {
@@ -104,8 +104,16 @@ MockReadonlyIndex::MockReadonlyIndex() {
 MockReadonlyIndex::~MockReadonlyIndex() {
 }
 
-ReadableStore::StoreIteratorPtr MockReadonlyIndex::createStoreIter() const {
+StoreIteratorPtr MockReadonlyIndex::createStoreIter() const {
 	assert(!"Readonly column store did not define iterator");
+	return nullptr;
+}
+
+BaseContextPtr MockReadonlyIndex::createIndexContext() const {
+	return nullptr;
+}
+
+BaseContextPtr MockReadonlyIndex::createStoreContext() const {
 	return nullptr;
 }
 
@@ -156,6 +164,42 @@ llong MockReadonlyIndex::indexStorageSize() const {
 }
 
 //////////////////////////////////////////////////////////////////
+template<class WrStore>
+class MockWritableStoreIter : public StoreIterator {
+	ptrdiff_t m_id;
+public:
+	MockWritableStoreIter(const WrStore* store) {
+		m_store.reset(const_cast<WrStore*>(store));
+		m_id = -1;
+	}
+	bool increment() override {
+		auto store = static_cast<WrStore*>(m_store.get());
+		m_id++;
+		return m_id < ptrdiff_t(store->m_rows.size());
+	}
+	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
+		auto store = static_cast<WrStore*>(m_store.get());
+		assert(m_id < ptrdiff_t(store->m_rows.size()));
+		*idKey = m_id;
+		*val = store->m_rows[m_id];
+	}
+};
+
+void MockWritableStore::save(fstring path1) const {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "wb");
+	fp.disbuf();
+	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
+	dio << m_rows;
+}
+void MockWritableStore::load(fstring path1) {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "rb");
+	fp.disbuf();
+	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
+	dio >> m_rows;
+}
+
 llong MockWritableStore::dataStorageSize() const {
 	return m_rows.used_mem_size() + m_dataSize;
 }
@@ -170,28 +214,8 @@ void MockWritableStore::getValue(llong id, valvec<byte>* val, BaseContextPtr&) c
 	*val = m_rows[id];
 }
 
-class MockWritableStoreIter : public ReadableStore::StoreIterator {
-	ptrdiff_t m_id;
-public:
-	MockWritableStoreIter(const MockWritableStore* store) {
-		m_store.reset(const_cast<MockWritableStore*>(store));
-		m_id = -1;
-	}
-	bool increment() override {
-		auto store = static_cast<MockWritableStore*>(m_store.get());
-		m_id++;
-		return m_id < ptrdiff_t(store->m_rows.size());
-	}
-	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
-		auto store = static_cast<MockWritableStore*>(m_store.get());
-		assert(m_id < ptrdiff_t(store->m_rows.size()));
-		*idKey = m_id;
-		*val = store->m_rows[m_id];
-	}
-};
-
-ReadableStore::StoreIteratorPtr MockWritableStore::createStoreIter() const {
-	return new MockWritableStoreIter(this);
+StoreIteratorPtr MockWritableStore::createStoreIter() const {
+	return new MockWritableStoreIter<MockWritableStore>(this);
 }
 
 BaseContextPtr MockWritableStore::createStoreContext() const {
@@ -219,6 +243,21 @@ void MockWritableStore::remove(llong id, BaseContextPtr&) {
 
 IndexIteratorPtr MockWritableIndex::createIndexIter() const {
 	return new MockReadonlyIndexIterator();
+}
+
+void MockWritableIndex::save(fstring path1) const {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "wb");
+	fp.disbuf();
+	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
+	dio << m_kv;
+}
+void MockWritableIndex::load(fstring path1) {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "rb");
+	fp.disbuf();
+	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
+	dio >> m_kv;
 }
 
 llong MockWritableIndex::numIndexRows() const {
@@ -260,18 +299,136 @@ void MockWritableIndex::flush() {
 	// do nothing
 }
 
-ReadonlySegmentPtr
-MockCompositeTable::createReadonlySegment() const {
-	return nullptr;
+///////////////////////////////////////////////////////////////////////
+MockReadonlySegment::MockReadonlySegment() {
 }
-WritableSegmentPtr
-MockCompositeTable::createWritableSegment(fstring dirBaseName) const {
+MockReadonlySegment::~MockReadonlySegment() {
+}
+
+ReadableStorePtr
+MockReadonlySegment::openPart(fstring path) const {
+	// Mock just use one kind of data store
+//	FileStream fp(path.c_str(), "rb");
+//	fp.disbuf();
+//	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
+	ReadableStorePtr store(new MockReadonlyStore());
+	store->load(path);
+	return store;
+}
+
+ReadableStoreIndexPtr
+MockReadonlySegment::openIndex(fstring path, const Schema&) const {
+	ReadableStoreIndexPtr store(new MockReadonlyIndex());
+	store->load(path);
+	return store;
+}
+
+ReadableStoreIndexPtr
+MockReadonlySegment::buildIndex(SchemaPtr indexSchema,
+								SortableStrVec& indexData)
+const {
+	std::unique_ptr<MockReadonlyIndex> index(new MockReadonlyIndex());
+	size_t fixlen = indexSchema->getFixedRowLen();
+	if (fixlen) {
+		assert(indexData.m_index.size() == 0);
+	}
+	else {
+	}
+	return index.release();
+}
+
+ReadableStorePtr
+MockReadonlySegment::buildStore(SortableStrVec& storeData) const {
+	std::unique_ptr<MockReadonlyStore> store(new MockReadonlyStore());
+	return store.release();
+}
+
+///////////////////////////////////////////////////////////////////////////
+MockWritableSegment::MockWritableSegment() {
+}
+MockWritableSegment::~MockWritableSegment() {
+}
+
+void MockWritableSegment::save(fstring path1) const {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "wb");
+	fp.disbuf();
+	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
+	dio << m_rows;
+}
+
+void MockWritableSegment::load(fstring path1) {
+	fs::path fpath = path1.c_str();
+	FileStream fp(fpath.string().c_str(), "rb");
+	fp.disbuf();
+	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
+	dio >> m_rows;
+}
+
+llong MockWritableSegment::dataStorageSize() const {
+	return m_rows.used_mem_size() + m_dataSize;
+}
+
+void
+MockWritableSegment::getValue(llong id, valvec<byte>* val,
+							  BaseContextPtr&)
+const {
+	assert(id >= 0);
+	assert(id < llong(m_rows.size()));
+	*val = m_rows[id];
+}
+
+StoreIteratorPtr MockWritableSegment::createStoreIter() const {
+	return StoreIteratorPtr(new MockWritableStoreIter<MockWritableSegment>(this));
+}
+
+BaseContextPtr MockWritableSegment::createStoreContext() const {
 	return nullptr;
 }
 
+llong MockWritableSegment::totalStorageSize() const {
+	return totalIndexSize() + m_rows.used_mem_size() + m_dataSize;
+}
+
+llong MockWritableSegment::append(fstring row, BaseContextPtr &) {
+	llong id = m_rows.size();
+	m_rows.push_back();
+	m_rows.back().assign(row);
+	return id;
+}
+
+void MockWritableSegment::replace(llong id, fstring row, BaseContextPtr &) {
+	assert(id >= 0);
+	assert(id < llong(m_rows.size()));
+	m_rows[id].assign(row);
+}
+
+void MockWritableSegment::remove(llong id, BaseContextPtr &) {
+	assert(id >= 0);
+	assert(id < llong(m_rows.size()));
+	m_rows[id].clear();
+}
+
+void MockWritableSegment::flush() {
+	// do nothing
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+ReadonlySegmentPtr
+MockCompositeTable::createReadonlySegment() const {
+	return new MockReadonlySegment();
+}
 WritableSegmentPtr
-MockCompositeTable::openWritableSegment(fstring dirBaseName) const {
-	return nullptr;
+MockCompositeTable::createWritableSegment(fstring dir) const {
+	return new MockWritableSegment();
+}
+
+WritableSegmentPtr
+MockCompositeTable::openWritableSegment(fstring dir) const {
+	WritableSegmentPtr seg(new MockWritableSegment());
+	seg->load(dir);
+	return seg;
 }
 
 } // namespace nark

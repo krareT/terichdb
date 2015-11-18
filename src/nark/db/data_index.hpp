@@ -11,7 +11,7 @@
 
 namespace nark {
 
-class IndexIterator : public RefCounter {
+class NARK_DB_DLL_EXPORT IndexIterator : public RefCounter {
 protected:
 	const class ReadableIndex* m_index = nullptr;
 public:
@@ -25,7 +25,7 @@ public:
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
-class ReadableIndex : virtual public Permanentable {
+class NARK_DB_DLL_EXPORT ReadableIndex : virtual public Permanentable {
 protected:
 	SortOrder m_sortOrder;
 	bool      m_isUnique;
@@ -42,7 +42,7 @@ public:
 };
 typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
-class WritableIndex : public ReadableIndex {
+class NARK_DB_DLL_EXPORT WritableIndex : virtual public ReadableIndex {
 public:
 	virtual size_t remove(fstring key, BaseContextPtr&) = 0;
 	virtual size_t remove(fstring key, llong id, BaseContextPtr&) = 0;

@@ -123,11 +123,17 @@ void CompositeTable::load(fstring dir) {
 		m_segments[segIdx] = seg;
 	}
 	if (m_segments.size() == 0) {
-		THROW_STD(invalid_argument, "no any segment found");
+		// THROW_STD(invalid_argument, "no any segment found");
+		// allow user create an table dir which just contains json meta file
+		AutoGrownMemIO buf;
+		m_wrSeg = createWritableSegment(getSegPath("wr", 0, buf));
+		m_segments.push_back(m_wrSeg);
 	}
-	auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
-	assert(NULL != seg);
-	m_wrSeg.reset(seg); // old wr seg at end
+	else {
+		auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
+		assert(NULL != seg);
+		m_wrSeg.reset(seg); // old wr seg at end
+	}
 }
 
 #if defined(NARK_DB_ENABLE_DFA_META)
@@ -348,7 +354,7 @@ void CompositeTable::saveMetaJson(fstring dir) const {
 	fp.ensureWrite(jsonStr.data(), jsonStr.size());
 }
 
-class CompositeTable::MyStoreIterator : public ReadableStore::StoreIterator {
+class CompositeTable::MyStoreIterator : public StoreIterator {
 	size_t  m_segIdx = 0;
 	llong   m_subId = -1;
 	StoreIteratorPtr m_curSegIter;
@@ -417,7 +423,7 @@ public:
 	}
 };
 
-ReadableStore::StoreIteratorPtr CompositeTable::createStoreIter() const {
+StoreIteratorPtr CompositeTable::createStoreIter() const {
 	return new MyStoreIterator(this);
 }
 

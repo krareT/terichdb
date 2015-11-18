@@ -107,6 +107,8 @@ protected:
 	llong m_readonlyDataMemSize;
 	llong m_maxWrSegSize;
 };
+typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
+
 
 } // namespace nark
 
