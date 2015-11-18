@@ -527,21 +527,28 @@ int Schema::compareData(fstring x, fstring y) const {
 	return 0;
 }
 
+// x, y are pointers to uint32_t
 int Schema::QsortCompareFixedLen(const void* x, const void* y, const void* ctx) {
+	auto cc = (const CompareByIndexContext*)(ctx);
 	const Schema* schema = (const Schema*)(ctx);
-	fstring xs((const char*)(x), schema->m_fixedLen);
-	fstring ys((const char*)(y), schema->m_fixedLen);
+	size_t fixedLen = schema->getFixedRowLen();
+	size_t xIdx = *(const uint32_t*)(x);
+	size_t yIdx = *(const uint32_t*)(y);
+	fstring xs(cc->basePtr + fixedLen * xIdx, fixedLen);
+	fstring ys(cc->basePtr + fixedLen * yIdx, fixedLen);
 	return schema->compareData(xs, ys);
 }
 
-// x, y are pointers to SortableStrVec::SEntry
+// x, y are pointers to uint32_t
 int Schema::QsortCompareByIndex(const void* x, const void* y, const void* ctx) {
 	auto cc = (const CompareByIndexContext*)(ctx);
-	auto xe = (const SortableStrVec::SEntry*)(x);
-	auto ye = (const SortableStrVec::SEntry*)(y);
-	const byte* basePtr = cc->basePtr;
-	fstring xs(basePtr + xe->offset, xe->length);
-	fstring ys(basePtr + ye->offset, ye->length);
+	const uint32_t* offsets = cc->offsets;
+	size_t xIdx = *(const uint32_t*)(x);
+	size_t yIdx = *(const uint32_t*)(y);
+	size_t xoff0 = offsets[xIdx], xoff1 = offsets[xIdx+1];
+	size_t yoff0 = offsets[yIdx], yoff1 = offsets[yIdx+1];
+	fstring xs(cc->basePtr + xoff0, xoff1 - xoff0);
+	fstring ys(cc->basePtr + yoff0, yoff1 - yoff0);
 	return cc->schema->compareData(xs, ys);
 }
 

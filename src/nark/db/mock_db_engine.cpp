@@ -79,17 +79,17 @@ public:
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		if (size_t(-1) == m_pos) {
 			m_pos = 0;
-		}
-		if (m_pos < owner->m_keys.size()) {
-			m_pos++;
 			return true;
 		}
-		return false;
+		if (m_pos < owner->m_fix.size()) {
+			m_pos++;
+		}
+		return m_pos < owner->m_fix.size();
 	}
 	bool decrement() override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		if (size_t(-1) == m_pos) {
-			m_pos = owner->m_keys.size() - 1;
+			m_pos = owner->m_fix.size() - 1;
 			return true;
 		}
 		if (m_pos > 0) {
@@ -118,6 +118,7 @@ public:
 		const size_t rows = owner->m_fix.size();
 		const size_t fixlen = owner->m_fixedLen;
 		if (fixlen) {
+			assert(owner->m_keys.size() == 0);
 			FixedLenKeyCompare cmp;
 			cmp.fixedLen = fixlen;
 			cmp.strpool = owner->m_keys.strpool.data();
@@ -145,7 +146,7 @@ public:
 	void getIndexKey(llong* id, valvec<byte>* key) const override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		assert(m_pos < owner->m_fix.size());
-		*id = m_pos;
+		*id = owner->m_fix[m_pos];
 		fstring k = owner->m_keys[m_pos];
 		key->assign(k.udata(), k.size());
 	}
@@ -177,8 +178,8 @@ BaseContextPtr MockReadonlyIndex::createStoreContext() const {
 
 void
 MockReadonlyIndex::build(SortableStrVec& keys) {
-	const Schema* pSchema = m_schema.get();
-	size_t fixlen = pSchema->getFixedRowLen();
+	const Schema* schema = m_schema.get();
+	size_t fixlen = schema->getFixedRowLen();
 	const byte* base = keys.m_strpool.data();
 	if (fixlen) {
 		assert(keys.m_index.size() == 0);
@@ -187,7 +188,7 @@ MockReadonlyIndex::build(SortableStrVec& keys) {
 		std::sort(m_fix.begin(), m_fix.end(), [=](size_t x, size_t y) {
 			fstring xs(base + fixlen * x, fixlen);
 			fstring ys(base + fixlen * y, fixlen);
-			return pSchema->compareData(xs, ys);
+			return schema->compareData(xs, ys);
 		});
 	}
 	else {
@@ -210,13 +211,13 @@ MockReadonlyIndex::build(SortableStrVec& keys) {
 			size_t yoff0 = offsets[y], yoff1 = offsets[y+1];
 			fstring xs(base + xoff0, xoff1 - xoff0);
 			fstring ys(base + yoff0, yoff1 - yoff0);
-			return pSchema->compareData(xs, ys);
+			return schema->compareData(xs, ys);
 		});
 		BOOST_STATIC_ASSERT(sizeof(SortableStrVec::SEntry) == 4*3);
 		m_keys.offsets.risk_set_data(offsets);
 		m_keys.offsets.risk_set_size(rows + 1);
 		m_keys.offsets.risk_set_capacity(3 * rows);
-		m_keys.shrink_to_fit();
+		m_keys.offsets.shrink_to_fit();
 		keys.m_index.risk_release_ownership();
 	}
 	m_keys.strpool.swap((valvec<char>&)keys.m_strpool);
@@ -234,10 +235,9 @@ void MockReadonlyIndex::save(fstring path1) const {
 	dio << uint64_t(m_keys.size());
 	dio.ensureWrite(m_fix.data(), m_fix.used_mem_size());
 	if (m_fixedLen) {
-		assert(m_fix.size() != 0);
 		assert(m_keys.size() == 0);
 	} else {
-		assert(m_keys.size() != 0);
+		assert(m_keys.size() == rows);
 		dio.ensureWrite(m_keys.offsets.data(), m_keys.offsets.used_mem_size());
 	}
 	dio.ensureWrite(m_keys.strpool.data(), m_keys.strpool.used_mem_size());

@@ -120,12 +120,12 @@ namespace nark {
 		int compareData(fstring x, fstring y) const;
 
 		// used by glibc.qsort_r or msvc.qsort_s
-		static int QsortCompareFixedLen(const void* x, const void* y, const void* ctx);
-
 		struct CompareByIndexContext {
 			const Schema* schema;
-			const byte*   basePtr;
+			const char*   basePtr;
+			const uint32_t* offsets;
 		};
+		static int QsortCompareFixedLen(const void* x, const void* y, const void* ctx);
 		static int QsortCompareByIndex(const void* x, const void* y, const void* ctx);
 
 		hash_strmap<ColumnMeta> m_columnsMeta;
