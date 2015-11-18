@@ -364,8 +364,8 @@ void ReadonlySegment::load(fstring prefix) {
 		THROW_STD(invalid_argument, "m_parts must be empty");
 	}
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema.joinColumnNames(',');
+		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema->joinColumnNames(',');
 		std::string path = prefix + "/index-" + colnames;
 		m_indices.push_back(this->openIndex(path, schema));
 	}

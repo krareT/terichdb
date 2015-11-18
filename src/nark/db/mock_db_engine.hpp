@@ -25,15 +25,15 @@ public:
 
 class NARK_DB_DLL_EXPORT MockReadonlyIndex : public ReadableStoreIndex {
 	friend class MockReadonlyIndexIterator;
-	SortableStrVec   m_keys; // keys[recId] is the key
+	fstrvec          m_keys; // keys[recId] is the key
 	valvec<uint32_t> m_fix;  // keys[fix[i]] <= keys[fix[i+1]]
 	size_t m_fixedLen;
-
+	SchemaPtr m_schema;
 public:
-	MockReadonlyIndex();
+	MockReadonlyIndex(SchemaPtr schema);
 	~MockReadonlyIndex();
 
-	void build(const Schema& indexSchema, SortableStrVec& indexData);
+	void build(SortableStrVec& indexData);
 
 	void save(fstring) const override;
 	void load(fstring) override;
@@ -92,7 +92,7 @@ public:
 	~MockReadonlySegment();
 protected:
 	ReadableStorePtr openPart(fstring path) const override;
-	ReadableStoreIndexPtr openIndex(fstring path, const Schema&) const override;
+	ReadableStoreIndexPtr openIndex(fstring path, SchemaPtr) const override;
 
 	ReadableStoreIndexPtr buildIndex(SchemaPtr indexSchema,
 									 SortableStrVec& indexData) const override;

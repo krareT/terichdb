@@ -58,7 +58,7 @@ public:
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableStoreIndexPtr openIndex(fstring path, const Schema&) const = 0;
+	virtual ReadableStoreIndexPtr openIndex(fstring path, SchemaPtr) const = 0;
 
 	const ReadableIndex* getReadableIndex(size_t nth) const override;
 

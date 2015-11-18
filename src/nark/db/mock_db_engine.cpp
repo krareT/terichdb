@@ -43,9 +43,37 @@ void MockReadonlyStore::load(fstring path1) {
 	dio >> m_rows;
 }
 
+struct FixedLenKeyCompare {
+	bool operator()(size_t x, fstring y) const {
+		fstring xs(strpool + fixedLen * x, fixedLen);
+		return schema->compareData(xs, y) < 0;
+	}
+	bool operator()(fstring x, size_t y) const {
+		return (*this)(y, x);
+	}
+	size_t fixedLen;
+	const char  * strpool;
+	const Schema* schema;
+};
+
+struct VarLenKeyCompare {
+	bool operator()(size_t x, fstring y) const {
+		size_t xoff0 = offsets[x], xoff1 = offsets[x+1];
+		fstring xs(strpool + xoff0, xoff1 - xoff0);
+		return schema->compareData(xs, y) < 0;
+	}
+	bool operator()(fstring x, size_t y) const {
+		return (*this)(y, x);
+	}
+	const char    * strpool;
+	const uint32_t* offsets;
+	const Schema  * schema;
+};
+
 class MockReadonlyIndexIterator : public IndexIterator {
 	friend class MockReadonlyIndex;
 	size_t m_pos = size_t(-1);
+
 public:
 	bool increment() override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
@@ -74,31 +102,57 @@ public:
 		m_pos = size_t(-1);
 	}
 	bool seekExact(fstring key) override {
-		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		const auto& keys = owner->m_keys;
-		size_t lo = nark::lower_bound_0<const SortableStrVec&>(keys, keys.size(), key);
-		if (lo < keys.size() && key == keys[lo]) {
+		size_t lo;
+		if (seekLowerBound_imp(key, &lo)) {
 			m_pos = lo;
 			return true;
 		}
 		return false;
 	}
 	bool seekLowerBound(fstring key) override {
-		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		const auto& keys = owner->m_keys;
-		m_pos = nark::lower_bound_0<const SortableStrVec&>(keys, keys.size(), key);
-		return m_pos < keys.size() && key == keys[m_pos];
+		return seekLowerBound_imp(key, &m_pos);
 	}
+	bool seekLowerBound_imp(fstring key, size_t* lowerBound) {
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
+		const uint32_t* index = owner->m_fix.data();
+		const size_t rows = owner->m_fix.size();
+		const size_t fixlen = owner->m_fixedLen;
+		if (fixlen) {
+			FixedLenKeyCompare cmp;
+			cmp.fixedLen = fixlen;
+			cmp.strpool = owner->m_keys.strpool.data();
+			cmp.schema = owner->m_schema.get();
+			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
+			*lowerBound = lo;
+			if (lo < rows && key == owner->m_keys[lo]) {
+				return true;
+			}
+		}
+		else {
+			VarLenKeyCompare cmp;
+			cmp.offsets = owner->m_keys.offsets.data();
+			cmp.strpool = owner->m_keys.strpool.data();
+			cmp.schema = owner->m_schema.get();
+			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
+			*lowerBound = lo;
+			if (lo < rows && key == owner->m_keys[lo]) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void getIndexKey(llong* id, valvec<byte>* key) const override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		assert(m_pos < owner->m_keyVec.size());
-		*id = owner->m_keys.m_index[m_pos].seq_id;
+		assert(m_pos < owner->m_fix.size());
+		*id = m_pos;
 		fstring k = owner->m_keys[m_pos];
 		key->assign(k.udata(), k.size());
 	}
 };
 
-MockReadonlyIndex::MockReadonlyIndex() {
+MockReadonlyIndex::MockReadonlyIndex(SchemaPtr schema) {
+	m_schema = schema;
 }
 
 MockReadonlyIndex::~MockReadonlyIndex() {
@@ -122,10 +176,10 @@ BaseContextPtr MockReadonlyIndex::createStoreContext() const {
 #endif
 
 void
-MockReadonlyIndex::build(const Schema& schema, SortableStrVec& keys) {
-	size_t fixlen = schema.getFixedRowLen();
+MockReadonlyIndex::build(SortableStrVec& keys) {
+	const Schema* pSchema = m_schema.get();
+	size_t fixlen = pSchema->getFixedRowLen();
 	const byte* base = keys.m_strpool.data();
-	const Schema* pSchema = &schema;
 	if (fixlen) {
 		assert(keys.m_index.size() == 0);
 		m_fix.resize_no_init(keys.size() / fixlen);
@@ -137,15 +191,35 @@ MockReadonlyIndex::build(const Schema& schema, SortableStrVec& keys) {
 		});
 	}
 	else {
-		// reuse memory of indexData.m_index
-		std::sort(keys.m_index.begin(), keys.m_index.end(),
-		[=](SortableStrVec::SEntry x, SortableStrVec::SEntry y) {
-			fstring xs(base + x.offset, x.length);
-			fstring ys(base + y.offset, y.length);
+		if (keys.str_size() >= UINT32_MAX) {
+			THROW_STD(length_error,
+				"keys.str_size=%lld is too large", llong(keys.str_size()));
+		}
+		// reuse memory of keys.m_index
+		auto offsets = (uint32_t*)keys.m_index.data();
+		size_t rows = keys.m_index.size();
+		m_fix.resize_no_init(rows);
+		for (size_t i = 0; i < rows; ++i) m_fix[i] = i;
+		for (size_t i = 0; i < rows; ++i) {
+			uint32_t offset = uint32_t(keys.m_index[i].offset);
+			offsets[i] = offset;
+		}
+		offsets[rows] = keys.str_size();
+		std::sort(m_fix.begin(), m_fix.end(), [=](size_t x, size_t y) {
+			size_t xoff0 = offsets[x], xoff1 = offsets[x+1];
+			size_t yoff0 = offsets[y], yoff1 = offsets[y+1];
+			fstring xs(base + xoff0, xoff1 - xoff0);
+			fstring ys(base + yoff0, yoff1 - yoff0);
 			return pSchema->compareData(xs, ys);
 		});
+		BOOST_STATIC_ASSERT(sizeof(SortableStrVec::SEntry) == 4*3);
+		m_keys.offsets.risk_set_data(offsets);
+		m_keys.offsets.risk_set_size(rows + 1);
+		m_keys.offsets.risk_set_capacity(3 * rows);
+		m_keys.shrink_to_fit();
+		keys.m_index.risk_release_ownership();
 	}
-	m_keys.swap(keys);
+	m_keys.strpool.swap((valvec<char>&)keys.m_strpool);
 	m_fixedLen = fixlen;
 }
 
@@ -164,9 +238,9 @@ void MockReadonlyIndex::save(fstring path1) const {
 		assert(m_keys.size() == 0);
 	} else {
 		assert(m_keys.size() != 0);
-		dio.ensureWrite(m_keys.m_index.data(), m_keys.m_index.used_mem_size());
+		dio.ensureWrite(m_keys.offsets.data(), m_keys.offsets.used_mem_size());
 	}
-	dio.ensureWrite(m_keys.m_strpool.data(), m_keys.m_strpool.used_mem_size());
+	dio.ensureWrite(m_keys.strpool.data(), m_keys.strpool.used_mem_size());
 }
 
 void MockReadonlyIndex::load(fstring path1) {
@@ -181,11 +255,11 @@ void MockReadonlyIndex::load(fstring path1) {
 	m_fix.resize_no_init(size_t(rows));
 	dio.ensureRead(m_fix.data(), m_fix.used_mem_size());
 	if (0 == fixlen) {
-		m_keys.m_index.resize_no_init(size_t(rows));
-		dio.ensureRead(m_keys.m_index.data(), m_keys.m_index.used_mem_size());
+		m_keys.offsets.resize_no_init(size_t(rows + 1));
+		dio.ensureRead(m_keys.offsets.data(), m_keys.offsets.used_mem_size());
 	}
-	m_keys.m_strpool.resize_no_init(size_t(keylen));
-	dio.ensureRead(m_keys.m_strpool.data(), size_t(keylen));
+	m_keys.strpool.resize_no_init(size_t(keylen));
+	dio.ensureRead(m_keys.strpool.data(), size_t(keylen));
 	m_fixedLen = size_t(fixlen);
 }
 
@@ -194,8 +268,8 @@ llong MockReadonlyIndex::numDataRows() const {
 }
 llong MockReadonlyIndex::dataStorageSize() const {
 	return m_fix.used_mem_size()
-		+ m_keys.m_index.used_mem_size()
-		+ m_keys.m_strpool.used_mem_size();
+		+ m_keys.offsets.used_mem_size()
+		+ m_keys.strpool.used_mem_size();
 }
 
 void MockReadonlyIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) const {
@@ -203,7 +277,7 @@ void MockReadonlyIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) c
 	assert(id < (llong)m_idToKey.size());
 	assert(id >= 0);
 	if (m_fixedLen) {
-		fstring key1(m_keys.m_strpool.data() + m_fixedLen * id, m_fixedLen);
+		fstring key1(m_keys.strpool.data() + m_fixedLen * id, m_fixedLen);
 		key->assign(key1.udata(), key1.size());
 	}
 	else {
@@ -222,7 +296,7 @@ llong MockReadonlyIndex::numIndexRows() const {
 }
 
 llong MockReadonlyIndex::indexStorageSize() const {
-	return m_fix.used_mem_size() + m_keys.m_index.used_mem_size();
+	return m_fix.used_mem_size() + m_keys.offsets.used_mem_size();
 }
 
 //////////////////////////////////////////////////////////////////
@@ -379,8 +453,8 @@ MockReadonlySegment::openPart(fstring path) const {
 }
 
 ReadableStoreIndexPtr
-MockReadonlySegment::openIndex(fstring path, const Schema&) const {
-	ReadableStoreIndexPtr store(new MockReadonlyIndex());
+MockReadonlySegment::openIndex(fstring path, SchemaPtr schema) const {
+	ReadableStoreIndexPtr store(new MockReadonlyIndex(schema));
 	store->load(path);
 	return store;
 }
@@ -389,8 +463,8 @@ ReadableStoreIndexPtr
 MockReadonlySegment::buildIndex(SchemaPtr indexSchema,
 								SortableStrVec& indexData)
 const {
-	std::unique_ptr<MockReadonlyIndex> index(new MockReadonlyIndex());
-	index->build(*indexSchema, indexData);
+	std::unique_ptr<MockReadonlyIndex> index(new MockReadonlyIndex(indexSchema));
+	index->build(indexData);
 	return index.release();
 }
 

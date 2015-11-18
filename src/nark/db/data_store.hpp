@@ -13,8 +13,8 @@ namespace nark {
 
 class NARK_DB_DLL_EXPORT Permanentable : public RefCounter {
 public:
-	virtual void save(fstring dirBaseName) const = 0;
-	virtual void load(fstring dirBaseName) = 0;
+	virtual void save(fstring dir) const = 0;
+	virtual void load(fstring dir) = 0;
 };
 
 typedef boost::intrusive_ptr<class ReadableStore> ReadableStorePtr;
