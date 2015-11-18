@@ -2,9 +2,42 @@
 //#include <nark/io/DataIO.hpp>
 //#include <nark/io/MemStream.hpp>
 #include <nark/io/var_int.hpp>
+#include <nark/util/sortable_strvec.hpp>
 #include <string.h>
 
 namespace nark {
+
+ColumnMeta::ColumnMeta() : type(ColumnType::Binary) {}
+
+ColumnMeta::ColumnMeta(ColumnType t) : type(t) {
+	switch (t) {
+	default:
+		THROW_STD(runtime_error, "Invalid data row");
+		break;
+	case ColumnType::Uint08:
+	case ColumnType::Sint08: fixedLen = 1; break;
+	case ColumnType::Uint16:
+	case ColumnType::Sint16: fixedLen = 2; break;
+	case ColumnType::Uint32:
+	case ColumnType::Sint32: fixedLen = 4; break;
+	case ColumnType::Uint64:
+	case ColumnType::Sint64: fixedLen = 8; break;
+	case ColumnType::Uint128:
+	case ColumnType::Sint128: fixedLen = 16; break;
+	case ColumnType::Float32: fixedLen = 4; break;
+	case ColumnType::Float64: fixedLen = 8; break;
+	case ColumnType::Float128: fixedLen = 16; break;
+	case ColumnType::Uuid: fixedLen = 16; break;
+	case ColumnType::Fixed:
+		fixedLen = 0; // to be set later
+		break;
+	case ColumnType::StrZero:
+	case ColumnType::StrUtf8:
+	case ColumnType::Binary:
+		fixedLen = 0;
+		break;
+	}
+}
 
 ColumnData::ColumnData(const ColumnMeta& meta, fstring row) {
 #define CHECK_DATA_SIZE(len) \
@@ -71,16 +104,26 @@ ColumnData::ColumnData(const ColumnMeta& meta, fstring row) {
 	}
 }
 
+/////////////////////////////////////////////////////////////////////////////
+
+Schema::Schema() {
+	m_fixedLen = size_t(-1);
+}
+Schema::~Schema() {
+}
+
+void Schema::compile() {
+	m_fixedLen = computeFixedRowLen();
+}
+
 void Schema::parseRow(fstring row, valvec<ColumnData>* columns) const {
+	assert(size_t(-1) != m_fixedLen);
 	columns->resize(0);
 	parseRowAppend(row, columns);
 }
 
 void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
-	if (m_columnsMeta.end_i() == 1) {
-		columns->push_back(ColumnData(m_columnsMeta.val(0), row));
-		return;
-	}
+	assert(size_t(-1) != m_fixedLen);
 	const byte* curr = row.udata();
 	const byte* last = row.size() + curr;
 
@@ -90,7 +133,8 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 			long(len), long(last-curr)); \
 	}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	for (size_t i = 0; i < m_columnsMeta.end_i(); ++i) {
+	size_t colnum = m_columnsMeta.end_i();
+	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		ColumnData coldata(colmeta.type);
 		switch (colmeta.type) {
@@ -150,7 +194,7 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 			break;
 		case ColumnType::StrZero: // Zero ended string
 			coldata.n = strnlen((const char*)curr, last - curr);
-			if (i < m_columnsMeta.end_i() - 1) {
+			if (i < colnum - 1) {
 				CHECK_CURR_LAST(coldata.n + 1);
 				coldata.postLen = 1;
 				curr += coldata.n + 1;
@@ -166,7 +210,7 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 			break;
 		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
-			if (i < m_columnsMeta.end_i() - 1) {
+			if (i < colnum - 1) {
 				const byte* next = nullptr;
 				coldata.n = load_var_uint64(curr, &next);
 				coldata.preLen = next - curr; // length of var_uint
@@ -242,9 +286,10 @@ const ColumnMeta& Schema::getColumnMeta(size_t columnId) const {
 	return m_columnsMeta.val(columnId);
 }
 
-size_t Schema::getFixedRowLen() const {
+size_t Schema::computeFixedRowLen() const {
 	size_t rowLen = 0;
-	for (size_t i = 0; i < m_columnsMeta.end_i(); ++i) {
+	size_t colnum = m_columnsMeta.end_i();
+	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		switch (colmeta.type) {
 		default:
@@ -338,6 +383,166 @@ std::string Schema::joinColumnNames(char delim) const {
 	}
 	joined.pop_back();
 	return joined;
+}
+
+int Schema::compareData(fstring x, fstring y) const {
+	assert(size_t(-1) != m_fixedLen);
+	const byte *xcurr = x.udata(), *xlast = xcurr + x.size();
+	const byte *ycurr = y.udata(), *ylast = ycurr + y.size();
+
+#define CHECK_CURR_LAST3(curr, last, len) \
+	if (curr + len > last) { \
+		THROW_STD(out_of_range, "len=%ld remain=%ld", \
+			long(len), long(last-curr)); \
+	}
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#define CompareByType(Type) { \
+		CHECK_CURR_LAST3(xcurr, xlast, sizeof(Type)); \
+		CHECK_CURR_LAST3(ycurr, ylast, sizeof(Type)); \
+		Type xv = unaligned_load<Type>(xcurr); \
+		Type yv = unaligned_load<Type>(ycurr); \
+		if (xv < yv) return -1; \
+		if (xv > yv) return +1; \
+		xcurr += sizeof(Type); \
+		ycurr += sizeof(Type); \
+		break; \
+	}
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	size_t colnum = m_columnsMeta.end_i();
+	for (size_t i = 0; i < colnum; ++i) {
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
+		switch (colmeta.type) {
+		default:
+			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Uint08:
+			CHECK_CURR_LAST3(xcurr, ylast, 1);
+			if (*xcurr != *ycurr)
+				return *xcurr - *ycurr;
+			xcurr += 1;
+			ycurr += 1;
+			break;
+		case ColumnType::Sint08:
+			CHECK_CURR_LAST3(xcurr, ylast, 1);
+			if (sbyte(*xcurr) != sbyte(*ycurr))
+				return sbyte(*xcurr) - sbyte(*ycurr);
+			xcurr += 1;
+			ycurr += 1;
+			break;
+		case ColumnType::Uint16: CompareByType(uint16_t);
+		case ColumnType::Sint16: CompareByType( int16_t);
+		case ColumnType::Uint32: CompareByType(uint32_t);
+		case ColumnType::Sint32: CompareByType( int32_t);
+		case ColumnType::Uint64: CompareByType(uint64_t);
+		case ColumnType::Sint64: CompareByType( int64_t);
+		case ColumnType::Uint128:
+			THROW_STD(invalid_argument, "Uint128 is not supported");
+		//	CompareByType(unsigned __int128);
+		case ColumnType::Sint128:
+			THROW_STD(invalid_argument, "Sint128 is not supported");
+		//	CompareByType(  signed __int128);
+		case ColumnType::Float32: CompareByType(float);
+		case ColumnType::Float64: CompareByType(double);
+		case ColumnType::Float128: CompareByType(long double);
+		case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+			CHECK_CURR_LAST3(xcurr, xlast, 16);
+			CHECK_CURR_LAST3(ycurr, ylast, 16);
+			{
+				int ret = memcmp(xcurr, ycurr, 16);
+				if (ret)
+					return ret;
+			}
+			xcurr += 16;
+			ycurr += 16;
+			break;
+		case ColumnType::Fixed:   // Fixed length binary
+			CHECK_CURR_LAST3(xcurr, xlast, colmeta.fixedLen);
+			CHECK_CURR_LAST3(ycurr, ylast, colmeta.fixedLen);
+			{
+				int ret = memcmp(xcurr, ycurr, colmeta.fixedLen);
+				if (ret)
+					return ret;
+			}
+			xcurr += colmeta.fixedLen;
+			ycurr += colmeta.fixedLen;
+			break;
+		case ColumnType::StrZero: // Zero ended string
+			{
+				size_t xn = strnlen((const char*)xcurr, xlast - xcurr);
+				size_t yn = strnlen((const char*)ycurr, ylast - xcurr);
+				if (i < colnum - 1) {
+					CHECK_CURR_LAST3(xcurr, xlast, xn + 1);
+					CHECK_CURR_LAST3(ycurr, ylast, yn + 1);
+				}
+				else { // the last column
+					if (xn + 1 < size_t(xlast - xcurr)) {
+						// '\0' is optional, if '\0' exists, it must at string end
+						THROW_STD(invalid_argument,
+							"'\0' in StrZero is not at string end");
+					}
+					if (yn + 1 < size_t(ylast - ycurr)) {
+						// '\0' is optional, if '\0' exists, it must at string end
+						THROW_STD(invalid_argument,
+							"'\0' in StrZero is not at string end");
+					}
+				}
+				int ret = memcmp(xcurr, ycurr, std::min(xn, yn));
+				if (ret)
+					return ret;
+				else if (xn != yn)
+					return xn < yn ? -1 : +1;
+				xcurr += xn + 1;
+				ycurr += yn + 1;
+				break;
+			}
+			break;
+		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+			{
+				const byte* xnext = nullptr;
+				const byte* ynext = nullptr;
+				size_t xn, yn;
+				if (i < colnum - 1) {
+					xn = load_var_uint64(xcurr, &xnext);
+					yn = load_var_uint64(ycurr, &ynext);
+					CHECK_CURR_LAST3(xnext, xlast, xn);
+					CHECK_CURR_LAST3(ynext, ylast, yn);
+				}
+				else { // the last column
+					xn = xlast - xcurr;
+					yn = ylast - ycurr;
+				}
+				int ret = memcmp(xcurr, ycurr, std::min(xn, yn));
+				if (ret)
+					return ret;
+				else if (xn != yn)
+					return xn < yn ? -1 : +1;
+				xcurr = xnext + xn;
+				ycurr = ynext + yn;
+			}
+			break;
+		}
+	}
+	return 0;
+}
+
+int Schema::QsortCompareFixedLen(const void* x, const void* y, const void* ctx) {
+	const Schema* schema = (const Schema*)(ctx);
+	fstring xs((const char*)(x), schema->m_fixedLen);
+	fstring ys((const char*)(y), schema->m_fixedLen);
+	return schema->compareData(xs, ys);
+}
+
+// x, y are pointers to SortableStrVec::SEntry
+int Schema::QsortCompareByIndex(const void* x, const void* y, const void* ctx) {
+	auto cc = (const CompareByIndexContext*)(ctx);
+	auto xe = (const SortableStrVec::SEntry*)(x);
+	auto ye = (const SortableStrVec::SEntry*)(y);
+	const byte* basePtr = cc->basePtr;
+	fstring xs(basePtr + xe->offset, xe->length);
+	fstring ys(basePtr + ye->offset, ye->length);
+	return cc->schema->compareData(xs, ys);
 }
 
 // An index can be a composite index, which have multiple columns as key,

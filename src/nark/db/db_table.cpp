@@ -288,6 +288,7 @@ void CompositeTable::loadMetaJson(fstring dir) {
 			THROW_STD(invalid_argument, "duplicate RowName=%s", name.c_str());
 		}
 	}
+	m_rowSchema->compile();
 	auto iter = meta.find("ReadonlyDataMemSize");
 	if (meta.end() == iter) {
 		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
@@ -317,8 +318,10 @@ void CompositeTable::loadMetaJson(fstring dir) {
 			indexSchema->m_columnsMeta.
 				insert_i(colname, m_rowSchema->getColumnMeta(k));
 		}
+		indexSchema->compile();
 		m_indexSchemaSet->m_nested.insert_i(indexSchema);
 	}
+	m_indexSchemaSet->compileSchemaSet();
 }
 
 void CompositeTable::saveMetaJson(fstring dir) const {

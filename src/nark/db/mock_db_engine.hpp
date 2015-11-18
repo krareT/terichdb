@@ -25,12 +25,15 @@ public:
 
 class NARK_DB_DLL_EXPORT MockReadonlyIndex : public ReadableStoreIndex {
 	friend class MockReadonlyIndexIterator;
-	friend class MockCompositeIndex;
-	SortableStrVec m_keyVec;
-	valvec<uint32_t> m_idToKey;
+	SortableStrVec   m_keys; // keys[recId] is the key
+	valvec<uint32_t> m_fix;  // keys[fix[i]] <= keys[fix[i+1]]
+	size_t m_fixedLen;
+
 public:
 	MockReadonlyIndex();
 	~MockReadonlyIndex();
+
+	void build(const Schema& indexSchema, SortableStrVec& indexData);
 
 	void save(fstring) const override;
 	void load(fstring) override;

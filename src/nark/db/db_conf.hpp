@@ -12,29 +12,21 @@
 
 #if defined(_MSC_VER)
 
-#ifndef _CRT_SECURE_NO_WARNINGS
-# define _CRT_SECURE_NO_WARNINGS
-#endif
-
-#ifndef _CRT_NONSTDC_NO_WARNINGS
-#define _CRT_NONSTDC_NO_WARNINGS
-#endif
-
 #  if defined(NARK_DB_CREATE_DLL)
 #    pragma warning(disable: 4251)
 #    define NARK_DB_DLL_EXPORT __declspec(dllexport)      // creator of dll
 #    if defined(_DEBUG) || !defined(NDEBUG)
-#//	   pragma message("creating nark-d.lib")
+#//	   pragma message("creating nark-db-d.lib")
 #    else
-#//	   pragma message("creating nark-r.lib")
+#//	   pragma message("creating nark-db-r.lib")
 #    endif
 #  elif defined(NARK_DB_USE_DLL)
 #    pragma warning(disable: 4251)
 #    define NARK_DB_DLL_EXPORT __declspec(dllimport)      // user of dll
 #    if defined(_DEBUG) || !defined(NDEBUG)
-//#	   pragma comment(lib, "nark-d.lib")
+//#	   pragma comment(lib, "nark-db-d.lib")
 #    else
-//#	   pragma comment(lib, "nark-r.lib")
+//#	   pragma comment(lib, "nark-db-r.lib")
 #    endif
 #  else
 #    define NARK_DB_DLL_EXPORT                            // static lib creator or user
@@ -84,10 +76,12 @@ namespace nark {
 		Binary,  // Prefixed by length(var_uint) in bytes
 	};
 
-	struct ColumnMeta {
+	struct NARK_DB_DLL_EXPORT ColumnMeta {
 		uint32_t fixedLen = 0;
 		static_bitmap<16, uint16_t> flags;
 		ColumnType type;
+		ColumnMeta();
+		explicit ColumnMeta(ColumnType);
 	};
 	struct NARK_DB_DLL_EXPORT ColumnData : fstring {
 		ColumnType type;
@@ -100,8 +94,13 @@ namespace nark {
 		ColumnData(const ColumnMeta& meta, fstring row);
 		const fstring& fstr() const { return *this; }
 	};
-	class NARK_DB_DLL_EXPORT Schema : virtual public RefCounter {
+
+	class NARK_DB_DLL_EXPORT Schema : public RefCounter {
 	public:
+		Schema();
+		~Schema();
+		void compile();
+
 		void parseRow(fstring row, valvec<ColumnData>* columns) const;
 		void parseRowAppend(fstring row, valvec<ColumnData>* columns) const;
 
@@ -111,20 +110,36 @@ namespace nark {
 		const ColumnMeta& getColumnMeta(size_t columnId) const;
 		size_t columnNum() const { return m_columnsMeta.end_i(); }
 
-		size_t getFixedRowLen() const; // return 0 if RowLen is not fixed
+		size_t getFixedRowLen() const { return m_fixedLen; }
 
 		static ColumnType parseColumnType(fstring str);
 		static const char* columnTypeStr(ColumnType);
 
 		std::string joinColumnNames(char delim) const;
 
+		int compareData(fstring x, fstring y) const;
+
+		// used by glibc.qsort_r or msvc.qsort_s
+		static int QsortCompareFixedLen(const void* x, const void* y, const void* ctx);
+
+		struct CompareByIndexContext {
+			const Schema* schema;
+			const byte*   basePtr;
+		};
+		static int QsortCompareByIndex(const void* x, const void* y, const void* ctx);
+
 		hash_strmap<ColumnMeta> m_columnsMeta;
+
+	protected:
+		size_t computeFixedRowLen() const; // return 0 if RowLen is not fixed
+	protected:
+		size_t m_fixedLen;
 	};
 	typedef boost::intrusive_ptr<Schema> SchemaPtr;
 
 	// a set of schema, could be all indices of a table
 	// or all column groups of a table
-	class NARK_DB_DLL_EXPORT SchemaSet : virtual public RefCounter {
+	class NARK_DB_DLL_EXPORT SchemaSet : public RefCounter {
 		struct Hash {
 			size_t operator()(const SchemaPtr& x) const;
 			size_t operator()(fstring x) const;
