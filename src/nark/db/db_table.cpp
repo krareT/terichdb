@@ -54,16 +54,25 @@ CompositeTable::createTable(fstring dir,
 	}
 	m_rowSchema = rowSchema;
 	m_indexSchemaSet = indexSchemaSet;
-	m_indexProjects.offsets.reserve(indexSchemaSet->m_nested.end_i());
+	m_dir = dir.str();
+	compileSchema();
+
+	AutoGrownMemIO buf;
+	m_wrSeg = this->createWritableSegment(getSegPath("wr", 0, buf));
+	m_segments.push_back(m_wrSeg);
+}
+
+void CompositeTable::compileSchema() {
+	m_indexProjects.offsets.reserve(m_indexSchemaSet->m_nested.end_i());
 	m_nonIndexRowSchema.reset(new Schema());
 	febitvec hasIndex(m_rowSchema->columnNum(), false);
-	for (size_t i = 0; i < indexSchemaSet->m_nested.end_i(); ++i) {
-		const Schema& schema = *indexSchemaSet->m_nested.elem_at(i);
+	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
 		m_indexProjects.push_back();
-		for (size_t j = 0; j < schema.columnNum(); ++i) {
-			fstring colname = schema.getColumnName(i);
-			size_t k = rowSchema->getColumnId(colname);
-			if (k >= rowSchema->columnNum()) {
+		for (size_t j = 0; j < schema.columnNum(); ++j) {
+			fstring colname = schema.getColumnName(j);
+			size_t k = m_rowSchema->getColumnId(colname);
+			if (k >= m_rowSchema->columnNum()) {
 				THROW_STD(invalid_argument
 					, "indexColumn=%s is not found in rowSchema"
 					, colname.c_str());
@@ -74,16 +83,11 @@ CompositeTable::createTable(fstring dir,
 	}
 	for (size_t i = 0; i < hasIndex.size(); ++i) {
 		if (!hasIndex[i]) {
-			fstring    colname = rowSchema->getColumnName(i);
-			ColumnMeta colmeta = rowSchema->getColumnMeta(i);
+			fstring    colname = m_rowSchema->getColumnName(i);
+			ColumnMeta colmeta = m_rowSchema->getColumnMeta(i);
 			m_nonIndexRowSchema->m_columnsMeta.insert_i(colname, colmeta);
 		}
 	}
-	m_dir = dir.str();
-
-	AutoGrownMemIO buf;
-	m_wrSeg = this->createWritableSegment(getSegPath("wr", 0, buf));
-	m_segments.push_back(m_wrSeg);
 }
 
 void CompositeTable::load(fstring dir) {
@@ -225,6 +229,7 @@ void CompositeTable::loadMetaDFA(fstring dir) {
 			THROW_STD(invalid_argument, "invalid index schema");
 		}
 	});
+	compileSchema();
 	llong rowNum = 0;
 	AutoGrownMemIO buf(1024);
 	for (size_t i = 0; i < minWrSeg; ++i) { // load readonly segments
@@ -329,6 +334,7 @@ void CompositeTable::loadMetaJson(fstring dir) {
 		m_indexSchemaSet->m_nested.insert_i(indexSchema);
 	}
 	m_indexSchemaSet->compileSchemaSet();
+	compileSchema();
 }
 
 void CompositeTable::saveMetaJson(fstring dir) const {

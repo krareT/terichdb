@@ -80,6 +80,8 @@ public:
 	size_t columnNum() const { return m_rowSchema->columnNum(); }
 
 protected:
+	void compileSchema();
+
 	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
 	llong insertRowImpl(fstring row, bool syncIndex,
 						BaseContextPtr&, tbb::queuing_rw_mutex::scoped_lock&);
