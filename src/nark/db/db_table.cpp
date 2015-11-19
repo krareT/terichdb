@@ -134,6 +134,13 @@ void CompositeTable::load(fstring dir) {
 		assert(NULL != seg);
 		m_wrSeg.reset(seg); // old wr seg at end
 	}
+	m_rowNumVec.resize_no_init(m_segments.size() + 1);
+	llong baseId = 0;
+	for (size_t i = 0; i < m_segments.size(); ++i) {
+		m_rowNumVec[i] = baseId;
+		baseId += m_segments[i]->numDataRows();
+	}
+	m_rowNumVec.back() = baseId; // the end guard
 }
 
 #if defined(NARK_DB_ENABLE_DFA_META)
@@ -427,10 +434,15 @@ public:
 };
 
 StoreIteratorPtr CompositeTable::createStoreIter() const {
+	assert(m_rowSchema);
+	assert(m_indexSchemaSet);
 	return new MyStoreIterator(this);
 }
 
 BaseContextPtr CompositeTable::createStoreContext() const {
+	assert(m_rowSchema);
+	assert(m_indexSchemaSet);
+	assert(m_wrSeg);
 	TableContextPtr ctx(new TableContext());
 	size_t indexNum = this->getIndexNum();
 	ctx->wrIndexContext.resize(indexNum);
@@ -718,6 +730,143 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 	llong newSubId = newId - minWrRowNum;
 	m_wrSeg->m_indices[indexId]->
 		replace(indexKey, oldSubId, newSubId, ttx.wrIndexContext[indexId]);
+}
+
+class TableIndexIter : public IndexIterator {
+	CompositeTablePtr m_tab;
+	size_t m_indexId;
+	size_t m_segIdx;
+	IndexIteratorPtr m_subIter;
+public:
+	TableIndexIter(const CompositeTable* tab, size_t indexId) {
+		m_tab.reset(const_cast<CompositeTable*>(tab));
+		m_indexId = indexId;
+		m_segIdx = -1;
+		tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex);
+		tab->m_tableScanningRefCount++;
+	}
+	~TableIndexIter() {
+		tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex);
+		m_tab->m_tableScanningRefCount--;
+	}
+	void reset() override {
+		m_segIdx = -1;
+	}
+	bool increment() override {
+		if (size_t(-1) == m_segIdx) {
+			m_segIdx = 0;
+			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
+			m_subIter = m_index->createIndexIter();
+			bool ret = m_subIter->increment();
+			assert(ret);
+			return ret;
+		}
+		bool ret = m_subIter->increment();
+		if (!ret) {
+			if (m_tab->m_segments.size()-1 == m_segIdx) {
+				return false;
+			}
+			m_segIdx++;
+			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
+			m_subIter = m_index->createIndexIter();
+			ret = m_subIter->increment();
+			assert(ret);
+		}
+		return ret;
+	}
+	bool decrement() override {
+		if (size_t(-1) == m_segIdx) {
+			m_segIdx = m_tab->m_segments.size() - 1;
+			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
+			m_subIter = m_index->createIndexIter();
+			bool ret = m_subIter->decrement();
+			assert(ret);
+			return ret;
+		}
+		bool ret = m_subIter->decrement();
+		if (!ret) {
+			if (0 == m_segIdx) {
+				return false;
+			}
+			m_segIdx--;
+			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
+			m_subIter = m_index->createIndexIter();
+			ret = m_subIter->decrement();
+			assert(ret);
+		}
+		return ret;
+	}
+	bool seekExact(fstring key) override {
+		for (size_t i = m_tab->m_segments.size(); i > 0; --i) {
+			size_t segIdx = i - 1;
+			IndexIteratorPtr iter = m_tab->m_segments[segIdx]
+				->getReadableIndex(m_indexId)->createIndexIter();
+			if (iter->seekExact(key)) {
+				m_segIdx = segIdx;
+				m_index = m_tab->m_segments[segIdx]->getReadableIndex(segIdx);
+				m_subIter = iter;
+				return true;
+			}
+		}
+		return false;
+	}
+	bool seekLowerBound(fstring key) override {
+		return seekExact(key);
+	}
+	void getIndexKey(llong* id, valvec<byte>* key) const override {
+		assert(m_segIdx < m_tab->m_segments.size());
+		llong baseId = m_tab->m_rowNumVec[m_segIdx];
+		llong subId = -1;
+		m_subIter->getIndexKey(&subId, key);
+		*id = baseId + subId;
+	}
+};
+
+IndexIteratorPtr CompositeTable::createIndexIter(size_t indexId) const {
+	assert(indexId < m_indexSchemaSet->m_nested.end_i());
+	return new TableIndexIter(this, indexId);
+}
+
+IndexIteratorPtr CompositeTable::createIndexIter(fstring indexCols) const {
+	size_t indexId = m_indexSchemaSet->m_nested.find_i(indexCols);
+	if (m_indexSchemaSet->m_nested.end_i() == indexId) {
+		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
+	}
+	return createIndexIter(indexId);
+}
+
+size_t CompositeTable::exactFind(size_t indexId, fstring key, valvec<llong>* idvec) const {
+	idvec->clear();
+	return exactFindAppend(indexId, key, idvec);
+}
+
+size_t CompositeTable::exactFind(fstring indexCols, fstring key, valvec<llong>* idvec) const {
+	idvec->clear();
+	return exactFindAppend(indexCols, key, idvec);
+}
+
+size_t CompositeTable::exactFindAppend(size_t indexId, fstring key, valvec<llong>* idvec) const {
+	size_t oldsize = idvec->size();
+	for(size_t i = m_segments.size(); i > 0; --i) {
+		size_t segIdx = i - 1;
+		IndexIteratorPtr iter = m_segments[segIdx]
+			->getReadableIndex(indexId)->createIndexIter();
+		if (iter->seekExact(key)) {
+			size_t baseId = m_rowNumVec[segIdx];
+			llong subId = -1;
+			iter->getIndexKey(&subId, NULL);
+			idvec->push_back(baseId + subId);
+		}
+	}
+	return idvec->size() - oldsize;
+}
+
+size_t CompositeTable::exactFindAppend(fstring indexCols, fstring key, valvec<llong>* idvec) const {
+	size_t indexId = m_indexSchemaSet->m_nested.find_i(indexCols);
+	if (m_indexSchemaSet->m_nested.end_i() == indexId) {
+		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
+	}
+	return exactFindAppend(indexId, key, idvec);
 }
 
 void

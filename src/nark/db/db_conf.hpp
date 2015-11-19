@@ -80,8 +80,9 @@ namespace nark {
 		uint32_t fixedLen = 0;
 		static_bitmap<16, uint16_t> flags;
 		ColumnType type;
+		SortOrder  order;
 		ColumnMeta();
-		explicit ColumnMeta(ColumnType);
+		explicit ColumnMeta(ColumnType, SortOrder ord = SortOrder::UnOrdered);
 	};
 	struct NARK_DB_DLL ColumnData : fstring {
 		ColumnType type;

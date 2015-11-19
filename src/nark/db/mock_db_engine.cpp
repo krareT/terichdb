@@ -277,8 +277,8 @@ llong MockReadonlyIndex::dataStorageSize() const {
 }
 
 void MockReadonlyIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) const {
-	assert(m_idToKey.size() == m_keyVec.size());
-	assert(id < (llong)m_idToKey.size());
+	assert(m_ids.size() == m_keys.size());
+	assert(id < (llong)m_ids.size());
 	assert(id >= 0);
 	if (m_fixedLen) {
 		fstring key1(m_keys.strpool.data() + m_fixedLen * id, m_fixedLen);
@@ -409,8 +409,8 @@ llong MockWritableIndex::numIndexRows() const {
 
 llong MockWritableIndex::indexStorageSize() const {
 	// std::set's rbtree node needs 4ptr space
-	size_t size = m_keysLen;
-	size += m_kv.size() * (sizeof(kv_t) + 4 * sizeof(void*));
+	size_t size = m_kv.size() * (sizeof(kv_t) + 4 * sizeof(void*));
+	return m_keysLen + size;
 }
 
 size_t MockWritableIndex::insert(fstring key, llong id, BaseContextPtr&) {
@@ -563,7 +563,15 @@ MockCompositeTable::createReadonlySegment() const {
 }
 WritableSegmentPtr
 MockCompositeTable::createWritableSegment(fstring dir) const {
-	return new MockWritableSegment();
+	WritableSegmentPtr seg(new MockWritableSegment());
+	seg->m_rowSchema = m_rowSchema;
+	seg->m_indexSchemaSet = m_indexSchemaSet;
+	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
+	seg->m_indices.resize(m_indexSchemaSet->m_nested.end_i());
+	for (size_t i = 0; i < seg->m_indices.size(); ++i) {
+		seg->m_indices[i] = new MockWritableIndex();
+	}
+	return seg;
 }
 
 WritableSegmentPtr

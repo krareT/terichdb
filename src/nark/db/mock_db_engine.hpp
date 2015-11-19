@@ -72,7 +72,7 @@ public:
 class NARK_DB_DLL MockWritableIndex : public WritableIndex {
 	typedef std::pair<std::string, llong> kv_t;
 	std::set<kv_t> m_kv;
-	size_t m_keysLen;
+	size_t m_keysLen = 0;
 public:
 	void save(fstring) const override;
 	void load(fstring) override;

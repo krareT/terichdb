@@ -63,6 +63,14 @@ public:
 	void indexRemove(size_t indexId, fstring indexKey, llong id, BaseContextPtr&);
 	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, BaseContextPtr&);
 
+	IndexIteratorPtr createIndexIter(size_t indexId) const;
+	IndexIteratorPtr createIndexIter(fstring indexCols) const;
+
+	size_t exactFind(size_t indexId, fstring key, valvec<llong>* idvec) const;
+	size_t exactFind(fstring indexCols, fstring key, valvec<llong>* idvec) const;
+	size_t exactFindAppend(size_t indexId, fstring key, valvec<llong>* idvec) const;
+	size_t exactFindAppend(fstring indexCols, fstring key, valvec<llong>* idvec) const;
+
 	void getIndexKey(size_t indexId, const valvec<ColumnData>& row, valvec<byte>* key) const;
 	bool compact();
 
@@ -109,6 +117,7 @@ protected:
 	basic_fstrvec<unsigned> m_indexProjects;
 	llong m_readonlyDataMemSize;
 	llong m_maxWrSegSize;
+	friend class TableIndexIter;
 };
 typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 

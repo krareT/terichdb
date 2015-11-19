@@ -7,9 +7,14 @@
 
 namespace nark {
 
-ColumnMeta::ColumnMeta() : type(ColumnType::Binary) {}
+ColumnMeta::ColumnMeta() {
+	type = ColumnType::Binary;
+	order = SortOrder::UnOrdered;
+}
 
-ColumnMeta::ColumnMeta(ColumnType t) : type(t) {
+ColumnMeta::ColumnMeta(ColumnType t, SortOrder ord) {
+	type = t;
+	order = ord;
 	switch (t) {
 	default:
 		THROW_STD(runtime_error, "Invalid data row");

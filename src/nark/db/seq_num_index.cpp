@@ -101,6 +101,7 @@ llong SeqNumIndex<Int>::indexStorageSize() const { return 2 * sizeof(llong); }
 template<class Int>
 size_t SeqNumIndex<Int>::remove(fstring key, llong id, BaseContextPtr&) {
 	// do nothing
+	return 0;
 }
 
 template<class Int>
@@ -119,6 +120,7 @@ size_t SeqNumIndex<Int>::insert(fstring key, llong id, BaseContextPtr&) {
 	if (llong(m_cnt) < id + 1) {
 		llong(m_cnt) = id + 1;
 	}
+	return 1;
 }
 template<class Int>
 size_t SeqNumIndex<Int>::replace(fstring key, llong id, llong newId, BaseContextPtr&) {
@@ -138,6 +140,7 @@ size_t SeqNumIndex<Int>::replace(fstring key, llong id, llong newId, BaseContext
 		THROW_STD(invalid_argument,
 			"key must be consistent with id in SeqNumIndex");
 	}
+	return 1;
 }
 
 template<class Int>
