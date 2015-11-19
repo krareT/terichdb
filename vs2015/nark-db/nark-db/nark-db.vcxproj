@@ -167,6 +167,7 @@
     <ClInclude Include="..\..\..\src\nark\db\mock_db_engine.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\record_data.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\seg_db.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\seq_num_index.hpp" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
@@ -177,6 +178,7 @@
     <ClCompile Include="..\..\..\src\nark\db\db_segment.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\db_table.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\seq_num_index.cpp" />
     <ClCompile Include="dllmain.cpp">
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

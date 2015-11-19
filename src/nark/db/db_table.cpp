@@ -484,20 +484,40 @@ const {
 void
 CompositeTable::maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock& lock) {
 	if (m_wrSeg->dataStorageSize() >= m_maxWrSegSize) {
-		if (m_segments.size() == m_segments.capacity()) {
-			THROW_STD(invalid_argument,
-				"Reaching maxSegNum=%d", int(m_segments.capacity()));
+		if (lock.upgrade_to_writer() ||
+			// if upgrade_to_writer fails, it means the lock has been
+			// temporary released and re-acquired, so we need check
+			// the condition again
+			m_wrSeg->dataStorageSize() >= m_maxWrSegSize)
+		{
+			if (m_segments.size() == m_segments.capacity()) {
+				THROW_STD(invalid_argument,
+					"Reaching maxSegNum=%d", int(m_segments.capacity()));
+			}
+			// createWritableSegment should be fast, other wise the lock time
+			// may be too long
+			AutoGrownMemIO buf(512);
+			size_t newSegIdx = m_segments.size();
+			m_wrSeg = myCreateWritableSegment(newSegIdx, buf);
+			m_segments.push_back(m_wrSeg);
+			llong newMaxRowNum = m_rowNumVec.back();
+			m_rowNumVec.push_back(newMaxRowNum);
 		}
-		llong newMaxRowNum = m_rowNumVec.back();
-		m_rowNumVec.push_back(newMaxRowNum);
-		AutoGrownMemIO buf(512);
-		size_t newSegIdx = m_segments.size();
-		auto seg = createWritableSegment(getSegPath("wr", newSegIdx, buf));
-		lock.upgrade_to_writer();
-		m_wrSeg = seg;
-		m_segments.push_back(m_wrSeg);
 		lock.downgrade_to_reader();
 	}
+}
+
+WritableSegmentPtr
+CompositeTable::myCreateWritableSegment(size_t segIdx, AutoGrownMemIO& buf)
+const {
+	fstring segDir = getSegPath("wr", segIdx, buf);
+	fs::create_directories(segDir.c_str());
+	return createWritableSegment(segDir);
+}
+WritableSegmentPtr
+CompositeTable::myCreateWritableSegment(fstring segDir) const {
+	fs::create_directories(segDir.c_str());
+	return createWritableSegment(segDir);
 }
 
 llong
@@ -514,19 +534,20 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 	maybeCreateNewSegment(lock);
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
-	llong subId;
 	if (syncIndex) {
 		m_rowSchema->parseRow(row, &ttx.cols1);
 	}
 	lock.upgrade_to_writer();
-	if (m_deletedWrIdSet.empty() || m_tableScanningRefCount) {
+	llong subId;
+	llong wrBaseId = m_rowNumVec.end()[-2];
+	if (m_wrSeg->m_deletedWrIdSet.empty() || m_tableScanningRefCount) {
 		subId = m_wrSeg->append(row, txn);
 		assert(subId == (llong)m_wrSeg->m_isDel.size());
 		m_wrSeg->m_isDel.push_back(false);
 		m_rowNumVec.back() = subId;
 	}
 	else {
-		subId = m_deletedWrIdSet.pop_val();
+		subId = m_wrSeg->m_deletedWrIdSet.pop_val();
 		m_wrSeg->replace(subId, row, ttx.wrStoreContext);
 		m_wrSeg->m_isDel.set0(subId);
 	}
@@ -538,7 +559,6 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 			wrIndex->insert(ttx.key1, subId, ttx.wrIndexContext[i]);
 		}
 	}
-	llong wrBaseId = m_rowNumVec.end()[-2];
 	llong id = wrBaseId + subId;
 	return id;
 }
@@ -610,7 +630,7 @@ CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
 			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
 				auto wrIndex = m_wrSeg->m_indices[i].get();
 				getIndexKey(i, columns, &key);
-				wrIndex->remove(key, ttx.wrIndexContext[i]);
+				wrIndex->remove(key, subId, ttx.wrIndexContext[i]);
 			}
 		}
 		m_wrSeg->remove(subId, ttx.wrStoreContext);
@@ -750,7 +770,9 @@ bool CompositeTable::compact() {
 		srcSeg = m_segments[firstWrSegIdx];
 		newSeg = createReadonlySegment();
 		newSeg->convFrom(*srcSeg, *m_rowSchema);
-		newSeg->save(getSegPath("rd", i, buf));
+		fstring segDir = getSegPath("rd", i, buf);
+		fs::create_directories(segDir.c_str());
+		newSeg->save(segDir);
 		{
 			tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 			m_segments[firstWrSegIdx] = newSeg;

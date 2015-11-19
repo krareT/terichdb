@@ -81,15 +81,15 @@ public:
 			m_pos = 0;
 			return true;
 		}
-		if (m_pos < owner->m_fix.size()) {
+		if (m_pos < owner->m_ids.size()) {
 			m_pos++;
 		}
-		return m_pos < owner->m_fix.size();
+		return m_pos < owner->m_ids.size();
 	}
 	bool decrement() override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
 		if (size_t(-1) == m_pos) {
-			m_pos = owner->m_fix.size() - 1;
+			m_pos = owner->m_ids.size() - 1;
 			return true;
 		}
 		if (m_pos > 0) {
@@ -114,8 +114,8 @@ public:
 	}
 	bool seekLowerBound_imp(fstring key, size_t* lowerBound) {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		const uint32_t* index = owner->m_fix.data();
-		const size_t rows = owner->m_fix.size();
+		const uint32_t* index = owner->m_ids.data();
+		const size_t rows = owner->m_ids.size();
 		const size_t fixlen = owner->m_fixedLen;
 		if (fixlen) {
 			assert(owner->m_keys.size() == 0);
@@ -145,9 +145,9 @@ public:
 
 	void getIndexKey(llong* id, valvec<byte>* key) const override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		assert(m_pos < owner->m_fix.size());
-		*id = owner->m_fix[m_pos];
-		fstring k = owner->m_keys[m_pos];
+		assert(m_pos < owner->m_ids.size());
+		*id = owner->m_ids[m_pos];
+		fstring k = owner->m_keys[*id];
 		key->assign(k.udata(), k.size());
 	}
 };
@@ -183,12 +183,14 @@ MockReadonlyIndex::build(SortableStrVec& keys) {
 	const byte* base = keys.m_strpool.data();
 	if (fixlen) {
 		assert(keys.m_index.size() == 0);
-		m_fix.resize_no_init(keys.size() / fixlen);
-		for (size_t i = 0; i < m_fix.size(); ++i) m_fix[i] = i;
-		std::sort(m_fix.begin(), m_fix.end(), [=](size_t x, size_t y) {
+		m_ids.resize_no_init(keys.size() / fixlen);
+		for (size_t i = 0; i < m_ids.size(); ++i) m_ids[i] = i;
+		std::sort(m_ids.begin(), m_ids.end(), [=](size_t x, size_t y) {
 			fstring xs(base + fixlen * x, fixlen);
 			fstring ys(base + fixlen * y, fixlen);
-			return schema->compareData(xs, ys);
+			int r = schema->compareData(xs, ys);
+			if (r) return r < 0;
+			else   return x < y;
 		});
 	}
 	else {
@@ -199,19 +201,21 @@ MockReadonlyIndex::build(SortableStrVec& keys) {
 		// reuse memory of keys.m_index
 		auto offsets = (uint32_t*)keys.m_index.data();
 		size_t rows = keys.m_index.size();
-		m_fix.resize_no_init(rows);
-		for (size_t i = 0; i < rows; ++i) m_fix[i] = i;
+		m_ids.resize_no_init(rows);
+		for (size_t i = 0; i < rows; ++i) m_ids[i] = i;
 		for (size_t i = 0; i < rows; ++i) {
 			uint32_t offset = uint32_t(keys.m_index[i].offset);
 			offsets[i] = offset;
 		}
 		offsets[rows] = keys.str_size();
-		std::sort(m_fix.begin(), m_fix.end(), [=](size_t x, size_t y) {
+		std::sort(m_ids.begin(), m_ids.end(), [=](size_t x, size_t y) {
 			size_t xoff0 = offsets[x], xoff1 = offsets[x+1];
 			size_t yoff0 = offsets[y], yoff1 = offsets[y+1];
 			fstring xs(base + xoff0, xoff1 - xoff0);
 			fstring ys(base + yoff0, yoff1 - yoff0);
-			return schema->compareData(xs, ys);
+			int r = schema->compareData(xs, ys);
+			if (r) return r < 0;
+			else   return x < y;
 		});
 		BOOST_STATIC_ASSERT(sizeof(SortableStrVec::SEntry) == 4*3);
 		m_keys.offsets.risk_set_data(offsets);
@@ -229,11 +233,11 @@ void MockReadonlyIndex::save(fstring path1) const {
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
-	size_t rows = m_fix.size();
+	size_t rows = m_ids.size();
 	dio << uint64_t(m_fixedLen);
 	dio << uint64_t(rows);
 	dio << uint64_t(m_keys.size());
-	dio.ensureWrite(m_fix.data(), m_fix.used_mem_size());
+	dio.ensureWrite(m_ids.data(), m_ids.used_mem_size());
 	if (m_fixedLen) {
 		assert(m_keys.size() == 0);
 	} else {
@@ -252,8 +256,8 @@ void MockReadonlyIndex::load(fstring path1) {
 	dio >> fixlen;
 	dio >> rows;
 	dio >> keylen;
-	m_fix.resize_no_init(size_t(rows));
-	dio.ensureRead(m_fix.data(), m_fix.used_mem_size());
+	m_ids.resize_no_init(size_t(rows));
+	dio.ensureRead(m_ids.data(), m_ids.used_mem_size());
 	if (0 == fixlen) {
 		m_keys.offsets.resize_no_init(size_t(rows + 1));
 		dio.ensureRead(m_keys.offsets.data(), m_keys.offsets.used_mem_size());
@@ -264,10 +268,10 @@ void MockReadonlyIndex::load(fstring path1) {
 }
 
 llong MockReadonlyIndex::numDataRows() const {
-	return m_fix.size();
+	return m_ids.size();
 }
 llong MockReadonlyIndex::dataStorageSize() const {
-	return m_fix.used_mem_size()
+	return m_ids.used_mem_size()
 		+ m_keys.offsets.used_mem_size()
 		+ m_keys.strpool.used_mem_size();
 }
@@ -281,7 +285,7 @@ void MockReadonlyIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) c
 		key->assign(key1.udata(), key1.size());
 	}
 	else {
-		size_t idx = m_fix[id];
+		size_t idx = m_ids[id];
 		fstring key1 = m_keys[idx];
 		key->assign(key1.udata(), key1.size());
 	}
@@ -292,11 +296,11 @@ IndexIteratorPtr MockReadonlyIndex::createIndexIter() const {
 }
 
 llong MockReadonlyIndex::numIndexRows() const {
-	return m_fix.size();
+	return m_ids.size();
 }
 
 llong MockReadonlyIndex::indexStorageSize() const {
-	return m_fix.used_mem_size() + m_keys.offsets.used_mem_size();
+	return m_ids.used_mem_size() + m_keys.offsets.used_mem_size();
 }
 
 //////////////////////////////////////////////////////////////////
@@ -380,6 +384,9 @@ void MockWritableStore::remove(llong id, BaseContextPtr&) {
 IndexIteratorPtr MockWritableIndex::createIndexIter() const {
 	return new MockReadonlyIndexIterator();
 }
+BaseContextPtr MockWritableIndex::createIndexContext() const {
+	return nullptr;
+}
 
 void MockWritableIndex::save(fstring path1) const {
 	fs::path fpath = path1.c_str();
@@ -402,11 +409,15 @@ llong MockWritableIndex::numIndexRows() const {
 
 llong MockWritableIndex::indexStorageSize() const {
 	// std::set's rbtree node needs 4ptr space
-	return m_kv.size() * (sizeof(kv_t) + 4 * sizeof(void*));
+	size_t size = m_keysLen;
+	size += m_kv.size() * (sizeof(kv_t) + 4 * sizeof(void*));
 }
 
 size_t MockWritableIndex::insert(fstring key, llong id, BaseContextPtr&) {
 	auto ib = m_kv.insert(std::make_pair(key.str(), id));
+	if (ib.second) {
+		m_keysLen += key.size() + 1;
+	}
 	return ib.second;
 }
 size_t MockWritableIndex::replace(fstring key, llong oldId, llong newId, BaseContextPtr&) {
@@ -415,18 +426,6 @@ size_t MockWritableIndex::replace(fstring key, llong oldId, llong newId, BaseCon
 	}
 	auto ib = m_kv.insert(std::make_pair(key.str(), newId));
 	return ib.second;
-}
-size_t MockWritableIndex::remove(fstring key, BaseContextPtr&) {
-	std::string key1 = key.str();
-	auto iter = m_kv.lower_bound(std::make_pair(key1, 0));
-	size_t cnt = 0;
-	while (iter != m_kv.end() && iter->first == key1) {
-		auto next = iter; ++next;
-		m_kv.erase(iter);
-		iter = next;
-		cnt++;
-	}
-	return cnt;
 }
 size_t MockWritableIndex::remove(fstring key, llong id, BaseContextPtr&) {
 	return m_kv.erase(std::make_pair(key.str(), id));
@@ -452,14 +451,14 @@ MockReadonlySegment::openPart(fstring path) const {
 	return store;
 }
 
-ReadableStoreIndexPtr
+ReadableIndexStorePtr
 MockReadonlySegment::openIndex(fstring path, SchemaPtr schema) const {
-	ReadableStoreIndexPtr store(new MockReadonlyIndex(schema));
+	ReadableIndexStorePtr store(new MockReadonlyIndex(schema));
 	store->load(path);
 	return store;
 }
 
-ReadableStoreIndexPtr
+ReadableIndexStorePtr
 MockReadonlySegment::buildIndex(SchemaPtr indexSchema,
 								SortableStrVec& indexData)
 const {
@@ -489,11 +488,18 @@ void MockWritableSegment::save(fstring path1) const {
 }
 
 void MockWritableSegment::load(fstring path1) {
-	fs::path fpath = path1.c_str();
+	fs::path fpath = path1 + "/rows";
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
 	dio >> m_rows;
+}
+
+WritableIndexPtr
+MockWritableSegment::openIndex(fstring path, SchemaPtr schema) const {
+	WritableIndexPtr index(new MockWritableIndex());
+	index->load(path);
+	return index;
 }
 
 llong MockWritableSegment::dataStorageSize() const {
@@ -525,18 +531,23 @@ llong MockWritableSegment::append(fstring row, BaseContextPtr &) {
 	llong id = m_rows.size();
 	m_rows.push_back();
 	m_rows.back().assign(row);
+	m_dataSize += row.size();
 	return id;
 }
 
 void MockWritableSegment::replace(llong id, fstring row, BaseContextPtr &) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
+	size_t oldsize = m_rows[id].size();
 	m_rows[id].assign(row);
+	m_dataSize -= oldsize;
+	m_dataSize += row.size();
 }
 
 void MockWritableSegment::remove(llong id, BaseContextPtr &) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
+	m_dataSize -= m_rows[id].size();
 	m_rows[id].clear();
 }
 

@@ -11,7 +11,7 @@
 
 namespace nark {
 
-class NARK_DB_DLL_EXPORT Permanentable : public RefCounter {
+class NARK_DB_DLL Permanentable : public RefCounter {
 public:
 	virtual void save(fstring dir) const = 0;
 	virtual void load(fstring dir) = 0;
@@ -29,7 +29,7 @@ public:
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
-class NARK_DB_DLL_EXPORT ReadableStore : virtual public Permanentable {
+class NARK_DB_DLL ReadableStore : virtual public Permanentable {
 public:
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
@@ -39,7 +39,7 @@ public:
 	virtual class WritableStore* getWritableStore();
 };
 
-class NARK_DB_DLL_EXPORT WritableStore {
+class NARK_DB_DLL WritableStore {
 public:
 	virtual ~WritableStore();
 	virtual llong append(fstring row, BaseContextPtr&) = 0;

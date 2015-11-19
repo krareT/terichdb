@@ -9,7 +9,7 @@
 
 namespace nark {
 
-class NARK_DB_DLL_EXPORT MockReadonlyStore : public ReadableStore {
+class NARK_DB_DLL MockReadonlyStore : public ReadableStore {
 public:
 	fstrvec m_rows;
 
@@ -23,10 +23,10 @@ public:
 	BaseContextPtr createStoreContext() const override;
 };
 
-class NARK_DB_DLL_EXPORT MockReadonlyIndex : public ReadableStoreIndex {
+class NARK_DB_DLL MockReadonlyIndex : public ReadableIndexStore {
 	friend class MockReadonlyIndexIterator;
 	fstrvec          m_keys; // keys[recId] is the key
-	valvec<uint32_t> m_fix;  // keys[fix[i]] <= keys[fix[i+1]]
+	valvec<uint32_t> m_ids;  // keys[ids[i]] <= keys[ids[i+1]]
 	size_t m_fixedLen;
 	SchemaPtr m_schema;
 public:
@@ -50,7 +50,7 @@ public:
 	llong indexStorageSize() const override;
 };
 
-class NARK_DB_DLL_EXPORT MockWritableStore : public ReadableStore, public WritableStore {
+class NARK_DB_DLL MockWritableStore : public ReadableStore, public WritableStore {
 public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
@@ -69,37 +69,38 @@ public:
 	void  remove(llong id, BaseContextPtr&) override;
 };
 
-class NARK_DB_DLL_EXPORT MockWritableIndex : public WritableIndex {
+class NARK_DB_DLL MockWritableIndex : public WritableIndex {
 	typedef std::pair<std::string, llong> kv_t;
 	std::set<kv_t> m_kv;
+	size_t m_keysLen;
 public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
 	IndexIteratorPtr createIndexIter() const override;
+	BaseContextPtr createIndexContext() const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
-	size_t remove(fstring key, BaseContextPtr&) override;
 	size_t remove(fstring key, llong id, BaseContextPtr&) override;
 	size_t insert(fstring key, llong id, BaseContextPtr&) override;
 	size_t replace(fstring key, llong oldId, llong newId, BaseContextPtr&) override;
 	void flush() override;
 };
 
-class NARK_DB_DLL_EXPORT MockReadonlySegment : public ReadonlySegment {
+class NARK_DB_DLL MockReadonlySegment : public ReadonlySegment {
 public:
 	MockReadonlySegment();
 	~MockReadonlySegment();
 protected:
 	ReadableStorePtr openPart(fstring path) const override;
-	ReadableStoreIndexPtr openIndex(fstring path, SchemaPtr) const override;
+	ReadableIndexStorePtr openIndex(fstring path, SchemaPtr) const override;
 
-	ReadableStoreIndexPtr buildIndex(SchemaPtr indexSchema,
+	ReadableIndexStorePtr buildIndex(SchemaPtr indexSchema,
 									 SortableStrVec& indexData) const override;
 	ReadableStorePtr buildStore(SortableStrVec& storeData) const override;
 };
 
-class NARK_DB_DLL_EXPORT MockWritableSegment : public WritableSegment {
+class NARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
 public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
@@ -110,6 +111,7 @@ public:
 protected:
 	void save(fstring) const override;
 	void load(fstring) override;
+	WritableIndexPtr openIndex(fstring, SchemaPtr) const override;
 	llong dataStorageSize() const override;
 	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
 	StoreIteratorPtr createStoreIter() const override;
@@ -121,7 +123,7 @@ protected:
 	void flush() override;
 };
 
-class NARK_DB_DLL_EXPORT MockCompositeTable : public CompositeTable {
+class NARK_DB_DLL MockCompositeTable : public CompositeTable {
 public:
 	ReadonlySegmentPtr createReadonlySegment() const override;
 	WritableSegmentPtr createWritableSegment(fstring dirBaseName) const override;

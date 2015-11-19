@@ -131,8 +131,8 @@ BaseContextPtr ReadonlySegment::createStoreContext() const {
 	return new ReadonlyStoreContext();
 }
 
-void ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input)
-{
+void
+ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input) {
 	m_indices.resize(input[0]->m_indices.size());
 	valvec<byte> buf;
 	SortableStrVec strVec;
@@ -363,7 +363,7 @@ void ReadonlySegment::load(fstring prefix) {
 	if (!m_parts.empty()) {
 		THROW_STD(invalid_argument, "m_parts must be empty");
 	}
-	for (size_t i = 0; i < m_indices.size(); ++i) {
+	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
 		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
 		std::string colnames = schema->joinColumnNames(',');
 		std::string path = prefix + "/index-" + colnames;
@@ -391,6 +391,11 @@ void ReadonlySegment::load(fstring prefix) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+WrSegContext::WrSegContext() {
+}
+WrSegContext::~WrSegContext() {
+}
+
 WritableStore* WritableSegment::getWritableStore() {
 	return this;
 }
@@ -405,6 +410,97 @@ llong WritableSegment::totalIndexSize() const {
 		size += m_indices[i]->indexStorageSize();
 	}
 	return size;
+}
+
+void WritableSegment::openIndices(fstring dir) {
+	if (!m_indices.empty()) {
+		THROW_STD(invalid_argument, "m_indices must be empty");
+	}
+	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
+		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema->joinColumnNames(',');
+		std::string path = dir + "/index-" + colnames;
+		m_indices.push_back(this->openIndex(path, schema));
+	}
+}
+
+void WritableSegment::saveIndices(fstring dir) const {
+	for (size_t i = 0; i < m_indices.size(); ++i) {
+		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema->joinColumnNames(',');
+		std::string path = dir + "/index-" + colnames;
+		m_indices[i]->save(path);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+SmartWritableSegment::~SmartWritableSegment() {
+}
+
+void
+SmartWritableSegment::getValue(llong id, valvec<byte>* val, BaseContextPtr& txn)
+const {
+	assert(dynamic_cast<SmartWrSegContext*>(txn.get()) != nullptr);
+	auto ctx = static_cast<SmartWrSegContext*>(txn.get());
+	val->resize(0);
+	// m_indices also store index keys
+	BaseContextPtr dummy;
+	for (auto& index : m_indices) {
+		auto store = static_cast<const WritableIndexStore*>(index.get());
+		store->getValue(id, &ctx->buf, dummy);
+		val->append(ctx->buf);
+	}
+	m_nonIndexStore->getValue(id, &ctx->buf, dummy);
+	val->append(ctx->buf);
+}
+
+class SmartWritableSegment::MyStoreIterator : public StoreIterator {
+	ptrdiff_t m_id;
+	mutable BaseContextPtr m_ctx;
+public:
+	MyStoreIterator(const SmartWritableSegment* owner) {
+		m_store.reset(const_cast<SmartWritableSegment*>(owner));
+		m_id = -1;
+		m_ctx = owner->createStoreContext();
+	}
+	bool increment() override {
+		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
+		m_id++;
+		return m_id < ptrdiff_t(owner->m_isDel.size());
+	}
+	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
+		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
+		if (m_id >= ptrdiff_t(owner->m_isDel.size())) {
+			THROW_STD(invalid_argument, "store iterator past the end");
+		}
+		*idKey = m_id;
+		owner->getValue(m_id, val, m_ctx);
+	}
+};
+
+StoreIteratorPtr SmartWritableSegment::createStoreIter() const {
+	return new MyStoreIterator(this);
+}
+
+void SmartWritableSegment::save(fstring dir) const {
+	saveIndices(dir);
+	std::string storePath = dir + "/nonIndexStore";
+	m_nonIndexStore->save(storePath);
+}
+
+void SmartWritableSegment::load(fstring dir) {
+	openIndices(dir);
+	std::string storePath = dir + "/nonIndexStore";
+	m_nonIndexStore->load(storePath);
+}
+
+llong SmartWritableSegment::dataStorageSize() const {
+	return m_nonIndexStore->dataStorageSize();
+}
+
+llong SmartWritableSegment::totalStorageSize() const {
+	return totalIndexSize() + m_nonIndexStore->dataStorageSize();
 }
 
 } // namespace nark

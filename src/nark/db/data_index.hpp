@@ -11,7 +11,7 @@
 
 namespace nark {
 
-class NARK_DB_DLL_EXPORT IndexIterator : public RefCounter {
+class NARK_DB_DLL IndexIterator : public RefCounter {
 protected:
 	const class ReadableIndex* m_index = nullptr;
 public:
@@ -25,7 +25,7 @@ public:
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
-class NARK_DB_DLL_EXPORT ReadableIndex : virtual public Permanentable {
+class NARK_DB_DLL ReadableIndex : virtual public Permanentable {
 protected:
 	SortOrder m_sortOrder;
 	bool      m_isUnique;
@@ -42,15 +42,22 @@ public:
 };
 typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
-class NARK_DB_DLL_EXPORT WritableIndex : virtual public ReadableIndex {
+class NARK_DB_DLL WritableIndex : public ReadableIndex {
 public:
-	virtual size_t remove(fstring key, BaseContextPtr&) = 0;
 	virtual size_t remove(fstring key, llong id, BaseContextPtr&) = 0;
 	virtual size_t insert(fstring key, llong id, BaseContextPtr&) = 0;
 	virtual size_t replace(fstring key, llong id, llong newId, BaseContextPtr&) = 0;
 	virtual void flush() = 0;
 };
 typedef boost::intrusive_ptr<WritableIndex> WritableIndexPtr;
+
+class NARK_DB_DLL ReadableIndexStore :
+		   public ReadableIndex, public ReadableStore {};
+typedef boost::intrusive_ptr<ReadableIndexStore> ReadableIndexStorePtr;
+
+class NARK_DB_DLL WritableIndexStore :
+		   public WritableIndex, public ReadableStore {};
+typedef boost::intrusive_ptr<WritableIndexStore> WritableIndexStorePtr;
 
 /*
 class CompositeIndex : public WritableIndex {

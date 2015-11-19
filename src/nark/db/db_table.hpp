@@ -16,7 +16,7 @@
 
 namespace nark {
 
-class TableContext : public BaseContext {
+class NARK_DB_DLL TableContext : public BaseContext {
 public:
 	TableContext();
 	~TableContext();
@@ -34,7 +34,7 @@ public:
 typedef boost::intrusive_ptr<TableContext> TableContextPtr;
 
 // is not a WritableStore
-class CompositeTable : public ReadableStore {
+class NARK_DB_DLL CompositeTable : public ReadableStore {
 	class MyStoreIterator;
 	friend class MyStoreIterator;
 public:
@@ -87,14 +87,17 @@ protected:
 	void saveMetaJson(fstring dir) const;
 
 	virtual ReadonlySegmentPtr createReadonlySegment() const = 0;
-	virtual WritableSegmentPtr createWritableSegment(fstring dirBaseName) const = 0;
-	virtual WritableSegmentPtr openWritableSegment(fstring dirBaseName) const = 0;
+	virtual WritableSegmentPtr createWritableSegment(fstring segDir) const = 0;
+	virtual WritableSegmentPtr openWritableSegment(fstring segDir) const = 0;
+
+	WritableSegmentPtr
+	myCreateWritableSegment(size_t segIdx, class AutoGrownMemIO& buf) const;
+	WritableSegmentPtr myCreateWritableSegment(fstring segDir) const;
 
 protected:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
 	valvec<llong>  m_rowNumVec;
-	valvec<uint32_t>  m_deletedWrIdSet;
 	valvec<ReadableSegmentPtr> m_segments;
 	WritableSegmentPtr m_wrSeg;
 
