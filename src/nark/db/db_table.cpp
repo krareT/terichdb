@@ -573,6 +573,7 @@ CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
 	assert(m_rowNumVec.size() == m_segments.size());
 	assert(id < m_rowNumVec.back());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
+	assert(j > 0);
 	assert(j < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
@@ -604,7 +605,8 @@ CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
 	}
 	else {
 		lock.upgrade_to_writer();
-		m_wrSeg->m_isDel.set1(subId); // this is an atom op on x86(use bts)
+		// mark old subId as deleted
+		m_segments[j-1]->m_isDel.set1(subId); // is atom on x86(use bts)
 		lock.downgrade_to_reader();
 		return insertRowImpl(row, syncIndex, txn, lock); // id is changed
 	}
@@ -777,8 +779,7 @@ bool CompositeTable::compact() {
 			tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 			m_segments[firstWrSegIdx] = newSeg;
 		}
-		buf.printf("rm -rf %s/%s/wr-%04ld*", m_dir.c_str(), long(i));
-		system(buf.c_str());
+		fs::remove_all(getSegPath("wr", i, buf).c_str());
 	}
 
 MergeReadonlySeg:
@@ -803,27 +804,42 @@ const {
 }
 
 void CompositeTable::save(fstring dir) const {
-	size_t segNum;
-	{
+	if (dir == m_dir) {
+		fprintf(stderr, "WARN: save self(%s), skipped\n", dir.c_str());
+		return;
+	}
+	try {
 		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 		m_tableScanningRefCount++;
-		segNum = m_segments.size();
-	}
-	AutoGrownMemIO buf(1024);
-	for (size_t segIdx = 0; segIdx < segNum-1; ++segIdx) {
-		auto seg = m_segments[segIdx];
-		if (seg->getWritableStore())
-			seg->save(getSegPath2(dir, "wr", segIdx, buf));
-		else
-			seg->save(getSegPath2(dir, "rd", segIdx, buf));
-	}
-	{
-		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
-		for (size_t segIdx = segNum-1; segIdx < m_segments.size(); ++segIdx) {
+		size_t segNum = m_segments.size();
+
+		// save segments except m_wrSeg
+		lock.release(); // doesn't need any lock
+		AutoGrownMemIO buf(1024);
+		for (size_t segIdx = 0; segIdx < segNum-1; ++segIdx) {
+			auto seg = m_segments[segIdx];
+			if (seg->getWritableStore())
+				seg->save(getSegPath2(dir, "wr", segIdx, buf));
+			else
+				seg->save(getSegPath2(dir, "rd", segIdx, buf));
+		}
+
+		// save the remained segments, new segment may created during
+		// time pieriod of saving previous segments
+		lock.acquire(m_rwMutex, false); // need read lock
+		size_t segNum2 = m_segments.size();
+		for (size_t segIdx = segNum-1; segIdx < segNum2; ++segIdx) {
 			auto seg = m_segments[segIdx];
 			assert(seg->getWritableStore());
 			seg->save(getSegPath2(dir, "wr", segIdx, buf));
 		}
+		lock.upgrade_to_writer();
+		m_tableScanningRefCount--;
+	}
+	catch (...) {
+		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
+		m_tableScanningRefCount--;
+		throw;
 	}
 	saveMetaJson(dir);
 }
