@@ -72,33 +72,42 @@ struct VarLenKeyCompare {
 
 class MockReadonlyIndexIterator : public IndexIterator {
 	friend class MockReadonlyIndex;
+	MockReadonlyIndexPtr m_index;
 	size_t m_pos = size_t(-1);
-
 public:
-	bool increment() override {
-		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		if (size_t(-1) == m_pos) {
-			m_pos = 0;
-			return true;
-		}
-		if (m_pos < owner->m_ids.size()) {
-			m_pos++;
-		}
-		return m_pos < owner->m_ids.size();
+	MockReadonlyIndexIterator(const MockReadonlyIndex* owner) {
+		m_index.reset(const_cast<MockReadonlyIndex*>(owner));
 	}
-	bool decrement() override {
-		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		if (size_t(-1) == m_pos) {
-			m_pos = owner->m_ids.size() - 1;
+	bool increment(llong* id, valvec<byte>* key) override {
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
+		assert(nullptr != id);
+		if (nark_unlikely(size_t(-1) == m_pos)) {
+			m_pos = 1;
+			getIndexKey(id, key, owner, 0);
 			return true;
 		}
-		if (m_pos > 0) {
-			m_pos--;
+		if (nark_likely(m_pos < owner->m_ids.size())) {
+			getIndexKey(id, key, owner, m_pos++);
 			return true;
 		}
 		return false;
 	}
-	void reset() {
+	bool decrement(llong* id, valvec<byte>* key) override {
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
+		if (nark_unlikely(size_t(-1) == m_pos)) {
+			m_pos = owner->m_ids.size() - 1;
+			getIndexKey(id, key, owner, m_pos);
+			return true;
+		}
+		if (nark_likely(m_pos > 0)) {
+			getIndexKey(id, key, owner, --m_pos);
+			return true;
+		}
+		return false;
+	}
+	void reset(PermanentablePtr p2) {
+		assert(!p2 || dynamic_cast<MockReadonlyIndex*>(p2.get()));
+		m_index.reset(dynamic_cast<MockReadonlyIndex*>(p2.get()));
 		m_pos = size_t(-1);
 	}
 	bool seekExact(fstring key) override {
@@ -112,8 +121,8 @@ public:
 	bool seekLowerBound(fstring key) override {
 		return seekLowerBound_imp(key, &m_pos);
 	}
-	bool seekLowerBound_imp(fstring key, size_t* lowerBound) {
-		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
+	bool seekLowerBound_imp(fstring key, size_t* pLower) {
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
 		const uint32_t* index = owner->m_ids.data();
 		const size_t rows = owner->m_ids.size();
 		const size_t fixlen = owner->m_fixedLen;
@@ -124,7 +133,7 @@ public:
 			cmp.strpool = owner->m_keys.strpool.data();
 			cmp.schema = owner->m_schema.get();
 			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
-			*lowerBound = lo;
+			*pLower = lo;
 			if (lo < rows && key == owner->m_keys[lo]) {
 				return true;
 			}
@@ -135,7 +144,7 @@ public:
 			cmp.strpool = owner->m_keys.strpool.data();
 			cmp.schema = owner->m_schema.get();
 			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
-			*lowerBound = lo;
+			*pLower = lo;
 			if (lo < rows && key == owner->m_keys[lo]) {
 				return true;
 			}
@@ -143,12 +152,14 @@ public:
 		return false;
 	}
 
-	void getIndexKey(llong* id, valvec<byte>* key) const override {
-		auto owner = static_cast<const MockReadonlyIndex*>(m_index);
-		assert(m_pos < owner->m_ids.size());
-		*id = owner->m_ids[m_pos];
-		fstring k = owner->m_keys[*id];
-		key->assign(k.udata(), k.size());
+	void getIndexKey(llong* id, valvec<byte>* key,
+					 const MockReadonlyIndex* owner, size_t pos) {
+		assert(pos < owner->m_ids.size());
+		*id = owner->m_ids[pos];
+		if (key) {
+			fstring k = owner->m_keys[*id];
+			key->assign(k.udata(), k.size());
+		}
 	}
 };
 
@@ -292,7 +303,7 @@ void MockReadonlyIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) c
 }
 
 IndexIteratorPtr MockReadonlyIndex::createIndexIter() const {
-	return new MockReadonlyIndexIterator();
+	return new MockReadonlyIndexIterator(this);
 }
 
 llong MockReadonlyIndex::numIndexRows() const {
@@ -306,22 +317,21 @@ llong MockReadonlyIndex::indexStorageSize() const {
 //////////////////////////////////////////////////////////////////
 template<class WrStore>
 class MockWritableStoreIter : public StoreIterator {
-	ptrdiff_t m_id;
+	size_t m_id;
 public:
 	MockWritableStoreIter(const WrStore* store) {
 		m_store.reset(const_cast<WrStore*>(store));
-		m_id = -1;
+		m_id = 0;
 	}
-	bool increment() override {
+	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WrStore*>(m_store.get());
-		m_id++;
-		return m_id < ptrdiff_t(store->m_rows.size());
-	}
-	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
-		auto store = static_cast<WrStore*>(m_store.get());
-		assert(m_id < ptrdiff_t(store->m_rows.size()));
-		*idKey = m_id;
-		*val = store->m_rows[m_id];
+		if (m_id < store->m_rows.size()) {
+			*id = m_id;
+			*val = store->m_rows[m_id];
+			m_id++;
+			return true;
+		}
+		return false;
 	}
 };
 
@@ -381,21 +391,129 @@ void MockWritableStore::remove(llong id, BaseContextPtr&) {
 
 //////////////////////////////////////////////////////////////////
 
-IndexIteratorPtr MockWritableIndex::createIndexIter() const {
-	return new MockReadonlyIndexIterator();
+template<class Key>
+class MockWritableIndex<Key>::MyIndexIter : public IndexIterator {
+	typedef boost::intrusive_ptr<MockWritableIndex> MockWritableIndexPtr;
+	MockWritableIndexPtr m_index;
+	typename std::set<kv_t>::const_iterator m_iter;
+	bool m_isNull;
+public:
+	MyIndexIter(const MockWritableIndex* owner) {
+		m_index.reset(const_cast<MockWritableIndex*>(owner));
+		m_isNull = true;
+	}
+	bool increment(llong* id, valvec<byte>* key) override {
+		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
+		if (nark_unlikely(m_isNull)) {
+			m_isNull = false;
+			m_iter = owner->m_kv.begin();
+			if (!owner->m_kv.empty()) {
+				*id = m_iter->second;
+				copyKey(m_iter->first, key);
+				++m_iter;
+				return true;
+			}
+			return false;
+		}
+		if (nark_likely(owner->m_kv.end() != m_iter)) {
+			*id = m_iter->second;
+			copyKey(m_iter->first, key);
+			++m_iter;
+			return true;
+		}
+		return false;
+	}
+	bool decrement(llong* id, valvec<byte>* key) override {
+		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
+		if (nark_unlikely(m_isNull)) {
+			m_isNull = false;
+			m_iter = owner->m_kv.end();
+			if (!owner->m_kv.empty()) {
+				--m_iter;
+				*id = m_iter->second;
+				copyKey(m_iter->first, key);
+				return true;
+			}
+			return false;
+		}
+		if (nark_likely(owner->m_kv.begin() != m_iter)) {
+			--m_iter;
+			*id = m_iter->second;
+			copyKey(m_iter->first, key);
+			return true;
+		}
+		return false;
+	}
+	void reset(PermanentablePtr p2) {
+		assert(!p2 || dynamic_cast<MockWritableIndex*>(p2.get()));
+		if (p2)
+			m_index.reset(dynamic_cast<MockWritableIndex*>(p2.get()));
+		m_isNull = true;
+	}
+	bool seekExact(fstring key) override {
+		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
+		auto kv = std::make_pair(makeKey(key), 0LL);
+		auto iter = owner->m_kv.lower_bound(kv);
+		if (owner->m_kv.end() != iter && iter->first == kv.first) {
+			m_iter = iter;
+			m_isNull = false;
+			return true;
+		}
+		return false;
+	}
+	bool seekLowerBound(fstring key) override {
+		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
+		auto kv = std::make_pair(makeKey(key), 0LL);
+		auto iter = owner->m_kv.lower_bound(kv);
+		m_iter = iter;
+		m_isNull = false;
+		if (owner->m_kv.end() != iter && iter->first == kv.first) {
+			return true;
+		}
+		return false;
+	}
+private:
+	static void copyKey(const std::string& src, valvec<byte>* dst) {
+		dst->assign((const char*)src.data(), src.size());
+	}
+	template<class PrimitiveKey>
+	static void copyKey(const PrimitiveKey& src, valvec<byte>* dst) {
+		BOOST_STATIC_ASSERT(boost::is_pod<PrimitiveKey>::value);
+		dst->assign((const char*)&src, sizeof(PrimitiveKey));
+	}
+
+	template<class Primitive>
+	static Primitive makeKeyImp(fstring key, Primitive*) {
+		assert(key.size() == sizeof(Primitive));
+		return unaligned_load<Primitive>(key.udata());
+	}
+	static std::string makeKeyImp(fstring key, std::string*) { return key.str(); }
+public:
+	static Key makeKey(fstring key) { return makeKeyImp(key, (Key*)0); }
+	template<class Primitive>
+	static size_t keyHeapLen(const Primitive&) { return 0; }
+	static size_t keyHeapLen(const std::string& x) { return x.size() + 1; }
+};
+
+template<class Key>
+IndexIteratorPtr MockWritableIndex<Key>::createIndexIter() const {
+	return new MyIndexIter(this);
 }
-BaseContextPtr MockWritableIndex::createIndexContext() const {
+template<class Key>
+BaseContextPtr MockWritableIndex<Key>::createIndexContext() const {
 	return nullptr;
 }
 
-void MockWritableIndex::save(fstring path1) const {
+template<class Key>
+void MockWritableIndex<Key>::save(fstring path1) const {
 	fs::path fpath = path1.c_str();
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
 	dio << m_kv;
 }
-void MockWritableIndex::load(fstring path1) {
+template<class Key>
+void MockWritableIndex<Key>::load(fstring path1) {
 	fs::path fpath = path1.c_str();
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
@@ -403,34 +521,50 @@ void MockWritableIndex::load(fstring path1) {
 	dio >> m_kv;
 }
 
-llong MockWritableIndex::numIndexRows() const {
+template<class Key>
+llong MockWritableIndex<Key>::numIndexRows() const {
 	return m_kv.size();
 }
 
-llong MockWritableIndex::indexStorageSize() const {
+template<class Key>
+llong MockWritableIndex<Key>::indexStorageSize() const {
 	// std::set's rbtree node needs 4ptr space
 	size_t size = m_kv.size() * (sizeof(kv_t) + 4 * sizeof(void*));
 	return m_keysLen + size;
 }
 
-size_t MockWritableIndex::insert(fstring key, llong id, BaseContextPtr&) {
-	auto ib = m_kv.insert(std::make_pair(key.str(), id));
+template<class Key>
+size_t MockWritableIndex<Key>::insert(fstring key, llong id, BaseContextPtr&) {
+	auto ib = m_kv.insert(std::make_pair(MyIndexIter::makeKey(key), id));
 	if (ib.second) {
-		m_keysLen += key.size() + 1;
+		m_keysLen += MyIndexIter::keyHeapLen(ib.first->first);
 	}
 	return ib.second;
 }
-size_t MockWritableIndex::replace(fstring key, llong oldId, llong newId, BaseContextPtr&) {
+
+template<class Key>
+size_t MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, BaseContextPtr&) {
+	auto kx = MyIndexIter::makeKey(key);
 	if (oldId != newId) {
-		m_kv.erase(std::make_pair(key.str(), oldId));
+		m_kv.erase(std::make_pair(kx, oldId));
 	}
-	auto ib = m_kv.insert(std::make_pair(key.str(), newId));
+	auto ib = m_kv.insert(std::make_pair(kx, newId));
 	return ib.second;
 }
-size_t MockWritableIndex::remove(fstring key, llong id, BaseContextPtr&) {
-	return m_kv.erase(std::make_pair(key.str(), id));
+
+template<class Key>
+size_t MockWritableIndex<Key>::remove(fstring key, llong id, BaseContextPtr&) {
+	auto iter = m_kv.find(std::make_pair(MyIndexIter::makeKey(key), id));
+	if (m_kv.end() != iter) {
+		m_keysLen = MyIndexIter::keyHeapLen(iter->first);
+		m_kv.erase(iter);
+		return 1;
+	}
+	return 0;
 }
-void MockWritableIndex::flush() {
+
+template<class Key>
+void MockWritableIndex<Key>::flush() {
 	// do nothing
 }
 
@@ -497,7 +631,7 @@ void MockWritableSegment::load(fstring path1) {
 
 WritableIndexPtr
 MockWritableSegment::openIndex(fstring path, SchemaPtr schema) const {
-	WritableIndexPtr index(new MockWritableIndex());
+	WritableIndexPtr index = createWritableIndex(schema);
 	index->load(path);
 	return index;
 }
@@ -555,6 +689,30 @@ void MockWritableSegment::flush() {
 	// do nothing
 }
 
+WritableIndexPtr MockWritableSegment::createWritableIndex(SchemaPtr schema) const {
+	WritableIndexPtr index;
+	if (schema->columnNum() == 1) {
+		ColumnMeta cm = schema->getColumnMeta(0);
+#define CASE_COL_TYPE(Enum, Type) \
+		case ColumnType::Enum: return new MockWritableIndex<Type>();
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		switch (cm.type) {
+			CASE_COL_TYPE(Uint08, uint8_t);
+			CASE_COL_TYPE(Sint08,  int8_t);
+			CASE_COL_TYPE(Uint16, uint16_t);
+			CASE_COL_TYPE(Sint16,  int16_t);
+			CASE_COL_TYPE(Uint32, uint32_t);
+			CASE_COL_TYPE(Sint32,  int32_t);
+			CASE_COL_TYPE(Uint64, uint64_t);
+			CASE_COL_TYPE(Sint64,  int64_t);
+			CASE_COL_TYPE(Float32, float);
+			CASE_COL_TYPE(Float64, double);
+		}
+#undef CASE_COL_TYPE
+	}
+	return new MockWritableIndex<std::string>();
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 ReadonlySegmentPtr
@@ -563,15 +721,16 @@ MockCompositeTable::createReadonlySegment() const {
 }
 WritableSegmentPtr
 MockCompositeTable::createWritableSegment(fstring dir) const {
-	WritableSegmentPtr seg(new MockWritableSegment());
+	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment());
 	seg->m_rowSchema = m_rowSchema;
 	seg->m_indexSchemaSet = m_indexSchemaSet;
 	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
 	seg->m_indices.resize(m_indexSchemaSet->m_nested.end_i());
 	for (size_t i = 0; i < seg->m_indices.size(); ++i) {
-		seg->m_indices[i] = new MockWritableIndex();
+		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
+		seg->m_indices[i] = seg->createWritableIndex(schema);
 	}
-	return seg;
+	return seg.release();
 }
 
 WritableSegmentPtr

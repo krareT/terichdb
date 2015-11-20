@@ -1,27 +1,22 @@
 #ifndef __nark_db_data_index_hpp__
 #define __nark_db_data_index_hpp__
 
-#include <nark/util/refcount.hpp>
-#include <nark/fstring.hpp>
 #include <nark/valvec.hpp>
 #include <nark/bitmap.hpp>
-#include <boost/intrusive_ptr.hpp>
-#include <mutex>
 #include "data_store.hpp"
 
 namespace nark {
 
+typedef boost::intrusive_ptr<class ReadableIndex> ReadableIndexPtr;
+
 class NARK_DB_DLL IndexIterator : public RefCounter {
-protected:
-	const class ReadableIndex* m_index = nullptr;
 public:
 	virtual ~IndexIterator();
-	virtual void reset() = 0;
-	virtual bool increment() = 0;
-	virtual bool decrement() = 0;
+	virtual void reset(PermanentablePtr owner) = 0;
+	virtual bool increment(llong* id, valvec<byte>* key) = 0;
+	virtual bool decrement(llong* id, valvec<byte>* key) = 0;
 	virtual bool seekExact(fstring key) = 0;
 	virtual bool seekLowerBound(fstring key) = 0;
-	virtual void getIndexKey(llong* id, valvec<byte>* key) const = 0;
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 

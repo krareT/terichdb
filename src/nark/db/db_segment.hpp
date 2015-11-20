@@ -1,17 +1,10 @@
 #ifndef __nark_db_segment_hpp__
 #define __nark_db_segment_hpp__
 
-#include <nark/util/refcount.hpp>
-#include <nark/fstring.hpp>
-#include <nark/valvec.hpp>
-#include <nark/bitmap.hpp>
-#include <boost/intrusive_ptr.hpp>
-#include <atomic>
 #include "db_conf.hpp"
 #include "data_index.hpp"
 #include "data_store.hpp"
 #include <nark/util/sortable_strvec.hpp>
-#include <tbb/queuing_rw_mutex.h>
 
 namespace nark {
 
@@ -20,7 +13,7 @@ namespace nark {
 class NARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
 	~ReadableSegment();
-	virtual const ReadableIndex* getReadableIndex(size_t indexId) const = 0;
+	virtual ReadableIndexPtr getReadableIndex(size_t indexId) const = 0;
 //	virtual const openIndex
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
@@ -56,7 +49,7 @@ public:
 	// index schema and index content features
 	virtual ReadableIndexStorePtr openIndex(fstring path, SchemaPtr) const = 0;
 
-	const ReadableIndex* getReadableIndex(size_t nth) const override;
+	ReadableIndexPtr getReadableIndex(size_t nth) const override;
 
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
@@ -101,7 +94,7 @@ public:
 class NARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
 public:
 	WritableStore* getWritableStore() override;
-	const ReadableIndex* getReadableIndex(size_t nth) const override;
+	ReadableIndexPtr getReadableIndex(size_t nth) const override;
 
  	const WritableIndex*
 	nthWritableIndex(size_t nth) const { return m_indices[nth].get(); }

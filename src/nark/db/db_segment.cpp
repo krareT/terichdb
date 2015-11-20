@@ -49,9 +49,9 @@ ReadonlySegment::ReadonlySegment() {
 }
 ReadonlySegment::~ReadonlySegment() {
 }
-const ReadableIndex*
+ReadableIndexPtr
 ReadonlySegment::getReadableIndex(size_t nth) const {
-	return m_indices[nth].get();
+	return m_indices[nth];
 }
 
 llong ReadonlySegment::dataStorageSize() const {
@@ -94,34 +94,33 @@ const {
 
 class ReadonlySegment::MyStoreIterator : public StoreIterator {
 	size_t m_partIdx = 0;
-	llong  m_id = -1;
+	llong  m_id = 0;
 	mutable valvec<byte> m_buf;
 public:
 	explicit MyStoreIterator(const ReadonlySegment* owner) {
 		m_store.reset(const_cast<ReadonlySegment*>(owner));
 	}
-	bool increment() override {
+	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
 		assert(m_partIdx < owner->m_parts.size());
-		if (m_id >= owner->m_rowNumVec[m_partIdx + 1]) {
+		if (nark_likely(m_id < owner->m_rowNumVec[m_partIdx + 1])) {
+			*id = m_id;
+			llong subId = m_id - owner->m_rowNumVec[m_partIdx];
+			owner->getValueImpl(m_partIdx, m_id, subId, val, &m_buf);
+		}
+		else {
 			if (m_partIdx + 1 < owner->m_parts.size()) {
 				m_partIdx++;
-			} else {
-				if (m_id >= owner->m_rowNumVec.back())
-					return false;
+				*id = m_id;
+				llong subId = m_id - owner->m_rowNumVec[m_partIdx];
+				owner->getValueImpl(m_partIdx, m_id, subId, val, &m_buf);
+			}
+			else {
+				return false;
 			}
 		}
 		m_id++;
 		return true;
-	}
-	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
-		assert(m_partIdx < owner->m_parts.size());
-		assert(m_id >= 0);
-		assert(m_id < owner->m_rowNumVec[m_partIdx+1]);
-		*idKey = m_id;
-		llong subId = m_id - owner->m_rowNumVec[m_partIdx];
-		owner->getValueImpl(m_partIdx, m_id, subId, val, &m_buf);
 	}
 };
 StoreIteratorPtr ReadonlySegment::createStoreIter() const {
@@ -276,9 +275,8 @@ void ReadonlySegment::convFrom(const ReadableSegment& input, const Schema& schem
 	llong inputRowNum = input.numDataRows();
 	assert(size_t(inputRowNum) == input.m_isDel.size());
 	StoreIteratorPtr iter(input.createStoreIter());
-	while (iter->increment()) {
-		llong id = -1;
-		iter->getKeyVal(&id, &buf);
+	llong id = -1;
+	while (iter->increment(&id, &buf)) {
 		assert(id >= 0);
 		assert(id < inputRowNum);
 		if (input.m_isDel[id]) continue;
@@ -399,7 +397,8 @@ WrSegContext::~WrSegContext() {
 WritableStore* WritableSegment::getWritableStore() {
 	return this;
 }
-const ReadableIndex* WritableSegment::getReadableIndex(size_t nth) const {
+ReadableIndexPtr
+WritableSegment::getReadableIndex(size_t nth) const {
 	assert(nth < m_indices.size());
 	return m_indices[nth].get();
 }
@@ -456,26 +455,23 @@ const {
 }
 
 class SmartWritableSegment::MyStoreIterator : public StoreIterator {
-	ptrdiff_t m_id;
+	size_t m_id;
 	mutable BaseContextPtr m_ctx;
 public:
 	MyStoreIterator(const SmartWritableSegment* owner) {
 		m_store.reset(const_cast<SmartWritableSegment*>(owner));
-		m_id = -1;
+		m_id = 0;
 		m_ctx = owner->createStoreContext();
 	}
-	bool increment() override {
+	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
-		m_id++;
-		return m_id < ptrdiff_t(owner->m_isDel.size());
-	}
-	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
-		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
-		if (m_id >= ptrdiff_t(owner->m_isDel.size())) {
-			THROW_STD(invalid_argument, "store iterator past the end");
+		if (m_id < owner->m_isDel.size()) {
+			*id = m_id;
+			owner->getValue(m_id, val, m_ctx);
+			m_id++;
+			return true;
 		}
-		*idKey = m_id;
-		owner->getValue(m_id, val, m_ctx);
+		return false;
 	}
 };
 

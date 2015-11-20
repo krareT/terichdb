@@ -4,34 +4,40 @@ namespace nark {
 
 template<class Int>
 class SeqNumIndex<Int>::MyIndexIter : public IndexIterator {
-	Int m_id;
+	boost::intrusive_ptr<SeqNumIndex<Int> > m_index;
+	Int m_curr;
 public:
 	MyIndexIter(const SeqNumIndex* owner) {
-		m_index = owner;
+		m_index.reset(const_cast<SeqNumIndex*>(owner));
 	}
-	void reset() override {
-		m_id = -1;
+	void reset(PermanentablePtr p2) override {
+		assert(!p2 || dynamic_cast<SeqNumIndex*>(p2.get()));
+		if (p2)
+			m_index.reset(dynamic_cast<SeqNumIndex*>(p2.get()));
+		m_curr = -1;
 	}
-	bool increment() override {
-		if (-1 == m_id) {
-			m_id = 0;
+	bool increment(llong* id, valvec<byte>* key) override {
+		auto owner = static_cast<const SeqNumIndex*>(m_index.get());
+		if (nark_unlikely(Int(-1) == m_curr)) {
+			m_curr = 1;
+			getIndexKey(id, key, owner, 0);
 			return true;
 		}
-		auto owner = static_cast<const SeqNumIndex*>(m_index);
-		if (m_id < owner->m_cnt) {
-			m_id++;
-			if (m_id < owner->m_cnt) return true;
+		if (nark_likely(m_curr < owner->m_cnt)) {
+			getIndexKey(id, key, owner, m_curr++);
+			return true;
 		}
 		return false;
 	}
-	bool decrement() override {
-		auto owner = static_cast<const SeqNumIndex*>(m_index);
-		if (-1 == m_id) {
-			m_id = owner->m_cnt - 1;
+	bool decrement(llong* id, valvec<byte>* key) override {
+		auto owner = static_cast<const SeqNumIndex*>(m_index.get());
+		if (nark_unlikely(Int(-1) == m_curr)) {
+			m_curr = owner->m_cnt;
+			getIndexKey(id, key, owner, owner->m_cnt - 1);
 			return true;
 		}
-		if (m_id > 0) {
-			m_id--;
+		if (nark_likely(m_curr > 0)) {
+			getIndexKey(id, key, owner, --m_curr);
 			return true;
 		}
 		return false;
@@ -42,13 +48,13 @@ public:
 			THROW_STD(invalid_argument,
 				"key.size must be sizeof(Int)=%d", int(sizeof(Int)));
 		}
-		auto owner = static_cast<const SeqNumIndex*>(m_index);
+		auto owner = static_cast<const SeqNumIndex*>(m_index.get());
 		Int keyId = unaligned_load<Int>(key.udata());
 		keyId -= owner->m_min;
 		if (keyId < 0 || keyId >= owner->m_cnt) {
 			return false;
 		}
-		m_id = keyId;
+		m_curr = keyId;
 		return true;
 	}
 	bool seekLowerBound(fstring key) override {
@@ -57,19 +63,19 @@ public:
 			THROW_STD(invalid_argument,
 				"key.size must be sizeof(Int)=%d", int(sizeof(Int)));
 		}
-		auto owner = static_cast<const SeqNumIndex*>(m_index);
+		auto owner = static_cast<const SeqNumIndex*>(m_index.get());
 		Int keyId = unaligned_load<Int>(key.udata());
 		keyId -= owner->m_min;
-		m_id = keyId;
+		m_curr = keyId;
 		if (keyId < 0 || keyId >= owner->m_cnt) {
 			return false;
 		}
 		return true;
 	}
-	void getIndexKey(llong* id, valvec<byte>* key) const override {
-		auto owner = static_cast<const SeqNumIndex*>(m_index);
-		Int keyId = owner->m_min + m_id;
-		*id = llong(m_id);
+private:
+	void getIndexKey(llong* id, valvec<byte>* key, const SeqNumIndex* owner, Int curr) const {
+		Int keyId = owner->m_min + curr;
+		*id = llong(curr);
 		key->erase_all();
 		key->assign((const byte*)&keyId, sizeof(Int));
 	}

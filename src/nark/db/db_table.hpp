@@ -1,18 +1,11 @@
 #ifndef __nark_db_table_store_hpp__
 #define __nark_db_table_store_hpp__
 
-#include <nark/util/refcount.hpp>
-#include <nark/fstring.hpp>
-#include <nark/valvec.hpp>
-#include <nark/bitmap.hpp>
-#include <boost/intrusive_ptr.hpp>
-#include <atomic>
-#include "db_conf.hpp"
-#include "data_index.hpp"
-#include "data_store.hpp"
-#include <nark/util/sortable_strvec.hpp>
-#include <tbb/queuing_rw_mutex.h>
 #include "db_segment.hpp"
+#include <nark/bitmap.hpp>
+#include <tbb/queuing_rw_mutex.h>
+#include <nark/util/fstrvec.hpp>
+#include <nark/util/sortable_strvec.hpp>
 
 namespace nark {
 
@@ -65,11 +58,6 @@ public:
 
 	IndexIteratorPtr createIndexIter(size_t indexId) const;
 	IndexIteratorPtr createIndexIter(fstring indexCols) const;
-
-	size_t exactFind(size_t indexId, fstring key, valvec<llong>* idvec) const;
-	size_t exactFind(fstring indexCols, fstring key, valvec<llong>* idvec) const;
-	size_t exactFindAppend(size_t indexId, fstring key, valvec<llong>* idvec) const;
-	size_t exactFindAppend(fstring indexCols, fstring key, valvec<llong>* idvec) const;
 
 	void getIndexKey(size_t indexId, const valvec<ColumnData>& row, valvec<byte>* key) const;
 	bool compact();

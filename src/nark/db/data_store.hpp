@@ -1,12 +1,8 @@
 #ifndef __nark_db_data_store_hpp__
 #define __nark_db_data_store_hpp__
 
-#include <nark/util/refcount.hpp>
-#include <nark/fstring.hpp>
 #include <nark/valvec.hpp>
 #include <nark/bitmap.hpp>
-#include <boost/intrusive_ptr.hpp>
-#include <mutex>
 #include "db_conf.hpp"
 
 namespace nark {
@@ -16,7 +12,7 @@ public:
 	virtual void save(fstring dir) const = 0;
 	virtual void load(fstring dir) = 0;
 };
-
+typedef boost::intrusive_ptr<class Permanentable> PermanentablePtr;
 typedef boost::intrusive_ptr<class ReadableStore> ReadableStorePtr;
 
 class StoreIterator : public RefCounter {
@@ -24,8 +20,7 @@ protected:
 	ReadableStorePtr m_store;
 public:
 	virtual ~StoreIterator();
-	virtual bool increment() = 0;
-	virtual void getKeyVal(llong* idKey, valvec<byte>* val) const = 0;
+	virtual bool increment(llong* idKey, valvec<byte>* val) = 0;
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 

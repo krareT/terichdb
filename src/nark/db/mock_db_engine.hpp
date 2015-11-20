@@ -2,9 +2,6 @@
 #define __nark_db_mock_data_index_hpp__
 
 #include <nark/db/db_table.hpp>
-#include <nark/hash_strmap.hpp>
-#include <nark/gold_hash_map.hpp>
-#include <nark/util/sortable_strvec.hpp>
 #include <set>
 
 namespace nark {
@@ -22,6 +19,7 @@ public:
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 };
+typedef boost::intrusive_ptr<MockReadonlyStore> MockReadonlyStorePtr;
 
 class NARK_DB_DLL MockReadonlyIndex : public ReadableIndexStore {
 	friend class MockReadonlyIndexIterator;
@@ -49,6 +47,7 @@ public:
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 };
+typedef boost::intrusive_ptr<MockReadonlyIndex> MockReadonlyIndexPtr;
 
 class NARK_DB_DLL MockWritableStore : public ReadableStore, public WritableStore {
 public:
@@ -68,11 +67,15 @@ public:
 	void  replace(llong id, fstring row, BaseContextPtr&) override;
 	void  remove(llong id, BaseContextPtr&) override;
 };
+typedef boost::intrusive_ptr<MockWritableStore> MockWritableStorePtr;
 
+template<class Key>
 class NARK_DB_DLL MockWritableIndex : public WritableIndex {
-	typedef std::pair<std::string, llong> kv_t;
+	class MyIndexIter; friend class MyIndexIter;
+	typedef std::pair<Key, llong> kv_t;
 	std::set<kv_t> m_kv;
 	size_t m_keysLen = 0;
+	ullong m_removeVer = 0;
 public:
 	void save(fstring) const override;
 	void load(fstring) override;
@@ -107,6 +110,8 @@ public:
 
 	MockWritableSegment();
 	~MockWritableSegment();
+
+	WritableIndexPtr createWritableIndex(SchemaPtr) const;
 
 protected:
 	void save(fstring) const override;

@@ -5,8 +5,8 @@
 #include <nark/hash_strmap.hpp>
 #include <nark/gold_hash_map.hpp>
 #include <nark/bitmap.hpp>
-#include <nark/io/StreamBuffer.hpp>
-#include <nark/util/fstrvec.hpp>
+#include <nark/pass_by_value.hpp>
+//#include <nark/util/fstrvec.hpp>
 #include <nark/util/refcount.hpp>
 #include <boost/intrusive_ptr.hpp>
 
@@ -135,6 +135,56 @@ namespace nark {
 		size_t computeFixedRowLen() const; // return 0 if RowLen is not fixed
 	protected:
 		size_t m_fixedLen;
+
+	public:
+		// Helpers for define & serializing object
+		template<int N>
+		struct Fixed {
+			char data[N];
+			template<class DIO> friend void
+			DataIO_loadObject(DIO& dio, Fixed& x) { dio.ensureRead(&x, N); }
+			template<class DIO> friend void
+			DataIO_saveObject(DIO& dio,const Fixed&x){dio.ensureWrite(&x,N);}
+			template<class DIO>
+			friend boost::mpl::true_
+			Deduce_DataIO_is_dump(DIO*,Fixed*){return boost::mpl::true_();}
+			friend boost::mpl::false_
+			Deduce_DataIO_need_bswap(Fixed*){return boost::mpl::false_();}
+		};
+		template<class Str>
+		class StrZeroLoader {
+			Str* str;
+		public:
+			StrZeroLoader(Str& s) : str(&s) {}
+			template<class DataIO>
+			friend void DataIO_loadObject(DataIO& dio, StrZeroLoader& x) {
+				unsigned char c;
+				do { dio >> c;
+					 x.str->push_back(c);
+				} while (0 != c);
+			}
+		};
+		template<class Str>
+		class StrZeroSaver : public fstring {
+		public:
+			StrZeroSaver(const Str& x) : fstring(x.data(), x.size()) {}
+			template<class DataIO>
+			friend void DataIO_saveObject(DataIO&dio,const StrZeroSaver&x){
+				if (x.size() == 0)
+					dio << (unsigned char)(0);
+				else {
+					dio.ensureWrite(x.data(), x.size());
+					if (0 != x[x.n-1])
+						dio << (unsigned char)(0);
+				}
+			}
+		};
+		template<class Str>
+		static pass_by_value<StrZeroLoader<Str> >
+		StrZero(Str& x) { return StrZeroLoader<Str>(x); }
+		template<class Str>
+		static StrZeroSaver<Str>
+		StrZero(const Str& x) { return StrZeroSaver<Str>(x); }
 	};
 	typedef boost::intrusive_ptr<Schema> SchemaPtr;
 

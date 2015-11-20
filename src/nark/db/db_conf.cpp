@@ -1,8 +1,9 @@
 #include "db_conf.hpp"
 //#include <nark/io/DataIO.hpp>
 //#include <nark/io/MemStream.hpp>
+//#include <nark/io/StreamBuffer.hpp>
 #include <nark/io/var_int.hpp>
-#include <nark/util/sortable_strvec.hpp>
+//#include <nark/util/sortable_strvec.hpp>
 #include <string.h>
 
 namespace nark {
@@ -142,6 +143,7 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		ColumnData coldata(colmeta.type);
+		coldata.p = (const char*)curr;
 		switch (colmeta.type) {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
@@ -218,6 +220,7 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 			if (i < colnum - 1) {
 				const byte* next = nullptr;
 				coldata.n = load_var_uint64(curr, &next);
+				coldata.p = (const char*)next;
 				coldata.preLen = next - curr; // length of var_uint
 				CHECK_CURR_LAST(coldata.n);
 				curr = next + coldata.n;

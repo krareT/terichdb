@@ -372,7 +372,6 @@ void CompositeTable::saveMetaJson(fstring dir) const {
 
 class CompositeTable::MyStoreIterator : public StoreIterator {
 	size_t  m_segIdx = 0;
-	llong   m_subId = -1;
 	StoreIteratorPtr m_curSegIter;
 public:
 	explicit MyStoreIterator(const CompositeTable* tab) {
@@ -394,48 +393,43 @@ public:
 			tab->m_tableScanningRefCount--;
 		}
 	}
-	bool increment() override {
+	bool increment(llong* id, valvec<byte>* val) override {
 		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
-		while (incrementImpl()) {
-			llong subId = -1;
-			m_curSegIter->getKeyVal(&subId, nullptr);
+		llong subId = -1;
+		while (incrementNoCheckDel(&subId, val)) {
 			assert(subId >= 0);
 			assert(subId < tab->m_segments[m_segIdx]->numDataRows());
+			llong baseId = tab->m_rowNumVec[m_segIdx];
 			if (m_segIdx < tab->m_segments.size()-1) {
-				if (!tab->m_segments[m_segIdx]->m_isDel[subId])
+				if (!tab->m_segments[m_segIdx]->m_isDel[subId]) {
+					*id = baseId + subId;
 					return true;
+				}
 			}
 			else {
 				tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
-				if (!tab->m_segments[m_segIdx]->m_isDel[subId])
+				if (!tab->m_segments[m_segIdx]->m_isDel[subId]) {
+					*id = baseId + subId;
 					return true;
+				}
 			}
 		}
 		return false;
 	}
-	bool incrementImpl() {
+	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
-		if (!m_curSegIter->increment()) {
+		if (!m_curSegIter->increment(subId, val)) {
 			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
 			if (m_segIdx < tab->m_segments.size()-1) {
 				m_segIdx++;
 				tab->m_segments[m_segIdx]->createStoreIter().swap(m_curSegIter);
-				bool ret = m_curSegIter->increment();
+				bool ret = m_curSegIter->increment(subId, val);
 				assert(ret || tab->m_segments.size()-1 == m_segIdx);
 				return ret;
 			}
 		}
 		return true;
-	}
-	void getKeyVal(llong* idKey, valvec<byte>* val) const override {
-		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
-		assert(m_segIdx < tab->m_segments.size());
-		llong subId = -1;
-		m_curSegIter->getKeyVal(&subId, val);
-		assert(subId >= 0);
-		*idKey = tab->m_rowNumVec[m_segIdx] + subId;
 	}
 };
 
@@ -742,75 +736,138 @@ class TableIndexIter : public IndexIterator {
 	CompositeTablePtr m_tab;
 	size_t m_indexId;
 	size_t m_segIdx;
-	IndexIteratorPtr m_subIter;
-public:
-	TableIndexIter(const CompositeTable* tab, size_t indexId) {
-		m_tab.reset(const_cast<CompositeTable*>(tab));
+	valvec<IndexIteratorPtr> m_subIter;
+	valvec<ReadableSegmentPtr> m_segs;
+
+	void init(CompositeTable* tab, size_t indexId) {
+		m_tab.reset(tab);
 		m_indexId = indexId;
 		m_segIdx = -1;
-		tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex);
-		tab->m_tableScanningRefCount++;
+		{
+			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex);
+			tab->m_tableScanningRefCount++;
+		}
+		refresh();
+	}
+
+	void refresh() {
+		tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
+		for (size_t i = 0; i < m_segs.size(); ++i) {
+			if (m_segs[i] == m_tab->m_segments[i]) {
+				m_subIter[i]->reset(nullptr);
+			} else {
+				m_segs[i] = m_tab->m_segments[i];
+				m_subIter[i] = m_segs[i]->getReadableIndex(m_indexId)->createIndexIter();
+			}
+		}
+		for (size_t i = m_segs.size(); i < m_tab->m_segments.size(); ++i) {
+			m_segs.push_back(m_tab->m_segments[i]);
+			m_subIter.push_back(m_segs[i]->getReadableIndex(m_indexId)->createIndexIter());
+		}
+	}
+
+public:
+	TableIndexIter(const CompositeTable* tab, size_t indexId) {
+		init(const_cast<CompositeTable*>(tab), indexId);
 	}
 	~TableIndexIter() {
 		tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex);
 		m_tab->m_tableScanningRefCount--;
 	}
-	void reset() override {
-		m_segIdx = -1;
-	}
-	bool increment() override {
-		if (size_t(-1) == m_segIdx) {
-			m_segIdx = 0;
-			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
-			m_subIter = m_index->createIndexIter();
-			bool ret = m_subIter->increment();
-			assert(ret);
-			return ret;
+	void reset(PermanentablePtr p2) override {
+		if (!p2) {
+			m_segIdx = -1;
+			refresh();
+			return;
 		}
-		bool ret = m_subIter->increment();
-		if (!ret) {
-			if (m_tab->m_segments.size()-1 == m_segIdx) {
-				return false;
+		auto tab = dynamic_cast<CompositeTable*>(p2.get());
+		if (m_tab.get() == tab) {
+			m_segIdx = -1;
+			refresh();
+			return;
+		}
+		{
+			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex);
+			m_tab->m_tableScanningRefCount--;
+		}
+		init(tab, m_indexId);
+	}
+	bool increment(llong* id, valvec<byte>* key) override {
+		if (nark_unlikely(size_t(-1) == m_segIdx)) {
+			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
+			m_segIdx = 0;
+		}
+		llong subId = -1;
+		while (incrementNoCheckDel(&subId, key)) {
+			if (!isDeleted(subId)) {
+				llong baseId = m_tab->m_rowNumVec[m_segIdx];
+				*id = baseId + subId;
+				return true;
+			}
+		}
+		return false;
+	}
+	bool incrementNoCheckDel(llong* subId, valvec<byte>* key) {
+		bool ret = m_subIter[m_segIdx]->increment(subId, key);
+		if (nark_unlikely(!ret)) {
+			if (m_segs.size()-1 == m_segIdx) {
+				assert(m_segs.size() <= m_tab->m_segments.size());
+				if (m_segs.size() == m_tab->m_segments.size()) {
+					return false;
+				}
+				refresh();
 			}
 			m_segIdx++;
-			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
-			m_subIter = m_index->createIndexIter();
-			ret = m_subIter->increment();
-			assert(ret);
+			ret = m_subIter[m_segIdx]->increment(subId, key);
 		}
 		return ret;
 	}
-	bool decrement() override {
-		if (size_t(-1) == m_segIdx) {
-			m_segIdx = m_tab->m_segments.size() - 1;
-			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
-			m_subIter = m_index->createIndexIter();
-			bool ret = m_subIter->decrement();
-			assert(ret);
-			return ret;
+	bool decrement(llong* id, valvec<byte>* key) override {
+		if (nark_unlikely(size_t(-1) == m_segIdx)) {
+			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
+			m_segIdx = m_segs.size() - 1;
 		}
-		bool ret = m_subIter->decrement();
-		if (!ret) {
-			if (0 == m_segIdx) {
-				return false;
+		llong subId = -1;
+		while (decrementNoCheckDel(&subId, key)) {
+			if (!isDeleted(subId)) {
+				llong baseId = m_tab->m_rowNumVec[m_segIdx];
+				*id = baseId + subId;
+				return true;
 			}
-			m_segIdx--;
-			m_index = m_tab->m_segments[m_segIdx]->getReadableIndex(m_indexId);
-			m_subIter = m_index->createIndexIter();
-			ret = m_subIter->decrement();
-			assert(ret);
+		}
+		return false;
+	}
+	bool isDeleted(llong subId) {
+		if (m_tab->m_segments.size()-1 == m_segIdx) {
+			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
+			return m_segs[m_segIdx]->m_isDel[subId];
+		} else {
+			return m_segs[m_segIdx]->m_isDel[subId];
+		}
+	}
+	bool decrementNoCheckDel(llong* subId, valvec<byte>* key) {
+		bool ret = m_subIter[m_segIdx]->increment(subId, key);
+		if (nark_unlikely(!ret)) {
+			if (m_segs.size()-1 == m_segIdx) {
+				assert(m_segs.size() <= m_tab->m_segments.size());
+				if (m_segs.size() == m_tab->m_segments.size()) {
+					return false;
+				}
+				refresh();
+			}
+			m_segIdx++;
+			ret = m_subIter[m_segIdx]->increment(subId, key);
 		}
 		return ret;
 	}
 	bool seekExact(fstring key) override {
-		for (size_t i = m_tab->m_segments.size(); i > 0; --i) {
+		for (size_t i = m_segs.size(); i > 0; --i) {
 			size_t segIdx = i - 1;
-			IndexIteratorPtr iter = m_tab->m_segments[segIdx]
-				->getReadableIndex(m_indexId)->createIndexIter();
-			if (iter->seekExact(key)) {
+			if (m_subIter[segIdx]->seekExact(key)) {
+				if (m_segIdx != segIdx && size_t(-1) != m_segIdx) {
+					m_subIter[m_segIdx]->reset(nullptr);
+				}
 				m_segIdx = segIdx;
-				m_index = m_tab->m_segments[segIdx]->getReadableIndex(segIdx);
-				m_subIter = iter;
 				return true;
 			}
 		}
@@ -818,13 +875,6 @@ public:
 	}
 	bool seekLowerBound(fstring key) override {
 		return seekExact(key);
-	}
-	void getIndexKey(llong* id, valvec<byte>* key) const override {
-		assert(m_segIdx < m_tab->m_segments.size());
-		llong baseId = m_tab->m_rowNumVec[m_segIdx];
-		llong subId = -1;
-		m_subIter->getIndexKey(&subId, key);
-		*id = baseId + subId;
 	}
 };
 
@@ -839,40 +889,6 @@ IndexIteratorPtr CompositeTable::createIndexIter(fstring indexCols) const {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
 	}
 	return createIndexIter(indexId);
-}
-
-size_t CompositeTable::exactFind(size_t indexId, fstring key, valvec<llong>* idvec) const {
-	idvec->clear();
-	return exactFindAppend(indexId, key, idvec);
-}
-
-size_t CompositeTable::exactFind(fstring indexCols, fstring key, valvec<llong>* idvec) const {
-	idvec->clear();
-	return exactFindAppend(indexCols, key, idvec);
-}
-
-size_t CompositeTable::exactFindAppend(size_t indexId, fstring key, valvec<llong>* idvec) const {
-	size_t oldsize = idvec->size();
-	for(size_t i = m_segments.size(); i > 0; --i) {
-		size_t segIdx = i - 1;
-		IndexIteratorPtr iter = m_segments[segIdx]
-			->getReadableIndex(indexId)->createIndexIter();
-		if (iter->seekExact(key)) {
-			size_t baseId = m_rowNumVec[segIdx];
-			llong subId = -1;
-			iter->getIndexKey(&subId, NULL);
-			idvec->push_back(baseId + subId);
-		}
-	}
-	return idvec->size() - oldsize;
-}
-
-size_t CompositeTable::exactFindAppend(fstring indexCols, fstring key, valvec<llong>* idvec) const {
-	size_t indexId = m_indexSchemaSet->m_nested.find_i(indexCols);
-	if (m_indexSchemaSet->m_nested.end_i() == indexId) {
-		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
-	}
-	return exactFindAppend(indexId, key, idvec);
 }
 
 void
