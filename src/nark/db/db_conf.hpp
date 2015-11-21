@@ -105,6 +105,8 @@ namespace nark {
 		void parseRow(fstring row, valvec<ColumnData>* columns) const;
 		void parseRowAppend(fstring row, valvec<ColumnData>* columns) const;
 
+		std::string toJsonStr(fstring row) const;
+
 		ColumnType getColumnType(size_t columnId) const;
 		fstring getColumnName(size_t columnId) const;
 		size_t getColumnId(fstring columnName) const;
@@ -179,6 +181,7 @@ namespace nark {
 				}
 			}
 		};
+		// StrZero will not be serialized as Last Column
 		template<class Str>
 		static pass_by_value<StrZeroLoader<Str> >
 		StrZero(Str& x) { return StrZeroLoader<Str>(x); }

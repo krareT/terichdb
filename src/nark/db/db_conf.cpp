@@ -5,6 +5,7 @@
 #include <nark/io/var_int.hpp>
 //#include <nark/util/sortable_strvec.hpp>
 #include <string.h>
+#include "json.hpp"
 
 namespace nark {
 
@@ -133,12 +134,12 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 	const byte* curr = row.udata();
 	const byte* last = row.size() + curr;
 
-#define CHECK_CURR_LAST(len) \
+#define CHECK_CURR_LAST3(curr, last, len) \
 	if (curr + len > last) { \
 		THROW_STD(out_of_range, "len=%ld remain=%ld", \
 			long(len), long(last-curr)); \
 	}
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#define CHECK_CURR_LAST(len) CHECK_CURR_LAST3(curr, last, len)
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
@@ -222,7 +223,7 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 				coldata.n = load_var_uint64(curr, &next);
 				coldata.p = (const char*)next;
 				coldata.preLen = next - curr; // length of var_uint
-				CHECK_CURR_LAST(coldata.n);
+				CHECK_CURR_LAST3(next, last, coldata.n);
 				curr = next + coldata.n;
 			}
 			else { // the last column
@@ -232,6 +233,112 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 		}
 		columns->push_back(coldata);
 	}
+}
+
+std::string Schema::toJsonStr(fstring row) const {
+	assert(size_t(-1) != m_fixedLen);
+	const byte* curr = row.udata();
+	const byte* last = row.size() + curr;
+	nark::json js;
+	size_t colnum = m_columnsMeta.end_i();
+	for (size_t i = 0; i < colnum; ++i) {
+		fstring colname = m_columnsMeta.key(i);
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
+		switch (colmeta.type) {
+		default:
+			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Uint08:
+		case ColumnType::Sint08:
+			CHECK_CURR_LAST(1);
+			js[colname.str()] = int(*curr);
+			curr += 1;
+			break;
+		case ColumnType::Uint16:
+		case ColumnType::Sint16:
+			CHECK_CURR_LAST(2);
+			js[colname.str()] = unaligned_load<int16_t>(curr);
+			curr += 2;
+			break;
+		case ColumnType::Uint32:
+		case ColumnType::Sint32:
+			CHECK_CURR_LAST(4);
+			js[colname.str()] = unaligned_load<int32_t>(curr);
+			curr += 4;
+			break;
+		case ColumnType::Uint64:
+		case ColumnType::Sint64:
+			CHECK_CURR_LAST(8);
+			js[colname.str()] = unaligned_load<int64_t>(curr);
+			curr += 8;
+			break;
+		case ColumnType::Uint128:
+		case ColumnType::Sint128:
+			CHECK_CURR_LAST(16);
+			// TODO: int128
+			js[colname.str()] = unaligned_load<int64_t>(curr);
+			curr += 16;
+			break;
+		case ColumnType::Float32:
+			CHECK_CURR_LAST(4);
+			js[colname.str()] = unaligned_load<float>(curr);
+			curr += 4;
+			break;
+		case ColumnType::Float64:
+			CHECK_CURR_LAST(8);
+			js[colname.str()] = unaligned_load<double>(curr);
+			curr += 8;
+			break;
+		case ColumnType::Float128:
+			CHECK_CURR_LAST(16);
+			js[colname.str()] = unaligned_load<long double>(curr);
+			curr += 16;
+			break;
+		case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+			js[colname.str()] = std::string((char*)curr, 16);
+			curr += 16;
+			break;
+		case ColumnType::Fixed:   // Fixed length binary
+			CHECK_CURR_LAST(colmeta.fixedLen);
+			js[colname.str()] = std::string((char*)curr, colmeta.fixedLen);
+			curr += colmeta.fixedLen;
+			break;
+		case ColumnType::StrZero: // Zero ended string
+			{
+				intptr_t len = strnlen((const char*)curr, last - curr);
+				if (i < colnum - 1) {
+					CHECK_CURR_LAST(len + 1);
+				}
+				else { // the last column
+					if (len + 1 < last - curr) {
+						// '\0' is optional, if '\0' exists, it must at string end
+						THROW_STD(invalid_argument,
+							"'\0' in StrZero is not at string end");
+					}
+				}
+				js[colname.str()] = std::string((char*)curr, len);
+				curr += len + 1;
+			}
+			break;
+		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+			{
+				intptr_t len;
+				const byte* next = curr;
+				if (i < colnum - 1) {
+					len = load_var_uint64(curr, &next);
+					CHECK_CURR_LAST3(next, last, len);
+				}
+				else { // the last column
+					len = last - curr;
+				}
+				js[colname.str()] = std::string((char*)next, len);
+				curr = next + len;
+			}
+			break;
+		}
+	}
+	return js.dump();
 }
 
 ColumnType Schema::getColumnType(size_t columnId) const {
@@ -268,7 +375,6 @@ const char* Schema::columnTypeStr(ColumnType t) {
 	case ColumnType::Binary:  return "binary";
 	}
 }
-
 
 fstring Schema::getColumnName(size_t columnId) const {
 	assert(columnId < m_columnsMeta.end_i());
@@ -398,12 +504,6 @@ int Schema::compareData(fstring x, fstring y) const {
 	const byte *xcurr = x.udata(), *xlast = xcurr + x.size();
 	const byte *ycurr = y.udata(), *ylast = ycurr + y.size();
 
-#define CHECK_CURR_LAST3(curr, last, len) \
-	if (curr + len > last) { \
-		THROW_STD(out_of_range, "len=%ld remain=%ld", \
-			long(len), long(last-curr)); \
-	}
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #define CompareByType(Type) { \
 		CHECK_CURR_LAST3(xcurr, xlast, sizeof(Type)); \
 		CHECK_CURR_LAST3(ycurr, ylast, sizeof(Type)); \

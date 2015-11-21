@@ -11,8 +11,9 @@
 #include <nark/io/MemStream.hpp>
 #include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
-#include <nlohmann/json.hpp>
 #include <boost/filesystem.hpp>
+
+#include "json.hpp"
 
 namespace nark {
 
@@ -22,6 +23,8 @@ TableContext::TableContext() {
 }
 
 TableContext::~TableContext() {
+//	std::map<int,int> a;
+//	a.emplace();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -277,17 +280,17 @@ void CompositeTable::loadMetaJson(fstring dir) {
 	LineBuf alljson;
 	alljson.read_all(jsonFile.c_str());
 
-	using nlohmann::json;
+	using nark::json;
 	const json meta = json::parse(alljson.p);
 	const json& rowSchema = meta["RowSchema"];
 	const json& cols = rowSchema["columns"];
-	if (!cols.is_array()) {
-		THROW_STD(invalid_argument, "json RowSchema/columns must be an array");
-	}
+//	if (!cols.is_array()) {
+//		THROW_STD(invalid_argument, "json RowSchema/columns must be an array");
+//	}
 	m_rowSchema.reset(new Schema());
 	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
-		const auto& col = *iter;
-		std::string name = col["name"];
+		const auto& col = iter.value();
+		std::string name = iter.key();
 		std::string type = col["type"];
 		std::transform(type.begin(), type.end(), type.begin(), &::tolower);
 		ColumnMeta colmeta;
@@ -338,7 +341,7 @@ void CompositeTable::loadMetaJson(fstring dir) {
 }
 
 void CompositeTable::saveMetaJson(fstring dir) const {
-	using nlohmann::json;
+	using nark::json;
 	json meta;
 	json& rowSchema = meta["RowSchema"];
 	json& cols = rowSchema["columns"];
@@ -428,6 +431,7 @@ public:
 				assert(ret || tab->m_segments.size()-1 == m_segIdx);
 				return ret;
 			}
+			return false;
 		}
 		return true;
 	}
@@ -482,7 +486,7 @@ const {
 	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
 	TableContext& ttx = static_cast<TableContext&>(*txn);
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
-	assert(m_rowNumVec.size() == m_segments.size());
+	assert(m_rowNumVec.size() == m_segments.size() + 1);
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
@@ -861,6 +865,14 @@ public:
 		return ret;
 	}
 	bool seekExact(fstring key) override {
+		auto schema = m_tab->m_indexSchemaSet->m_nested.elem_at(m_indexId);
+		size_t fixlen = schema->getFixedRowLen();
+		assert(fixlen == 0 || key.size() == fixlen);
+		if (fixlen && key.size() != fixlen) {
+			THROW_STD(invalid_argument,
+				"bad key, len=%d is not same as fixed-len=%d",
+				key.ilen(), int(fixlen));
+		}
 		for (size_t i = m_segs.size(); i > 0; --i) {
 			size_t segIdx = i - 1;
 			if (m_subIter[segIdx]->seekExact(key)) {
@@ -956,6 +968,10 @@ bool CompositeTable::compact() {
 MergeReadonlySeg:
 	// now don't merge
 	return true;
+}
+
+std::string CompositeTable::toJsonStr(fstring row) const {
+	return m_rowSchema->toJsonStr(row);
 }
 
 fstring

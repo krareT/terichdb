@@ -62,6 +62,8 @@ public:
 	void getIndexKey(size_t indexId, const valvec<ColumnData>& row, valvec<byte>* key) const;
 	bool compact();
 
+	std::string toJsonStr(fstring row) const;
+
 	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
 	const Schema& getTableSchema() const { return *m_rowSchema; }
 	const size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }

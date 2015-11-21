@@ -63,6 +63,9 @@
     <ClInclude Include="..\..\..\src\nark\db\seq_num_index.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\json.hpp">
+      <Filter>Header Files\nark\db</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

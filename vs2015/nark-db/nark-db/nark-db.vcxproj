@@ -164,6 +164,7 @@
     <ClInclude Include="..\..\..\src\nark\db\db_conf.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\db_segment.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\db_table.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\json.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\mock_db_engine.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\record_data.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\seg_db.hpp" />
