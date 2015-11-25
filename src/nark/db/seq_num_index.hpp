@@ -28,7 +28,7 @@ public:
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 };

@@ -15,11 +15,17 @@ llong MockReadonlyStore::numDataRows() const {
 	return m_rows.size();
 }
 void
-MockReadonlyStore::getValue(llong id, valvec<byte>* val, BaseContextPtr&)
+MockReadonlyStore::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&)
 const {
 	assert(id >= 0);
-	assert(id < llong(m_rows.size()));
-	val->assign(m_rows[id]);
+	if (m_fixedLen) {
+		assert(0 == llong(m_rows.strpool.size() % m_fixedLen));
+		assert(id < llong(m_rows.strpool.size() / m_fixedLen));
+		val->append(m_rows.strpool.data() + m_fixedLen * id, m_fixedLen);
+	} else {
+		assert(id < llong(m_rows.size()));
+		val->append(m_rows[id]);
+	}
 }
 StoreIteratorPtr MockReadonlyStore::createStoreIter() const {
 	return nullptr;
@@ -28,19 +34,85 @@ BaseContextPtr MockReadonlyStore::createStoreContext() const {
 	return nullptr;
 }
 
+void MockReadonlyStore::build(SchemaPtr schema, SortableStrVec& data) {
+	size_t fixlen = schema->getFixedRowLen();
+	if (0 == fixlen) {
+		if (data.str_size() >= UINT32_MAX) {
+			THROW_STD(length_error,
+				"keys.str_size=%lld is too large", llong(data.str_size()));
+		}
+		// reuse memory of keys.m_index
+		auto offsets = (uint32_t*)data.m_index.data();
+		size_t rows = data.m_index.size();
+		for (size_t i = 0; i < rows; ++i) {
+			uint32_t offset = uint32_t(data.m_index[i].offset);
+			offsets[i] = offset;
+		}
+		offsets[rows] = data.str_size();
+		BOOST_STATIC_ASSERT(sizeof(SortableStrVec::SEntry) == 4*3);
+		m_rows.offsets.risk_set_data(offsets);
+		m_rows.offsets.risk_set_size(rows + 1);
+		m_rows.offsets.risk_set_capacity(3 * rows);
+		m_rows.offsets.shrink_to_fit();
+		data.m_index.risk_release_ownership();
+	#if !defined(NDEBUG)
+		assert(data.m_strpool.size() == m_rows.offsets.back());
+		for (size_t i = 0; i < rows; ++i) {
+			assert(m_rows.offsets[i] < m_rows.offsets[i+1]);
+		}
+	#endif
+	}
+	m_rows.strpool.swap((valvec<char>&)data.m_strpool);
+	m_fixedLen = fixlen;
+}
+
 void MockReadonlyStore::save(fstring path1) const {
 	fs::path fpath = path1.c_str();
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
-	dio << m_rows;
+	size_t rows = m_fixedLen ? m_rows.strpool.size() / m_fixedLen : m_rows.size();
+	dio << uint64_t(m_fixedLen);
+	dio << uint64_t(rows);
+	dio << uint64_t(m_rows.strpool.size());
+	if (0 == m_fixedLen) {
+	#if !defined(NDEBUG)
+		assert(m_rows.strpool.size() == m_rows.offsets.back());
+		for (size_t i = 0; i < rows; ++i) {
+			assert(m_rows.offsets[i] < m_rows.offsets[i+1]);
+		}
+	#endif
+		dio.ensureWrite(m_rows.offsets.data(), m_rows.offsets.used_mem_size());
+	} else {
+		assert(m_rows.strpool.size() % m_fixedLen == 0);
+	}
+	dio.ensureWrite(m_rows.strpool.data(), m_rows.strpool.used_mem_size());
 }
 void MockReadonlyStore::load(fstring path1) {
 	fs::path fpath = path1.c_str();
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
-	dio >> m_rows;
+	uint64_t fixlen, rows, strSize;
+	dio >> fixlen;
+	dio >> rows;
+	dio >> strSize;
+	m_fixedLen = size_t(fixlen);
+	m_rows.strpool.resize_no_init(size_t(strSize));
+	if (0 == m_fixedLen) {
+		m_rows.offsets.resize_no_init(size_t(rows + 1));
+		dio.ensureRead(m_rows.offsets.data(), m_rows.offsets.used_mem_size());
+	#if !defined(NDEBUG)
+		assert(m_rows.strpool.size() == m_rows.offsets.back());
+		for (size_t i = 0; i < rows; ++i) {
+			assert(m_rows.offsets[i] < m_rows.offsets[i+1]);
+		}
+	#endif
+	} else {
+		assert(m_rows.strpool.size() % m_fixedLen == 0);
+		assert(m_rows.strpool.size() / m_fixedLen == rows);
+	}
+	dio.ensureRead(m_rows.strpool.data(), m_rows.strpool.used_mem_size());
 }
 
 struct FixedLenKeyCompare {
@@ -190,11 +262,12 @@ BaseContextPtr MockReadonlyIndex::createStoreContext() const {
 void
 MockReadonlyIndex::build(SortableStrVec& keys) {
 	const Schema* schema = m_schema.get();
-	size_t fixlen = schema->getFixedRowLen();
 	const byte* base = keys.m_strpool.data();
+	size_t fixlen = schema->getFixedRowLen();
 	if (fixlen) {
 		assert(keys.m_index.size() == 0);
-		m_ids.resize_no_init(keys.size() / fixlen);
+		assert(keys.str_size() % fixlen == 0);
+		m_ids.resize_no_init(keys.str_size() / fixlen);
 		for (size_t i = 0; i < m_ids.size(); ++i) m_ids[i] = i;
 		std::sort(m_ids.begin(), m_ids.end(), [=](size_t x, size_t y) {
 			fstring xs(base + fixlen * x, fixlen);
@@ -247,10 +320,11 @@ void MockReadonlyIndex::save(fstring path1) const {
 	size_t rows = m_ids.size();
 	dio << uint64_t(m_fixedLen);
 	dio << uint64_t(rows);
-	dio << uint64_t(m_keys.size());
+	dio << uint64_t(m_keys.strpool.size());
 	dio.ensureWrite(m_ids.data(), m_ids.used_mem_size());
 	if (m_fixedLen) {
 		assert(m_keys.size() == 0);
+		assert(m_keys.strpool.size() == m_fixedLen * rows);
 	} else {
 		assert(m_keys.size() == rows);
 		dio.ensureWrite(m_keys.offsets.data(), m_keys.offsets.used_mem_size());
@@ -273,6 +347,9 @@ void MockReadonlyIndex::load(fstring path1) {
 		m_keys.offsets.resize_no_init(size_t(rows + 1));
 		dio.ensureRead(m_keys.offsets.data(), m_keys.offsets.used_mem_size());
 	}
+	else {
+		assert(fixlen * rows == keylen);
+	}
 	m_keys.strpool.resize_no_init(size_t(keylen));
 	dio.ensureRead(m_keys.strpool.data(), size_t(keylen));
 	m_fixedLen = size_t(fixlen);
@@ -287,18 +364,20 @@ llong MockReadonlyIndex::dataStorageSize() const {
 		+ m_keys.strpool.used_mem_size();
 }
 
-void MockReadonlyIndex::getValue(llong id, valvec<byte>* key, BaseContextPtr&) const {
-	assert(m_ids.size() == m_keys.size());
+void MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, BaseContextPtr&) const {
 	assert(id < (llong)m_ids.size());
 	assert(id >= 0);
 	if (m_fixedLen) {
+		assert(m_keys.size() == 0);
+		assert(0 == llong(m_keys.strpool.size() % m_fixedLen));
+		assert(m_keys.strpool.size() == m_ids.size() * m_fixedLen);
 		fstring key1(m_keys.strpool.data() + m_fixedLen * id, m_fixedLen);
-		key->assign(key1.udata(), key1.size());
+		key->append(key1.udata(), key1.size());
 	}
 	else {
-		size_t idx = m_ids[id];
-		fstring key1 = m_keys[idx];
-		key->assign(key1.udata(), key1.size());
+		assert(m_ids.size() == m_keys.size());
+		fstring key1 = m_keys[id];
+		key->append(key1.udata(), key1.size());
 	}
 }
 
@@ -358,10 +437,10 @@ llong MockWritableStore::numDataRows() const {
 	return m_rows.size();
 }
 
-void MockWritableStore::getValue(llong id, valvec<byte>* val, BaseContextPtr&) const {
+void MockWritableStore::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
-	*val = m_rows[id];
+	val->append(m_rows[id]);
 }
 
 StoreIteratorPtr MockWritableStore::createStoreIter() const {
@@ -604,25 +683,35 @@ const {
 ReadableStorePtr
 MockReadonlySegment::buildStore(SortableStrVec& storeData) const {
 	std::unique_ptr<MockReadonlyStore> store(new MockReadonlyStore());
+	store->build(this->m_rowSchema, storeData);
 	return store.release();
 }
 
 ///////////////////////////////////////////////////////////////////////////
-MockWritableSegment::MockWritableSegment() {
+MockWritableSegment::MockWritableSegment(fstring dir) {
+	m_segDir = dir.str();
 }
 MockWritableSegment::~MockWritableSegment() {
+	if (!m_tobeDel)
+		this->save(m_segDir);
 }
 
-void MockWritableSegment::save(fstring path1) const {
-	fs::path fpath = path1.c_str();
+void MockWritableSegment::save(fstring dir) const {
+	PlainWritableSegment::save(dir);
+	saveIndices(dir);
+	fs::path fpath = dir.c_str();
+	fpath /= "rows";
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
 	dio << m_rows;
 }
 
-void MockWritableSegment::load(fstring path1) {
-	fs::path fpath = path1 + "/rows";
+void MockWritableSegment::load(fstring dir) {
+	PlainWritableSegment::load(dir);
+	this->openIndices(dir);
+	fs::path fpath = dir.c_str();
+	fpath /= "/rows";
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
@@ -631,7 +720,7 @@ void MockWritableSegment::load(fstring path1) {
 
 WritableIndexPtr
 MockWritableSegment::openIndex(fstring path, SchemaPtr schema) const {
-	WritableIndexPtr index = createWritableIndex(schema);
+	WritableIndexPtr index = createIndex(path, schema);
 	index->load(path);
 	return index;
 }
@@ -641,12 +730,12 @@ llong MockWritableSegment::dataStorageSize() const {
 }
 
 void
-MockWritableSegment::getValue(llong id, valvec<byte>* val,
-							  BaseContextPtr&)
+MockWritableSegment::getValueAppend(llong id, valvec<byte>* val,
+									BaseContextPtr&)
 const {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
-	*val = m_rows[id];
+	val->append(m_rows[id]);
 }
 
 StoreIteratorPtr MockWritableSegment::createStoreIter() const {
@@ -689,7 +778,7 @@ void MockWritableSegment::flush() {
 	// do nothing
 }
 
-WritableIndexPtr MockWritableSegment::createWritableIndex(SchemaPtr schema) const {
+WritableIndexPtr MockWritableSegment::createIndex(fstring, SchemaPtr schema) const {
 	WritableIndexPtr index;
 	if (schema->columnNum() == 1) {
 		ColumnMeta cm = schema->getColumnMeta(0);
@@ -716,26 +805,23 @@ WritableIndexPtr MockWritableSegment::createWritableIndex(SchemaPtr schema) cons
 ///////////////////////////////////////////////////////////////////////////
 
 ReadonlySegmentPtr
-MockCompositeTable::createReadonlySegment() const {
-	return new MockReadonlySegment();
+MockCompositeTable::createReadonlySegment(fstring dir) const {
+	std::unique_ptr<MockReadonlySegment> seg(new MockReadonlySegment());
+	return seg.release();
 }
+
 WritableSegmentPtr
 MockCompositeTable::createWritableSegment(fstring dir) const {
-	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment());
-	seg->m_rowSchema = m_rowSchema;
-	seg->m_indexSchemaSet = m_indexSchemaSet;
-	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
-	seg->m_indices.resize(m_indexSchemaSet->m_nested.end_i());
-	for (size_t i = 0; i < seg->m_indices.size(); ++i) {
-		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
-		seg->m_indices[i] = seg->createWritableIndex(schema);
-	}
+	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment(dir));
 	return seg.release();
 }
 
 WritableSegmentPtr
 MockCompositeTable::openWritableSegment(fstring dir) const {
-	WritableSegmentPtr seg(new MockWritableSegment());
+	WritableSegmentPtr seg(new MockWritableSegment(dir));
+	seg->m_rowSchema = m_rowSchema;
+	seg->m_indexSchemaSet = m_indexSchemaSet;
+	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
 	seg->load(dir);
 	return seg;
 }

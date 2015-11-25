@@ -5,38 +5,71 @@
 #include "data_index.hpp"
 #include "data_store.hpp"
 #include <nark/util/sortable_strvec.hpp>
+#include <tbb/queuing_rw_mutex.h>
 
 namespace nark {
 
+class NARK_DB_DLL SegmentSchema {
+public:
+	SchemaPtr     m_rowSchema;
+	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
+	SchemaSetPtr  m_indexSchemaSet;
+
+	SegmentSchema();
+	~SegmentSchema();
+
+	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
+	const Schema& getTableSchema() const { return *m_rowSchema; }
+	const size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
+	size_t columnNum() const { return m_rowSchema->columnNum(); }
+
+	void copySchema(const SegmentSchema& y);
+	const SegmentSchema& segSchema() const { return *this; }
+
+protected:
+	void compileSchema();
+};
+
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
-class NARK_DB_DLL ReadableSegment : public ReadableStore {
+class NARK_DB_DLL ReadableSegment : public ReadableStore, public SegmentSchema {
 public:
+	ReadableSegment();
 	~ReadableSegment();
 	virtual ReadableIndexPtr getReadableIndex(size_t indexId) const = 0;
-//	virtual const openIndex
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
 	void save(fstring) const override;
 	void load(fstring) override;
 
-	febitvec      m_isDel;
-	SchemaPtr     m_rowSchema;
-	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
-	SchemaSetPtr  m_indexSchemaSet;
-	byte* m_isDelMmap = nullptr;
+	void deleteSegment();
+
+	size_t      m_delcnt;
+	febitvec    m_isDel;
+	byte*       m_isDelMmap = nullptr;
+	std::string m_segDir;
+	bool        m_tobeDel;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
+
+struct ReadonlyStoreContext : public BaseContext {
+	ReadonlyStoreContext();
+	~ReadonlyStoreContext();
+	valvec<byte> buf1;
+	valvec<byte> buf2;
+	valvec<byte> key1;
+	valvec<byte> key2;
+	valvec<size_t> offsets;
+	valvec<fstring> cols1;
+	valvec<fstring> cols2;
+};
+typedef boost::intrusive_ptr<ReadonlyStoreContext> ReadonlyStoreContextPtr;
 
 class NARK_DB_DLL ReadonlySegment : public ReadableSegment {
 public:
 	ReadonlySegment();
 	~ReadonlySegment();
-
-	struct ReadonlyStoreContext : public BaseContext {
-		valvec<byte> buf;
-	};
 
 	void save(fstring) const override;
 	void load(fstring) override;
@@ -54,16 +87,16 @@ public:
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
 
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 
 	void mergeFrom(const valvec<const ReadonlySegment*>& input);
-	void convFrom(const ReadableSegment& input, const Schema& schema);
+	void convFrom(const ReadableSegment& input, tbb::queuing_rw_mutex&);
 
 	void getValueImpl(size_t partIdx, size_t id, llong subId,
-					  valvec<byte>* val, valvec<byte>* buf) const;
+					  valvec<byte>* val, ReadonlyStoreContext*) const;
 
 protected:
 	virtual ReadableIndexStorePtr
@@ -93,6 +126,9 @@ public:
 // should implment PlainWritableSegment or SmartWritableSegment
 class NARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
 public:
+	WritableSegment();
+	~WritableSegment();
+
 	WritableStore* getWritableStore() override;
 	ReadableIndexPtr getReadableIndex(size_t nth) const override;
 
@@ -102,6 +138,7 @@ public:
 	// Index can use different implementation for different
 	// index schema and index content features
 	virtual WritableIndexPtr openIndex(fstring path, SchemaPtr) const = 0;
+	virtual WritableIndexPtr createIndex(fstring path, SchemaPtr) const = 0;
 
 	valvec<WritableIndexPtr> m_indices;
 	valvec<uint32_t>  m_deletedWrIdSet;
@@ -129,7 +166,7 @@ public:
 protected:
 	~SmartWritableSegment();
 
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr&)
+	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&)
 	const override final;
 
 	StoreIteratorPtr createStoreIter() const override;

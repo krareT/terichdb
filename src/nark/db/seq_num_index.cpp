@@ -158,7 +158,9 @@ template<class Int>
 llong SeqNumIndex<Int>::numDataRows() const { return m_cnt; }
 
 template<class Int>
-void SeqNumIndex<Int>::getValue(llong id, valvec<byte>* val, BaseContextPtr&) const {
+void SeqNumIndex<Int>::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const {
+	Int keyAsVal = Int(this->m_min + id);
+	val->append((byte*)&keyAsVal, sizeof(Int));
 }
 
 template<class Int>

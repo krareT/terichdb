@@ -18,8 +18,8 @@ public:
 	valvec<byte> row2;
 	valvec<byte> key1;
 	valvec<byte> key2;
-	valvec<ColumnData> cols1;
-	valvec<ColumnData> cols2;
+	valvec<fstring> cols1;
+	valvec<fstring> cols2;
 	valvec<BaseContextPtr> wrIndexContext;
 	BaseContextPtr wrStoreContext;
 	BaseContextPtr readonlyContext;
@@ -27,7 +27,7 @@ public:
 typedef boost::intrusive_ptr<TableContext> TableContextPtr;
 
 // is not a WritableStore
-class NARK_DB_DLL CompositeTable : public ReadableStore {
+class NARK_DB_DLL CompositeTable : public ReadableStore, public SegmentSchema {
 	class MyStoreIterator;
 	friend class MyStoreIterator;
 public:
@@ -46,7 +46,7 @@ public:
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
 
 	llong insertRow(fstring row, bool syncIndex, BaseContextPtr&);
 	llong replaceRow(llong id, fstring row, bool syncIndex, BaseContextPtr&);
@@ -59,18 +59,13 @@ public:
 	IndexIteratorPtr createIndexIter(size_t indexId) const;
 	IndexIteratorPtr createIndexIter(fstring indexCols) const;
 
-	void getIndexKey(size_t indexId, const valvec<ColumnData>& row, valvec<byte>* key) const;
 	bool compact();
 
 	std::string toJsonStr(fstring row) const;
 
-	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
-	const Schema& getTableSchema() const { return *m_rowSchema; }
-	const size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
-	size_t columnNum() const { return m_rowSchema->columnNum(); }
+	size_t getSegNum () const { return m_segments.size(); }
 
 protected:
-	void compileSchema();
 
 	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
 	llong insertRowImpl(fstring row, bool syncIndex,
@@ -86,12 +81,11 @@ protected:
 	void loadMetaJson(fstring dir);
 	void saveMetaJson(fstring dir) const;
 
-	virtual ReadonlySegmentPtr createReadonlySegment() const = 0;
+	virtual ReadonlySegmentPtr createReadonlySegment(fstring segDir) const = 0;
 	virtual WritableSegmentPtr createWritableSegment(fstring segDir) const = 0;
 	virtual WritableSegmentPtr openWritableSegment(fstring segDir) const = 0;
 
-	WritableSegmentPtr
-	myCreateWritableSegment(size_t segIdx, class AutoGrownMemIO& buf) const;
+	ReadonlySegmentPtr myCreateReadonlySegment(fstring segDir) const;
 	WritableSegmentPtr myCreateWritableSegment(fstring segDir) const;
 
 protected:
@@ -103,10 +97,6 @@ protected:
 
 	// constant once constructed
 	std::string m_dir;
-	SchemaPtr m_rowSchema; // full-row schema
-	SchemaPtr m_nonIndexRowSchema;
-	SchemaSetPtr m_indexSchemaSet;
-	basic_fstrvec<unsigned> m_indexProjects;
 	llong m_readonlyDataMemSize;
 	llong m_maxWrSegSize;
 	friend class TableIndexIter;

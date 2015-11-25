@@ -46,90 +46,29 @@ ColumnMeta::ColumnMeta(ColumnType t, SortOrder ord) {
 	}
 }
 
-ColumnData::ColumnData(const ColumnMeta& meta, fstring row) {
-#define CHECK_DATA_SIZE(len) \
-	if (len != row.size()) { \
-		THROW_STD(out_of_range, "len=%ld dsize=%ld", \
-			long(len), long(row.size())); \
-	}
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	this->p = row.p;
-	this->n = row.n;
-	this->type = meta.type;
-	switch (meta.type) {
-	default:
-		THROW_STD(runtime_error, "Invalid data row");
-		break;
-	case ColumnType::Uint08:
-	case ColumnType::Sint08:
-		CHECK_DATA_SIZE(1);
-		break;
-	case ColumnType::Uint16:
-	case ColumnType::Sint16:
-		CHECK_DATA_SIZE(2);
-		break;
-	case ColumnType::Uint32:
-	case ColumnType::Sint32:
-		CHECK_DATA_SIZE(4);
-		break;
-	case ColumnType::Uint64:
-	case ColumnType::Sint64:
-		CHECK_DATA_SIZE(8);
-		break;
-	case ColumnType::Uint128:
-	case ColumnType::Sint128:
-		CHECK_DATA_SIZE(16);
-		break;
-	case ColumnType::Float32:
-		CHECK_DATA_SIZE(4);
-		break;
-	case ColumnType::Float64:
-		CHECK_DATA_SIZE(8);
-		break;
-	case ColumnType::Float128:
-	case ColumnType::Uuid:    // 16 bytes(128 bits) binary
-		CHECK_DATA_SIZE(16);
-		break;
-	case ColumnType::Fixed:   // Fixed length binary
-		CHECK_DATA_SIZE(meta.fixedLen);
-		break;
-	// has no OOB(out of bound) data when a schema has just one column
-	case ColumnType::StrZero: // Zero ended string
-		// easy in: zero ending is optional
-		this->n = strnlen(row.p, row.n);
-		if (this->n == row.n-1 || this->n == row.n) {
-			this->postLen = row.n - this->n;
-		} else {
-			THROW_STD(out_of_range, "type=StrZero, strnlen=%ld dsize=%ld",
-				long(this->n), long(row.n));
-		}
-		break;
-	case ColumnType::StrUtf8: // Has no length prefix
-	case ColumnType::Binary:  // Has no length prefix
-		// do nothing
-		break;
-	}
-}
-
 /////////////////////////////////////////////////////////////////////////////
 
 Schema::Schema() {
 	m_fixedLen = size_t(-1);
+	m_parent = nullptr;
 }
 Schema::~Schema() {
 }
 
-void Schema::compile() {
+void Schema::compile(const Schema* parent) {
 	m_fixedLen = computeFixedRowLen();
+	if (parent) {
+		compileProject(parent);
+	}
 }
 
-void Schema::parseRow(fstring row, valvec<ColumnData>* columns) const {
+void Schema::parseRow(fstring row, valvec<fstring>* columns) const {
 	assert(size_t(-1) != m_fixedLen);
 	columns->resize(0);
 	parseRowAppend(row, columns);
 }
 
-void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
+void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 	assert(size_t(-1) != m_fixedLen);
 	const byte* curr = row.udata();
 	const byte* last = row.size() + curr;
@@ -143,7 +82,7 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
-		ColumnData coldata(colmeta.type);
+		fstring coldata;
 		coldata.p = (const char*)curr;
 		switch (colmeta.type) {
 		default:
@@ -204,7 +143,6 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 			coldata.n = strnlen((const char*)curr, last - curr);
 			if (i < colnum - 1) {
 				CHECK_CURR_LAST(coldata.n + 1);
-				coldata.postLen = 1;
 				curr += coldata.n + 1;
 			}
 			else { // the last column
@@ -213,7 +151,6 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 					THROW_STD(invalid_argument,
 						"'\0' in StrZero is not at string end");
 				}
-				coldata.postLen = last - curr - coldata.n;
 			}
 			break;
 		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
@@ -222,7 +159,6 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 				const byte* next = nullptr;
 				coldata.n = load_var_uint64(curr, &next);
 				coldata.p = (const char*)next;
-				coldata.preLen = next - curr; // length of var_uint
 				CHECK_CURR_LAST3(next, last, coldata.n);
 				curr = next + coldata.n;
 			}
@@ -232,6 +168,177 @@ void Schema::parseRowAppend(fstring row, valvec<ColumnData>* columns) const {
 			break;
 		}
 		columns->push_back(coldata);
+	}
+}
+
+void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const {
+	assert(size_t(-1) != m_fixedLen);
+	assert(myCols.size() == m_columnsMeta.end_i());
+	myRowData->erase_all();
+	size_t colnum = m_columnsMeta.end_i();
+	for (size_t i = 0; i < colnum; ++i) {
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
+		const fstring& coldata = myCols[i];
+		switch (colmeta.type) {
+		default:
+			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Uint08:
+		case ColumnType::Sint08:
+			assert(1 == coldata.size());
+			myRowData->push_back(coldata[0]);
+			break;
+		case ColumnType::Uint16:
+		case ColumnType::Sint16:
+			assert(2 == coldata.size());
+			myRowData->append(coldata.udata(), 2);
+			break;
+		case ColumnType::Uint32:
+		case ColumnType::Sint32:
+			assert(4 == coldata.size());
+			myRowData->append(coldata.udata(), 4);
+			break;
+		case ColumnType::Uint64:
+		case ColumnType::Sint64:
+			assert(8 == coldata.size());
+			myRowData->append(coldata.udata(), 8);
+			break;
+		case ColumnType::Uint128:
+		case ColumnType::Sint128:
+			assert(16 == coldata.size());
+			myRowData->append(coldata.udata(), 16);
+			break;
+		case ColumnType::Float32:
+			assert(4 == coldata.size());
+			myRowData->append(coldata.udata(), 4);
+			break;
+		case ColumnType::Float64:
+			assert(8 == coldata.size());
+			myRowData->append(coldata.udata(), 8);
+			break;
+		case ColumnType::Float128:
+		case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+			assert(16 == coldata.size());
+			myRowData->append(coldata.udata(), 16);
+			break;
+		case ColumnType::Fixed:   // Fixed length binary
+			assert(colmeta.fixedLen == coldata.size());
+			myRowData->append(coldata.udata(), colmeta.fixedLen);
+			break;
+		case ColumnType::StrZero: // Zero ended string
+			myRowData->append(coldata.udata(), coldata.size());
+			if (i < colnum - 1) {
+				myRowData->push_back('\0');
+			}
+			break;
+		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+			if (i < colnum - 1) {
+				size_t oldsize = myRowData->size();
+				myRowData->resize_no_init(oldsize + 10);
+				byte* p1 = myRowData->data() + oldsize;
+				byte* p2 = save_var_uint32(p1, uint32_t(coldata.size()));
+				myRowData->risk_set_size(oldsize + (p2 - p1));
+			}
+			myRowData->append(coldata.data(), coldata.size());
+			break;
+		}
+	}
+}
+
+void Schema::selectParent(fstring parentRowData, valvec<byte>* myRowData) const {
+	assert(nullptr != m_parent);
+	assert(m_proj.size() == m_columnsMeta.end_i());
+	assert(0);
+}
+
+void Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const {
+	assert(nullptr != m_parent);
+	assert(m_proj.size() == m_columnsMeta.end_i());
+	assert(m_parent->columnNum() == parentCols.size());
+	myRowData->erase_all();
+	size_t colnum = m_proj.size();
+	for(size_t i = 0; i < colnum; ++i) {
+		size_t j = m_proj[i];
+		assert(j < parentCols.size());
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
+		const fstring& coldata = parentCols[j];
+		switch (colmeta.type) {
+		default:
+			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Uint08:
+		case ColumnType::Sint08:
+			assert(1 == coldata.size());
+			myRowData->push_back(coldata[0]);
+			break;
+		case ColumnType::Uint16:
+		case ColumnType::Sint16:
+			assert(2 == coldata.size());
+			myRowData->append(coldata.udata(), 2);
+			break;
+		case ColumnType::Uint32:
+		case ColumnType::Sint32:
+			assert(4 == coldata.size());
+			myRowData->append(coldata.udata(), 4);
+			break;
+		case ColumnType::Uint64:
+		case ColumnType::Sint64:
+			assert(8 == coldata.size());
+			myRowData->append(coldata.udata(), 8);
+			break;
+		case ColumnType::Uint128:
+		case ColumnType::Sint128:
+			assert(16 == coldata.size());
+			myRowData->append(coldata.udata(), 16);
+			break;
+		case ColumnType::Float32:
+			assert(4 == coldata.size());
+			myRowData->append(coldata.udata(), 4);
+			break;
+		case ColumnType::Float64:
+			assert(8 == coldata.size());
+			myRowData->append(coldata.udata(), 8);
+			break;
+		case ColumnType::Float128:
+		case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+			assert(16 == coldata.size());
+			myRowData->append(coldata.udata(), 16);
+			break;
+		case ColumnType::Fixed:   // Fixed length binary
+			assert(colmeta.fixedLen == coldata.size());
+			myRowData->append(coldata.udata(), colmeta.fixedLen);
+			break;
+		case ColumnType::StrZero: // Zero ended string
+			myRowData->append(coldata.udata(), coldata.size());
+			if (i < colnum - 1) {
+				myRowData->push_back('\0');
+			}
+			break;
+		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+			if (i < colnum - 1) {
+				size_t oldsize = myRowData->size();
+				myRowData->resize_no_init(oldsize + 10);
+				byte* p1 = myRowData->data() + oldsize;
+				byte* p2 = save_var_uint32(p1, uint32_t(coldata.size()));
+				myRowData->risk_set_size(oldsize + (p2 - p1));
+			}
+			myRowData->append(coldata.data(), coldata.size());
+			break;
+		}
+	}
+}
+
+void Schema::selectParent(const valvec<fstring>& parentCols, valvec<fstring>* myCols) const {
+	assert(nullptr != m_parent);
+	assert(m_proj.size() == m_columnsMeta.end_i());
+	assert(m_parent->columnNum() == parentCols.size());
+	myCols->erase_all();
+	for(size_t i = 0; i < m_proj.size(); ++i) {
+		size_t j = m_proj[i];
+		assert(j < parentCols.size());
+		myCols->push_back(parentCols[j]);
 	}
 }
 
@@ -398,6 +505,23 @@ const ColumnMeta& Schema::getColumnMeta(size_t columnId) const {
 			, long(columnId), long(m_columnsMeta.end_i()));
 	}
 	return m_columnsMeta.val(columnId);
+}
+
+void Schema::compileProject(const Schema* parent) {
+	size_t myColsNum = m_columnsMeta.end_i();
+	size_t parentColsNum = parent->m_columnsMeta.end_i();
+	m_parent = parent;
+	m_proj.resize_no_init(myColsNum);
+	for (size_t i = 0; i < myColsNum; ++i) {
+		fstring colname = m_columnsMeta.key(i);
+		size_t j = parent->m_columnsMeta.find_i(colname);
+		if (nark_unlikely(j >= parentColsNum)) {
+			THROW_STD(invalid_argument,
+				"colname=%s is not in parent schema.cols=%s",
+				colname.c_str(), parent->joinColumnNames(',').c_str());
+		}
+		m_proj[i] = j;
+	}
 }
 
 size_t Schema::computeFixedRowLen() const {
@@ -578,7 +702,7 @@ int Schema::compareData(fstring x, fstring y) const {
 		case ColumnType::StrZero: // Zero ended string
 			{
 				size_t xn = strnlen((const char*)xcurr, xlast - xcurr);
-				size_t yn = strnlen((const char*)ycurr, ylast - xcurr);
+				size_t yn = strnlen((const char*)ycurr, ylast - ycurr);
 				if (i < colnum - 1) {
 					CHECK_CURR_LAST3(xcurr, xlast, xn + 1);
 					CHECK_CURR_LAST3(ycurr, ylast, yn + 1);
@@ -668,7 +792,8 @@ int Schema::QsortCompareByIndex(const void* x, const void* y, const void* ctx) {
 // m_keepColumn is used to select the using concated columns
 // if m_keepColumn[i] is true, then columns[i] should be keeped
 // if all columns of an index are not keeped, m_keepSchema[x] is false.
-void SchemaSet::compileSchemaSet() {
+void SchemaSet::compileSchemaSet(const Schema* parent) {
+	assert(nullptr != parent);
 	size_t numBits = 0;
 	for (size_t i = 0; i < m_nested.end_i(); ++i) {
 		const Schema* sc = m_nested.elem_at(i).get();
@@ -694,12 +819,9 @@ void SchemaSet::compileSchemaSet() {
 			m_keepSchema.set0(i);
 		}
 	}
-}
-
-void SchemaSet::parseNested(const valvec<fstring>& nested, valvec<ColumnData>* flatten)
-const {
-	flatten->resize(0);
-
+	for (size_t i = 0; i < m_nested.end_i(); ++i) {
+		m_nested.elem_at(i)->compile(parent);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

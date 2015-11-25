@@ -7,15 +7,19 @@
 namespace nark {
 
 class NARK_DB_DLL MockReadonlyStore : public ReadableStore {
+	size_t    m_fixedLen;
+	SchemaPtr m_schema;
 public:
 	fstrvec m_rows;
+
+	void build(SchemaPtr schema, SortableStrVec& storeData);
 
 	void save(fstring) const override;
 	void load(fstring) override;
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const;
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 };
@@ -41,7 +45,7 @@ public:
 	BaseContextPtr createStoreContext() const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
-	void getValue(llong id, valvec<byte>* key, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* key, BaseContextPtr&) const override;
 
 	IndexIteratorPtr createIndexIter() const override;
 	llong numIndexRows() const override;
@@ -59,7 +63,7 @@ public:
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 
@@ -108,17 +112,17 @@ public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
 
-	MockWritableSegment();
+	MockWritableSegment(fstring dir);
 	~MockWritableSegment();
 
-	WritableIndexPtr createWritableIndex(SchemaPtr) const;
+	WritableIndexPtr createIndex(fstring path, SchemaPtr) const override;
 
 protected:
 	void save(fstring) const override;
 	void load(fstring) override;
 	WritableIndexPtr openIndex(fstring, SchemaPtr) const override;
 	llong dataStorageSize() const override;
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
 	StoreIteratorPtr createStoreIter() const override;
 	BaseContextPtr createStoreContext() const override;
 	llong totalStorageSize() const override;
@@ -130,9 +134,9 @@ protected:
 
 class NARK_DB_DLL MockCompositeTable : public CompositeTable {
 public:
-	ReadonlySegmentPtr createReadonlySegment() const override;
-	WritableSegmentPtr createWritableSegment(fstring dirBaseName) const override;
-	WritableSegmentPtr openWritableSegment(fstring dirBaseName) const override;
+	ReadonlySegmentPtr createReadonlySegment(fstring dir) const override;
+	WritableSegmentPtr createWritableSegment(fstring dir) const override;
+	WritableSegmentPtr openWritableSegment(fstring dir) const override;
 };
 
 } // namespace nark

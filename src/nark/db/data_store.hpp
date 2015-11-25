@@ -20,7 +20,7 @@ protected:
 	ReadableStorePtr m_store;
 public:
 	virtual ~StoreIterator();
-	virtual bool increment(llong* idKey, valvec<byte>* val) = 0;
+	virtual bool increment(llong* id, valvec<byte>* val) = 0;
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
@@ -28,10 +28,15 @@ class NARK_DB_DLL ReadableStore : virtual public Permanentable {
 public:
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
-	virtual void getValue(llong id, valvec<byte>* val, BaseContextPtr&) const = 0;
+	virtual void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const = 0;
 	virtual StoreIteratorPtr createStoreIter() const = 0;
 	virtual BaseContextPtr createStoreContext() const = 0;
 	virtual class WritableStore* getWritableStore();
+
+	void getValue(llong id, valvec<byte>* val, BaseContextPtr& ctx) const {
+		val->risk_set_size(0);
+		getValueAppend(id, val, ctx);
+	}
 };
 
 class NARK_DB_DLL WritableStore {

@@ -6,7 +6,7 @@
 #include <nark/gold_hash_map.hpp>
 #include <nark/bitmap.hpp>
 #include <nark/pass_by_value.hpp>
-//#include <nark/util/fstrvec.hpp>
+#include <nark/util/fstrvec.hpp>
 #include <nark/util/refcount.hpp>
 #include <boost/intrusive_ptr.hpp>
 
@@ -84,26 +84,28 @@ namespace nark {
 		ColumnMeta();
 		explicit ColumnMeta(ColumnType, SortOrder ord = SortOrder::UnOrdered);
 	};
-	struct NARK_DB_DLL ColumnData : fstring {
-		ColumnType type;
-		unsigned char preLen = 0;
-		unsigned char postLen = 0;
-		size_t all_size() const { return fstring::n + preLen + postLen; }
-		const char* all_data() const { return fstring::p - preLen; }
-		ColumnData() : type(ColumnType::Binary) {}
-		explicit ColumnData(ColumnType t) : type(t) {}
-		ColumnData(const ColumnMeta& meta, fstring row);
-		const fstring& fstr() const { return *this; }
-	};
 
 	class NARK_DB_DLL Schema : public RefCounter {
+		friend class SchemaSet;
 	public:
 		Schema();
 		~Schema();
-		void compile();
+		void compile(const Schema* parent = nullptr);
 
-		void parseRow(fstring row, valvec<ColumnData>* columns) const;
-		void parseRowAppend(fstring row, valvec<ColumnData>* columns) const;
+		void parseRow(fstring row, valvec<fstring>* columns) const;
+		void parseRowAppend(fstring row, valvec<fstring>* columns) const;
+
+		void combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const;
+
+		void selectParent(fstring parentRowData, valvec<byte>* myRowData) const;
+		void selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const;
+		void selectParent(const valvec<fstring>& parentCols, valvec<fstring>* myCols) const;
+
+		size_t parentColumnId(size_t myColumnId) const {
+			assert(m_proj.size() == m_columnsMeta.end_i());
+			assert(myColumnId < m_proj.size());
+			return m_proj[myColumnId];
+		}
 
 		std::string toJsonStr(fstring row) const;
 
@@ -118,7 +120,7 @@ namespace nark {
 		static ColumnType parseColumnType(fstring str);
 		static const char* columnTypeStr(ColumnType);
 
-		std::string joinColumnNames(char delim) const;
+		std::string joinColumnNames(char delim = ',') const;
 
 		int compareData(fstring x, fstring y) const;
 
@@ -134,9 +136,21 @@ namespace nark {
 		hash_strmap<ColumnMeta> m_columnsMeta;
 
 	protected:
+		void compileProject(const Schema* parent);
 		size_t computeFixedRowLen() const; // return 0 if RowLen is not fixed
+
 	protected:
 		size_t m_fixedLen;
+	/*
+	// Backlog: select from multiple tables
+		struct ColumnLink {
+			const Schema* parent;
+			size_t        proj; // column[i] is from parent->column[proj[i]]
+		};
+		valvec<ColumnLink> m_columnsLink;
+	*/
+		const Schema*    m_parent;
+		valvec<unsigned> m_proj;
 
 	public:
 		// Helpers for define & serializing object
@@ -208,8 +222,7 @@ namespace nark {
 		gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
 		febitvec m_keepColumn;
 		febitvec m_keepSchema;
-		void compileSchemaSet();
-		void parseNested(const valvec<fstring>& nested, valvec<ColumnData>* flatten) const;
+		void compileSchemaSet(const Schema* parent);
 	};
 	typedef boost::intrusive_ptr<SchemaSet> SchemaSetPtr;
 
