@@ -3,7 +3,7 @@
 
 #include "data_index.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 // SeqNumIndex can be used as a primary key of Id
 template<class Int>
@@ -16,23 +16,21 @@ public:
 	SeqNumIndex(Int min, Int cnt);
 	~SeqNumIndex();
 
-	IndexIteratorPtr createIndexIter() const override;
-	BaseContextPtr createIndexContext() const override;
+	IndexIteratorPtr createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 
-	size_t remove(fstring key, llong id, BaseContextPtr&) override;
-	size_t insert(fstring key, llong id, BaseContextPtr&) override;
-	size_t replace(fstring key, llong id, llong newId, BaseContextPtr&) override;
+	size_t remove(fstring key, llong id, DbContext*) override;
+	size_t insert(fstring key, llong id, DbContext*) override;
+	size_t replace(fstring key, llong id, llong newId, DbContext*) override;
 	void flush() override;
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
-	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
-	StoreIteratorPtr createStoreIter() const override;
-	BaseContextPtr createStoreContext() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
 };
 
-} // namespace nark
+} } // namespace nark::db
 
 #endif // __nark_db_seq_num_index_hpp__

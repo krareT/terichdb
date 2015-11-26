@@ -1,6 +1,6 @@
 #include "seq_num_index.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 template<class Int>
 class SeqNumIndex<Int>::MyIndexIter : public IndexIterator {
@@ -92,11 +92,7 @@ SeqNumIndex<Int>::~SeqNumIndex() { }
 
 template<class Int>
 IndexIteratorPtr
-SeqNumIndex<Int>::createIndexIter() const { return nullptr; }
-
-template<class Int>
-BaseContextPtr
-SeqNumIndex<Int>::createIndexContext() const { return nullptr; }
+SeqNumIndex<Int>::createIndexIter(DbContext*) const { return nullptr; }
 
 template<class Int>
 llong SeqNumIndex<Int>::numIndexRows() const { return m_cnt; }
@@ -105,13 +101,13 @@ template<class Int>
 llong SeqNumIndex<Int>::indexStorageSize() const { return 2 * sizeof(llong); }
 
 template<class Int>
-size_t SeqNumIndex<Int>::remove(fstring key, llong id, BaseContextPtr&) {
+size_t SeqNumIndex<Int>::remove(fstring key, llong id, DbContext*) {
 	// do nothing
 	return 0;
 }
 
 template<class Int>
-size_t SeqNumIndex<Int>::insert(fstring key, llong id, BaseContextPtr&) {
+size_t SeqNumIndex<Int>::insert(fstring key, llong id, DbContext*) {
 	assert(key.size() == sizeof(Int));
 	assert(id >= 0);
 	if (key.size() != sizeof(Int)) {
@@ -129,7 +125,7 @@ size_t SeqNumIndex<Int>::insert(fstring key, llong id, BaseContextPtr&) {
 	return 1;
 }
 template<class Int>
-size_t SeqNumIndex<Int>::replace(fstring key, llong id, llong newId, BaseContextPtr&) {
+size_t SeqNumIndex<Int>::replace(fstring key, llong id, llong newId, DbContext*) {
 	assert(key.size() == sizeof(Int));
 	assert(id >= 0);
 	assert(id == newId);
@@ -158,17 +154,13 @@ template<class Int>
 llong SeqNumIndex<Int>::numDataRows() const { return m_cnt; }
 
 template<class Int>
-void SeqNumIndex<Int>::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const {
+void SeqNumIndex<Int>::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
 	Int keyAsVal = Int(this->m_min + id);
 	val->append((byte*)&keyAsVal, sizeof(Int));
 }
 
 template<class Int>
-StoreIteratorPtr SeqNumIndex<Int>::createStoreIter() const {
-	return nullptr;
-}
-template<class Int>
-BaseContextPtr SeqNumIndex<Int>::createStoreContext() const {
+StoreIteratorPtr SeqNumIndex<Int>::createStoreIter(DbContext*) const {
 	return nullptr;
 }
 
@@ -178,4 +170,4 @@ template class SeqNumIndex<uint64_t>;
 template class SeqNumIndex<int32_t>;
 template class SeqNumIndex<int64_t>;
 
-} // namespace nark
+} } // namespace nark::db

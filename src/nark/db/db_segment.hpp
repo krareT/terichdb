@@ -7,7 +7,7 @@
 #include <nark/util/sortable_strvec.hpp>
 #include <tbb/queuing_rw_mutex.h>
 
-namespace nark {
+namespace nark { namespace db {
 
 class NARK_DB_DLL SegmentSchema {
 public:
@@ -53,19 +53,6 @@ public:
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
-struct ReadonlyStoreContext : public BaseContext {
-	ReadonlyStoreContext();
-	~ReadonlyStoreContext();
-	valvec<byte> buf1;
-	valvec<byte> buf2;
-	valvec<byte> key1;
-	valvec<byte> key2;
-	valvec<size_t> offsets;
-	valvec<fstring> cols1;
-	valvec<fstring> cols2;
-};
-typedef boost::intrusive_ptr<ReadonlyStoreContext> ReadonlyStoreContextPtr;
-
 class NARK_DB_DLL ReadonlySegment : public ReadableSegment {
 public:
 	ReadonlySegment();
@@ -87,16 +74,15 @@ public:
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
-	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
-	StoreIteratorPtr createStoreIter() const override;
-	BaseContextPtr createStoreContext() const override;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
 
-	void mergeFrom(const valvec<const ReadonlySegment*>& input);
-	void convFrom(const ReadableSegment& input, tbb::queuing_rw_mutex&);
+	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
+	void convFrom(const ReadableSegment& input, DbContext* ctx);
 
 	void getValueImpl(size_t partIdx, size_t id, llong subId,
-					  valvec<byte>* val, ReadonlyStoreContext*) const;
+					  valvec<byte>* val, DbContext*) const;
 
 protected:
 	virtual ReadableIndexStorePtr
@@ -107,7 +93,7 @@ protected:
 
 protected:
 	class MyStoreIterator;
-	valvec<llong> m_rowNumVec;  // prallel with m_parts
+	valvec<llong> m_rowNumVec;  // parallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 	valvec<ReadableIndexStorePtr> m_indices; // parallel with m_indexSchemaSet
 	llong  m_dataMemSize;
@@ -116,14 +102,8 @@ protected:
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
-class NARK_DB_DLL WrSegContext : public BaseContext {
-public:
-	WrSegContext();
-	~WrSegContext();
-};
-
 // Concrete WritableSegment should not implement this class,
-// should implment PlainWritableSegment or SmartWritableSegment
+// should implement PlainWritableSegment or SmartWritableSegment
 class NARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
 public:
 	WritableSegment();
@@ -156,20 +136,16 @@ protected:
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
-class NARK_DB_DLL SmartWrSegContext : public WrSegContext {
-public:
-	valvec<byte> buf;
-};
 // Every index is a WritableIndexStore
 class NARK_DB_DLL SmartWritableSegment : public WritableSegment {
 public:
 protected:
 	~SmartWritableSegment();
 
-	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&)
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*)
 	const override final;
 
-	StoreIteratorPtr createStoreIter() const override;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
 
 	void save(fstring) const override;
 	void load(fstring) override;
@@ -182,6 +158,6 @@ protected:
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
-} // namespace nark
+} } // namespace nark::db
 
 #endif // __nark_db_segment_hpp__

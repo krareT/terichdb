@@ -15,17 +15,9 @@
 
 #include "json.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 namespace fs = boost::filesystem;
-
-TableContext::TableContext() {
-}
-
-TableContext::~TableContext() {
-//	std::map<int,int> a;
-//	a.emplace();
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -349,17 +341,19 @@ void CompositeTable::saveMetaJson(fstring dir) const {
 
 class CompositeTable::MyStoreIterator : public StoreIterator {
 	size_t  m_segIdx = 0;
+	DbContextPtr m_ctx;
 	StoreIteratorPtr m_curSegIter;
 public:
-	explicit MyStoreIterator(const CompositeTable* tab) {
+	explicit MyStoreIterator(const CompositeTable* tab, DbContext* ctx) {
 		this->m_store.reset(const_cast<CompositeTable*>(tab));
+		this->m_ctx.reset(ctx);
 		{
 		// MyStoreIterator creation is rarely used, lock it by m_rwMutex
 			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, true);
 			tab->m_tableScanningRefCount++;
 			lock.downgrade_to_reader();
 			assert(tab->m_segments.size() > 0);
-			m_curSegIter = tab->m_segments[0]->createStoreIter();
+			m_curSegIter = tab->m_segments[0]->createStoreIter(m_ctx.get());
 		}
 	}
 	~MyStoreIterator() {
@@ -400,7 +394,7 @@ public:
 			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
 			if (m_segIdx < tab->m_segments.size()-1) {
 				m_segIdx++;
-				tab->m_segments[m_segIdx]->createStoreIter().swap(m_curSegIter);
+				tab->m_segments[m_segIdx]->createStoreIter(&*m_ctx).swap(m_curSegIter);
 				bool ret = m_curSegIter->increment(subId, val);
 				return ret;
 			}
@@ -410,25 +404,10 @@ public:
 	}
 };
 
-StoreIteratorPtr CompositeTable::createStoreIter() const {
+StoreIteratorPtr CompositeTable::createStoreIter(DbContext* ctx) const {
 	assert(m_rowSchema);
 	assert(m_indexSchemaSet);
-	return new MyStoreIterator(this);
-}
-
-BaseContextPtr CompositeTable::createStoreContext() const {
-	assert(m_rowSchema);
-	assert(m_indexSchemaSet);
-	assert(m_wrSeg);
-	TableContextPtr ctx(new TableContext());
-	size_t indexNum = this->getIndexNum();
-	ctx->wrIndexContext.resize(indexNum);
-	for (size_t i = 0; i < indexNum; ++i) {
-		ctx->wrIndexContext[i] = m_wrSeg->m_indices[i]->createIndexContext();
-	}
-	ctx->wrStoreContext = m_wrSeg->createStoreContext();
-	ctx->readonlyContext.reset(new ReadonlyStoreContext());
-	return ctx;
+	return new MyStoreIterator(this, ctx);
 }
 
 llong CompositeTable::totalStorageSize() const {
@@ -453,20 +432,15 @@ llong CompositeTable::dataStorageSize() const {
 }
 
 void
-CompositeTable::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr& txn)
+CompositeTable::getValueAppend(llong id, valvec<byte>* val, DbContext* txn)
 const {
-	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
-	TableContext& ttx = static_cast<TableContext&>(*txn);
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size() + 1);
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	auto seg = m_segments[j-1].get();
-	if (seg->getWritableStore())
-		seg->getValueAppend(subId, val, ttx.wrStoreContext);
-	else
-		seg->getValueAppend(subId, val, ttx.readonlyContext);
+	seg->getValueAppend(subId, val, txn);
 }
 
 void
@@ -526,7 +500,7 @@ CompositeTable::myCreateWritableSegment(fstring segDir) const {
 }
 
 llong
-CompositeTable::insertRow(fstring row, bool syncIndex, BaseContextPtr& txn) {
+CompositeTable::insertRow(fstring row, bool syncIndex, DbContext* txn) {
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	return insertRowImpl(row, syncIndex, txn, lock);
@@ -534,14 +508,12 @@ CompositeTable::insertRow(fstring row, bool syncIndex, BaseContextPtr& txn) {
 
 llong
 CompositeTable::insertRowImpl(fstring row, bool syncIndex,
-							  BaseContextPtr& txn,
+							  DbContext* txn,
 							  tbb::queuing_rw_mutex::scoped_lock& lock)
 {
 	maybeCreateNewSegment(lock);
-	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
-	TableContext& ttx = static_cast<TableContext&>(*txn);
 	if (syncIndex) {
-		m_rowSchema->parseRow(row, &ttx.cols1);
+		m_rowSchema->parseRow(row, &txn->cols1);
 	}
 	lock.upgrade_to_writer();
 	llong subId;
@@ -554,7 +526,7 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 	}
 	else {
 		subId = m_wrSeg->m_deletedWrIdSet.pop_val();
-		m_wrSeg->replace(subId, row, ttx.wrStoreContext);
+		m_wrSeg->replace(subId, row, txn);
 		m_wrSeg->m_isDel.set0(subId);
 		m_wrSeg->m_delcnt--;
 	}
@@ -563,8 +535,8 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 		for (size_t i = 0; i < indexNum; ++i) {
 			auto wrIndex = m_wrSeg->m_indices[i].get();
 			const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
-			iSchema.selectParent(ttx.cols1, &ttx.key1);
-			wrIndex->insert(ttx.key1, subId, ttx.wrIndexContext[i]);
+			iSchema.selectParent(txn->cols1, &txn->key1);
+			wrIndex->insert(txn->key1, subId, txn);
 		}
 	}
 	llong id = wrBaseId + subId;
@@ -573,10 +545,8 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 
 llong
 CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
-						   BaseContextPtr& txn)
+						   DbContext* txn)
 {
-	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
-	TableContext& ttx = static_cast<TableContext&>(*txn);
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	assert(id < m_rowNumVec.back());
@@ -587,11 +557,11 @@ CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
 	llong subId = id - baseId;
 	if (j == m_rowNumVec.size()-1) { // id is in m_wrSeg
 		if (syncIndex) {
-			valvec<byte> &oldrow = ttx.row1, &oldkey = ttx.key1;
-			valvec<byte> &newrow = ttx.row2, &newkey = ttx.key2;
-			valvec<fstring>& oldcols = ttx.cols1;
-			valvec<fstring>& newcols = ttx.cols2;
-			m_wrSeg->getValue(subId, &oldrow, ttx.wrStoreContext);
+			valvec<byte> &oldrow = txn->row1, &oldkey = txn->key1;
+			valvec<byte> &newrow = txn->row2, &newkey = txn->key2;
+			valvec<fstring>& oldcols = txn->cols1;
+			valvec<fstring>& newcols = txn->cols2;
+			m_wrSeg->getValue(subId, &oldrow, txn);
 			m_rowSchema->parseRow(oldrow, &oldcols);
 			m_rowSchema->parseRow(newrow, &newcols);
 			size_t indexNum = m_wrSeg->m_indices.size();
@@ -602,14 +572,14 @@ CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
 				iSchema.selectParent(newcols, &newkey);
 				if (!valvec_equalTo(oldkey, newkey)) {
 					auto wrIndex = m_wrSeg->m_indices[i].get();
-					wrIndex->remove(oldkey, subId, ttx.wrIndexContext[i]);
-					wrIndex->insert(newkey, subId, ttx.wrIndexContext[i]);
+					wrIndex->remove(oldkey, subId, txn);
+					wrIndex->insert(newkey, subId, txn);
 				}
 			}
 		} else {
 			lock.upgrade_to_writer();
 		}
-		m_wrSeg->replace(subId, row, ttx.wrStoreContext);
+		m_wrSeg->replace(subId, row, txn);
 		return id; // id is not changed
 	}
 	else {
@@ -623,9 +593,8 @@ CompositeTable::replaceRow(llong id, fstring row, bool syncIndex,
 }
 
 void
-CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
-	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
-	TableContext& ttx = static_cast<TableContext&>(*txn);
+CompositeTable::removeRow(llong id, bool syncIndex, DbContext* txn) {
+	assert(txn != nullptr);
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
@@ -634,19 +603,19 @@ CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
 	llong subId = id - baseId;
 	if (j == m_rowNumVec.size()) {
 		if (syncIndex) {
-			valvec<byte> &row = ttx.row1, &key = ttx.key1;
-			valvec<fstring>& columns = ttx.cols1;
-			m_wrSeg->getValue(subId, &row, ttx.wrStoreContext);
+			valvec<byte> &row = txn->row1, &key = txn->key1;
+			valvec<fstring>& columns = txn->cols1;
+			m_wrSeg->getValue(subId, &row, txn);
 			m_rowSchema->parseRow(row, &columns);
 			lock.upgrade_to_writer();
 			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
 				auto wrIndex = m_wrSeg->m_indices[i].get();
 				const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
 				iSchema.selectParent(columns, &key);
-				wrIndex->remove(key, subId, ttx.wrIndexContext[i]);
+				wrIndex->remove(key, subId, txn);
 			}
 		}
-		m_wrSeg->remove(subId, ttx.wrStoreContext);
+		m_wrSeg->remove(subId, txn);
 	}
 	else {
 		lock.upgrade_to_writer();
@@ -657,10 +626,9 @@ CompositeTable::removeRow(llong id, bool syncIndex, BaseContextPtr& txn) {
 
 void
 CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
-							BaseContextPtr& txn)
+							DbContext* txn)
 {
-	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
-	TableContext& ttx = static_cast<TableContext&>(*txn);
+	assert(txn != nullptr);
 	assert(id >= 0);
 	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
 		THROW_STD(invalid_argument,
@@ -674,16 +642,14 @@ CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 			"Invalid rowId=%lld, minWrRowNum=%lld", id, minWrRowNum);
 	}
 	llong subId = id - minWrRowNum;
-	m_wrSeg->m_indices[indexId]->
-		insert(indexKey, subId, ttx.wrIndexContext[indexId]);
+	m_wrSeg->m_indices[indexId]->insert(indexKey, subId, txn);
 }
 
 void
 CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
-							BaseContextPtr& txn)
+							DbContext* txn)
 {
-	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
-	TableContext& ttx = static_cast<TableContext&>(*txn);
+	assert(txn != nullptr);
 	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
 		THROW_STD(invalid_argument,
 			"Invalid indexId=%lld, indexNum=%lld",
@@ -696,17 +662,15 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 			"Invalid rowId=%lld, minWrRowNum=%lld", id, minWrRowNum);
 	}
 	llong subId = id - minWrRowNum;
-	m_wrSeg->m_indices[indexId]->
-		remove(indexKey, subId, ttx.wrIndexContext[indexId]);
+	m_wrSeg->m_indices[indexId]->remove(indexKey, subId, txn);
 }
 
 void
 CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 							 llong oldId, llong newId,
-							 BaseContextPtr& txn)
+							 DbContext* txn)
 {
-	assert(dynamic_cast<TableContext*>(txn.get()) != nullptr);
-	TableContext& ttx = static_cast<TableContext&>(*txn);
+	assert(txn != nullptr);
 	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
 		THROW_STD(invalid_argument,
 			"Invalid indexId=%lld, indexNum=%lld",
@@ -728,12 +692,12 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 	}
 	llong oldSubId = oldId - minWrRowNum;
 	llong newSubId = newId - minWrRowNum;
-	m_wrSeg->m_indices[indexId]->
-		replace(indexKey, oldSubId, newSubId, ttx.wrIndexContext[indexId]);
+	m_wrSeg->m_indices[indexId]->replace(indexKey, oldSubId, newSubId, txn);
 }
 
 class TableIndexIter : public IndexIterator {
 	CompositeTablePtr m_tab;
+	DbContextPtr m_ctx;
 	size_t m_indexId;
 	size_t m_segIdx;
 	valvec<IndexIteratorPtr> m_subIter;
@@ -743,6 +707,7 @@ class TableIndexIter : public IndexIterator {
 		m_tab.reset(tab);
 		m_indexId = indexId;
 		m_segIdx = -1;
+		m_ctx = tab->createDbContext();
 		{
 			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex);
 			tab->m_tableScanningRefCount++;
@@ -757,12 +722,12 @@ class TableIndexIter : public IndexIterator {
 				m_subIter[i]->reset(nullptr);
 			} else {
 				m_segs[i] = m_tab->m_segments[i];
-				m_subIter[i] = m_segs[i]->getReadableIndex(m_indexId)->createIndexIter();
+				m_subIter[i] = m_segs[i]->getReadableIndex(m_indexId)->createIndexIter(&*m_ctx);
 			}
 		}
 		for (size_t i = m_segs.size(); i < m_tab->m_segments.size(); ++i) {
 			m_segs.push_back(m_tab->m_segments[i]);
-			m_subIter.push_back(m_segs[i]->getReadableIndex(m_indexId)->createIndexIter());
+			m_subIter.push_back(m_segs[i]->getReadableIndex(m_indexId)->createIndexIter(&*m_ctx));
 		}
 	}
 
@@ -905,6 +870,7 @@ bool CompositeTable::compact() {
 	AutoGrownMemIO buf(1024);
 	size_t firstWrSegIdx, lastWrSegIdx;
 	fstring dirBaseName;
+	DbContextPtr ctx(createDbContext());
 	{
 		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 		if (m_tableScanningRefCount > 0) {
@@ -928,7 +894,7 @@ bool CompositeTable::compact() {
 		srcSeg = m_segments[firstWrSegIdx];
 		fstring segDir = getSegPath("rd", i, buf);
 		newSeg = myCreateReadonlySegment(segDir);
-		newSeg->convFrom(*srcSeg, m_rwMutex);
+		newSeg->convFrom(*srcSeg, &*ctx);
 		fs::create_directories(newSeg->m_segDir);
 		newSeg->save(newSeg->m_segDir);
 		{
@@ -1004,4 +970,4 @@ void CompositeTable::save(fstring dir) const {
 	saveMetaJson(dir);
 }
 
-} // namespace nark
+} } // namespace nark::db

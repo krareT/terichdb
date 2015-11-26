@@ -4,8 +4,9 @@
 #include <nark/valvec.hpp>
 #include <nark/bitmap.hpp>
 #include "db_conf.hpp"
+#include "db_context.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 class NARK_DB_DLL Permanentable : public RefCounter {
 public:
@@ -28,12 +29,11 @@ class NARK_DB_DLL ReadableStore : virtual public Permanentable {
 public:
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
-	virtual void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const = 0;
-	virtual StoreIteratorPtr createStoreIter() const = 0;
-	virtual BaseContextPtr createStoreContext() const = 0;
+	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
+	virtual StoreIteratorPtr createStoreIter(DbContext*) const = 0;
 	virtual class WritableStore* getWritableStore();
 
-	void getValue(llong id, valvec<byte>* val, BaseContextPtr& ctx) const {
+	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {
 		val->risk_set_size(0);
 		getValueAppend(id, val, ctx);
 	}
@@ -42,9 +42,9 @@ public:
 class NARK_DB_DLL WritableStore {
 public:
 	virtual ~WritableStore();
-	virtual llong append(fstring row, BaseContextPtr&) = 0;
-	virtual void  replace(llong id, fstring row, BaseContextPtr&) = 0;
-	virtual void  remove(llong id, BaseContextPtr&) = 0;
+	virtual llong append(fstring row, DbContext*) = 0;
+	virtual void  replace(llong id, fstring row, DbContext*) = 0;
+	virtual void  remove(llong id, DbContext*) = 0;
 	virtual void  flush() = 0;
 };
 //typedef boost::intrusive_ptr<WritableStore> WritableStorePtr;
@@ -71,6 +71,6 @@ public:
 typedef boost::intrusive_ptr<CompositeStore> CompositeStorePtr;
 */
 
-} // namespace nark
+} } // namespace nark::db
 
 #endif // __nark_db_data_store_hpp__

@@ -7,7 +7,7 @@
 #include <string.h>
 #include "json.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 ColumnMeta::ColumnMeta() {
 	type = ColumnType::Binary;
@@ -244,12 +244,6 @@ void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) 
 			break;
 		}
 	}
-}
-
-void Schema::selectParent(fstring parentRowData, valvec<byte>* myRowData) const {
-	assert(nullptr != m_parent);
-	assert(m_proj.size() == m_columnsMeta.end_i());
-	assert(0);
 }
 
 void Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const {
@@ -871,7 +865,7 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 	return nth >= xCols && cur >= end;
 }
 
-} // namespace nark
+} } // namespace nark::db
 
 
 /* currently unused code

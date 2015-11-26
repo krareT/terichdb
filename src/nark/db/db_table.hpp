@@ -8,23 +8,10 @@
 #include <nark/util/sortable_strvec.hpp>
 
 namespace nark {
+	class AutoGrownMemIO;
+}
 
-class NARK_DB_DLL TableContext : public BaseContext {
-public:
-	TableContext();
-	~TableContext();
-
-	valvec<byte> row1;
-	valvec<byte> row2;
-	valvec<byte> key1;
-	valvec<byte> key2;
-	valvec<fstring> cols1;
-	valvec<fstring> cols2;
-	valvec<BaseContextPtr> wrIndexContext;
-	BaseContextPtr wrStoreContext;
-	BaseContextPtr readonlyContext;
-};
-typedef boost::intrusive_ptr<TableContext> TableContextPtr;
+namespace nark { namespace db {
 
 // is not a WritableStore
 class NARK_DB_DLL CompositeTable : public ReadableStore, public SegmentSchema {
@@ -40,21 +27,21 @@ public:
 	void load(fstring dir) override;
 	void save(fstring dir) const override;
 
-	StoreIteratorPtr createStoreIter() const override;
-	BaseContextPtr createStoreContext() const override;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	virtual DbContextPtr createDbContext() const = 0;
 
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
-	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
-	llong insertRow(fstring row, bool syncIndex, BaseContextPtr&);
-	llong replaceRow(llong id, fstring row, bool syncIndex, BaseContextPtr&);
-	void  removeRow(llong id, bool syncIndex, BaseContextPtr&);
+	llong insertRow(fstring row, bool syncIndex, DbContext*);
+	llong replaceRow(llong id, fstring row, bool syncIndex, DbContext*);
+	void  removeRow(llong id, bool syncIndex, DbContext*);
 
-	void indexInsert(size_t indexId, fstring indexKey, llong id, BaseContextPtr&);
-	void indexRemove(size_t indexId, fstring indexKey, llong id, BaseContextPtr&);
-	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, BaseContextPtr&);
+	void indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
+	void indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
+	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);
 
 	IndexIteratorPtr createIndexIter(size_t indexId) const;
 	IndexIteratorPtr createIndexIter(fstring indexCols) const;
@@ -69,10 +56,10 @@ protected:
 
 	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
 	llong insertRowImpl(fstring row, bool syncIndex,
-						BaseContextPtr&, tbb::queuing_rw_mutex::scoped_lock&);
+						DbContext*, tbb::queuing_rw_mutex::scoped_lock&);
 
-	fstring getSegPath(fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
-	fstring getSegPath2(fstring dir, fstring type, size_t segIdx, class AutoGrownMemIO& buf) const;
+	fstring getSegPath(fstring type, size_t segIdx, AutoGrownMemIO& buf) const;
+	fstring getSegPath2(fstring dir, fstring type, size_t segIdx, AutoGrownMemIO& buf) const;
 
 #if defined(NARK_DB_ENABLE_DFA_META)
 	void saveMetaDFA(fstring dir) const;
@@ -88,9 +75,10 @@ protected:
 	ReadonlySegmentPtr myCreateReadonlySegment(fstring segDir) const;
 	WritableSegmentPtr myCreateWritableSegment(fstring segDir) const;
 
-protected:
+public:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
+protected:
 	valvec<llong>  m_rowNumVec;
 	valvec<ReadableSegmentPtr> m_segments;
 	WritableSegmentPtr m_wrSeg;
@@ -103,7 +91,60 @@ protected:
 };
 typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 
+/////////////////////////////////////////////////////////////////////////////
 
-} // namespace nark
+inline
+StoreIteratorPtr DbContext::createTableIter() {
+	assert(this != nullptr);
+	return m_tab->createStoreIter(this);
+}
+
+inline
+void DbContext::getValueAppend(llong id, valvec<byte>* val) {
+	assert(this != nullptr);
+	m_tab->getValueAppend(id, val, this);
+}
+inline
+void DbContext::getValue(llong id, valvec<byte>* val) {
+	assert(this != nullptr);
+	m_tab->getValue(id, val, this);
+}
+
+inline
+llong DbContext::insertRow(fstring row, bool syncIndex) {
+	assert(this != nullptr);
+	return m_tab->insertRow(row, syncIndex, this);
+}
+inline
+llong DbContext::replaceRow(llong id, fstring row, bool syncIndex) {
+	assert(this != nullptr);
+	return m_tab->replaceRow(id, row, syncIndex, this);
+}
+inline
+void  DbContext::removeRow(llong id, bool syncIndex) {
+	assert(this != nullptr);
+	m_tab->removeRow(id, syncIndex, this);
+}
+
+inline
+void DbContext::indexInsert(size_t indexId, fstring indexKey, llong id) {
+	assert(this != nullptr);
+	m_tab->indexInsert(indexId, indexKey, id, this);
+}
+inline
+void DbContext::indexRemove(size_t indexId, fstring indexKey, llong id) {
+	assert(this != nullptr);
+	m_tab->indexRemove(indexId, indexKey, id, this);
+}
+inline
+void
+DbContext::indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId) {
+	assert(this != nullptr);
+	m_tab->indexReplace(indexId, indexKey, oldId, newId, this);
+}
+
+
+
+} } // namespace nark::db
 
 #endif // __nark_db_table_store_hpp__

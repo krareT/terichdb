@@ -5,7 +5,7 @@
 #include <nark/bitmap.hpp>
 #include "data_store.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 typedef boost::intrusive_ptr<class ReadableIndex> ReadableIndexPtr;
 
@@ -30,8 +30,7 @@ public:
 	SortOrder sortOrder() const { return m_sortOrder; }
 	bool isUnique() const { return m_isUnique; }
 
-	virtual IndexIteratorPtr createIndexIter() const = 0;
-	virtual BaseContextPtr createIndexContext() const = 0;
+	virtual IndexIteratorPtr createIndexIter(DbContext*) const = 0;
 	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
 };
@@ -39,9 +38,9 @@ typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
 class NARK_DB_DLL WritableIndex : public ReadableIndex {
 public:
-	virtual size_t remove(fstring key, llong id, BaseContextPtr&) = 0;
-	virtual size_t insert(fstring key, llong id, BaseContextPtr&) = 0;
-	virtual size_t replace(fstring key, llong id, llong newId, BaseContextPtr&) = 0;
+	virtual size_t remove(fstring key, llong id, DbContext*) = 0;
+	virtual size_t insert(fstring key, llong id, DbContext*) = 0;
+	virtual size_t replace(fstring key, llong id, llong newId, DbContext*) = 0;
 	virtual void flush() = 0;
 };
 typedef boost::intrusive_ptr<WritableIndex> WritableIndexPtr;
@@ -83,6 +82,6 @@ public:
 typedef boost::intrusive_ptr<CompositeIndex> CompositeIndexPtr;
 */
 
-} // namespace nark
+} } // namespace nark::db
 
 #endif // __nark_db_data_index_hpp__

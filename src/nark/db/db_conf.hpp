@@ -39,7 +39,7 @@
 #endif /* _MSC_VER */
 
 
-namespace nark {
+namespace nark { namespace db {
 
 	struct ClassMember_name {
 		template<class X, class Y>
@@ -97,7 +97,6 @@ namespace nark {
 
 		void combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const;
 
-		void selectParent(fstring parentRowData, valvec<byte>* myRowData) const;
 		void selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const;
 		void selectParent(const valvec<fstring>& parentCols, valvec<fstring>* myCols) const;
 
@@ -230,11 +229,6 @@ namespace nark {
 		std::string dir;
 	};
 
-	class BaseContext : public RefCounter {
-	public:
-	};
-	typedef boost::intrusive_ptr<BaseContext> BaseContextPtr;
-
-} // namespace
+} } // namespace nark::db
 
 #endif //__nark_db_db_conf_hpp__

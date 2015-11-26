@@ -1,6 +1,6 @@
 #include "data_index.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 ReadableIndex::ReadableIndex()
   : m_sortOrder(SortOrder::UnOrdered)
@@ -239,4 +239,4 @@ void CompositeIndex::compact() {
 
 #endif
 
-} // namespace nark
+} } // namespace nark::db

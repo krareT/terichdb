@@ -1,6 +1,6 @@
 #include "data_store.hpp"
 
-namespace nark {
+namespace nark { namespace db {
 
 void Permanentable::save(fstring) const {
 	THROW_STD(invalid_argument, "This method should not be called");
@@ -77,4 +77,4 @@ void CompositeStore::compact() {
 }
 */
 
-} // namespace nark
+} } // namespace nark::db

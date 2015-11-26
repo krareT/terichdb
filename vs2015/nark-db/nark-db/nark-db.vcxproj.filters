@@ -66,6 +66,9 @@
     <ClInclude Include="..\..\..\src\nark\db\json.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\db_context.hpp">
+      <Filter>Header Files\nark\db</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -93,6 +96,9 @@
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\nark\db\seq_num_index.cpp">
+      <Filter>Source Files\nark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\db_context.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
   </ItemGroup>

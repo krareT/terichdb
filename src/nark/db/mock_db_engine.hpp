@@ -4,7 +4,7 @@
 #include <nark/db/db_table.hpp>
 #include <set>
 
-namespace nark {
+namespace nark { namespace db {
 
 class NARK_DB_DLL MockReadonlyStore : public ReadableStore {
 	size_t    m_fixedLen;
@@ -19,9 +19,8 @@ public:
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
-	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const;
-	StoreIteratorPtr createStoreIter() const override;
-	BaseContextPtr createStoreContext() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
 };
 typedef boost::intrusive_ptr<MockReadonlyStore> MockReadonlyStorePtr;
 
@@ -40,14 +39,12 @@ public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
-	StoreIteratorPtr createStoreIter() const override;
-	BaseContextPtr createIndexContext() const override;
-	BaseContextPtr createStoreContext() const override;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
-	void getValueAppend(llong id, valvec<byte>* key, BaseContextPtr&) const override;
+	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
 
-	IndexIteratorPtr createIndexIter() const override;
+	IndexIteratorPtr createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 };
@@ -63,13 +60,12 @@ public:
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
-	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
-	StoreIteratorPtr createStoreIter() const override;
-	BaseContextPtr createStoreContext() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
 
-	llong append(fstring row, BaseContextPtr&) override;
-	void  replace(llong id, fstring row, BaseContextPtr&) override;
-	void  remove(llong id, BaseContextPtr&) override;
+	llong append(fstring row, DbContext*) override;
+	void  replace(llong id, fstring row, DbContext*) override;
+	void  remove(llong id, DbContext*) override;
 };
 typedef boost::intrusive_ptr<MockWritableStore> MockWritableStorePtr;
 
@@ -84,13 +80,12 @@ public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
-	IndexIteratorPtr createIndexIter() const override;
-	BaseContextPtr createIndexContext() const override;
+	IndexIteratorPtr createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
-	size_t remove(fstring key, llong id, BaseContextPtr&) override;
-	size_t insert(fstring key, llong id, BaseContextPtr&) override;
-	size_t replace(fstring key, llong oldId, llong newId, BaseContextPtr&) override;
+	size_t remove(fstring key, llong id, DbContext*) override;
+	size_t insert(fstring key, llong id, DbContext*) override;
+	size_t replace(fstring key, llong oldId, llong newId, DbContext*) override;
 	void flush() override;
 };
 
@@ -122,23 +117,28 @@ protected:
 	void load(fstring) override;
 	WritableIndexPtr openIndex(fstring, SchemaPtr) const override;
 	llong dataStorageSize() const override;
-	void getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const override;
-	StoreIteratorPtr createStoreIter() const override;
-	BaseContextPtr createStoreContext() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+	StoreIteratorPtr createStoreIter(DbContext*) const override;
 	llong totalStorageSize() const override;
-	llong append(fstring row, BaseContextPtr&) override;
-	void replace(llong id, fstring row, BaseContextPtr&) override;
-	void remove(llong id, BaseContextPtr&) override;
+	llong append(fstring row, DbContext*) override;
+	void replace(llong id, fstring row, DbContext*) override;
+	void remove(llong id, DbContext*) override;
 	void flush() override;
 };
 
+class NARK_DB_DLL MockDbContext : public DbContext {
+public:
+	explicit MockDbContext(const CompositeTable* tab);
+	~MockDbContext();
+};
 class NARK_DB_DLL MockCompositeTable : public CompositeTable {
 public:
+	DbContextPtr createDbContext() const override;
 	ReadonlySegmentPtr createReadonlySegment(fstring dir) const override;
 	WritableSegmentPtr createWritableSegment(fstring dir) const override;
 	WritableSegmentPtr openWritableSegment(fstring dir) const override;
 };
 
-} // namespace nark
+} } // namespace nark::db
 
 #endif // __nark_db_mock_data_index_hpp__

@@ -9,7 +9,7 @@
 #include <nark/util/mmap.hpp>
 #include <boost/filesystem.hpp>
 
-namespace nark {
+namespace nark { namespace db {
 
 SegmentSchema::SegmentSchema() {
 }
@@ -88,11 +88,6 @@ void ReadableSegment::load(fstring dir) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-ReadonlyStoreContext::ReadonlyStoreContext() {
-}
-ReadonlyStoreContext::~ReadonlyStoreContext() {
-}
-
 ReadonlySegment::ReadonlySegment() {
 	m_dataMemSize = 0;
 	m_totalStorageSize = 0;
@@ -114,10 +109,8 @@ llong ReadonlySegment::totalStorageSize() const {
 	return m_totalStorageSize;
 }
 
-void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr& txn) const {
-	assert(txn.get() != nullptr);
-	assert(dynamic_cast<ReadonlyStoreContext*>(txn.get()) != nullptr);
-	auto rdctx = static_cast<ReadonlyStoreContext*>(txn.get());
+void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn) const {
+	assert(&txn != nullptr);
 	llong rows = m_rowNumVec.back();
 	if (id < 0) {
 		THROW_STD(invalid_argument, "invalid id=%lld", id);
@@ -127,30 +120,29 @@ void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr
 	}
 	size_t upp = nark::upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	llong subId = id - m_rowNumVec[upp-1];
-	getValueImpl(upp-1, id, subId, val, rdctx);
+	getValueImpl(upp-1, id, subId, val, txn);
 }
 
 void
 ReadonlySegment::getValueImpl(size_t partIdx, size_t id, llong subId,
-							  valvec<byte>* val, ReadonlyStoreContext* ctx)
+							  valvec<byte>* val, DbContext* ctx)
 const {
 	val->risk_set_size(0);
 	ctx->buf1.risk_set_size(0);
 	// m_indices also store index keys, so index keys will not be stored
 	// in m_parts(nonIndex store)
-	BaseContextPtr dummy;
 
 	// getValueAppend to ctx->buf1
 	ctx->offsets.risk_set_size(0);
 	ctx->offsets.push_back(0);
 	for (size_t i = 0; i < m_indices.size(); ++i) {
 		if (m_indexSchemaSet->m_keepSchema[i]) {
-			m_indices[i]->getValueAppend(id, &ctx->buf1, dummy);
+			m_indices[i]->getValueAppend(id, &ctx->buf1, ctx);
 		}
 		ctx->offsets.push_back(ctx->buf1.size());
 	}
 	if (!m_parts.empty()) { // get nonIndex store
-		m_parts[partIdx]->getValueAppend(subId, &ctx->buf1, dummy);
+		m_parts[partIdx]->getValueAppend(subId, &ctx->buf1, ctx);
 		ctx->offsets.push_back(ctx->buf1.size());
 	}
 
@@ -208,11 +200,11 @@ const {
 class ReadonlySegment::MyStoreIterator : public StoreIterator {
 	size_t m_partIdx = 0;
 	llong  m_id = 0;
-	ReadonlyStoreContextPtr m_ctx;
+	DbContextPtr m_ctx;
 public:
-	explicit MyStoreIterator(const ReadonlySegment* owner) {
+	MyStoreIterator(const ReadonlySegment* owner, const DbContextPtr& ctx)
+	  : m_ctx(ctx) {
 		m_store.reset(const_cast<ReadonlySegment*>(owner));
-		m_ctx.reset(new ReadonlyStoreContext());
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
@@ -245,19 +237,15 @@ public:
 		return false;
 	}
 };
-StoreIteratorPtr ReadonlySegment::createStoreIter() const {
-	return new MyStoreIterator(this);
-}
-BaseContextPtr ReadonlySegment::createStoreContext() const {
-	return new ReadonlyStoreContext();
+StoreIteratorPtr ReadonlySegment::createStoreIter(DbContext* ctx) const {
+	return new MyStoreIterator(this, ctx);
 }
 
 void
-ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input) {
+ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx) {
 	m_indices.resize(input[0]->m_indices.size());
 	valvec<byte> buf;
 	SortableStrVec strVec;
-	BaseContextPtr dummy;
 	for (size_t i = 0; i < m_indices.size(); ++i) {
 		SchemaPtr indexSchema = m_indexSchemaSet->m_nested.elem_at(i);
 		size_t fixedIndexRowLen = indexSchema->getFixedRowLen();
@@ -267,7 +255,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input) {
 			llong num = indexStore->numDataRows();
 			for (llong id = 0; id < num; ++id) {
 				if (!seg->m_isDel[id]) {
-					indexStore->getValue(id, &buf, dummy);
+					indexStore->getValue(id, &buf, ctx);
 					if (fixedIndexRowLen) {
 						assert(buf.size() == fixedIndexRowLen);
 						strVec.m_strpool.append(buf);
@@ -292,7 +280,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input) {
 				}
 				llong id = baseId + subId;
 				if (!seg->m_isDel[id]) {
-					dataStore->getValue(subId, &buf, dummy);
+					dataStore->getValue(subId, &buf, ctx);
 					strVec.push_back(buf);
 				}
 			}
@@ -346,7 +334,7 @@ namespace {
 }
 
 void
-ReadonlySegment::convFrom(const ReadableSegment& input, tbb::queuing_rw_mutex& rwMutex)
+ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 {
 	assert(input.numDataRows() > 0);
 	assert(m_parts.size() == 0);
@@ -363,7 +351,7 @@ ReadonlySegment::convFrom(const ReadableSegment& input, tbb::queuing_rw_mutex& r
 	SortableStrVec strVec;
 	llong inputRowNum = input.numDataRows();
 	assert(size_t(inputRowNum) == input.m_isDel.size());
-	StoreIteratorPtr iter(input.createStoreIter());
+	StoreIteratorPtr iter(input.createStoreIter(ctx));
 	llong id = -1;
 	llong newRowNum = 0;
 	m_isDel = input.m_isDel; // make a copy, input.m_isDel[*] may be changed
@@ -432,7 +420,7 @@ ReadonlySegment::convFrom(const ReadableSegment& input, tbb::queuing_rw_mutex& r
 	}
 	{
 		assert(newRowNum <= inputRowNum);
-		tbb::queuing_rw_mutex::scoped_lock lock(rwMutex, false);
+		tbb::queuing_rw_mutex::scoped_lock lock(ctx->m_tab->m_rwMutex, false);
 		size_t old_delcnt = inputRowNum - newRowNum;
 		if (old_delcnt < input.m_delcnt) { // rows were deleted during build
 			size_t i = 0;
@@ -523,11 +511,6 @@ void ReadonlySegment::load(fstring dir) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-WrSegContext::WrSegContext() {
-}
-WrSegContext::~WrSegContext() {
-}
-
 WritableSegment::WritableSegment() {
 }
 WritableSegment::~WritableSegment() {
@@ -579,30 +562,29 @@ SmartWritableSegment::~SmartWritableSegment() {
 }
 
 void
-SmartWritableSegment::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr& txn)
+SmartWritableSegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn)
 const {
-	assert(dynamic_cast<SmartWrSegContext*>(txn.get()) != nullptr);
-	auto ctx = static_cast<SmartWrSegContext*>(txn.get());
+	assert(txn != nullptr);
 	// m_indices also store index keys
-//	BaseContextPtr dummy;
+//	DbContextPtr dummy;
 	assert(0);
-	// should similiar to ReadonlySegment::getValueAppend(...)
+	// should similar to ReadonlySegment::getValueAppend(...)
 }
 
 class SmartWritableSegment::MyStoreIterator : public StoreIterator {
 	size_t m_id;
-	mutable BaseContextPtr m_ctx;
+	mutable DbContextPtr m_ctx;
 public:
-	MyStoreIterator(const SmartWritableSegment* owner) {
+	MyStoreIterator(const SmartWritableSegment* owner, DbContext* ctx) {
 		m_store.reset(const_cast<SmartWritableSegment*>(owner));
 		m_id = 0;
-		m_ctx = owner->createStoreContext();
+		m_ctx.reset(ctx);
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
 		if (m_id < owner->m_isDel.size()) {
 			*id = m_id;
-			owner->getValue(m_id, val, m_ctx);
+			owner->getValue(m_id, val, &*m_ctx);
 			m_id++;
 			return true;
 		}
@@ -610,8 +592,8 @@ public:
 	}
 };
 
-StoreIteratorPtr SmartWritableSegment::createStoreIter() const {
-	return new MyStoreIterator(this);
+StoreIteratorPtr SmartWritableSegment::createStoreIter(DbContext* ctx) const {
+	return new MyStoreIterator(this, ctx);
 }
 
 void SmartWritableSegment::save(fstring dir) const {
@@ -634,4 +616,4 @@ llong SmartWritableSegment::totalStorageSize() const {
 	return totalIndexSize() + m_nonIndexStore->dataStorageSize();
 }
 
-} // namespace nark
+} } // namespace nark::db

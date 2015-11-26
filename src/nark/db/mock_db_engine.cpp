@@ -4,7 +4,7 @@
 #include <nark/io/DataIO.hpp>
 #include <boost/filesystem.hpp>
 
-namespace nark {
+namespace nark { namespace db {
 
 namespace fs = boost::filesystem;
 
@@ -15,7 +15,7 @@ llong MockReadonlyStore::numDataRows() const {
 	return m_rows.size();
 }
 void
-MockReadonlyStore::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&)
+MockReadonlyStore::getValueAppend(llong id, valvec<byte>* val, DbContext*)
 const {
 	assert(id >= 0);
 	if (m_fixedLen) {
@@ -27,10 +27,8 @@ const {
 		val->append(m_rows[id]);
 	}
 }
-StoreIteratorPtr MockReadonlyStore::createStoreIter() const {
-	return nullptr;
-}
-BaseContextPtr MockReadonlyStore::createStoreContext() const {
+StoreIteratorPtr MockReadonlyStore::createStoreIter(DbContext*) const {
+	assert(0); // should not be called
 	return nullptr;
 }
 
@@ -242,16 +240,8 @@ MockReadonlyIndex::MockReadonlyIndex(SchemaPtr schema) {
 MockReadonlyIndex::~MockReadonlyIndex() {
 }
 
-StoreIteratorPtr MockReadonlyIndex::createStoreIter() const {
+StoreIteratorPtr MockReadonlyIndex::createStoreIter(DbContext*) const {
 	assert(!"Readonly column store did not define iterator");
-	return nullptr;
-}
-
-BaseContextPtr MockReadonlyIndex::createIndexContext() const {
-	return nullptr;
-}
-
-BaseContextPtr MockReadonlyIndex::createStoreContext() const {
 	return nullptr;
 }
 
@@ -364,7 +354,7 @@ llong MockReadonlyIndex::dataStorageSize() const {
 		+ m_keys.strpool.used_mem_size();
 }
 
-void MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, BaseContextPtr&) const {
+void MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, DbContext*) const {
 	assert(id < (llong)m_ids.size());
 	assert(id >= 0);
 	if (m_fixedLen) {
@@ -381,7 +371,7 @@ void MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, BaseContextP
 	}
 }
 
-IndexIteratorPtr MockReadonlyIndex::createIndexIter() const {
+IndexIteratorPtr MockReadonlyIndex::createIndexIter(DbContext*) const {
 	return new MockReadonlyIndexIterator(this);
 }
 
@@ -437,32 +427,28 @@ llong MockWritableStore::numDataRows() const {
 	return m_rows.size();
 }
 
-void MockWritableStore::getValueAppend(llong id, valvec<byte>* val, BaseContextPtr&) const {
+void MockWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
 	val->append(m_rows[id]);
 }
 
-StoreIteratorPtr MockWritableStore::createStoreIter() const {
+StoreIteratorPtr MockWritableStore::createStoreIter(DbContext*) const {
 	return new MockWritableStoreIter<MockWritableStore>(this);
 }
 
-BaseContextPtr MockWritableStore::createStoreContext() const {
-	return nullptr;
-}
-
-llong MockWritableStore::append(fstring row, BaseContextPtr&) {
+llong MockWritableStore::append(fstring row, DbContext*) {
 	llong id = m_rows.size();
 	m_rows.push_back();
 	m_rows.back().assign(row);
 	return id;
 }
-void MockWritableStore::replace(llong id, fstring row, BaseContextPtr&) {
+void MockWritableStore::replace(llong id, fstring row, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
 	m_rows[id].assign(row);
 }
-void MockWritableStore::remove(llong id, BaseContextPtr&) {
+void MockWritableStore::remove(llong id, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
 	m_rows[id].clear();
@@ -575,12 +561,8 @@ public:
 };
 
 template<class Key>
-IndexIteratorPtr MockWritableIndex<Key>::createIndexIter() const {
+IndexIteratorPtr MockWritableIndex<Key>::createIndexIter(DbContext*) const {
 	return new MyIndexIter(this);
-}
-template<class Key>
-BaseContextPtr MockWritableIndex<Key>::createIndexContext() const {
-	return nullptr;
 }
 
 template<class Key>
@@ -613,7 +595,7 @@ llong MockWritableIndex<Key>::indexStorageSize() const {
 }
 
 template<class Key>
-size_t MockWritableIndex<Key>::insert(fstring key, llong id, BaseContextPtr&) {
+size_t MockWritableIndex<Key>::insert(fstring key, llong id, DbContext*) {
 	auto ib = m_kv.insert(std::make_pair(MyIndexIter::makeKey(key), id));
 	if (ib.second) {
 		m_keysLen += MyIndexIter::keyHeapLen(ib.first->first);
@@ -622,7 +604,7 @@ size_t MockWritableIndex<Key>::insert(fstring key, llong id, BaseContextPtr&) {
 }
 
 template<class Key>
-size_t MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, BaseContextPtr&) {
+size_t MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, DbContext*) {
 	auto kx = MyIndexIter::makeKey(key);
 	if (oldId != newId) {
 		m_kv.erase(std::make_pair(kx, oldId));
@@ -632,7 +614,7 @@ size_t MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, Ba
 }
 
 template<class Key>
-size_t MockWritableIndex<Key>::remove(fstring key, llong id, BaseContextPtr&) {
+size_t MockWritableIndex<Key>::remove(fstring key, llong id, DbContext*) {
 	auto iter = m_kv.find(std::make_pair(MyIndexIter::makeKey(key), id));
 	if (m_kv.end() != iter) {
 		m_keysLen = MyIndexIter::keyHeapLen(iter->first);
@@ -731,26 +713,22 @@ llong MockWritableSegment::dataStorageSize() const {
 
 void
 MockWritableSegment::getValueAppend(llong id, valvec<byte>* val,
-									BaseContextPtr&)
+									DbContext*)
 const {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
 	val->append(m_rows[id]);
 }
 
-StoreIteratorPtr MockWritableSegment::createStoreIter() const {
+StoreIteratorPtr MockWritableSegment::createStoreIter(DbContext*) const {
 	return StoreIteratorPtr(new MockWritableStoreIter<MockWritableSegment>(this));
-}
-
-BaseContextPtr MockWritableSegment::createStoreContext() const {
-	return nullptr;
 }
 
 llong MockWritableSegment::totalStorageSize() const {
 	return totalIndexSize() + m_rows.used_mem_size() + m_dataSize;
 }
 
-llong MockWritableSegment::append(fstring row, BaseContextPtr &) {
+llong MockWritableSegment::append(fstring row, DbContext*) {
 	llong id = m_rows.size();
 	m_rows.push_back();
 	m_rows.back().assign(row);
@@ -758,7 +736,7 @@ llong MockWritableSegment::append(fstring row, BaseContextPtr &) {
 	return id;
 }
 
-void MockWritableSegment::replace(llong id, fstring row, BaseContextPtr &) {
+void MockWritableSegment::replace(llong id, fstring row, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
 	size_t oldsize = m_rows[id].size();
@@ -767,7 +745,7 @@ void MockWritableSegment::replace(llong id, fstring row, BaseContextPtr &) {
 	m_dataSize += row.size();
 }
 
-void MockWritableSegment::remove(llong id, BaseContextPtr &) {
+void MockWritableSegment::remove(llong id, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
 	m_dataSize -= m_rows[id].size();
@@ -804,6 +782,15 @@ WritableIndexPtr MockWritableSegment::createIndex(fstring, SchemaPtr schema) con
 
 ///////////////////////////////////////////////////////////////////////////
 
+MockDbContext::MockDbContext(const CompositeTable* tab) : DbContext(tab) {
+}
+MockDbContext::~MockDbContext() {
+}
+
+DbContextPtr MockCompositeTable::createDbContext() const {
+	return new MockDbContext(this);
+}
+
 ReadonlySegmentPtr
 MockCompositeTable::createReadonlySegment(fstring dir) const {
 	std::unique_ptr<MockReadonlySegment> seg(new MockReadonlySegment());
@@ -826,4 +813,4 @@ MockCompositeTable::openWritableSegment(fstring dir) const {
 	return seg;
 }
 
-} // namespace nark
+} } // namespace nark::db
