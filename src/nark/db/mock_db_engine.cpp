@@ -764,6 +764,7 @@ WritableIndexPtr MockWritableSegment::createIndex(fstring, SchemaPtr schema) con
 		case ColumnType::Enum: return new MockWritableIndex<Type>();
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 		switch (cm.type) {
+			default: break;
 			CASE_COL_TYPE(Uint08, uint8_t);
 			CASE_COL_TYPE(Sint08,  int8_t);
 			CASE_COL_TYPE(Uint16, uint16_t);

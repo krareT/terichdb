@@ -120,7 +120,7 @@ size_t SeqNumIndex<Int>::insert(fstring key, llong id, DbContext*) {
 			"key must be consistent with id in SeqNumIndex");
 	}
 	if (llong(m_cnt) < id + 1) {
-		llong(m_cnt) = id + 1;
+		m_cnt = id + 1;
 	}
 	return 1;
 }
