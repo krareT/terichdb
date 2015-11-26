@@ -24,7 +24,7 @@ endif
 
 BRAIN_DEAD_RE2_INC = -I3rdparty/re2/re2 -I3rdparty/re2/util
 
-FEBIRD_INC := -Isrc -I3rdparty/re2 ${BRAIN_DEAD_RE2_INC}
+FEBIRD_INC := -Isrc -I3rdparty/re2 ${BRAIN_DEAD_RE2_INC} -I../nark/src
 
 include ${BUILD_ROOT}/env.mk
 
