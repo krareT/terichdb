@@ -824,7 +824,7 @@ size_t SchemaSet::Hash::operator()(const SchemaPtr& x) const {
 	for (size_t i = 0; i < x->m_columnsMeta.end_i(); ++i) {
 		fstring colname = x->m_columnsMeta.key(i);
 		size_t h2 = fstring_func::hash()(colname);
-		FaboHashCombine(h, h2);
+		h = FaboHashCombine(h, h2);
 	}
 	return h;
 }
@@ -837,7 +837,7 @@ size_t SchemaSet::Hash::operator()(fstring x) const {
 		const char* next = std::find(cur, end, ',');
 		fstring colname(cur, next);
 		size_t h2 = fstring_func::hash()(colname);
-		FaboHashCombine(h, h2);
+		h = FaboHashCombine(h, h2);
 		cur = next+1;
 	}
 	return h;

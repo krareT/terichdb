@@ -20,7 +20,7 @@ public:
 
 	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
 	const Schema& getTableSchema() const { return *m_rowSchema; }
-	const size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
+	size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
 	size_t columnNum() const { return m_rowSchema->columnNum(); }
 
 	void copySchema(const SegmentSchema& y);

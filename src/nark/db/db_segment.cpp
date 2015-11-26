@@ -110,7 +110,7 @@ llong ReadonlySegment::totalStorageSize() const {
 }
 
 void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn) const {
-	assert(&txn != nullptr);
+	assert(txn != nullptr);
 	llong rows = m_rowNumVec.back();
 	if (id < 0) {
 		THROW_STD(invalid_argument, "invalid id=%lld", id);
@@ -398,7 +398,6 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	m_indices.resize(indexNum);
 	for (size_t i = 0; i < indexTempFiles.size(); ++i) {
 		SchemaPtr indexSchema = m_indexSchemaSet->m_nested.elem_at(i);
-		size_t indexColumnNum = indexSchema->columnNum();
 		if (indexTempFiles[i].fixedLen() == 0) {
 			NativeDataInput<InputBuffer> dio;
 			indexTempFiles[i].fp().disbuf();
@@ -428,8 +427,8 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 				if (!m_isDel[j])
 					 m_isDel.set(i, input.m_isDel[j]), ++i;
 			}
-			assert(i == newRowNum);
-			m_isDel.resize(newRowNum);
+			assert(i == size_t(newRowNum));
+			m_isDel.resize(size_t(newRowNum));
 		}
 		m_delcnt = input.m_delcnt - old_delcnt;
 	}
