@@ -81,7 +81,7 @@ public:
 	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
 	void convFrom(const ReadableSegment& input, DbContext* ctx);
 
-	void getValueImpl(size_t partIdx, size_t id, llong subId,
+	void getValueImpl(size_t partIdx, size_t id,
 					  valvec<byte>* val, DbContext*) const;
 
 protected:

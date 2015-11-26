@@ -759,7 +759,6 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		if (nark_unlikely(size_t(-1) == m_segIdx)) {
-			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
 			m_segIdx = 0;
 		}
 		llong subId = -1;

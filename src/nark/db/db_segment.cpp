@@ -111,20 +111,23 @@ llong ReadonlySegment::totalStorageSize() const {
 
 void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn) const {
 	assert(&txn != nullptr);
-	llong rows = m_rowNumVec.back();
+	llong rows = m_isDel.size();
 	if (id < 0) {
 		THROW_STD(invalid_argument, "invalid id=%lld", id);
 	}
 	if (id >= rows) {
 		THROW_STD(invalid_argument, "invalid id=%lld, rows=%lld", id, rows);
 	}
-	size_t upp = nark::upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
-	llong subId = id - m_rowNumVec[upp-1];
-	getValueImpl(upp-1, id, subId, val, txn);
+	if (m_parts.empty()) {
+		getValueImpl(0, id, val, txn);
+	} else {
+		size_t upp = nark::upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
+		getValueImpl(upp-1, id, val, txn);
+	}
 }
 
 void
-ReadonlySegment::getValueImpl(size_t partIdx, size_t id, llong subId,
+ReadonlySegment::getValueImpl(size_t partIdx, size_t id,
 							  valvec<byte>* val, DbContext* ctx)
 const {
 	val->risk_set_size(0);
@@ -142,6 +145,7 @@ const {
 		ctx->offsets.push_back(ctx->buf1.size());
 	}
 	if (!m_parts.empty()) { // get nonIndex store
+		llong subId = id - m_rowNumVec[partIdx];
 		m_parts[partIdx]->getValueAppend(subId, &ctx->buf1, ctx);
 		ctx->offsets.push_back(ctx->buf1.size());
 	}
@@ -211,7 +215,7 @@ public:
 		if (owner->m_parts.empty()) {
 			if (size_t(m_id) < owner->m_isDel.size()) {
 				*id = m_id++;
-				owner->getValueImpl(0, *id, *id, val, m_ctx.get());
+				owner->getValueImpl(0, *id, val, m_ctx.get());
 				return true;
 			}
 			return false;
@@ -219,8 +223,7 @@ public:
 		assert(m_partIdx < owner->m_parts.size());
 		if (nark_likely(m_id < owner->m_rowNumVec[m_partIdx + 1])) {
 			*id = m_id++;
-			llong subId = *id - owner->m_rowNumVec[m_partIdx];
-			owner->getValueImpl(m_partIdx, *id, subId, val, m_ctx.get());
+			owner->getValueImpl(m_partIdx, *id, val, m_ctx.get());
 			return true;
 		}
 		else {
@@ -228,8 +231,7 @@ public:
 				m_partIdx++;
 				if (nark_likely(size_t(m_id) < owner->m_isDel.size())) {
 					*id = m_id++;
-					llong subId = *id - owner->m_rowNumVec[m_partIdx];
-					owner->getValueImpl(m_partIdx, *id, subId, val, m_ctx.get());
+					owner->getValueImpl(m_partIdx, *id, val, m_ctx.get());
 					return true;
 				}
 			}
