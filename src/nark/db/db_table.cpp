@@ -339,21 +339,41 @@ void CompositeTable::saveMetaJson(fstring dir) const {
 	fp.ensureWrite(jsonStr.data(), jsonStr.size());
 }
 
+struct CompareBy_baseId {
+	template<class T>
+	typename boost::enable_if_c<(sizeof(((T*)0)->baseId) >= 4), bool>::type
+	operator()(const T& x, llong y) const { return x.baseId < y; }
+	template<class T>
+	typename boost::enable_if_c<(sizeof(((T*)0)->baseId) >= 4), bool>::type
+	operator()(llong x, const T& y) const { return x < y.baseId; }
+	bool operator()(llong x, llong y) const { return x < y; }
+};
+
 class CompositeTable::MyStoreIterator : public StoreIterator {
-	size_t  m_segIdx = 0;
+	size_t m_segIdx = 0;
 	DbContextPtr m_ctx;
-	StoreIteratorPtr m_curSegIter;
+	struct OneSeg {
+		ReadableSegmentPtr seg;
+		StoreIteratorPtr   iter;
+		llong  baseId;
+	};
+	valvec<OneSeg> m_segs;
 public:
 	explicit MyStoreIterator(const CompositeTable* tab, DbContext* ctx) {
 		this->m_store.reset(const_cast<CompositeTable*>(tab));
 		this->m_ctx.reset(ctx);
 		{
 		// MyStoreIterator creation is rarely used, lock it by m_rwMutex
-			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, true);
+			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
+			m_segs.resize(tab->m_segments.size() + 1);
+			for (size_t i = 0; i < m_segs.size(); ++i) {
+				m_segs[i].seg = tab->m_segments[i];
+				m_segs[i].baseId = tab->m_rowNumVec[i];
+			}
+			m_segs.back().baseId = tab->m_rowNumVec.back();
+			lock.upgrade_to_writer();
 			tab->m_tableScanningRefCount++;
-			lock.downgrade_to_reader();
 			assert(tab->m_segments.size() > 0);
-			m_curSegIter = tab->m_segments[0]->createStoreIter(m_ctx.get());
 		}
 	}
 	~MyStoreIterator() {
@@ -370,10 +390,10 @@ public:
 		llong subId = -1;
 		while (incrementNoCheckDel(&subId, val)) {
 			assert(subId >= 0);
-			assert(subId < tab->m_segments[m_segIdx]->numDataRows());
-			llong baseId = tab->m_rowNumVec[m_segIdx];
-			if (m_segIdx < tab->m_segments.size()-1) {
-				if (!tab->m_segments[m_segIdx]->m_isDel[subId]) {
+			assert(subId < m_segs[m_segIdx].seg->numDataRows());
+			llong baseId = m_segs[m_segIdx].baseId;
+			if (m_segIdx < m_segs.size()-2) {
+				if (!m_segs[m_segIdx].seg->m_isDel[subId]) {
 					*id = baseId + subId;
 					return true;
 				}
@@ -390,17 +410,51 @@ public:
 	}
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
-		if (!m_curSegIter->increment(subId, val)) {
+		if (nark_unlikely(!m_segs[m_segIdx].iter))
+			 m_segs[m_segIdx].iter = m_segs[m_segIdx].seg->createStoreIter(&*m_ctx);
+		if (!m_segs[m_segIdx].iter->increment(subId, val)) {
 			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
-			if (m_segIdx < tab->m_segments.size()-1) {
+			m_segs.resize(tab->m_segments.size() + 1);
+			for (size_t i = 0; i < m_segs.size()-1; ++i) {
+				if (m_segs[i].seg != tab->m_segments[i]) {
+					m_segs[i].seg = tab->m_segments[i];
+					m_segs[i].iter.reset();
+					m_segs[i].baseId = tab->m_rowNumVec[i];
+				}
+			}
+			m_segs.back().baseId = tab->m_rowNumVec.back();
+			if (m_segIdx < m_segs.size()-2) {
 				m_segIdx++;
-				m_curSegIter = tab->m_segments[m_segIdx]->createStoreIter(&*m_ctx);
-				bool ret = m_curSegIter->increment(subId, val);
-				return ret;
+				auto& cur = m_segs[m_segIdx];
+				if (nark_unlikely(!cur.iter))
+					cur.iter = cur.seg->createStoreIter(&*m_ctx);
+				return cur.iter->increment(subId, val);
 			}
 			return false;
 		}
 		return true;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
+		size_t upp = upper_bound_0(m_segs.data(), m_segs.size(), id, CompareBy_baseId());
+		if (upp < tab->m_rowNumVec.size()) {
+			m_segIdx = upp-1;
+			llong subId = id - m_segs[upp-1].baseId;
+			auto& cur = m_segs[upp-1];
+			if (!cur.seg->m_isDel[subId]) {
+				if (nark_unlikely(!cur.iter))
+					cur.iter = cur.seg->createStoreIter(&*m_ctx);
+				return cur.iter->seekExact(subId, val);
+			}
+		}
+		return false;
+	}
+	void reset() override {
+		for (size_t i = 0; i < m_segs.size()-1; ++i) {
+			m_segs[i].iter->reset();
+		}
+		m_segIdx = 0;
 	}
 };
 

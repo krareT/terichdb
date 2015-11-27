@@ -402,6 +402,14 @@ public:
 		}
 		return false;
 	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		m_id = id;
+		llong id2 = -1;
+		return increment(&id2, val);
+	}
+	void reset() override {
+		m_id = 0;
+	}
 };
 
 void MockWritableStore::save(fstring path1) const {

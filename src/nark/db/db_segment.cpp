@@ -238,6 +238,15 @@ public:
 		}
 		return false;
 	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		m_id = id;
+		llong id2 = -1;
+		return increment(&id2, val);
+	}
+	void reset() override {
+		m_partIdx = 0;
+		m_id = 0;
+	}
 };
 StoreIterator* ReadonlySegment::createStoreIter(DbContext* ctx) const {
 	return new MyStoreIterator(this, ctx);
@@ -574,7 +583,7 @@ const {
 
 class SmartWritableSegment::MyStoreIterator : public StoreIterator {
 	size_t m_id;
-	mutable DbContextPtr m_ctx;
+	DbContextPtr m_ctx;
 public:
 	MyStoreIterator(const SmartWritableSegment* owner, DbContext* ctx) {
 		m_store.reset(const_cast<SmartWritableSegment*>(owner));
@@ -590,6 +599,14 @@ public:
 			return true;
 		}
 		return false;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		m_id = id;
+		llong id2 = -1;
+		return increment(&id2, val);
+	}
+	void reset() override {
+		m_id = 0;
 	}
 };
 
