@@ -20,7 +20,7 @@ public:
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const;
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIter(DbContext*) const override;
 };
 typedef boost::intrusive_ptr<MockReadonlyStore> MockReadonlyStorePtr;
 
@@ -29,9 +29,9 @@ class NARK_DB_DLL MockReadonlyIndex : public ReadableIndexStore {
 	fstrvec          m_keys; // keys[recId] is the key
 	valvec<uint32_t> m_ids;  // keys[ids[i]] <= keys[ids[i+1]]
 	size_t m_fixedLen;
-	SchemaPtr m_schema;
+	const Schema* m_schema;
 public:
-	MockReadonlyIndex(SchemaPtr schema);
+	MockReadonlyIndex(const Schema& schema);
 	~MockReadonlyIndex();
 
 	void build(SortableStrVec& indexData);
@@ -39,12 +39,12 @@ public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIter(DbContext*) const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
 
-	IndexIteratorPtr createIndexIter(DbContext*) const override;
+	IndexIterator* createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 };
@@ -61,7 +61,7 @@ public:
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIter(DbContext*) const override;
 
 	llong append(fstring row, DbContext*) override;
 	void  replace(llong id, fstring row, DbContext*) override;
@@ -80,7 +80,7 @@ public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
-	IndexIteratorPtr createIndexIter(DbContext*) const override;
+	IndexIterator* createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 	size_t remove(fstring key, llong id, DbContext*) override;
@@ -94,12 +94,12 @@ public:
 	MockReadonlySegment();
 	~MockReadonlySegment();
 protected:
-	ReadableStorePtr openPart(fstring path) const override;
-	ReadableIndexStorePtr openIndex(fstring path, SchemaPtr) const override;
+	ReadableStore* openPart(fstring path) const override;
+	ReadableIndexStore* openIndex(fstring path, const Schema&) const override;
 
-	ReadableIndexStorePtr buildIndex(SchemaPtr indexSchema,
-									 SortableStrVec& indexData) const override;
-	ReadableStorePtr buildStore(SortableStrVec& storeData) const override;
+	ReadableIndexStore* buildIndex(const Schema& indexSchema,
+								   SortableStrVec& indexData) const override;
+	ReadableStore* buildStore(SortableStrVec& storeData) const override;
 };
 
 class NARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
@@ -110,15 +110,15 @@ public:
 	MockWritableSegment(fstring dir);
 	~MockWritableSegment();
 
-	WritableIndexPtr createIndex(fstring path, SchemaPtr) const override;
+	WritableIndex* createIndex(fstring path, const Schema&) const override;
 
 protected:
 	void save(fstring) const override;
 	void load(fstring) override;
-	WritableIndexPtr openIndex(fstring, SchemaPtr) const override;
+	WritableIndex* openIndex(fstring, const Schema&) const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIter(DbContext*) const override;
 	llong totalStorageSize() const override;
 	llong append(fstring row, DbContext*) override;
 	void replace(llong id, fstring row, DbContext*) override;
@@ -133,10 +133,10 @@ public:
 };
 class NARK_DB_DLL MockCompositeTable : public CompositeTable {
 public:
-	DbContextPtr createDbContext() const override;
-	ReadonlySegmentPtr createReadonlySegment(fstring dir) const override;
-	WritableSegmentPtr createWritableSegment(fstring dir) const override;
-	WritableSegmentPtr openWritableSegment(fstring dir) const override;
+	DbContext* createDbContext() const override;
+	ReadonlySegment* createReadonlySegment(fstring dir) const override;
+	WritableSegment* createWritableSegment(fstring dir) const override;
+	WritableSegment* openWritableSegment(fstring dir) const override;
 };
 
 } } // namespace nark::db

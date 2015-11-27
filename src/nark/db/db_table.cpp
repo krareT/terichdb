@@ -394,7 +394,7 @@ public:
 			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
 			if (m_segIdx < tab->m_segments.size()-1) {
 				m_segIdx++;
-				tab->m_segments[m_segIdx]->createStoreIter(&*m_ctx).swap(m_curSegIter);
+				m_curSegIter = tab->m_segments[m_segIdx]->createStoreIter(&*m_ctx);
 				bool ret = m_curSegIter->increment(subId, val);
 				return ret;
 			}
@@ -404,7 +404,7 @@ public:
 	}
 };
 
-StoreIteratorPtr CompositeTable::createStoreIter(DbContext* ctx) const {
+StoreIterator* CompositeTable::createStoreIter(DbContext* ctx) const {
 	assert(m_rowSchema);
 	assert(m_indexSchemaSet);
 	return new MyStoreIterator(this, ctx);
@@ -469,20 +469,20 @@ CompositeTable::maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock& lock) 
 	}
 }
 
-ReadonlySegmentPtr
+ReadonlySegment*
 CompositeTable::myCreateReadonlySegment(fstring segDir) const {
-	auto seg = createReadonlySegment(segDir);
+	std::unique_ptr<ReadonlySegment> seg(createReadonlySegment(segDir));
 	seg->m_segDir = segDir.str();
 	seg->m_rowSchema = m_rowSchema;
 	seg->m_indexSchemaSet = m_indexSchemaSet;
 	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
-	return seg;
+	return seg.release();
 }
 
-WritableSegmentPtr
+WritableSegment*
 CompositeTable::myCreateWritableSegment(fstring segDir) const {
 	fs::create_directories(segDir.c_str());
-	auto seg = createWritableSegment(segDir);
+	std::unique_ptr<WritableSegment> seg(createWritableSegment(segDir));
 	seg->m_segDir = segDir.str();
 	seg->m_rowSchema = m_rowSchema;
 	seg->m_indexSchemaSet = m_indexSchemaSet;
@@ -490,13 +490,13 @@ CompositeTable::myCreateWritableSegment(fstring segDir) const {
 	if (seg->m_indices.empty()) {
 		seg->m_indices.resize(m_indexSchemaSet->m_nested.end_i());
 		for (size_t i = 0; i < seg->m_indices.size(); ++i) {
-			SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
-			std::string colnames = schema->joinColumnNames(',');
+			const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+			std::string colnames = schema.joinColumnNames(',');
 			std::string indexPath = segDir + "/index-" + colnames;
 			seg->m_indices[i] = seg->createIndex(indexPath, schema);
 		}
 	}
-	return seg;
+	return seg.release();
 }
 
 llong

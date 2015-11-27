@@ -16,7 +16,7 @@ public:
 	SeqNumIndex(Int min, Int cnt);
 	~SeqNumIndex();
 
-	IndexIteratorPtr createIndexIter(DbContext*) const override;
+	IndexIterator* createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 
@@ -28,7 +28,7 @@ public:
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIter(DbContext*) const override;
 };
 
 } } // namespace nark::db

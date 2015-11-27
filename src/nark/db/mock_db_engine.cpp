@@ -27,7 +27,7 @@ const {
 		val->append(m_rows[id]);
 	}
 }
-StoreIteratorPtr MockReadonlyStore::createStoreIter(DbContext*) const {
+StoreIterator* MockReadonlyStore::createStoreIter(DbContext*) const {
 	assert(0); // should not be called
 	return nullptr;
 }
@@ -201,7 +201,7 @@ public:
 			FixedLenKeyCompare cmp;
 			cmp.fixedLen = fixlen;
 			cmp.strpool = owner->m_keys.strpool.data();
-			cmp.schema = owner->m_schema.get();
+			cmp.schema = owner->m_schema;
 			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
 			*pLower = lo;
 			if (lo < rows && key == owner->m_keys[lo]) {
@@ -212,7 +212,7 @@ public:
 			VarLenKeyCompare cmp;
 			cmp.offsets = owner->m_keys.offsets.data();
 			cmp.strpool = owner->m_keys.strpool.data();
-			cmp.schema = owner->m_schema.get();
+			cmp.schema = owner->m_schema;
 			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
 			*pLower = lo;
 			if (lo < rows && key == owner->m_keys[lo]) {
@@ -233,14 +233,14 @@ public:
 	}
 };
 
-MockReadonlyIndex::MockReadonlyIndex(SchemaPtr schema) {
-	m_schema = schema;
+MockReadonlyIndex::MockReadonlyIndex(const Schema& schema) {
+	m_schema = &schema;
 }
 
 MockReadonlyIndex::~MockReadonlyIndex() {
 }
 
-StoreIteratorPtr MockReadonlyIndex::createStoreIter(DbContext*) const {
+StoreIterator* MockReadonlyIndex::createStoreIter(DbContext*) const {
 	assert(!"Readonly column store did not define iterator");
 	return nullptr;
 }
@@ -251,7 +251,7 @@ StoreIteratorPtr MockReadonlyIndex::createStoreIter(DbContext*) const {
 
 void
 MockReadonlyIndex::build(SortableStrVec& keys) {
-	const Schema* schema = m_schema.get();
+	const Schema* schema = m_schema;
 	const byte* base = keys.m_strpool.data();
 	size_t fixlen = schema->getFixedRowLen();
 	if (fixlen) {
@@ -371,7 +371,7 @@ void MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, DbContext*) 
 	}
 }
 
-IndexIteratorPtr MockReadonlyIndex::createIndexIter(DbContext*) const {
+IndexIterator* MockReadonlyIndex::createIndexIter(DbContext*) const {
 	return new MockReadonlyIndexIterator(this);
 }
 
@@ -433,7 +433,7 @@ void MockWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) 
 	val->append(m_rows[id]);
 }
 
-StoreIteratorPtr MockWritableStore::createStoreIter(DbContext*) const {
+StoreIterator* MockWritableStore::createStoreIter(DbContext*) const {
 	return new MockWritableStoreIter<MockWritableStore>(this);
 }
 
@@ -561,7 +561,7 @@ public:
 };
 
 template<class Key>
-IndexIteratorPtr MockWritableIndex<Key>::createIndexIter(DbContext*) const {
+IndexIterator* MockWritableIndex<Key>::createIndexIter(DbContext*) const {
 	return new MyIndexIter(this);
 }
 
@@ -635,26 +635,26 @@ MockReadonlySegment::MockReadonlySegment() {
 MockReadonlySegment::~MockReadonlySegment() {
 }
 
-ReadableStorePtr
+ReadableStore*
 MockReadonlySegment::openPart(fstring path) const {
 	// Mock just use one kind of data store
 //	FileStream fp(path.c_str(), "rb");
 //	fp.disbuf();
 //	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
-	ReadableStorePtr store(new MockReadonlyStore());
+	std::unique_ptr<MockReadonlyStore> store(new MockReadonlyStore());
 	store->load(path);
-	return store;
+	return store.release();
 }
 
-ReadableIndexStorePtr
-MockReadonlySegment::openIndex(fstring path, SchemaPtr schema) const {
-	ReadableIndexStorePtr store(new MockReadonlyIndex(schema));
+ReadableIndexStore*
+MockReadonlySegment::openIndex(fstring path, const Schema& schema) const {
+	std::unique_ptr<MockReadonlyIndex> store(new MockReadonlyIndex(schema));
 	store->load(path);
-	return store;
+	return store.release();
 }
 
-ReadableIndexStorePtr
-MockReadonlySegment::buildIndex(SchemaPtr indexSchema,
+ReadableIndexStore*
+MockReadonlySegment::buildIndex(const Schema& indexSchema,
 								SortableStrVec& indexData)
 const {
 	std::unique_ptr<MockReadonlyIndex> index(new MockReadonlyIndex(indexSchema));
@@ -662,7 +662,7 @@ const {
 	return index.release();
 }
 
-ReadableStorePtr
+ReadableStore*
 MockReadonlySegment::buildStore(SortableStrVec& storeData) const {
 	std::unique_ptr<MockReadonlyStore> store(new MockReadonlyStore());
 	store->build(this->m_rowSchema, storeData);
@@ -700,11 +700,11 @@ void MockWritableSegment::load(fstring dir) {
 	dio >> m_rows;
 }
 
-WritableIndexPtr
-MockWritableSegment::openIndex(fstring path, SchemaPtr schema) const {
-	WritableIndexPtr index = createIndex(path, schema);
+WritableIndex*
+MockWritableSegment::openIndex(fstring path, const Schema& schema) const {
+	std::unique_ptr<WritableIndex> index(createIndex(path, schema));
 	index->load(path);
-	return index;
+	return index.release();
 }
 
 llong MockWritableSegment::dataStorageSize() const {
@@ -720,8 +720,8 @@ const {
 	val->append(m_rows[id]);
 }
 
-StoreIteratorPtr MockWritableSegment::createStoreIter(DbContext*) const {
-	return StoreIteratorPtr(new MockWritableStoreIter<MockWritableSegment>(this));
+StoreIterator* MockWritableSegment::createStoreIter(DbContext*) const {
+	return new MockWritableStoreIter<MockWritableSegment>(this);
 }
 
 llong MockWritableSegment::totalStorageSize() const {
@@ -756,10 +756,10 @@ void MockWritableSegment::flush() {
 	// do nothing
 }
 
-WritableIndexPtr MockWritableSegment::createIndex(fstring, SchemaPtr schema) const {
-	WritableIndexPtr index;
-	if (schema->columnNum() == 1) {
-		ColumnMeta cm = schema->getColumnMeta(0);
+WritableIndex*
+MockWritableSegment::createIndex(fstring, const Schema& schema) const {
+	if (schema.columnNum() == 1) {
+		ColumnMeta cm = schema.getColumnMeta(0);
 #define CASE_COL_TYPE(Enum, Type) \
 		case ColumnType::Enum: return new MockWritableIndex<Type>();
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -788,30 +788,30 @@ MockDbContext::MockDbContext(const CompositeTable* tab) : DbContext(tab) {
 MockDbContext::~MockDbContext() {
 }
 
-DbContextPtr MockCompositeTable::createDbContext() const {
+DbContext* MockCompositeTable::createDbContext() const {
 	return new MockDbContext(this);
 }
 
-ReadonlySegmentPtr
+ReadonlySegment*
 MockCompositeTable::createReadonlySegment(fstring dir) const {
 	std::unique_ptr<MockReadonlySegment> seg(new MockReadonlySegment());
 	return seg.release();
 }
 
-WritableSegmentPtr
+WritableSegment*
 MockCompositeTable::createWritableSegment(fstring dir) const {
 	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment(dir));
 	return seg.release();
 }
 
-WritableSegmentPtr
+WritableSegment*
 MockCompositeTable::openWritableSegment(fstring dir) const {
-	WritableSegmentPtr seg(new MockWritableSegment(dir));
+	std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 	seg->m_rowSchema = m_rowSchema;
 	seg->m_indexSchemaSet = m_indexSchemaSet;
 	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
 	seg->load(dir);
-	return seg;
+	return seg.release();
 }
 
 } } // namespace nark::db

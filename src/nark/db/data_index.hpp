@@ -30,7 +30,7 @@ public:
 	SortOrder sortOrder() const { return m_sortOrder; }
 	bool isUnique() const { return m_isUnique; }
 
-	virtual IndexIteratorPtr createIndexIter(DbContext*) const = 0;
+	virtual IndexIterator* createIndexIter(DbContext*) const = 0;
 	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
 };

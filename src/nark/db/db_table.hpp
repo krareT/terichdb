@@ -27,8 +27,8 @@ public:
 	void load(fstring dir) override;
 	void save(fstring dir) const override;
 
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
-	virtual DbContextPtr createDbContext() const = 0;
+	StoreIterator* createStoreIter(DbContext*) const override;
+	virtual DbContext* createDbContext() const = 0;
 
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
@@ -68,12 +68,12 @@ protected:
 	void loadMetaJson(fstring dir);
 	void saveMetaJson(fstring dir) const;
 
-	virtual ReadonlySegmentPtr createReadonlySegment(fstring segDir) const = 0;
-	virtual WritableSegmentPtr createWritableSegment(fstring segDir) const = 0;
-	virtual WritableSegmentPtr openWritableSegment(fstring segDir) const = 0;
+	virtual ReadonlySegment* createReadonlySegment(fstring segDir) const = 0;
+	virtual WritableSegment* createWritableSegment(fstring segDir) const = 0;
+	virtual WritableSegment* openWritableSegment(fstring segDir) const = 0;
 
-	ReadonlySegmentPtr myCreateReadonlySegment(fstring segDir) const;
-	WritableSegmentPtr myCreateWritableSegment(fstring segDir) const;
+	ReadonlySegment* myCreateReadonlySegment(fstring segDir) const;
+	WritableSegment* myCreateWritableSegment(fstring segDir) const;
 
 public:
 	mutable tbb::queuing_rw_mutex m_rwMutex;

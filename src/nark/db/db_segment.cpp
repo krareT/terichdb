@@ -97,9 +97,9 @@ ReadonlySegment::ReadonlySegment() {
 }
 ReadonlySegment::~ReadonlySegment() {
 }
-ReadableIndexPtr
+ReadableIndex*
 ReadonlySegment::getReadableIndex(size_t nth) const {
-	return m_indices[nth];
+	return m_indices[nth].get();
 }
 
 llong ReadonlySegment::dataStorageSize() const {
@@ -239,7 +239,7 @@ public:
 		return false;
 	}
 };
-StoreIteratorPtr ReadonlySegment::createStoreIter(DbContext* ctx) const {
+StoreIterator* ReadonlySegment::createStoreIter(DbContext* ctx) const {
 	return new MyStoreIterator(this, ctx);
 }
 
@@ -249,8 +249,8 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 	valvec<byte> buf;
 	SortableStrVec strVec;
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		SchemaPtr indexSchema = m_indexSchemaSet->m_nested.elem_at(i);
-		size_t fixedIndexRowLen = indexSchema->getFixedRowLen();
+		const Schema& indexSchema = *m_indexSchemaSet->m_nested.elem_at(i);
+		size_t fixedIndexRowLen = indexSchema.getFixedRowLen();
 		for (size_t j = 0; j < input.size(); ++j) {
 			auto seg = input[j];
 			const ReadableStore* indexStore = seg->m_indices[i].get();
@@ -399,7 +399,7 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	}
 	m_indices.resize(indexNum);
 	for (size_t i = 0; i < indexTempFiles.size(); ++i) {
-		SchemaPtr indexSchema = m_indexSchemaSet->m_nested.elem_at(i);
+		const Schema& indexSchema = *m_indexSchemaSet->m_nested.elem_at(i);
 		if (indexTempFiles[i].fixedLen() == 0) {
 			NativeDataInput<InputBuffer> dio;
 			indexTempFiles[i].fp().disbuf();
@@ -475,8 +475,8 @@ void ReadonlySegment::load(fstring dir) {
 		THROW_STD(invalid_argument, "m_parts must be empty");
 	}
 	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
-		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema->joinColumnNames(',');
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema.joinColumnNames(',');
 		std::string path = dir + "/index-" + colnames;
 		m_indices.push_back(this->openIndex(path, schema));
 	}
@@ -520,7 +520,7 @@ WritableSegment::~WritableSegment() {
 WritableStore* WritableSegment::getWritableStore() {
 	return this;
 }
-ReadableIndexPtr
+ReadableIndex*
 WritableSegment::getReadableIndex(size_t nth) const {
 	assert(nth < m_indices.size());
 	return m_indices[nth].get();
@@ -540,8 +540,8 @@ void WritableSegment::openIndices(fstring dir) {
 	}
 	m_indices.resize(this->getIndexNum());
 	for (size_t i = 0; i < this->getIndexNum(); ++i) {
-		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema->joinColumnNames(',');
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema.joinColumnNames(',');
 		std::string path = dir + "/index-" + colnames;
 		m_indices[i] = this->openIndex(path, schema);
 	}
@@ -593,7 +593,7 @@ public:
 	}
 };
 
-StoreIteratorPtr SmartWritableSegment::createStoreIter(DbContext* ctx) const {
+StoreIterator* SmartWritableSegment::createStoreIter(DbContext* ctx) const {
 	return new MyStoreIterator(this, ctx);
 }
 

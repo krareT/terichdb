@@ -36,7 +36,7 @@ class NARK_DB_DLL ReadableSegment : public ReadableStore, public SegmentSchema {
 public:
 	ReadableSegment();
 	~ReadableSegment();
-	virtual ReadableIndexPtr getReadableIndex(size_t indexId) const = 0;
+	virtual ReadableIndex* getReadableIndex(size_t indexId) const = 0;
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
@@ -63,20 +63,20 @@ public:
 
 	// Store can use different implementation for different data
 	// According to data content features
-	virtual ReadableStorePtr openPart(fstring path) const = 0;
+	virtual ReadableStore* openPart(fstring path) const = 0;
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableIndexStorePtr openIndex(fstring path, SchemaPtr) const = 0;
+	virtual ReadableIndexStore* openIndex(fstring path, const Schema&) const = 0;
 
-	ReadableIndexPtr getReadableIndex(size_t nth) const override;
+	ReadableIndex* getReadableIndex(size_t nth) const override;
 
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIter(DbContext*) const override;
 
 	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
 	void convFrom(const ReadableSegment& input, DbContext* ctx);
@@ -85,11 +85,11 @@ public:
 					  valvec<byte>* val, DbContext*) const;
 
 protected:
-	virtual ReadableIndexStorePtr
-			buildIndex(SchemaPtr indexSchema, SortableStrVec& indexData)
+	virtual ReadableIndexStore*
+			buildIndex(const Schema& indexSchema, SortableStrVec& indexData)
 			const = 0;
 
-	virtual ReadableStorePtr buildStore(SortableStrVec& storeData) const = 0;
+	virtual ReadableStore* buildStore(SortableStrVec& storeData) const = 0;
 
 protected:
 	class MyStoreIterator;
@@ -110,15 +110,15 @@ public:
 	~WritableSegment();
 
 	WritableStore* getWritableStore() override;
-	ReadableIndexPtr getReadableIndex(size_t nth) const override;
+	ReadableIndex* getReadableIndex(size_t nth) const override;
 
  	const WritableIndex*
 	nthWritableIndex(size_t nth) const { return m_indices[nth].get(); }
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual WritableIndexPtr openIndex(fstring path, SchemaPtr) const = 0;
-	virtual WritableIndexPtr createIndex(fstring path, SchemaPtr) const = 0;
+	virtual WritableIndex* openIndex(fstring path, const Schema&) const = 0;
+	virtual WritableIndex* createIndex(fstring path, const Schema&) const = 0;
 
 	valvec<WritableIndexPtr> m_indices;
 	valvec<uint32_t>  m_deletedWrIdSet;
@@ -145,7 +145,7 @@ protected:
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*)
 	const override final;
 
-	StoreIteratorPtr createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIter(DbContext*) const override;
 
 	void save(fstring) const override;
 	void load(fstring) override;
