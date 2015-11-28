@@ -366,7 +366,7 @@ public:
 		// MyStoreIterator creation is rarely used, lock it by m_rwMutex
 			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
 			m_segs.resize(tab->m_segments.size() + 1);
-			for (size_t i = 0; i < m_segs.size(); ++i) {
+			for (size_t i = 0; i < m_segs.size()-1; ++i) {
 				m_segs[i].seg = tab->m_segments[i];
 				m_segs[i].baseId = tab->m_rowNumVec[i];
 			}
@@ -438,7 +438,7 @@ public:
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
 		tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
 		size_t upp = upper_bound_0(m_segs.data(), m_segs.size(), id, CompareBy_baseId());
-		if (upp < tab->m_rowNumVec.size()) {
+		if (upp < m_segs.size()) {
 			m_segIdx = upp-1;
 			llong subId = id - m_segs[upp-1].baseId;
 			auto& cur = m_segs[upp-1];
@@ -454,6 +454,8 @@ public:
 		for (size_t i = 0; i < m_segs.size()-1; ++i) {
 			m_segs[i].iter->reset();
 		}
+		m_segs.ende(1).baseId = m_segs.ende(2).baseId +
+								m_segs.ende(2).seg->numDataRows();
 		m_segIdx = 0;
 	}
 };
@@ -754,8 +756,11 @@ class TableIndexIter : public IndexIterator {
 	DbContextPtr m_ctx;
 	size_t m_indexId;
 	size_t m_segIdx;
-	valvec<IndexIteratorPtr> m_subIter;
-	valvec<ReadableSegmentPtr> m_segs;
+	struct OneSeg {
+		ReadableSegmentPtr seg;
+		IndexIteratorPtr   iter;
+	};
+	valvec<OneSeg> m_segs;
 
 	void init(CompositeTable* tab, size_t indexId) {
 		m_tab.reset(tab);
@@ -771,17 +776,17 @@ class TableIndexIter : public IndexIterator {
 
 	void refresh() {
 		tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
+		m_segs.resize(m_tab->m_segments.size());
 		for (size_t i = 0; i < m_segs.size(); ++i) {
-			if (m_segs[i] == m_tab->m_segments[i]) {
-				m_subIter[i]->reset(nullptr);
+			auto& cur = m_segs[i];
+			assert(m_tab->m_segments[i]);
+			if (cur.seg == m_tab->m_segments[i]) {
+				if (cur.iter)
+					cur.iter->reset(nullptr);
 			} else {
-				m_segs[i] = m_tab->m_segments[i];
-				m_subIter[i] = m_segs[i]->getReadableIndex(m_indexId)->createIndexIter(&*m_ctx);
+				cur.seg = m_tab->m_segments[i];
+				cur.iter = nullptr;
 			}
-		}
-		for (size_t i = m_segs.size(); i < m_tab->m_segments.size(); ++i) {
-			m_segs.push_back(m_tab->m_segments[i]);
-			m_subIter.push_back(m_segs[i]->getReadableIndex(m_indexId)->createIndexIter(&*m_ctx));
 		}
 	}
 
@@ -815,6 +820,10 @@ public:
 		if (nark_unlikely(size_t(-1) == m_segIdx)) {
 			m_segIdx = 0;
 		}
+		if (nark_unlikely(!m_segs[m_segIdx].iter)) {
+			m_segs[m_segIdx].iter = m_segs[m_segIdx].seg->
+				getReadableIndex(m_indexId)->createIndexIter(&*m_ctx);
+		}
 		llong subId = -1;
 		while (incrementNoCheckDel(&subId, key)) {
 			if (!isDeleted(subId)) {
@@ -826,7 +835,7 @@ public:
 		return false;
 	}
 	bool incrementNoCheckDel(llong* subId, valvec<byte>* key) {
-		bool ret = m_subIter[m_segIdx]->increment(subId, key);
+		bool ret = m_segs[m_segIdx].iter->increment(subId, key);
 		if (nark_unlikely(!ret)) {
 			if (m_segs.size()-1 == m_segIdx) {
 				assert(m_segs.size() <= m_tab->m_segments.size());
@@ -836,7 +845,7 @@ public:
 				refresh();
 			}
 			m_segIdx++;
-			ret = m_subIter[m_segIdx]->increment(subId, key);
+			ret = m_segs[m_segIdx].iter->increment(subId, key);
 		}
 		return ret;
 	}
@@ -858,13 +867,13 @@ public:
 	bool isDeleted(llong subId) {
 		if (m_tab->m_segments.size()-1 == m_segIdx) {
 			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
-			return m_segs[m_segIdx]->m_isDel[subId];
+			return m_segs[m_segIdx].seg->m_isDel[subId];
 		} else {
-			return m_segs[m_segIdx]->m_isDel[subId];
+			return m_segs[m_segIdx].seg->m_isDel[subId];
 		}
 	}
 	bool decrementNoCheckDel(llong* subId, valvec<byte>* key) {
-		bool ret = m_subIter[m_segIdx]->increment(subId, key);
+		bool ret = m_segs[m_segIdx].iter->increment(subId, key);
 		if (nark_unlikely(!ret)) {
 			if (m_segs.size()-1 == m_segIdx) {
 				assert(m_segs.size() <= m_tab->m_segments.size());
@@ -874,7 +883,7 @@ public:
 				refresh();
 			}
 			m_segIdx++;
-			ret = m_subIter[m_segIdx]->increment(subId, key);
+			ret = m_segs[m_segIdx].iter->increment(subId, key);
 		}
 		return ret;
 	}
@@ -889,9 +898,9 @@ public:
 		}
 		for (size_t i = m_segs.size(); i > 0; --i) {
 			size_t segIdx = i - 1;
-			if (m_subIter[segIdx]->seekExact(key)) {
+			if (m_segs[segIdx].iter->seekExact(key)) {
 				if (m_segIdx != segIdx && size_t(-1) != m_segIdx) {
-					m_subIter[m_segIdx]->reset(nullptr);
+					m_segs[m_segIdx].iter->reset(nullptr);
 				}
 				m_segIdx = segIdx;
 				return true;
