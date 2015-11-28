@@ -1041,6 +1041,8 @@ public:
 		auto& cur = m_segs[segIdx];
 		if (cur.iter->increment(subId, key)) {
 			m_set.insert(segIdx);
+		} else {
+			key->erase_all();
 		}
 		std::swap(cur.subId, *subId); // wa! it's cool
 		key->swap(cur.data);          // wa! it's cool
@@ -1066,6 +1068,8 @@ public:
 		auto& cur = m_segs[segIdx];
 		if (cur.iter->decrement(subId, key)) {
 			m_set.insert(segIdx);
+		} else {
+			key->erase_all();
 		}
 		std::swap(cur.subId, *subId); // wa! it's cool
 		key->swap(cur.data);          // wa! it's cool
