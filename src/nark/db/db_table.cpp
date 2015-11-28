@@ -962,6 +962,32 @@ MergeReadonlySeg:
 	return true;
 }
 
+void CompositeTable::clear() {
+	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
+	for (size_t i = 0; i < m_segments.size(); ++i) {
+		m_segments[i]->deleteSegment();
+		m_segments[i] = nullptr;
+	}
+	m_segments.clear();
+	m_rowNumVec.clear();
+}
+
+void CompositeTable::flush() {
+	valvec<ReadableSegmentPtr> segsCopy;
+	{
+		tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
+		segsCopy.assign(m_segments);
+	}
+	for (size_t i = 0; i < segsCopy.size(); ++i) {
+		auto seg = segsCopy[i].get();
+		auto wStore = seg->getWritableStore();
+		if (wStore) {
+			auto wSeg = dynamic_cast<WritableSegment*>(seg);
+			wSeg->flushSegment();
+		}
+	}
+}
+
 std::string CompositeTable::toJsonStr(fstring row) const {
 	return m_rowSchema->toJsonStr(row);
 }

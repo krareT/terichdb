@@ -47,7 +47,8 @@ public:
 	virtual llong append(fstring row, DbContext*) = 0;
 	virtual void  replace(llong id, fstring row, DbContext*) = 0;
 	virtual void  remove(llong id, DbContext*) = 0;
-	virtual void  flush() = 0;
+	virtual void  clear() = 0;
+	virtual void  flush() const = 0;
 };
 //typedef boost::intrusive_ptr<WritableStore> WritableStorePtr;
 /*

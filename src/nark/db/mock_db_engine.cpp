@@ -461,6 +461,12 @@ void MockWritableStore::remove(llong id, DbContext*) {
 	assert(id < llong(m_rows.size()));
 	m_rows[id].clear();
 }
+void MockWritableStore::clear() {
+	m_rows.clear();
+}
+void MockWritableStore::flush() const {
+	// do nothing...
+}
 
 //////////////////////////////////////////////////////////////////
 
@@ -633,7 +639,13 @@ size_t MockWritableIndex<Key>::remove(fstring key, llong id, DbContext*) {
 }
 
 template<class Key>
-void MockWritableIndex<Key>::flush() {
+void MockWritableIndex<Key>::clear() {
+	m_keysLen = 0;
+	m_kv.clear();
+}
+
+template<class Key>
+void MockWritableIndex<Key>::flush() const {
 	// do nothing
 }
 
@@ -760,7 +772,10 @@ void MockWritableSegment::remove(llong id, DbContext*) {
 	m_rows[id].clear();
 }
 
-void MockWritableSegment::flush() {
+void MockWritableSegment::clear() {
+}
+
+void MockWritableSegment::flush() const {
 	// do nothing
 }
 

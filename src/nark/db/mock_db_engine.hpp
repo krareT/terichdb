@@ -66,6 +66,9 @@ public:
 	llong append(fstring row, DbContext*) override;
 	void  replace(llong id, fstring row, DbContext*) override;
 	void  remove(llong id, DbContext*) override;
+
+	void clear() override;
+	void flush() const override;
 };
 typedef boost::intrusive_ptr<MockWritableStore> MockWritableStorePtr;
 
@@ -75,7 +78,6 @@ class NARK_DB_DLL MockWritableIndex : public WritableIndex {
 	typedef std::pair<Key, llong> kv_t;
 	std::set<kv_t> m_kv;
 	size_t m_keysLen = 0;
-	ullong m_removeVer = 0;
 public:
 	void save(fstring) const override;
 	void load(fstring) override;
@@ -86,7 +88,8 @@ public:
 	size_t remove(fstring key, llong id, DbContext*) override;
 	size_t insert(fstring key, llong id, DbContext*) override;
 	size_t replace(fstring key, llong oldId, llong newId, DbContext*) override;
-	void flush() override;
+	void clear() override;
+	void flush() const override;
 };
 
 class NARK_DB_DLL MockReadonlySegment : public ReadonlySegment {
@@ -123,7 +126,8 @@ protected:
 	llong append(fstring row, DbContext*) override;
 	void replace(llong id, fstring row, DbContext*) override;
 	void remove(llong id, DbContext*) override;
-	void flush() override;
+	void clear() override;
+	void flush() const override;
 };
 
 class NARK_DB_DLL MockDbContext : public DbContext {

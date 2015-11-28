@@ -120,6 +120,8 @@ public:
 	virtual WritableIndex* openIndex(fstring path, const Schema&) const = 0;
 	virtual WritableIndex* createIndex(fstring path, const Schema&) const = 0;
 
+	void flushSegment();
+
 	valvec<WritableIndexPtr> m_indices;
 	valvec<uint32_t>  m_deletedWrIdSet;
 

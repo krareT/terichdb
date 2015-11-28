@@ -11,6 +11,8 @@
 
 namespace nark { namespace db {
 
+namespace fs = boost::filesystem;
+
 SegmentSchema::SegmentSchema() {
 }
 SegmentSchema::~SegmentSchema() {
@@ -65,19 +67,20 @@ llong ReadableSegment::numDataRows() const {
 }
 
 void ReadableSegment::save(fstring dir) const {
-	std::string isDelFpath = dir + "/isDel";
+	fs::path isDelFpath = fs::path(dir.str()) / "isDel";
 	NativeDataOutput<FileStream> file;
-	file.open(isDelFpath.c_str(), "wb");
+	file.open(isDelFpath.string().c_str(), "wb");
 	file << uint64_t(m_isDel.size());
 	file << uint64_t(m_delcnt);
 	file.ensureWrite(m_isDel.bldata(), m_isDel.mem_size());
 }
 
 void ReadableSegment::load(fstring dir) {
-	std::string isDelFpath = dir + "/isDel";
+	fs::path isDelFpath = fs::path(dir.str()) / "isDel";
 	size_t bytes = 0;
 	bool writable = true;
-	m_isDelMmap = (byte*)mmap_load(isDelFpath.c_str(), &bytes, writable);
+	std::string fpath = isDelFpath.string();
+	m_isDelMmap = (byte*)mmap_load(fpath.c_str(), &bytes, writable);
 	uint64_t rowNum = ((uint64_t*)m_isDelMmap)[0];
 	uint64_t delcnt = ((uint64_t*)m_isDelMmap)[1];
 	m_isDel.risk_mmap_from(m_isDelMmap + 16, bytes - 16);
@@ -489,7 +492,6 @@ void ReadonlySegment::load(fstring dir) {
 		std::string path = dir + "/index-" + colnames;
 		m_indices.push_back(this->openIndex(path, schema));
 	}
-	namespace fs = boost::filesystem;
 	for (auto& x : fs::directory_iterator(fs::path(dir.c_str()))) {
 		std::string fname = x.path().filename().string();
 		long partIdx = -1;
@@ -543,6 +545,17 @@ llong WritableSegment::totalIndexSize() const {
 	return size;
 }
 
+void WritableSegment::flushSegment() {
+	for (size_t i = 0; i < m_indices.size(); ++i) {
+		m_indices[i]->flush();
+	}
+	this->flush();
+	assert(m_segDir.size() > 0);
+	if (!m_isDelMmap) {
+		ReadableSegment::save(m_segDir); // save m_isDel
+	}
+}
+
 void WritableSegment::openIndices(fstring dir) {
 	if (!m_indices.empty()) {
 		THROW_STD(invalid_argument, "m_indices must be empty");
@@ -559,10 +572,11 @@ void WritableSegment::openIndices(fstring dir) {
 void WritableSegment::saveIndices(fstring dir) const {
 	assert(m_indices.size() == this->getIndexNum());
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		SchemaPtr schema = m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema->joinColumnNames(',');
-		std::string path = dir + "/index-" + colnames;
-		m_indices[i]->save(path);
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema.joinColumnNames(',');
+		boost::filesystem::path path = dir.str();
+		path /= "index-" + colnames;
+		m_indices[i]->save(path.string());
 	}
 }
 

@@ -146,7 +146,10 @@ size_t SeqNumIndex<Int>::replace(fstring key, llong id, llong newId, DbContext*)
 }
 
 template<class Int>
-void SeqNumIndex<Int>::flush() {}
+void SeqNumIndex<Int>::clear() {}
+
+template<class Int>
+void SeqNumIndex<Int>::flush() const {}
 
 template<class Int>
 llong SeqNumIndex<Int>::dataStorageSize() const { return 2 * sizeof(llong); }

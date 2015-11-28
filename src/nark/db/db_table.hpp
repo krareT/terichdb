@@ -47,6 +47,8 @@ public:
 	IndexIteratorPtr createIndexIter(fstring indexCols) const;
 
 	bool compact();
+	void clear();
+	void flush();
 
 	std::string toJsonStr(fstring row) const;
 

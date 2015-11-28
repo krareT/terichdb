@@ -23,7 +23,8 @@ public:
 	size_t remove(fstring key, llong id, DbContext*) override;
 	size_t insert(fstring key, llong id, DbContext*) override;
 	size_t replace(fstring key, llong id, llong newId, DbContext*) override;
-	void flush() override;
+	void clear() override;
+	void flush() const override;
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
