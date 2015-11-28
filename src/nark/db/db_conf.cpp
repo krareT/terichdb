@@ -11,12 +11,10 @@ namespace nark { namespace db {
 
 ColumnMeta::ColumnMeta() {
 	type = ColumnType::Binary;
-	order = SortOrder::UnOrdered;
 }
 
-ColumnMeta::ColumnMeta(ColumnType t, SortOrder ord) {
+ColumnMeta::ColumnMeta(ColumnType t) {
 	type = t;
-	order = ord;
 	switch (t) {
 	default:
 		THROW_STD(runtime_error, "Invalid data row");
@@ -51,6 +49,8 @@ ColumnMeta::ColumnMeta(ColumnType t, SortOrder ord) {
 Schema::Schema() {
 	m_fixedLen = size_t(-1);
 	m_parent = nullptr;
+	m_isOrdered = false;
+	m_keepCols.fill(true);
 }
 Schema::~Schema() {
 }
@@ -778,6 +778,12 @@ int Schema::QsortCompareByIndex(const void* x, const void* y, const void* ctx) {
 	return cc->schema->compareData(xs, ys);
 }
 
+SchemaSet::SchemaSet() {
+	m_flattenColumnNum = 0;
+}
+SchemaSet::~SchemaSet() {
+}
+
 // An index can be a composite index, which have multiple columns as key,
 // so many indices may share columns, if the column share happens, we just
 // need one instance of the column to compose a row from multiple index.
@@ -788,29 +794,22 @@ int Schema::QsortCompareByIndex(const void* x, const void* y, const void* ctx) {
 // if all columns of an index are not keeped, m_keepSchema[x] is false.
 void SchemaSet::compileSchemaSet(const Schema* parent) {
 	assert(nullptr != parent);
-	size_t numBits = 0;
-	for (size_t i = 0; i < m_nested.end_i(); ++i) {
-		const Schema* sc = m_nested.elem_at(i).get();
-		numBits += sc->columnNum();
-	}
-	m_keepColumn.resize_fill(numBits, 1);
-	m_keepSchema.resize_fill(m_nested.end_i(), 1);
 	hash_strmap<int> dedup;
-	numBits = 0;
+	this->m_flattenColumnNum = 0;
 	for (size_t i = 0; i < m_nested.end_i(); ++i) {
-		const Schema* sc = m_nested.elem_at(i).get();
+		Schema* sc = m_nested.elem_at(i).get();
 		size_t numSkipped = 0;
 		for (size_t j = 0; j < sc->m_columnsMeta.end_i(); ++j) {
 			fstring columnName = sc->m_columnsMeta.key(j);
 			int cnt = dedup[columnName]++;
 			if (cnt) {
-				m_keepColumn.set0(numBits);
+				sc->m_keepCols.set0(j);
 				numSkipped++;
 			}
-			numBits++;
+			this->m_flattenColumnNum++;
 		}
-		if (sc->m_columnsMeta.end_i() == numSkipped) {
-			m_keepSchema.set0(i);
+		for (size_t j = sc->m_columnsMeta.end_i(); j < Schema::MaxProjColumns; ++j) {
+			sc->m_keepCols.set0(j);
 		}
 	}
 	for (size_t i = 0; i < m_nested.end_i(); ++i) {

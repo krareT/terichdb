@@ -3,7 +3,7 @@
 namespace nark { namespace db {
 
 ReadableIndex::ReadableIndex()
-  : m_sortOrder(SortOrder::UnOrdered)
+  : m_isOrdered(false)
   , m_isUnique(true)
 {
 }

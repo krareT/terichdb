@@ -89,7 +89,8 @@ protected:
 	std::string m_dir;
 	llong m_readonlyDataMemSize;
 	llong m_maxWrSegSize;
-	friend class TableIndexIter;
+	friend class TableIndexIterUnOrdered;
+	friend class TableIndexIterOrdered;
 };
 typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 

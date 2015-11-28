@@ -142,7 +142,8 @@ const {
 	ctx->offsets.risk_set_size(0);
 	ctx->offsets.push_back(0);
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		if (m_indexSchemaSet->m_keepSchema[i]) {
+		const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
+		if (iSchema.m_keepCols.has_any1()) {
 			m_indices[i]->getValueAppend(id, &ctx->buf1, ctx);
 		}
 		ctx->offsets.push_back(ctx->buf1.size());
@@ -158,7 +159,7 @@ const {
 	for (size_t i = 0; i < m_indices.size(); ++i) {
 		const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
 		size_t off0 = ctx->offsets[i], off1 = ctx->offsets[i+1];
-		if (m_indexSchemaSet->m_keepSchema[i]) {
+		if (iSchema.m_keepCols.has_any1()) {
 			fstring indexRow(ctx->buf1.data() + off0, off1 - off0);
 			iSchema.parseRowAppend(indexRow, &ctx->cols1);
 		}
@@ -167,7 +168,7 @@ const {
 			ctx->cols1.resize(ctx->cols1.size() + iSchema.columnNum());
 		}
 	}
-	assert(ctx->cols1.size() == m_indexSchemaSet->m_keepColumn.size());
+	assert(ctx->cols1.size() == m_indexSchemaSet->m_flattenColumnNum);
 	if (!m_parts.empty()) { // get nonIndex store
 		size_t off0 = ctx->offsets.ende(2), off1 = ctx->offsets.ende(1);
 		fstring indexRow(ctx->buf1.data() + off0, off1 - off0);
@@ -180,7 +181,7 @@ const {
 	for (size_t i = 0; i < m_indices.size(); ++i) {
 		const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
 		for (size_t j = 0; j < iSchema.columnNum(); ++j) {
-			if (m_indexSchemaSet->m_keepColumn[baseColumnId + j]) {
+			if (iSchema.m_keepCols[j]) {
 				size_t parentColId = iSchema.parentColumnId(j);
 				ctx->cols2[parentColId] = ctx->cols1[baseColumnId + j];
 			}

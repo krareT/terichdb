@@ -291,8 +291,14 @@ void CompositeTable::loadMetaJson(fstring dir) {
 	m_indexSchemaSet.reset(new SchemaSet());
 	for (const auto& index : tableIndex) {
 		SchemaPtr indexSchema(new Schema());
-		for (const auto& col : index) {
-			const std::string& colname = col;
+		const std::string& strFields = index["fields"];
+		std::vector<std::string> fields;
+		fstring(strFields).split(',', &fields);
+		if (fields.size() > Schema::MaxProjColumns) {
+			THROW_STD(invalid_argument, "Index Columns=%zd exceeds Max=%zd",
+				fields.size(), Schema::MaxProjColumns);
+		}
+		for (const std::string& colname : fields) {
 			const size_t k = m_rowSchema->getColumnId(colname);
 			if (k == m_rowSchema->columnNum()) {
 				THROW_STD(invalid_argument,
@@ -301,7 +307,13 @@ void CompositeTable::loadMetaJson(fstring dir) {
 			indexSchema->m_columnsMeta.
 				insert_i(colname, m_rowSchema->getColumnMeta(k));
 		}
-		m_indexSchemaSet->m_nested.insert_i(indexSchema);
+		auto ib = m_indexSchemaSet->m_nested.insert_i(indexSchema);
+		if (!ib.second) {
+			THROW_STD(invalid_argument,
+				"duplicate index: %s", strFields.c_str());
+		}
+		bool isOrdered = index["ordered"];
+		indexSchema->m_isOrdered = isOrdered;
 	}
 	compileSchema();
 }
@@ -751,7 +763,7 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 	m_wrSeg->m_indices[indexId]->replace(indexKey, oldSubId, newSubId, txn);
 }
 
-class TableIndexIter : public IndexIterator {
+class TableIndexIterUnOrdered : public IndexIterator {
 	CompositeTablePtr m_tab;
 	DbContextPtr m_ctx;
 	size_t m_indexId;
@@ -791,10 +803,10 @@ class TableIndexIter : public IndexIterator {
 	}
 
 public:
-	TableIndexIter(const CompositeTable* tab, size_t indexId) {
+	TableIndexIterUnOrdered(const CompositeTable* tab, size_t indexId) {
 		init(const_cast<CompositeTable*>(tab), indexId);
 	}
-	~TableIndexIter() {
+	~TableIndexIterUnOrdered() {
 		tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex);
 		m_tab->m_tableScanningRefCount--;
 	}
@@ -913,9 +925,194 @@ public:
 	}
 };
 
+class TableIndexIterOrdered : public IndexIterator {
+	// bi-directional multiple segment iterator can not use heap or loser-tree
+	CompositeTablePtr m_tab;
+	DbContextPtr m_ctx;
+	size_t m_indexId;
+	struct OneSeg {
+		ReadableSegmentPtr seg;
+		IndexIteratorPtr   iter;
+		valvec<byte>       data;
+		llong              subId;
+	};
+	valvec<OneSeg> m_segs;
+	class SetKeyCompare {
+		TableIndexIterOrdered* owner;
+		const Schema* schema;
+	public:
+		bool operator()(size_t x, size_t y) const {
+			const auto& xkey = owner->m_segs[x].data;
+			const auto& ykey = owner->m_segs[y].data;
+			if (xkey.empty()) {
+				if (ykey.empty())
+					return x < y;
+				else
+					return true; // xkey < ykey
+			}
+			if (ykey.empty())
+				return false;
+			int r = schema->compareData(xkey, ykey);
+			if (r) return r < 0;
+			else   return x < y;
+		}
+		SetKeyCompare(TableIndexIterOrdered* o, const Schema* s)
+			: owner(o), schema(s) {}
+	};
+	friend class SetKeyCompare;
+	std::set<size_t, SetKeyCompare> m_set;
+
+	void init(CompositeTable* tab, size_t indexId) {
+		m_tab.reset(tab);
+		m_indexId = indexId;
+		m_ctx = tab->createDbContext();
+		{
+			tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex);
+			tab->m_tableScanningRefCount++;
+		}
+		refresh();
+	}
+
+	void refresh() {
+		tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
+		m_segs.resize(m_tab->m_segments.size());
+		for (size_t i = 0; i < m_segs.size(); ++i) {
+			auto& cur = m_segs[i];
+			assert(m_tab->m_segments[i]);
+			if (cur.seg != m_tab->m_segments[i]) {
+				cur.seg = m_tab->m_segments[i];
+				cur.iter = cur.seg->getReadableIndex(m_indexId)->createIndexIter(&*m_ctx);
+				if (!cur.data.empty()) {
+					m_set.erase(i);
+					cur.iter->seekLowerBound(cur.data);
+				}
+				if (cur.iter->increment(&cur.subId, &cur.data)) {
+					m_set.insert(i);
+				}
+			}
+		}
+	}
+
+public:
+	TableIndexIterOrdered(const CompositeTable* tab, size_t indexId)
+	 : m_set(SetKeyCompare(this, &*tab->m_indexSchemaSet->m_nested.elem_at(indexId)))
+	{
+		assert(tab->m_indexSchemaSet->m_nested.elem_at(indexId)->m_isOrdered);
+		init(const_cast<CompositeTable*>(tab), indexId);
+	}
+	~TableIndexIterOrdered() {
+		tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex);
+		m_tab->m_tableScanningRefCount--;
+	}
+	void reset(PermanentablePtr p2) override {
+		if (!p2) {
+			refresh();
+			return;
+		}
+		auto tab = dynamic_cast<CompositeTable*>(p2.get());
+		if (m_tab.get() == tab) {
+			refresh();
+			return;
+		}
+		{
+			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex);
+			m_tab->m_tableScanningRefCount--;
+		}
+		m_set.clear();
+		m_segs.clear();
+		init(tab, m_indexId);
+	}
+	bool increment(llong* id, valvec<byte>* key) override {
+		while (!m_set.empty()) {
+			llong subId;
+			size_t segIdx = incrementNoCheckDel(&subId, key);
+			if (!isDeleted(segIdx, subId)) {
+				llong baseId = m_tab->m_rowNumVec[segIdx];
+				*id = baseId + subId;
+				return true;
+			}
+		}
+		return false;
+	}
+	size_t incrementNoCheckDel(llong* subId, valvec<byte>* key) {
+		assert(!m_set.empty());
+		size_t segIdx = *m_set.begin();
+		m_set.erase(m_set.begin());
+		auto& cur = m_segs[segIdx];
+		if (cur.iter->increment(subId, key)) {
+			m_set.insert(segIdx);
+		}
+		std::swap(cur.subId, *subId); // wa! it's cool
+		key->swap(cur.data);          // wa! it's cool
+		return segIdx;
+	}
+	bool decrement(llong* id, valvec<byte>* key) override {
+		while (!m_set.empty()) {
+			llong subId;
+			size_t segIdx = decrementNoCheckDel(&subId, key);
+			if (!isDeleted(segIdx, subId)) {
+				llong baseId = m_tab->m_rowNumVec[segIdx];
+				*id = baseId + subId;
+				return true;
+			}
+		}
+		return false;
+	}
+	size_t decrementNoCheckDel(llong* subId, valvec<byte>* key) {
+		assert(!m_set.empty());
+		auto last = m_set.end();
+		size_t segIdx = *--last;
+		m_set.erase(last);
+		auto& cur = m_segs[segIdx];
+		if (cur.iter->decrement(subId, key)) {
+			m_set.insert(segIdx);
+		}
+		std::swap(cur.subId, *subId); // wa! it's cool
+		key->swap(cur.data);          // wa! it's cool
+		return segIdx;
+	}
+	bool isDeleted(size_t segIdx, llong subId) {
+		if (m_tab->m_segments.size()-1 == segIdx) {
+			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex, false);
+			return m_segs[segIdx].seg->m_isDel[subId];
+		} else {
+			return m_segs[segIdx].seg->m_isDel[subId];
+		}
+	}
+	bool seekExact(fstring key) override {
+		return seekLowerBound(key);
+	}
+	bool seekLowerBound(fstring key) override {
+		const Schema& schema = *m_tab->m_indexSchemaSet->m_nested.elem_at(m_indexId);
+		size_t fixlen = schema.getFixedRowLen();
+		assert(fixlen == 0 || key.size() == fixlen);
+		if (fixlen && key.size() != fixlen) {
+			THROW_STD(invalid_argument,
+				"bad key, len=%d is not same as fixed-len=%d",
+				key.ilen(), int(fixlen));
+		}
+		m_set.clear();
+		bool ret = false;
+		for(size_t i = 0; i < m_segs.size(); ++i) {
+			auto& cur = m_segs[i];
+			if (cur.iter->seekLowerBound(key)) {
+				ret = true;
+			}
+			if (cur.iter->increment(&cur.subId, &cur.data)) {
+				m_set.insert(i);
+			}
+		}
+		return ret;
+	}
+};
+
 IndexIteratorPtr CompositeTable::createIndexIter(size_t indexId) const {
 	assert(indexId < m_indexSchemaSet->m_nested.end_i());
-	return new TableIndexIter(this, indexId);
+	const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(indexId);
+	if (iSchema.m_isOrdered)
+		return new TableIndexIterOrdered(this, indexId);
+	else
+		return new TableIndexIterUnOrdered(this, indexId);
 }
 
 IndexIteratorPtr CompositeTable::createIndexIter(fstring indexCols) const {

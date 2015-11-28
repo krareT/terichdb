@@ -48,12 +48,6 @@ namespace nark { namespace db {
 		const std::string& operator()(const T& x) const { return x.name; }
 	};
 
-	enum class SortOrder : unsigned char {
-		Ascending,
-		Descending,
-		UnOrdered,
-	};
-
 	enum class ColumnType : unsigned char {
 		// all number types are LittleEndian
 		Uint08,
@@ -80,14 +74,14 @@ namespace nark { namespace db {
 		uint32_t fixedLen = 0;
 		static_bitmap<16, uint16_t> flags;
 		ColumnType type;
-		SortOrder  order;
 		ColumnMeta();
-		explicit ColumnMeta(ColumnType, SortOrder ord = SortOrder::UnOrdered);
+		explicit ColumnMeta(ColumnType);
 	};
 
 	class NARK_DB_DLL Schema : public RefCounter {
 		friend class SchemaSet;
 	public:
+		static const size_t MaxProjColumns = 64;
 		Schema();
 		~Schema();
 		void compile(const Schema* parent = nullptr);
@@ -133,6 +127,8 @@ namespace nark { namespace db {
 		static int QsortCompareByIndex(const void* x, const void* y, const void* ctx);
 
 		hash_strmap<ColumnMeta> m_columnsMeta;
+		bool m_isOrdered; // just for index schema
+		static_bitmap<MaxProjColumns> m_keepCols;
 
 	protected:
 		void compileProject(const Schema* parent);
@@ -218,9 +214,11 @@ namespace nark { namespace db {
 			  { return (*this)(y, x); }
 		};
 	public:
+		SchemaSet();
+		~SchemaSet();
 		gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
-		febitvec m_keepColumn;
-		febitvec m_keepSchema;
+		size_t m_flattenColumnNum;
+		size_t indexNum() const { return m_nested.end_i(); }
 		void compileSchemaSet(const Schema* parent);
 	};
 	typedef boost::intrusive_ptr<SchemaSet> SchemaSetPtr;

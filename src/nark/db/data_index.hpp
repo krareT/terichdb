@@ -22,12 +22,12 @@ typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
 class NARK_DB_DLL ReadableIndex : virtual public Permanentable {
 protected:
-	SortOrder m_sortOrder;
-	bool      m_isUnique;
+	bool m_isOrdered;
+	bool m_isUnique;
 public:
 	ReadableIndex();
 	virtual ~ReadableIndex();
-	SortOrder sortOrder() const { return m_sortOrder; }
+	bool isOrdered() const { return m_isOrdered; }
 	bool isUnique() const { return m_isUnique; }
 
 	virtual IndexIterator* createIndexIter(DbContext*) const = 0;
