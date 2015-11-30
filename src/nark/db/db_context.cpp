@@ -12,6 +12,7 @@ namespace nark { namespace db {
 DbContext::DbContext(const CompositeTable* tab)
   : m_tab(const_cast<CompositeTable*>(tab))
 {
+	syncIndex = true;
 }
 
 DbContext::~DbContext() {

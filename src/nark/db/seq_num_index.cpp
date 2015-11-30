@@ -101,13 +101,13 @@ template<class Int>
 llong SeqNumIndex<Int>::indexStorageSize() const { return 2 * sizeof(llong); }
 
 template<class Int>
-size_t SeqNumIndex<Int>::remove(fstring key, llong id, DbContext*) {
+bool SeqNumIndex<Int>::remove(fstring key, llong id, DbContext*) {
 	// do nothing
 	return 0;
 }
 
 template<class Int>
-size_t SeqNumIndex<Int>::insert(fstring key, llong id, DbContext*) {
+bool SeqNumIndex<Int>::insert(fstring key, llong id, DbContext*) {
 	assert(key.size() == sizeof(Int));
 	assert(id >= 0);
 	if (key.size() != sizeof(Int)) {
@@ -125,7 +125,7 @@ size_t SeqNumIndex<Int>::insert(fstring key, llong id, DbContext*) {
 	return 1;
 }
 template<class Int>
-size_t SeqNumIndex<Int>::replace(fstring key, llong id, llong newId, DbContext*) {
+bool SeqNumIndex<Int>::replace(fstring key, llong id, llong newId, DbContext*) {
 	assert(key.size() == sizeof(Int));
 	assert(id >= 0);
 	assert(id == newId);

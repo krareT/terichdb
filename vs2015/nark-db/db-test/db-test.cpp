@@ -42,11 +42,11 @@ int main(int argc, char* argv[]) {
 	TestRow recRow;
 
 	size_t maxRowNum = 1000;
-
+	febitvec bits(maxRowNum + 1);
 	for (size_t i = 0; i < maxRowNum; ++i) {
 		TestRow recRow;
 		recRow.id = rand() % maxRowNum + 1;
-		sprintf(recRow.fix.data, "%06llX", recRow.id + 1);
+		sprintf(recRow.fix.data, "%06lld", recRow.id);
 		recRow.str0 = std::string("s0:") + recRow.fix.data;
 		recRow.str1 = std::string("s1:") + recRow.fix.data;
 		recRow.str2 = std::string("s2:") + recRow.fix.data;
@@ -54,7 +54,17 @@ int main(int argc, char* argv[]) {
 		rowBuilder << recRow;
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
 		size_t oldsegments = tab->getSegNum();
-		ctx->insertRow(binRow, true);
+		if (bits[recRow.id]) {
+			int xxx = 1;
+			printf("dupkey: %s\n", tab->m_rowSchema->toJsonStr(binRow).c_str());
+		}
+		if (ctx->insertRow(binRow) < 0) {
+		//	assert(bits.is1(recRow.id));
+			printf("Insert failed: %s\n", ctx->errMsg.c_str());
+		} else {
+			assert(bits.is0(recRow.id));
+		}
+		bits.set1(recRow.id);
 		if (tab->getSegNum() > oldsegments) {
 			tab->compact();
 		}
@@ -74,7 +84,7 @@ int main(int argc, char* argv[]) {
 			const Schema& indexSchema = tab->getIndexSchema(indexId);
 			std::string indexName = indexSchema.joinColumnNames();
 			std::string keyData;
-			for (size_t i = 0; i < maxRowNum/10; ++i) {
+			for (size_t i = 0; i < maxRowNum/50; ++i) {
 				llong keyInt = rand() % (maxRowNum * 11 / 10);
 				char keyBuf[64];
 				switch (indexId) {
@@ -112,7 +122,8 @@ int main(int argc, char* argv[]) {
 				}
 				idvec.resize(0);
 				std::string keyJson = indexSchema.toJsonStr(keyData);
-				printf("find index key = %s\n", keyJson.c_str());
+				printf("find index key = %s", keyJson.c_str());
+				fflush(stdout);
 				llong recId;
 				if (indexIter->seekLowerBound(keyData)) {
 					while (indexIter->increment(&recId, &keyHit)) {
@@ -122,7 +133,7 @@ int main(int argc, char* argv[]) {
 						idvec.push_back(recId);
 					}
 				}
-				printf("found %zd entries\n", idvec.size());
+				printf(", found %zd entries\n", idvec.size());
 				for (size_t i = 0; i < idvec.size(); ++i) {
 					recId = idvec[i];
 					ctx->getValue(recId, &val);

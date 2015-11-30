@@ -1,4 +1,4 @@
-{
+﻿{
 	"RowSchema": {
 		"columns" : {
 			"id"   : { "type" : "uint64" },
@@ -11,7 +11,7 @@
 	"ReadonlyDataMemSize" : 1024,
 	"MaxWrSegSize" : 2048,
 	"TableIndex" : [
-		{ "fields": "id"  , "ordered" : true },
+		{ "fields": "id"  , "ordered" : true, "unique" : true },
 		{ "fields": "str0", "ordered" : true },
 		{ "fields": "str1", "ordered" : true },
 		{ "fields": "str2", "ordered" : true },

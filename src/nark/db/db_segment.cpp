@@ -68,6 +68,10 @@ llong ReadableSegment::numDataRows() const {
 
 void ReadableSegment::saveIsDel(fstring dir) const {
 	assert(m_isDel.popcnt() == m_delcnt);
+	if (m_isDelMmap && dir == m_segDir) {
+		// need not to save, mmap is sys memory
+		return;
+	}
 	fs::path isDelFpath = fs::path(dir.str()) / "isDel";
 	NativeDataOutput<FileStream> file;
 	file.open(isDelFpath.string().c_str(), "wb");
@@ -437,7 +441,7 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	ReadableSegment::loadIsDel(m_segDir);
 	{
 		assert(newRowNum <= inputRowNum);
-		tbb::queuing_rw_mutex::scoped_lock lock(ctx->m_tab->m_rwMutex, false);
+		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
 		size_t old_delcnt = inputRowNum - newRowNum;
 		if (old_delcnt < input.m_delcnt) { // rows were deleted during build
 			size_t i = 0;

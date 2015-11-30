@@ -18,9 +18,9 @@ public:
 	void getValueAppend(llong id, valvec<byte>* val);
 	void getValue(llong id, valvec<byte>* val);
 
-	llong insertRow(fstring row, bool syncIndex);
-	llong replaceRow(llong id, fstring row, bool syncIndex);
-	void  removeRow(llong id, bool syncIndex);
+	llong insertRow(fstring row);
+	llong replaceRow(llong id, fstring row);
+	void  removeRow(llong id);
 
 	void indexInsert(size_t indexId, fstring indexKey, llong id);
 	void indexRemove(size_t indexId, fstring indexKey, llong id);
@@ -28,6 +28,7 @@ public:
 
 public:
 	CompositeTablePtr m_tab;
+	std::string  errMsg;
 	valvec<byte> buf1;
 	valvec<byte> buf2;
 	valvec<byte> row1;
@@ -37,6 +38,7 @@ public:
 	valvec<size_t> offsets;
 	valvec<fstring> cols1;
 	valvec<fstring> cols2;
+	bool syncIndex;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;
 

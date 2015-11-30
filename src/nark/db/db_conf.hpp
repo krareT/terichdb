@@ -128,6 +128,7 @@ namespace nark { namespace db {
 
 		hash_strmap<ColumnMeta> m_columnsMeta;
 		bool m_isOrdered; // just for index schema
+		bool m_isUnique;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
 	protected:

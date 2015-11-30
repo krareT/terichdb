@@ -181,31 +181,36 @@ public:
 		m_pos = size_t(-1);
 	}
 	bool seekExact(fstring key) override {
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
 		size_t lo;
-		if (seekLowerBound_imp(key, &lo)) {
+		if (seekLowerBound_imp(owner, key, &lo)) {
 			m_pos = lo;
 			return true;
 		}
 		return false;
 	}
 	bool seekLowerBound(fstring key) override {
-		return seekLowerBound_imp(key, &m_pos);
-	}
-	bool seekLowerBound_imp(fstring key, size_t* pLower) {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
+		return seekLowerBound_imp(owner, key, &m_pos);
+	}
+	static
+	bool seekLowerBound_imp(const MockReadonlyIndex* owner, fstring key, size_t* pLower) {
 		const uint32_t* index = owner->m_ids.data();
 		const size_t rows = owner->m_ids.size();
 		const size_t fixlen = owner->m_fixedLen;
 		if (fixlen) {
 			assert(owner->m_keys.size() == 0);
+			assert(key.size() == fixlen);
 			FixedLenKeyCompare cmp;
 			cmp.fixedLen = fixlen;
 			cmp.strpool = owner->m_keys.strpool.data();
 			cmp.schema = owner->m_schema;
 			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
 			*pLower = lo;
-			if (lo < rows && key == fstring(cmp.strpool + fixlen*lo, fixlen)) {
-				return true;
+			if (lo < rows) {
+				size_t jj = owner->m_ids[lo];
+				if (key == fstring(cmp.strpool + fixlen*jj, fixlen))
+					return true;
 			}
 		}
 		else {
@@ -215,8 +220,10 @@ public:
 			cmp.schema = owner->m_schema;
 			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
 			*pLower = lo;
-			if (lo < rows && key == owner->m_keys[lo]) {
-				return true;
+			if (lo < rows) {
+				size_t jj = owner->m_ids[lo];
+				if (key == owner->m_keys[jj])
+					return true;
 			}
 		}
 		return false;
@@ -376,6 +383,11 @@ void MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, DbContext*) 
 		fstring key1 = m_keys[id];
 		key->append(key1.udata(), key1.size());
 	}
+}
+
+bool MockReadonlyIndex::exists(fstring key) const {
+	size_t lower;
+	return MockReadonlyIndexIterator::seekLowerBound_imp(this, key, &lower);
 }
 
 IndexIterator* MockReadonlyIndex::createIndexIter(DbContext*) const {
@@ -582,6 +594,11 @@ public:
 };
 
 template<class Key>
+MockWritableIndex<Key>::MockWritableIndex(bool isUnique) {
+	this->m_isUnique = isUnique;
+}
+
+template<class Key>
 IndexIterator* MockWritableIndex<Key>::createIndexIter(DbContext*) const {
 	return new MyIndexIter(this);
 }
@@ -616,8 +633,14 @@ llong MockWritableIndex<Key>::indexStorageSize() const {
 }
 
 template<class Key>
-size_t MockWritableIndex<Key>::insert(fstring key, llong id, DbContext*) {
-	auto ib = m_kv.insert(std::make_pair(MyIndexIter::makeKey(key), id));
+bool MockWritableIndex<Key>::insert(fstring key, llong id, DbContext*) {
+	Key k = MyIndexIter::makeKey(key);
+	if (this->m_isUnique) {
+		auto iter = m_kv.lower_bound(std::make_pair(k, 0));
+		if (m_kv.end() != iter && iter->first == k)
+			return false;
+	}
+	auto ib = m_kv.insert(std::make_pair(k, id));
 	if (ib.second) {
 		m_keysLen += MyIndexIter::keyHeapLen(ib.first->first);
 	}
@@ -625,7 +648,7 @@ size_t MockWritableIndex<Key>::insert(fstring key, llong id, DbContext*) {
 }
 
 template<class Key>
-size_t MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, DbContext*) {
+bool MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, DbContext*) {
 	auto kx = MyIndexIter::makeKey(key);
 	if (oldId != newId) {
 		m_kv.erase(std::make_pair(kx, oldId));
@@ -635,7 +658,14 @@ size_t MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, Db
 }
 
 template<class Key>
-size_t MockWritableIndex<Key>::remove(fstring key, llong id, DbContext*) {
+bool MockWritableIndex<Key>::exists(fstring key) const {
+	auto kx = MyIndexIter::makeKey(key);
+	auto iter = m_kv.lower_bound(std::make_pair(kx, 0));
+	return m_kv.end() != iter && iter->first == kx;
+}
+
+template<class Key>
+bool MockWritableIndex<Key>::remove(fstring key, llong id, DbContext*) {
 	auto iter = m_kv.find(std::make_pair(MyIndexIter::makeKey(key), id));
 	if (m_kv.end() != iter) {
 		m_keysLen = MyIndexIter::keyHeapLen(iter->first);
@@ -775,8 +805,13 @@ void MockWritableSegment::replace(llong id, fstring row, DbContext*) {
 void MockWritableSegment::remove(llong id, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
-	m_dataSize -= m_rows[id].size();
-	m_rows[id].clear();
+	if (m_rows.size()-1 == size_t(id)) {
+		m_rows.pop_back();
+	}
+	else {
+		m_dataSize -= m_rows[id].size();
+		m_rows[id].clear();
+	}
 }
 
 void MockWritableSegment::clear() {
@@ -791,7 +826,7 @@ MockWritableSegment::createIndex(fstring, const Schema& schema) const {
 	if (schema.columnNum() == 1) {
 		ColumnMeta cm = schema.getColumnMeta(0);
 #define CASE_COL_TYPE(Enum, Type) \
-		case ColumnType::Enum: return new MockWritableIndex<Type>();
+		case ColumnType::Enum: return new MockWritableIndex<Type>(schema.m_isUnique);
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 		switch (cm.type) {
 			default: break;
@@ -808,7 +843,7 @@ MockWritableSegment::createIndex(fstring, const Schema& schema) const {
 		}
 #undef CASE_COL_TYPE
 	}
-	return new MockWritableIndex<std::string>();
+	return new MockWritableIndex<std::string>(schema.m_isUnique);
 }
 
 ///////////////////////////////////////////////////////////////////////////

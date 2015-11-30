@@ -13,6 +13,8 @@ namespace nark {
 
 namespace nark { namespace db {
 
+typedef tbb::queuing_rw_mutex::scoped_lock MyRwLock;
+
 // is not a WritableStore
 class NARK_DB_DLL CompositeTable : public ReadableStore, public SegmentSchema {
 	class MyStoreIterator;
@@ -35,13 +37,13 @@ public:
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
-	llong insertRow(fstring row, bool syncIndex, DbContext*);
-	llong replaceRow(llong id, fstring row, bool syncIndex, DbContext*);
-	void  removeRow(llong id, bool syncIndex, DbContext*);
+	llong insertRow(fstring row, DbContext*);
+	llong replaceRow(llong id, fstring row, DbContext*);
+	bool  removeRow(llong id, DbContext*);
 
-	void indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
-	void indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
-	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);
+	bool indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
+	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
+	bool indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);
 
 	IndexIteratorPtr createIndexIter(size_t indexId) const;
 	IndexIteratorPtr createIndexIter(fstring indexCols) const;
@@ -56,9 +58,12 @@ public:
 
 protected:
 
-	void maybeCreateNewSegment(tbb::queuing_rw_mutex::scoped_lock&);
-	llong insertRowImpl(fstring row, bool syncIndex,
-						DbContext*, tbb::queuing_rw_mutex::scoped_lock&);
+	void maybeCreateNewSegment(MyRwLock&);
+	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
+	bool insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
+	bool insertSyncIndex(llong subId, DbContext*);
+	bool replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
+	bool replaceSyncIndex(llong newSubId, DbContext*, MyRwLock&);
 
 	fstring getSegPath(fstring type, size_t segIdx, AutoGrownMemIO& buf) const;
 	fstring getSegPath2(fstring dir, fstring type, size_t segIdx, AutoGrownMemIO& buf) const;
@@ -89,6 +94,8 @@ protected:
 	std::string m_dir;
 	llong m_readonlyDataMemSize;
 	llong m_maxWrSegSize;
+	valvec<size_t> m_uniqIndices;
+	valvec<size_t> m_multIndices;
 	friend class TableIndexIterUnOrdered;
 	friend class TableIndexIterOrdered;
 };
@@ -114,19 +121,19 @@ void DbContext::getValue(llong id, valvec<byte>* val) {
 }
 
 inline
-llong DbContext::insertRow(fstring row, bool syncIndex) {
+llong DbContext::insertRow(fstring row) {
 	assert(this != nullptr);
-	return m_tab->insertRow(row, syncIndex, this);
+	return m_tab->insertRow(row, this);
 }
 inline
-llong DbContext::replaceRow(llong id, fstring row, bool syncIndex) {
+llong DbContext::replaceRow(llong id, fstring row) {
 	assert(this != nullptr);
-	return m_tab->replaceRow(id, row, syncIndex, this);
+	return m_tab->replaceRow(id, row, this);
 }
 inline
-void  DbContext::removeRow(llong id, bool syncIndex) {
+void  DbContext::removeRow(llong id) {
 	assert(this != nullptr);
-	m_tab->removeRow(id, syncIndex, this);
+	m_tab->removeRow(id, this);
 }
 
 inline

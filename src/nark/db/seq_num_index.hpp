@@ -20,9 +20,9 @@ public:
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 
-	size_t remove(fstring key, llong id, DbContext*) override;
-	size_t insert(fstring key, llong id, DbContext*) override;
-	size_t replace(fstring key, llong id, llong newId, DbContext*) override;
+	bool remove(fstring key, llong id, DbContext*) override;
+	bool insert(fstring key, llong id, DbContext*) override;
+	bool replace(fstring key, llong id, llong newId, DbContext*) override;
 	void clear() override;
 	void flush() const override;
 

@@ -43,6 +43,7 @@ public:
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
+	bool exists(fstring key) const override;
 
 	IndexIterator* createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
@@ -79,15 +80,17 @@ class NARK_DB_DLL MockWritableIndex : public WritableIndex {
 	std::set<kv_t> m_kv;
 	size_t m_keysLen = 0;
 public:
+	explicit MockWritableIndex(bool isUnique);
 	void save(fstring) const override;
 	void load(fstring) override;
 
 	IndexIterator* createIndexIter(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
-	size_t remove(fstring key, llong id, DbContext*) override;
-	size_t insert(fstring key, llong id, DbContext*) override;
-	size_t replace(fstring key, llong oldId, llong newId, DbContext*) override;
+	bool remove(fstring key, llong id, DbContext*) override;
+	bool insert(fstring key, llong id, DbContext*) override;
+	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
+	bool exists(fstring key) const override;
 	void clear() override;
 	void flush() const override;
 };

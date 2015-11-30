@@ -33,14 +33,15 @@ public:
 	virtual IndexIterator* createIndexIter(DbContext*) const = 0;
 	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
+	virtual bool  exists(fstring key) const = 0;
 };
 typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
 class NARK_DB_DLL WritableIndex : public ReadableIndex {
 public:
-	virtual size_t remove(fstring key, llong id, DbContext*) = 0;
-	virtual size_t insert(fstring key, llong id, DbContext*) = 0;
-	virtual size_t replace(fstring key, llong id, llong newId, DbContext*) = 0;
+	virtual bool remove(fstring key, llong id, DbContext*) = 0;
+	virtual bool insert(fstring key, llong id, DbContext*) = 0;
+	virtual bool replace(fstring key, llong id, llong newId, DbContext*) = 0;
 	virtual void clear() = 0;
 	virtual void flush() const = 0;
 };
