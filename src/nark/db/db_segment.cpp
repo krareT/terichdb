@@ -66,27 +66,26 @@ llong ReadableSegment::numDataRows() const {
 	return m_isDel.size();
 }
 
-void ReadableSegment::save(fstring dir) const {
+void ReadableSegment::saveIsDel(fstring dir) const {
+	assert(m_isDel.popcnt() == m_delcnt);
 	fs::path isDelFpath = fs::path(dir.str()) / "isDel";
 	NativeDataOutput<FileStream> file;
 	file.open(isDelFpath.string().c_str(), "wb");
 	file << uint64_t(m_isDel.size());
-	file << uint64_t(m_delcnt);
 	file.ensureWrite(m_isDel.bldata(), m_isDel.mem_size());
 }
 
-void ReadableSegment::load(fstring dir) {
+void ReadableSegment::loadIsDel(fstring dir) {
 	fs::path isDelFpath = fs::path(dir.str()) / "isDel";
 	size_t bytes = 0;
 	bool writable = true;
 	std::string fpath = isDelFpath.string();
-	m_isDelMmap = (byte*)mmap_load(fpath.c_str(), &bytes, writable);
+	m_isDelMmap = (byte*)mmap_load(fpath, &bytes, writable);
 	uint64_t rowNum = ((uint64_t*)m_isDelMmap)[0];
-	uint64_t delcnt = ((uint64_t*)m_isDelMmap)[1];
-	m_isDel.risk_mmap_from(m_isDelMmap + 16, bytes - 16);
+	m_isDel.risk_mmap_from(m_isDelMmap + 8, bytes - 8);
 	assert(m_isDel.size() >= rowNum);
 	m_isDel.risk_set_size(size_t(rowNum));
-	m_delcnt = size_t(delcnt);
+	m_delcnt = m_isDel.popcnt();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -432,6 +431,10 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		m_indices[i] = this->buildIndex(indexSchema, strVec);
 		strVec.clear();
 	}
+	fs::create_directories(m_segDir);
+	this->save(m_segDir);
+	m_isDel.clear();
+	ReadableSegment::loadIsDel(m_segDir);
 	{
 		assert(newRowNum <= inputRowNum);
 		tbb::queuing_rw_mutex::scoped_lock lock(ctx->m_tab->m_rwMutex, false);
@@ -464,20 +467,21 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	}
 }
 
-void ReadonlySegment::save(fstring prefix) const {
+void ReadonlySegment::save(fstring dir) const {
+	fs::path dirp = dir.str();
 	for (size_t i = 0; i < m_indices.size(); ++i) {
 		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
 		std::string colnames = schema.joinColumnNames(',');
-		std::string p2 = prefix + "/index-" + colnames;
-		m_indices[i]->save(p2);
+		fs::path p2 = dirp / ("index-" + colnames);
+		m_indices[i]->save(p2.string());
 	}
 	AutoGrownMemIO buf;
 	for (size_t i = 0; i < m_parts.size(); ++i) {
 		buf.rewind();
-		buf.printf("%s/store-%04ld", prefix.c_str(), long(i));
+		buf.printf("%s/store-%04ld", dir.c_str(), long(i));
 		m_parts[i]->save(buf.c_str());
 	}
-	ReadableSegment::save(prefix);
+	saveIsDel(dir);
 }
 
 void ReadonlySegment::load(fstring dir) {
@@ -519,7 +523,7 @@ void ReadonlySegment::load(fstring dir) {
 		id += m_parts[i]->numDataRows();
 	}
 	m_rowNumVec.back() = id;
-	ReadableSegment::load(dir);
+	loadIsDel(dir);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -553,7 +557,7 @@ void WritableSegment::flushSegment() {
 	this->flush();
 	assert(m_segDir.size() > 0);
 	if (!m_isDelMmap) {
-		ReadableSegment::save(m_segDir); // save m_isDel
+		saveIsDel(m_segDir);
 	}
 }
 
@@ -633,12 +637,14 @@ void SmartWritableSegment::save(fstring dir) const {
 	saveIndices(dir);
 	std::string storePath = dir + "/nonIndexStore";
 	m_nonIndexStore->save(storePath);
+	saveIsDel(dir);
 }
 
 void SmartWritableSegment::load(fstring dir) {
 	openIndices(dir);
 	std::string storePath = dir + "/nonIndexStore";
 	m_nonIndexStore->load(storePath);
+	loadIsDel(dir);
 }
 
 llong SmartWritableSegment::dataStorageSize() const {

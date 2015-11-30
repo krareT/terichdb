@@ -18,6 +18,10 @@ public:
 	SegmentSchema();
 	~SegmentSchema();
 
+	const Schema& getIndexSchema(size_t indexId) const {
+		assert(indexId < getIndexNum());
+		return *m_indexSchemaSet->m_nested.elem_at(indexId);
+	}
 	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
 	const Schema& getTableSchema() const { return *m_rowSchema; }
 	size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
@@ -40,8 +44,8 @@ public:
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
-	void save(fstring) const override;
-	void load(fstring) override;
+	void saveIsDel(fstring segDir) const;
+	void loadIsDel(fstring segDir);
 
 	void deleteSegment();
 

@@ -152,6 +152,7 @@ namespace nark { namespace db {
 		template<int N>
 		struct Fixed {
 			char data[N];
+			Fixed() { memset(data, 0, N); }
 			template<class DIO> friend void
 			DataIO_loadObject(DIO& dio, Fixed& x) { dio.ensureRead(&x, N); }
 			template<class DIO> friend void

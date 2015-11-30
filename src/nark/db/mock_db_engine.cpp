@@ -204,7 +204,7 @@ public:
 			cmp.schema = owner->m_schema;
 			size_t lo = nark::lower_bound_0(index, rows, key, cmp);
 			*pLower = lo;
-			if (lo < rows && key == owner->m_keys[lo]) {
+			if (lo < rows && key == fstring(cmp.strpool + fixlen*lo, fixlen)) {
 				return true;
 			}
 		}
@@ -227,7 +227,14 @@ public:
 		assert(pos < owner->m_ids.size());
 		*id = owner->m_ids[pos];
 		if (key) {
-			fstring k = owner->m_keys[*id];
+			size_t fixlen = owner->m_fixedLen;
+			fstring k;
+			if (fixlen) {
+				k.p = owner->m_keys.strpool.data() + fixlen * *id;
+				k.n = fixlen;
+			} else {
+				k = owner->m_keys[*id];
+			}
 			key->assign(k.udata(), k.size());
 		}
 	}
@@ -699,7 +706,7 @@ MockWritableSegment::~MockWritableSegment() {
 }
 
 void MockWritableSegment::save(fstring dir) const {
-	PlainWritableSegment::save(dir);
+	saveIsDel(dir);
 	saveIndices(dir);
 	fs::path fpath = dir.c_str();
 	fpath /= "rows";
@@ -710,7 +717,7 @@ void MockWritableSegment::save(fstring dir) const {
 }
 
 void MockWritableSegment::load(fstring dir) {
-	PlainWritableSegment::load(dir);
+	loadIsDel(dir);
 	this->openIndices(dir);
 	fs::path fpath = dir.c_str();
 	fpath /= "/rows";

@@ -407,6 +407,7 @@ public:
 			if (m_segIdx < m_segs.size()-2) {
 				if (!m_segs[m_segIdx].seg->m_isDel[subId]) {
 					*id = baseId + subId;
+					assert(*id < tab->numDataRows());
 					return true;
 				}
 			}
@@ -414,6 +415,7 @@ public:
 				tbb::queuing_rw_mutex::scoped_lock lock(tab->m_rwMutex, false);
 				if (!tab->m_segments[m_segIdx]->m_isDel[subId]) {
 					*id = baseId + subId;
+					assert(*id < tab->numDataRows());
 					return true;
 				}
 			}
@@ -440,10 +442,15 @@ public:
 				auto& cur = m_segs[m_segIdx];
 				if (nark_unlikely(!cur.iter))
 					cur.iter = cur.seg->createStoreIter(&*m_ctx);
-				return cur.iter->increment(subId, val);
+				bool ret = cur.iter->increment(subId, val);
+				if (ret) {
+					assert(*subId < m_segs[m_segIdx].seg->numDataRows());
+				}
+				return ret;
 			}
 			return false;
 		}
+		assert(*subId < m_segs[m_segIdx].seg->numDataRows());
 		return true;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
@@ -505,6 +512,7 @@ const {
 	tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size() + 1);
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
+	assert(j < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	auto seg = m_segments[j-1].get();
@@ -590,7 +598,7 @@ CompositeTable::insertRowImpl(fstring row, bool syncIndex,
 		subId = m_wrSeg->append(row, txn);
 		assert(subId == (llong)m_wrSeg->m_isDel.size());
 		m_wrSeg->m_isDel.push_back(false);
-		m_rowNumVec.back() = wrBaseId + subId;
+		m_rowNumVec.back() = wrBaseId + subId + 1;
 	}
 	else {
 		subId = m_wrSeg->m_deletedWrIdSet.pop_val();
@@ -669,6 +677,7 @@ CompositeTable::removeRow(llong id, bool syncIndex, DbContext* txn) {
 	assert(j < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
+	assert(m_segments[j-1]->m_isDel.is0(subId));
 	if (j == m_rowNumVec.size()) {
 		if (syncIndex) {
 			valvec<byte> &row = txn->row1, &key = txn->key1;
@@ -684,6 +693,9 @@ CompositeTable::removeRow(llong id, bool syncIndex, DbContext* txn) {
 			}
 		}
 		m_wrSeg->remove(subId, txn);
+		if (m_wrSeg->m_isDel.size()-1 == subId) {
+			m_wrSeg->m_isDel.resize(m_wrSeg->m_isDel.size()-1);
+		}
 	}
 	else {
 		lock.upgrade_to_writer();
@@ -811,13 +823,8 @@ public:
 		m_tab->m_tableScanningRefCount--;
 	}
 	void reset(PermanentablePtr p2) override {
-		if (!p2) {
-			m_segIdx = -1;
-			refresh();
-			return;
-		}
-		auto tab = dynamic_cast<CompositeTable*>(p2.get());
-		if (m_tab.get() == tab) {
+		CompositeTablePtr tab;
+		if (!p2 || m_tab == (tab = dynamic_cast<CompositeTable*>(&*p2))) {
 			m_segIdx = -1;
 			refresh();
 			return;
@@ -826,7 +833,7 @@ public:
 			tbb::queuing_rw_mutex::scoped_lock lock(m_tab->m_rwMutex);
 			m_tab->m_tableScanningRefCount--;
 		}
-		init(tab, m_indexId);
+		init(tab.detach(), m_indexId);
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		if (nark_unlikely(size_t(-1) == m_segIdx)) {
@@ -937,6 +944,7 @@ class TableIndexIterOrdered : public IndexIterator {
 		llong              subId;
 	};
 	valvec<OneSeg> m_segs;
+	valvec<byte> m_keyBuf;
 	class SetKeyCompare {
 		TableIndexIterOrdered* owner;
 		const Schema* schema;
@@ -1025,54 +1033,61 @@ public:
 	bool increment(llong* id, valvec<byte>* key) override {
 		while (!m_set.empty()) {
 			llong subId;
-			size_t segIdx = incrementNoCheckDel(&subId, key);
+			size_t segIdx = incrementNoCheckDel(&subId);
 			if (!isDeleted(segIdx, subId)) {
+				assert(subId < m_segs[segIdx].seg->numDataRows());
 				llong baseId = m_tab->m_rowNumVec[segIdx];
 				*id = baseId + subId;
+				assert(*id < m_tab->numDataRows());
+				if (key)
+					key->swap(m_keyBuf);
 				return true;
 			}
 		}
 		return false;
 	}
-	size_t incrementNoCheckDel(llong* subId, valvec<byte>* key) {
+	size_t incrementNoCheckDel(llong* subId) {
 		assert(!m_set.empty());
 		size_t segIdx = *m_set.begin();
 		m_set.erase(m_set.begin());
 		auto& cur = m_segs[segIdx];
-		if (cur.iter->increment(subId, key)) {
+		if (cur.iter->increment(subId, &m_keyBuf)) {
 			m_set.insert(segIdx);
 		} else {
-			key->erase_all();
+			m_keyBuf.erase_all();
 		}
 		std::swap(cur.subId, *subId); // wa! it's cool
-		key->swap(cur.data);          // wa! it's cool
+		m_keyBuf.swap(cur.data);          // wa! it's cool
 		return segIdx;
 	}
 	bool decrement(llong* id, valvec<byte>* key) override {
 		while (!m_set.empty()) {
 			llong subId;
-			size_t segIdx = decrementNoCheckDel(&subId, key);
+			size_t segIdx = decrementNoCheckDel(&subId);
 			if (!isDeleted(segIdx, subId)) {
+				assert(subId < m_segs[segIdx].seg->numDataRows());
 				llong baseId = m_tab->m_rowNumVec[segIdx];
 				*id = baseId + subId;
+				if (key)
+					key->swap(m_keyBuf);
 				return true;
 			}
 		}
 		return false;
 	}
-	size_t decrementNoCheckDel(llong* subId, valvec<byte>* key) {
+	size_t decrementNoCheckDel(llong* subId) {
 		assert(!m_set.empty());
 		auto last = m_set.end();
 		size_t segIdx = *--last;
 		m_set.erase(last);
 		auto& cur = m_segs[segIdx];
-		if (cur.iter->decrement(subId, key)) {
+		if (cur.iter->decrement(subId, &m_keyBuf)) {
 			m_set.insert(segIdx);
 		} else {
-			key->erase_all();
+			m_keyBuf.erase_all();
 		}
 		std::swap(cur.subId, *subId); // wa! it's cool
-		key->swap(cur.data);          // wa! it's cool
+		m_keyBuf.swap(cur.data);      // wa! it's cool
 		return segIdx;
 	}
 	bool isDeleted(size_t segIdx, llong subId) {
@@ -1158,8 +1173,6 @@ bool CompositeTable::compact() {
 		fstring segDir = getSegPath("rd", i, buf);
 		newSeg = myCreateReadonlySegment(segDir);
 		newSeg->convFrom(*srcSeg, &*ctx);
-		fs::create_directories(newSeg->m_segDir);
-		newSeg->save(newSeg->m_segDir);
 		{
 			tbb::queuing_rw_mutex::scoped_lock lock(m_rwMutex, true);
 			m_segments[firstWrSegIdx] = newSeg;
