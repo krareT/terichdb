@@ -149,7 +149,7 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 				if (coldata.n + 1 < last - curr) {
 					// '\0' is optional, if '\0' exists, it must at string end
 					THROW_STD(invalid_argument,
-						"'\0' in StrZero is not at string end");
+						"'\\0' in StrZero is not at string end");
 				}
 			}
 			break;
@@ -414,7 +414,7 @@ std::string Schema::toJsonStr(fstring row) const {
 					if (len + 1 < last - curr) {
 						// '\0' is optional, if '\0' exists, it must at string end
 						THROW_STD(invalid_argument,
-							"'\0' in StrZero is not at string end");
+							"'\\0' in StrZero is not at string end");
 					}
 				}
 				js[colname.str()] = std::string((char*)curr, len);
@@ -705,12 +705,12 @@ int Schema::compareData(fstring x, fstring y) const {
 					if (xn + 1 < size_t(xlast - xcurr)) {
 						// '\0' is optional, if '\0' exists, it must at string end
 						THROW_STD(invalid_argument,
-							"'\0' in StrZero is not at string end");
+							"'\\0' in StrZero is not at string end");
 					}
 					if (yn + 1 < size_t(ylast - ycurr)) {
 						// '\0' is optional, if '\0' exists, it must at string end
 						THROW_STD(invalid_argument,
-							"'\0' in StrZero is not at string end");
+							"'\\0' in StrZero is not at string end");
 					}
 				}
 				int ret = memcmp(xcurr, ycurr, std::min(xn, yn));
