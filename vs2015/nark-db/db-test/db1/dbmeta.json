@@ -1,0 +1,21 @@
+{
+	"RowSchema": {
+		"columns" : {
+			"id"   : { "type" : "uint64" },
+			"fix"  : { "type" : "fixed", "length" : 9 },
+			"str0" : { "type" : "strzero" },
+			"str1" : { "type" : "binary" },
+			"str2" : { "type" : "binary" }
+		}
+	},
+	"ReadonlyDataMemSize" : 1024,
+	"MaxWrSegSize" : 2048,
+	"TableIndex" : [
+		{ "fields": "id"  , "ordered" : true },
+		{ "fields": "str0", "ordered" : true },
+		{ "fields": "str1", "ordered" : true },
+		{ "fields": "str2", "ordered" : true },
+		{ "fields": "fix" , "ordered" : true },
+		{ "fields": "str0,str1", "ordered" : true }
+	]
+}
