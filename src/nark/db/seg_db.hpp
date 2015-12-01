@@ -1,12 +1,7 @@
 #ifndef __nark_db_seg_db_hpp__
 #define __nark_db_seg_db_hpp__
 
-#include <nark/util/refcount.hpp>
-#include <nark/fstring.hpp>
-#include <nark/valvec.hpp>
-#include <nark/bitmap.hpp>
-#include <boost/intrusive_ptr.hpp>
-#include <mutex>
+#include "db_table.hpp"
 
 // 先只针对 NestLoudsTrie 的特性设计接口
 // NestLoudsTrie 的特性:
@@ -25,8 +20,22 @@
 //          获取 PrimaryKey，这需要一个与 PrimaryIndex RowNum 同等长度的数组，
 //          数组元素是 PrimaryIndexTrie 的 LeafNodeID
 
-namespace nark {
+namespace nark { namespace db {
 
-} // namespace nark
+class DataBase : public RefCounter {
+	hash_strmap<CompositeTablePtr> m_tables;
+	std::string m_dbDir;
+
+public:
+	void openDb(fstring dbDir);
+
+	CompositeTablePtr createTable(fstring tableName, fstring jsonSchema);
+	CompositeTablePtr openTable(fstring tableName);
+
+	void dropTable(fstring tableName);
+};
+typedef boost::intrusive_ptr<DataBase> DataBasePtr;
+
+} } // namespace nark::db
 
 #endif // __nark_db_seg_db_hpp__
