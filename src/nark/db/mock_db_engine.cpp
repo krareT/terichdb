@@ -2,6 +2,7 @@
 #include <nark/io/FileStream.hpp>
 #include <nark/io/StreamBuffer.hpp>
 #include <nark/io/DataIO.hpp>
+#include <nark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
 
 namespace nark { namespace db {

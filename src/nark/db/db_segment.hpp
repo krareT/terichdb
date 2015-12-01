@@ -1,11 +1,13 @@
 #ifndef __nark_db_segment_hpp__
 #define __nark_db_segment_hpp__
 
-#include "db_conf.hpp"
 #include "data_index.hpp"
 #include "data_store.hpp"
-#include <nark/util/sortable_strvec.hpp>
-#include <tbb/queuing_rw_mutex.h>
+#include <nark/bitmap.hpp>
+
+namespace nark {
+	class SortableStrVec;
+}
 
 namespace nark { namespace db {
 

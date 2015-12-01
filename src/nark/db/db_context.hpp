@@ -8,7 +8,7 @@ namespace nark { namespace db {
 typedef boost::intrusive_ptr<class CompositeTable> CompositeTablePtr;
 typedef boost::intrusive_ptr<class StoreIterator> StoreIteratorPtr;
 
-class DbContext : public RefCounter {
+class NARK_DB_DLL DbContext : public RefCounter {
 public:
 	explicit DbContext(const CompositeTable* tab);
 	~DbContext();

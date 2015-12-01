@@ -1,8 +1,6 @@
 #ifndef __nark_db_data_index_hpp__
 #define __nark_db_data_index_hpp__
 
-#include <nark/valvec.hpp>
-#include <nark/bitmap.hpp>
 #include "data_store.hpp"
 
 namespace nark { namespace db {

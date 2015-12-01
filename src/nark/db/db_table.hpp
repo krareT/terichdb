@@ -2,10 +2,7 @@
 #define __nark_db_table_store_hpp__
 
 #include "db_segment.hpp"
-#include <nark/bitmap.hpp>
 #include <tbb/queuing_rw_mutex.h>
-#include <nark/util/fstrvec.hpp>
-#include <nark/util/sortable_strvec.hpp>
 
 namespace nark {
 	class AutoGrownMemIO;

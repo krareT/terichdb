@@ -1,8 +1,6 @@
 #ifndef __nark_db_data_store_hpp__
 #define __nark_db_data_store_hpp__
 
-#include <nark/valvec.hpp>
-#include <nark/bitmap.hpp>
 #include "db_conf.hpp"
 #include "db_context.hpp"
 

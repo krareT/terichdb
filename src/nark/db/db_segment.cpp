@@ -7,6 +7,7 @@
 #include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
 #include <nark/util/mmap.hpp>
+#include <nark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
 
 namespace nark { namespace db {

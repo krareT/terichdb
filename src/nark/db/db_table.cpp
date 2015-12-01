@@ -11,6 +11,8 @@
 #include <nark/io/MemStream.hpp>
 #include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
+#include <nark/util/fstrvec.hpp>
+#include <nark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
 
 #include "json.hpp"

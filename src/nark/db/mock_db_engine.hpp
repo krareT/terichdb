@@ -2,6 +2,7 @@
 #define __nark_db_mock_data_index_hpp__
 
 #include <nark/db/db_table.hpp>
+#include <nark/util/fstrvec.hpp>
 #include <set>
 
 namespace nark { namespace db {

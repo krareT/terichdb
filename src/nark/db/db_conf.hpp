@@ -1,12 +1,10 @@
 #ifndef __nark_db_db_conf_hpp__
 #define __nark_db_db_conf_hpp__
 
-#include <string>
 #include <nark/hash_strmap.hpp>
 #include <nark/gold_hash_map.hpp>
 #include <nark/bitmap.hpp>
 #include <nark/pass_by_value.hpp>
-#include <nark/util/fstrvec.hpp>
 #include <nark/util/refcount.hpp>
 #include <boost/intrusive_ptr.hpp>
 
