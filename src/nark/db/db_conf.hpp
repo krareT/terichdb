@@ -64,7 +64,7 @@ namespace nark { namespace db {
 		Uuid,    // 16 bytes(128 bits) binary
 		Fixed,   // Fixed length binary
 		StrZero, // Zero ended string
-		StrUtf8, // Prefixed by length(var_uint) in bytes
+		TwoStrZero, // Special, now just for BSON RegEx type
 		Binary,  // Prefixed by length(var_uint) in bytes
 	};
 
@@ -72,6 +72,7 @@ namespace nark { namespace db {
 		uint32_t fixedLen = 0;
 		static_bitmap<16, uint16_t> flags;
 		ColumnType type;
+		unsigned char uType; // user column type, such as mongodb type
 		ColumnMeta();
 		explicit ColumnMeta(ColumnType);
 	};
@@ -85,8 +86,6 @@ namespace nark { namespace db {
 		void compile(const Schema* parent = nullptr);
 
 		void parseRow(fstring row, valvec<fstring>* columns) const;
-		void parseRowAppend(fstring row, valvec<fstring>* columns) const;
-
 		void combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const;
 
 		void selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const;
@@ -216,6 +215,7 @@ namespace nark { namespace db {
 	public:
 		SchemaSet();
 		~SchemaSet();
+		SchemaPtr m_uniqIndexFields;
 		gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
 		size_t m_flattenColumnNum;
 		size_t indexNum() const { return m_nested.end_i(); }

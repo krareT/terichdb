@@ -11,6 +11,7 @@ namespace nark { namespace db {
 
 ColumnMeta::ColumnMeta() {
 	type = ColumnType::Binary;
+	uType = 255; // unknown
 }
 
 ColumnMeta::ColumnMeta(ColumnType t) {
@@ -37,7 +38,7 @@ ColumnMeta::ColumnMeta(ColumnType t) {
 		fixedLen = 0; // to be set later
 		break;
 	case ColumnType::StrZero:
-	case ColumnType::StrUtf8:
+	case ColumnType::TwoStrZero:
 	case ColumnType::Binary:
 		fixedLen = 0;
 		break;
@@ -64,12 +65,7 @@ void Schema::compile(const Schema* parent) {
 
 void Schema::parseRow(fstring row, valvec<fstring>* columns) const {
 	assert(size_t(-1) != m_fixedLen);
-	columns->resize(0);
-	parseRowAppend(row, columns);
-}
-
-void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
-	assert(size_t(-1) != m_fixedLen);
+	columns->risk_set_size(0);
 	const byte* curr = row.udata();
 	const byte* last = row.size() + curr;
 
@@ -153,7 +149,31 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 				}
 			}
 			break;
-		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::TwoStrZero: // Two Zero ended strings
+			{
+				intptr_t n1 = strnlen((char*)curr, last - curr);
+				if (i < colnum - 1) {
+					CHECK_CURR_LAST(n1+1);
+					intptr_t n2 = strnlen((char*)curr+n1+1, last-curr-n1-1);
+					CHECK_CURR_LAST(n1+1 + n2+1);
+					coldata.n = n1 + 1 + n2; // don't include 2nd '\0'
+					curr += n1+1 + n2+1;
+				}
+				else { // the last column
+					if (n1+1 < last - curr) {
+						intptr_t n2 = strnlen((char*)curr+n1+1, last-curr-n1-1);
+						// 2nd '\0' is optional if exists, it must at string end
+						if (n1+1 + n2+1 < last - curr) {
+							THROW_STD(invalid_argument,
+								"'\\0' in TwoStrZero is not at string end");
+						}
+						coldata.n = n1 + 1 + n2; // don't include 2nd '\0'
+					} else {
+						coldata.n = n1; // second string is empty/(not present)
+					}
+				}
+			}
+			break;
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			if (i < colnum - 1) {
 				const byte* next = nullptr;
@@ -226,12 +246,12 @@ void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) 
 			myRowData->append(coldata.udata(), colmeta.fixedLen);
 			break;
 		case ColumnType::StrZero: // Zero ended string
+		case ColumnType::TwoStrZero: // Two Zero ended strings
 			myRowData->append(coldata.udata(), coldata.size());
 			if (i < colnum - 1) {
 				myRowData->push_back('\0');
 			}
 			break;
-		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			if (i < colnum - 1) {
 				size_t oldsize = myRowData->size();
@@ -304,12 +324,12 @@ void Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRow
 			myRowData->append(coldata.udata(), colmeta.fixedLen);
 			break;
 		case ColumnType::StrZero: // Zero ended string
+		case ColumnType::TwoStrZero: // Two Zero ended strings
 			myRowData->append(coldata.udata(), coldata.size());
 			if (i < colnum - 1) {
 				myRowData->push_back('\0');
 			}
 			break;
-		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			if (i < colnum - 1) {
 				size_t oldsize = myRowData->size();
@@ -421,7 +441,33 @@ std::string Schema::toJsonStr(fstring row) const {
 				curr += len + 1;
 			}
 			break;
-		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::TwoStrZero: // Two Zero ended string
+			{
+				intptr_t n1 = strnlen((const char*)curr, last - curr);
+				auto& arr = js[colname.str()] = json::array();
+				arr.push_back(std::string((char*)curr, n1));
+				if (i < colnum - 1) {
+					CHECK_CURR_LAST(n1 + 1);
+					intptr_t n2 = strnlen((const char*)curr+n1+1, last-curr-n1-1);
+					CHECK_CURR_LAST(n1 + 1 + n2 + 1);
+					arr.push_back(std::string((char*)curr+n1+1, n2));
+					curr += n1 + 1 + n2 + 1;
+				}
+				else { // the last column
+					// 2nd '\0' is optional, if exists, it must at string end
+					if (n1+1 < last-curr) {
+						intptr_t n2 = strnlen((char*)curr+n1+1, last-curr-n1-1);
+						if (n1+1 + n2+1 < last - curr) {
+							THROW_STD(invalid_argument,
+								"second '\\0' in TwoStrZero is not at string end");
+						}
+						arr.push_back(std::string((char*)curr+n1+1, n2));
+					} else {
+						arr.push_back(std::string(""));
+					}
+				}
+			}
+			break;
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			{
 				intptr_t len;
@@ -472,7 +518,7 @@ const char* Schema::columnTypeStr(ColumnType t) {
 	case ColumnType::Uuid:    return "uuid";
 	case ColumnType::Fixed:   return "fixed";
 	case ColumnType::StrZero: return "strzero";
-	case ColumnType::StrUtf8: return "strutf8";
+	case ColumnType::TwoStrZero: return "twostrzero";
 	case ColumnType::Binary:  return "binary";
 	}
 }
@@ -561,7 +607,7 @@ size_t Schema::computeFixedRowLen() const {
 			rowLen += colmeta.fixedLen;
 			break;
 		case ColumnType::StrZero: // Zero ended string
-		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::TwoStrZero: // Two Zero ended string
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			return 0;
 		}
@@ -589,7 +635,7 @@ namespace {
 			colname2val["uuid"] = ColumnType::Uuid;
 			colname2val["fixed"] = ColumnType::Fixed;
 			colname2val["strzero"] = ColumnType::StrZero;
-			colname2val["strutf8"] = ColumnType::StrUtf8;
+			colname2val["twostrzero"] = ColumnType::TwoStrZero;
 			colname2val["binary"] = ColumnType::Binary;
 		}
 	};
@@ -723,7 +769,64 @@ int Schema::compareData(fstring x, fstring y) const {
 				break;
 			}
 			break;
-		case ColumnType::StrUtf8: // Prefixed by length(var_uint) in bytes
+		case ColumnType::TwoStrZero: // Zero ended string
+			if (i < colnum - 1) {
+				intptr_t xn1 = strnlen((char*)xcurr, xlast-xcurr);
+				intptr_t yn1 = strnlen((char*)ycurr, ylast-ycurr);
+				CHECK_CURR_LAST3(xcurr, xlast, xn1+1);
+				CHECK_CURR_LAST3(ycurr, ylast, yn1+1);
+				intptr_t xn2 = strnlen((char*)xcurr+xn1+1, xlast-xcurr-xn1-1);
+				intptr_t yn2 = strnlen((char*)ycurr+yn1+1, ylast-ycurr-yn1-1);
+				intptr_t xnn = xn1+1+xn2+1;
+				intptr_t ynn = yn1+1+yn2+1;
+				CHECK_CURR_LAST3(xcurr, xlast, xnn);
+				CHECK_CURR_LAST3(ycurr, ylast, ynn);
+				int ret = memcmp(xcurr, ycurr, std::min(xnn,ynn));
+				if (ret) {
+					return ret;
+				} else if (xnn != ynn) {
+					return xnn < ynn ? -1 : +1;
+				}
+				xcurr += xnn;
+				ycurr += ynn;
+			}
+			else { // the last column
+				intptr_t xn1 = strnlen((char*)xcurr, xlast-xcurr);
+				intptr_t yn1 = strnlen((char*)ycurr, ylast-ycurr);
+				int ret = memcmp(xcurr, ycurr, std::min(xn1,yn1));
+				if (ret) {
+					return ret;
+				} else if (xn1 != yn1) {
+					return xn1 < yn1 ? -1 : +1;
+				}
+				intptr_t xn2 = 0, xnn = xn1;
+				intptr_t yn2 = 0, ynn = yn1;
+				if (xn1 + 1 < xlast - xcurr) {
+					xn2 = strnlen((char*)xcurr+xn1+1, xlast-xcurr-xn1-1);
+					// 2nd '\0' is optional, if '\0' exists, it must at string end
+					if (xn1+1 + xn2+1 < xlast - xcurr) {
+						THROW_STD(invalid_argument,
+							"'\\0' in StrZero is not at string end");
+					}
+					xnn += 1 + xn2;
+				}
+				if (yn1 + 1 < ylast - ycurr) {
+					yn2 = strnlen((char*)ycurr+yn1+1, ylast-ycurr-yn1-1);
+					// 2nd '\0' is optional, if '\0' exists, it must at string end
+					if (yn1+1 + yn2+1 < ylast - ycurr) {
+						THROW_STD(invalid_argument,
+							"'\\0' in StrZero is not at string end");
+					}
+					ynn += 1 + yn2;
+				}
+				ret = memcmp(xcurr, ycurr, std::min(xnn,ynn));
+				if (ret) {
+					return ret;
+				} else if (xnn != ynn) {
+					return xnn < ynn ? -1 : +1;
+				}
+			}
+			break;
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			{
 				const byte* xnext = nullptr;
@@ -787,14 +890,11 @@ SchemaSet::~SchemaSet() {
 // An index can be a composite index, which have multiple columns as key,
 // so many indices may share columns, if the column share happens, we just
 // need one instance of the column to compose a row from multiple index.
-// when iteratively call schema->parseRowAppend(..) of a SchemaSet, all
-// columns are concated, duplicated columns may in concated columns.
-// m_keepColumn is used to select the using concated columns
-// if m_keepColumn[i] is true, then columns[i] should be keeped
-// if all columns of an index are not keeped, m_keepSchema[x] is false.
 void SchemaSet::compileSchemaSet(const Schema* parent) {
 	assert(nullptr != parent);
 	hash_strmap<int> dedup;
+	assert(m_uniqIndexFields == nullptr);
+	m_uniqIndexFields = new Schema();
 	this->m_flattenColumnNum = 0;
 	for (size_t i = 0; i < m_nested.end_i(); ++i) {
 		Schema* sc = m_nested.elem_at(i).get();
@@ -805,6 +905,10 @@ void SchemaSet::compileSchemaSet(const Schema* parent) {
 			if (cnt) {
 				sc->m_keepCols.set0(j);
 				numSkipped++;
+			}
+			else {
+				m_uniqIndexFields->m_columnsMeta.
+					insert_i(columnName, sc->m_columnsMeta.val(j));
 			}
 			this->m_flattenColumnNum++;
 		}

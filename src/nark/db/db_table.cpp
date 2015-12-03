@@ -265,6 +265,11 @@ void CompositeTable::loadMetaJson(fstring dir) {
 		if (ColumnType::Fixed == colmeta.type) {
 			colmeta.fixedLen = col["length"];
 		}
+		auto found = col.find("uType");
+		if (col.end() != found) {
+			int uType = found.value();
+			colmeta.uType = byte(uType);
+		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
 		if (!ib.second) {
 			THROW_STD(invalid_argument, "duplicate RowName=%s", name.c_str());
@@ -311,16 +316,17 @@ void CompositeTable::loadMetaJson(fstring dir) {
 			THROW_STD(invalid_argument,
 				"duplicate index: %s", strFields.c_str());
 		}
-
-		if (index.find("ordered") == index.end())
+		auto found = index.find("ordered");
+		if (index.end() == found)
 			indexSchema->m_isOrdered = true; // default
 		else
-			indexSchema->m_isOrdered = index["ordered"];
+			indexSchema->m_isOrdered = found.value();
 
-		if (index.find("unique") == index.end())
+		found = index.find("unique");
+		if (index.end() == found)
 			indexSchema->m_isUnique = false; // default
 		else
-			indexSchema->m_isUnique = index["unique"];
+			indexSchema->m_isUnique = found.value();
 
 		if (indexSchema->m_isUnique)
 			m_uniqIndices.push_back(ib.first);
