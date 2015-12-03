@@ -26,7 +26,7 @@ public:
 	void load(fstring dir) override;
 	void save(fstring dir) const override;
 
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
 	virtual DbContext* createDbContext() const = 0;
 
 	llong totalStorageSize() const;
@@ -103,7 +103,7 @@ typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 inline
 StoreIteratorPtr DbContext::createTableIter() {
 	assert(this != nullptr);
-	return m_tab->createStoreIter(this);
+	return m_tab->createStoreIterForward(this);
 }
 
 inline

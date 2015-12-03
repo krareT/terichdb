@@ -443,7 +443,7 @@ public:
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
 		if (nark_unlikely(!m_segs[m_segIdx].iter))
-			 m_segs[m_segIdx].iter = m_segs[m_segIdx].seg->createStoreIter(&*m_ctx);
+			 m_segs[m_segIdx].iter = m_segs[m_segIdx].seg->createStoreIterForward(&*m_ctx);
 		if (!m_segs[m_segIdx].iter->increment(subId, val)) {
 			MyRwLock lock(tab->m_rwMutex, false);
 			m_segs.resize(tab->m_segments.size() + 1);
@@ -459,7 +459,7 @@ public:
 				m_segIdx++;
 				auto& cur = m_segs[m_segIdx];
 				if (nark_unlikely(!cur.iter))
-					cur.iter = cur.seg->createStoreIter(&*m_ctx);
+					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
 				bool ret = cur.iter->increment(subId, val);
 				if (ret) {
 					assert(*subId < m_segs[m_segIdx].seg->numDataRows());
@@ -481,7 +481,7 @@ public:
 			auto& cur = m_segs[upp-1];
 			if (!cur.seg->m_isDel[subId]) {
 				if (nark_unlikely(!cur.iter))
-					cur.iter = cur.seg->createStoreIter(&*m_ctx);
+					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
 				return cur.iter->seekExact(subId, val);
 			}
 		}
@@ -497,7 +497,7 @@ public:
 	}
 };
 
-StoreIterator* CompositeTable::createStoreIter(DbContext* ctx) const {
+StoreIterator* CompositeTable::createStoreIterForward(DbContext* ctx) const {
 	assert(m_rowSchema);
 	assert(m_indexSchemaSet);
 	return new MyStoreIterator(this, ctx);

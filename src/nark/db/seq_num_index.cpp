@@ -163,7 +163,7 @@ void SeqNumIndex<Int>::getValueAppend(llong id, valvec<byte>* val, DbContext*) c
 }
 
 template<class Int>
-StoreIterator* SeqNumIndex<Int>::createStoreIter(DbContext*) const {
+StoreIterator* SeqNumIndex<Int>::createStoreIterForward(DbContext*) const {
 	return nullptr;
 }
 

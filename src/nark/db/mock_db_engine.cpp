@@ -28,7 +28,11 @@ const {
 		val->append(m_rows[id]);
 	}
 }
-StoreIterator* MockReadonlyStore::createStoreIter(DbContext*) const {
+StoreIterator* MockReadonlyStore::createStoreIterForward(DbContext*) const {
+	assert(0); // should not be called
+	return nullptr;
+}
+StoreIterator* MockReadonlyStore::createStoreIterBackward(DbContext*) const {
 	assert(0); // should not be called
 	return nullptr;
 }
@@ -255,7 +259,11 @@ MockReadonlyIndex::MockReadonlyIndex(const Schema& schema) {
 MockReadonlyIndex::~MockReadonlyIndex() {
 }
 
-StoreIterator* MockReadonlyIndex::createStoreIter(DbContext*) const {
+StoreIterator* MockReadonlyIndex::createStoreIterForward(DbContext*) const {
+	assert(!"Readonly column store did not define iterator");
+	return nullptr;
+}
+StoreIterator* MockReadonlyIndex::createStoreIterBackward(DbContext*) const {
 	assert(!"Readonly column store did not define iterator");
 	return nullptr;
 }
@@ -405,10 +413,10 @@ llong MockReadonlyIndex::indexStorageSize() const {
 
 //////////////////////////////////////////////////////////////////
 template<class WrStore>
-class MockWritableStoreIter : public StoreIterator {
+class MockWritableStoreIterForward : public StoreIterator {
 	size_t m_id;
 public:
-	MockWritableStoreIter(const WrStore* store) {
+	MockWritableStoreIterForward(const WrStore* store) {
 		m_store.reset(const_cast<WrStore*>(store));
 		m_id = 0;
 	}
@@ -429,6 +437,32 @@ public:
 	}
 	void reset() override {
 		m_id = 0;
+	}
+};
+template<class WrStore>
+class MockWritableStoreIterBackward : public StoreIterator {
+	size_t m_id;
+public:
+	MockWritableStoreIterBackward(const WrStore* store) {
+		m_store.reset(const_cast<WrStore*>(store));
+		m_id = store->numDataRows();
+	}
+	bool increment(llong* id, valvec<byte>* val) override {
+		auto store = static_cast<WrStore*>(m_store.get());
+		if (m_id > 0) {
+			*id = --m_id;
+			*val = store->m_rows[m_id];
+			return true;
+		}
+		return false;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		m_id = id + 1;
+		llong id2 = -1;
+		return increment(&id2, val);
+	}
+	void reset() override {
+		m_id = m_store->numDataRows();
 	}
 };
 
@@ -461,8 +495,11 @@ void MockWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) 
 	val->append(m_rows[id]);
 }
 
-StoreIterator* MockWritableStore::createStoreIter(DbContext*) const {
-	return new MockWritableStoreIter<MockWritableStore>(this);
+StoreIterator* MockWritableStore::createStoreIterForward(DbContext*) const {
+	return new MockWritableStoreIterForward<MockWritableStore>(this);
+}
+StoreIterator* MockWritableStore::createStoreIterBackward(DbContext*) const {
+	return new MockWritableStoreIterBackward<MockWritableStore>(this);
 }
 
 llong MockWritableStore::append(fstring row, DbContext*) {
@@ -778,8 +815,11 @@ const {
 	val->append(m_rows[id]);
 }
 
-StoreIterator* MockWritableSegment::createStoreIter(DbContext*) const {
-	return new MockWritableStoreIter<MockWritableSegment>(this);
+StoreIterator* MockWritableSegment::createStoreIterForward(DbContext*) const {
+	return new MockWritableStoreIterForward<MockWritableSegment>(this);
+}
+StoreIterator* MockWritableSegment::createStoreIterBackward(DbContext*) const {
+	return new MockWritableStoreIterBackward<MockWritableSegment>(this);
 }
 
 llong MockWritableSegment::totalStorageSize() const {

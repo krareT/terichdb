@@ -82,7 +82,8 @@ public:
 
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
 	void convFrom(const ReadableSegment& input, DbContext* ctx);
@@ -98,7 +99,8 @@ protected:
 	virtual ReadableStore* buildStore(SortableStrVec& storeData) const = 0;
 
 protected:
-	class MyStoreIterator;
+	class MyStoreIterForward;  friend class MyStoreIterForward;
+	class MyStoreIterBackward; friend class MyStoreIterBackward;
 	valvec<llong> m_rowNumVec;  // parallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 	valvec<ReadableIndexStorePtr> m_indices; // parallel with m_indexSchemaSet
@@ -153,7 +155,7 @@ protected:
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*)
 	const override final;
 
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
 
 	void save(fstring) const override;
 	void load(fstring) override;

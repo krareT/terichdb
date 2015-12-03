@@ -29,7 +29,7 @@ public:
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
 };
 
 } } // namespace nark::db

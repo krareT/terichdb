@@ -66,6 +66,7 @@ namespace nark { namespace db {
 		StrZero, // Zero ended string
 		TwoStrZero, // Special, now just for BSON RegEx type
 		Binary,  // Prefixed by length(var_uint) in bytes
+		CarBin,  // Cardinal Binary, prefixed by uint32 length
 	};
 
 	struct NARK_DB_DLL ColumnMeta {
@@ -86,6 +87,7 @@ namespace nark { namespace db {
 		void compile(const Schema* parent = nullptr);
 
 		void parseRow(fstring row, valvec<fstring>* columns) const;
+		void parseRowAppend(fstring row, valvec<fstring>* columns) const;
 		void combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const;
 
 		void selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const;

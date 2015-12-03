@@ -30,7 +30,8 @@ public:
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
-	virtual StoreIterator* createStoreIter(DbContext*) const = 0;
+	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
+	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual class WritableStore* getWritableStore();
 
 	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {

@@ -21,7 +21,8 @@ public:
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const;
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 };
 typedef boost::intrusive_ptr<MockReadonlyStore> MockReadonlyStorePtr;
 
@@ -40,7 +41,8 @@ public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
@@ -63,7 +65,8 @@ public:
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	llong append(fstring row, DbContext*) override;
 	void  replace(llong id, fstring row, DbContext*) override;
@@ -125,7 +128,8 @@ protected:
 	WritableIndex* openIndex(fstring, const Schema&) const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIterator* createStoreIter(DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	llong totalStorageSize() const override;
 	llong append(fstring row, DbContext*) override;
 	void replace(llong id, fstring row, DbContext*) override;

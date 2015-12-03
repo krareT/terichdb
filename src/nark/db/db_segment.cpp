@@ -209,12 +209,12 @@ const {
 	m_rowSchema->combineRow(ctx->cols2, val);
 }
 
-class ReadonlySegment::MyStoreIterator : public StoreIterator {
+class ReadonlySegment::MyStoreIterForward : public StoreIterator {
 	size_t m_partIdx = 0;
 	llong  m_id = 0;
 	DbContextPtr m_ctx;
 public:
-	MyStoreIterator(const ReadonlySegment* owner, const DbContextPtr& ctx)
+	MyStoreIterForward(const ReadonlySegment* owner, const DbContextPtr& ctx)
 	  : m_ctx(ctx) {
 		m_store.reset(const_cast<ReadonlySegment*>(owner));
 	}
@@ -256,8 +256,63 @@ public:
 		m_id = 0;
 	}
 };
-StoreIterator* ReadonlySegment::createStoreIter(DbContext* ctx) const {
-	return new MyStoreIterator(this, ctx);
+class ReadonlySegment::MyStoreIterBackward : public StoreIterator {
+	size_t m_partIdx;
+	llong  m_id;
+	DbContextPtr m_ctx;
+public:
+	MyStoreIterBackward(const ReadonlySegment* owner, const DbContextPtr& ctx)
+	  : m_ctx(ctx) {
+		m_store.reset(const_cast<ReadonlySegment*>(owner));
+		m_id = owner->m_isDel.size();
+		m_partIdx = owner->m_parts.size();
+	}
+	bool increment(llong* id, valvec<byte>* val) override {
+		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		if (0 == m_partIdx) {
+			assert(owner->m_parts.empty());
+			if (m_id > 0) {
+				*id = --m_id;
+				owner->getValueImpl(0, *id, val, m_ctx.get());
+				return true;
+			}
+			return false;
+		}
+		assert(m_partIdx <= owner->m_parts.size());
+		assert(m_partIdx >= 1);
+		if (nark_likely(m_id > owner->m_rowNumVec[m_partIdx-1])) {
+			*id = --m_id;
+			owner->getValueImpl(m_partIdx-1, *id, val, m_ctx.get());
+			return true;
+		}
+		else {
+			if (m_partIdx > 1) {
+				--m_partIdx;
+				if (nark_likely(m_id > 0)) {
+					*id = --m_id;
+					owner->getValueImpl(m_partIdx, *id, val, m_ctx.get());
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		m_id = id;
+		llong id2 = -1;
+		return increment(&id2, val);
+	}
+	void reset() override {
+		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		m_partIdx = owner->m_parts.size();
+		m_id = owner->m_isDel.size();
+	}
+};
+StoreIterator* ReadonlySegment::createStoreIterForward(DbContext* ctx) const {
+	return new MyStoreIterForward(this, ctx);
+}
+StoreIterator* ReadonlySegment::createStoreIterBackward(DbContext* ctx) const {
+	return new MyStoreIterBackward(this, ctx);
 }
 
 void
@@ -370,7 +425,7 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	SortableStrVec strVec;
 	llong inputRowNum = input.numDataRows();
 	assert(size_t(inputRowNum) == input.m_isDel.size());
-	StoreIteratorPtr iter(input.createStoreIter(ctx));
+	StoreIteratorPtr iter(input.createStoreIterForward(ctx));
 	llong id = -1;
 	llong newRowNum = 0;
 	m_isDel = input.m_isDel; // make a copy, input.m_isDel[*] may be changed
@@ -634,7 +689,7 @@ public:
 	}
 };
 
-StoreIterator* SmartWritableSegment::createStoreIter(DbContext* ctx) const {
+StoreIterator* SmartWritableSegment::createStoreIterForward(DbContext* ctx) const {
 	return new MyStoreIterator(this, ctx);
 }
 

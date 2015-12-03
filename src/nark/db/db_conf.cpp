@@ -40,6 +40,7 @@ ColumnMeta::ColumnMeta(ColumnType t) {
 	case ColumnType::StrZero:
 	case ColumnType::TwoStrZero:
 	case ColumnType::Binary:
+	case ColumnType::CarBin:
 		fixedLen = 0;
 		break;
 	}
@@ -66,6 +67,11 @@ void Schema::compile(const Schema* parent) {
 void Schema::parseRow(fstring row, valvec<fstring>* columns) const {
 	assert(size_t(-1) != m_fixedLen);
 	columns->risk_set_size(0);
+	parseRowAppend(row, columns);
+}
+
+void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
+	assert(size_t(-1) != m_fixedLen);
 	const byte* curr = row.udata();
 	const byte* last = row.size() + curr;
 
@@ -186,6 +192,21 @@ void Schema::parseRow(fstring row, valvec<fstring>* columns) const {
 				coldata.n = last - curr;
 			}
 			break;
+		case ColumnType::CarBin: // Prefixed by uint32 len
+			if (i < colnum - 1) {
+			#if defined(BOOST_BIG_ENDIAN)
+				coldata.n = byte_swap(unaligned_load<uint32_t>(curr));
+			#else
+				coldata.n = unaligned_load<uint32_t>(curr);
+			#endif
+				coldata.p = (const char*)curr + 4;
+				CHECK_CURR_LAST3(curr+4, last, coldata.n);
+				curr += 4 + coldata.n;
+			}
+			else { // the last column
+				coldata.n = last - curr;
+			}
+			break;
 		}
 		columns->push_back(coldata);
 	}
@@ -259,6 +280,16 @@ void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) 
 				byte* p1 = myRowData->data() + oldsize;
 				byte* p2 = save_var_uint32(p1, uint32_t(coldata.size()));
 				myRowData->risk_set_size(oldsize + (p2 - p1));
+			}
+			myRowData->append(coldata.data(), coldata.size());
+			break;
+		case ColumnType::CarBin:  // Prefixed by uint32 length
+			if (i < colnum - 1) {
+				uint32_t binlen = (uint32_t)coldata.size();
+			#if defined(BOOST_BIG_ENDIAN)
+				binlen = byte_swap(binlen);
+			#endif
+				myRowData->append((byte*)&binlen, 4);
 			}
 			myRowData->append(coldata.data(), coldata.size());
 			break;
@@ -337,6 +368,16 @@ void Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRow
 				byte* p1 = myRowData->data() + oldsize;
 				byte* p2 = save_var_uint32(p1, uint32_t(coldata.size()));
 				myRowData->risk_set_size(oldsize + (p2 - p1));
+			}
+			myRowData->append(coldata.data(), coldata.size());
+			break;
+		case ColumnType::CarBin:  // Prefixed by uint32 length
+			if (i < colnum - 1) {
+				uint32_t binlen = (uint32_t)coldata.size();
+			#if defined(BOOST_BIG_ENDIAN)
+				binlen = byte_swap(binlen);
+			#endif
+				myRowData->append((byte*)&binlen, 4);
 			}
 			myRowData->append(coldata.data(), coldata.size());
 			break;
@@ -469,18 +510,29 @@ std::string Schema::toJsonStr(fstring row) const {
 			}
 			break;
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
-			{
-				intptr_t len;
-				const byte* next = curr;
-				if (i < colnum - 1) {
-					len = load_var_uint64(curr, &next);
-					CHECK_CURR_LAST3(next, last, len);
-				}
-				else { // the last column
-					len = last - curr;
-				}
+			if (i < colnum - 1) {
+				const byte* next;
+				intptr_t len = load_var_uint64(curr, &next);
+				CHECK_CURR_LAST3(next, last, len);
 				js[colname.str()] = std::string((char*)next, len);
 				curr = next + len;
+			}
+			else { // the last column
+				js[colname.str()] = std::string((char*)curr, last-curr);
+			}
+			break;
+		case ColumnType::CarBin:  // Prefixed by uint32 length
+			if (i < colnum - 1) {
+				uint32_t len = unaligned_load<uint32_t>(curr);
+			#if defined(BOOST_BIG_ENDIAN)
+				len = byte_swap(len);
+			#endif
+				CHECK_CURR_LAST3(curr+4, last, len);
+				js[colname.str()] = std::string((char*)curr+4, len);
+				curr += 4 + len;
+			}
+			else { // the last column
+				js[colname.str()] = std::string((char*)curr, last-curr);
 			}
 			break;
 		}
@@ -520,6 +572,7 @@ const char* Schema::columnTypeStr(ColumnType t) {
 	case ColumnType::StrZero: return "strzero";
 	case ColumnType::TwoStrZero: return "twostrzero";
 	case ColumnType::Binary:  return "binary";
+	case ColumnType::CarBin:  return "carbin";
 	}
 }
 
@@ -609,6 +662,7 @@ size_t Schema::computeFixedRowLen() const {
 		case ColumnType::StrZero: // Zero ended string
 		case ColumnType::TwoStrZero: // Two Zero ended string
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+		case ColumnType::CarBin:  // Prefixed by uint32 length
 			return 0;
 		}
 	}
@@ -637,6 +691,7 @@ namespace {
 			colname2val["strzero"] = ColumnType::StrZero;
 			colname2val["twostrzero"] = ColumnType::TwoStrZero;
 			colname2val["binary"] = ColumnType::Binary;
+			colname2val["carbin"] = ColumnType::CarBin;
 		}
 	};
 }
@@ -828,27 +883,58 @@ int Schema::compareData(fstring x, fstring y) const {
 			}
 			break;
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
-			{
+			if (i < colnum - 1) {
 				const byte* xnext = nullptr;
 				const byte* ynext = nullptr;
-				size_t xn, yn;
-				if (i < colnum - 1) {
-					xn = load_var_uint64(xcurr, &xnext);
-					yn = load_var_uint64(ycurr, &ynext);
-					CHECK_CURR_LAST3(xnext, xlast, xn);
-					CHECK_CURR_LAST3(ynext, ylast, yn);
-				}
-				else { // the last column
-					xn = xlast - xcurr;
-					yn = ylast - ycurr;
-				}
-				int ret = memcmp(xcurr, ycurr, std::min(xn, yn));
+				size_t xn = load_var_uint64(xcurr, &xnext);
+				size_t yn = load_var_uint64(ycurr, &ynext);
+				CHECK_CURR_LAST3(xnext, xlast, xn);
+				CHECK_CURR_LAST3(ynext, ylast, yn);
+				int ret = memcmp(xnext, ynext, std::min(xn, yn));
 				if (ret)
 					return ret;
 				else if (xn != yn)
 					return xn < yn ? -1 : +1;
 				xcurr = xnext + xn;
 				ycurr = ynext + yn;
+			}
+			else { // the last column
+				size_t xn = xlast - xcurr;
+				size_t yn = ylast - ycurr;
+				int ret = memcmp(xcurr, ycurr, std::min(xn, yn));
+				if (ret)
+					return ret;
+				else if (xn != yn)
+					return xn < yn ? -1 : +1;
+			}
+			break;
+		case ColumnType::CarBin:  // Prefixed by uint32 length
+			if (i < colnum - 1) {
+			#if defined(BOOST_BIG_ENDIAN)
+				size_t xn = byte_swap(unaligned_load<uint32_t>(xcurr));
+				size_t yn = byte_swap(unaligned_load<uint32_t>(ycurr));
+			#else
+				size_t xn = unaligned_load<uint32_t>(xcurr);
+				size_t yn = unaligned_load<uint32_t>(ycurr);
+			#endif
+				CHECK_CURR_LAST3(xcurr+4, xlast, xn);
+				CHECK_CURR_LAST3(ycurr+4, ylast, yn);
+				int ret = memcmp(xcurr+4, ycurr+4, std::min(xn, yn));
+				if (ret)
+					return ret;
+				else if (xn != yn)
+					return xn < yn ? -1 : +1;
+				xcurr += 4 + xn;
+				ycurr += 4 + yn;
+			}
+			else { // the last column
+				size_t xn = xlast - xcurr;
+				size_t yn = ylast - ycurr;
+				int ret = memcmp(xcurr, ycurr, std::min(xn, yn));
+				if (ret)
+					return ret;
+				else if (xn != yn)
+					return xn < yn ? -1 : +1;
 			}
 			break;
 		}
