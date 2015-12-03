@@ -25,6 +25,24 @@
     <Filter Include="Source Files\nark\db">
       <UniqueIdentifier>{63670d04-8922-42d1-af12-dee2f8216179}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\mongo">
+      <UniqueIdentifier>{c43704a9-131e-42b2-9d37-9b77d162b53d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\mongo\bson">
+      <UniqueIdentifier>{3248ef6e-d871-4a6a-a12d-4062fe323308}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo">
+      <UniqueIdentifier>{da43d5c9-0049-4f41-b8e2-9f69caf41d00}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo\bson">
+      <UniqueIdentifier>{a28d1e19-8107-466d-9c9f-1f5484d3ea10}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\mongo_narkdb">
+      <UniqueIdentifier>{4c130436-f14a-45c7-809b-d1a1c7b4fa74}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo_narkdb">
+      <UniqueIdentifier>{afaaa108-d0aa-41ae-86b5-a5b1a95c396c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -69,6 +87,48 @@
     <ClInclude Include="..\..\..\src\nark\db\db_context.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bson_field.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bson_validate.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonelement.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonmisc.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonobj.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonobjbuilder.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsontypes.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\inline_decls.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\json.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\oid.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\ordering.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\timestamp.h">
+      <Filter>Header Files\mongo\bson</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\index_key.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\record_codec.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -100,6 +160,39 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\nark\db\db_context.cpp">
       <Filter>Source Files\nark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bson_validate.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonelement.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonmisc.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonobj.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonobjbuilder.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsontypes.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\json.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\oid.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\timestamp.cpp">
+      <Filter>Source Files\mongo\bson</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\index_key.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\record_codec.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
