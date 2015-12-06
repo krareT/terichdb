@@ -34,13 +34,19 @@
 #ifdef _WIN32
 #define NVALGRIND
 #endif
+#ifdef _MSC_VER
+#pragma warning(disable: 4800) // bool conversion
+#pragma warning(disable: 4244) // 'return': conversion from '__int64' to 'double', possible loss of data
+#pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
+#endif
 
 #include "narkdb_kv_engine.h"
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
+#if !defined(_MSC_VER)
 #include <valgrind/valgrind.h>
-
+#endif
 #include "mongo/base/error_codes.h"
 #include "mongo/db/catalog/collection_catalog_entry.h"
 #include "mongo/db/client.h"
@@ -52,9 +58,8 @@
 #include "narkdb_index.h"
 #include "narkdb_record_store.h"
 #include "narkdb_recovery_unit.h"
-#include "narkdb_session_cache.h"
+//#include "narkdb_session_cache.h"
 #include "narkdb_size_storer.h"
-#include "narkdb_util.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/util/log.h"
 #include "mongo/util/background.h"
@@ -72,47 +77,6 @@ namespace mongo { namespace narkdb {
 using std::set;
 using std::string;
 
-class NarkDbKVEngine::NarkDbJournalFlusher : public BackgroundJob {
-public:
-    explicit NarkDbJournalFlusher(NarkDbSessionCache* sessionCache)
-        : BackgroundJob(false /* deleteSelf */), _sessionCache(sessionCache) {}
-
-    virtual string name() const {
-        return "NarkDbJournalFlusher";
-    }
-
-    virtual void run() {
-        Client::initThread(name().c_str());
-
-        LOG(1) << "starting " << name() << " thread";
-
-        while (!_shuttingDown.load()) {
-            try {
-                _sessionCache->waitUntilDurable(false);
-            } catch (const UserException& e) {
-                invariant(e.getCode() == ErrorCodes::ShutdownInProgress);
-            }
-
-            int ms = storageGlobalParams.journalCommitIntervalMs;
-            if (!ms) {
-                ms = 100;
-            }
-
-            sleepmillis(ms);
-        }
-        LOG(1) << "stopping " << name() << " thread";
-    }
-
-    void shutdown() {
-        _shuttingDown.store(true);
-        wait();
-    }
-
-private:
-    NarkDbSessionCache* _sessionCache;
-    std::atomic<bool> _shuttingDown{false};  // NOLINT
-};
-
 NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 							   const std::string& extraOpenOptions,
 							   size_t cacheSizeGB,
@@ -123,11 +87,10 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
       _sizeStorerSyncTracker(100000, 60 * 1000) {
 
     boost::filesystem::path basePath = path;
-	m_pathNark = path / "nark";
-	m_pathWt = path / "wt";
+	m_pathNark = basePath / "nark";
+	m_pathWt = basePath / "wt";
 
-    boost::filesystem::path journalPath = path;
-    journalPath /= "journal";
+    boost::filesystem::path journalPath = basePath / "journal";
     if (_durable) {
         if (!boost::filesystem::exists(journalPath)) {
             try {
@@ -165,13 +128,12 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
         */
     }
     log() << "narkdb_open : " << path;
-    m_tables.reset(new TableMap);
     for (auto& tabDir : fs::directory_iterator(m_pathNark / "tables")) {
     	std::string strTabDir = tabDir.path().string();
-    	CompositeTablePtr tab = new MockCompositeTable();
-    	tab->load(strTabDir);
-    	std::string tabIdent = tabDir.path().filename();
-    	auto ib = m_tables->insert_i(tabIdent, tab);
+    	// CompositeTablePtr tab = new MockCompositeTable();
+    	// tab->load(strTabDir);
+    	std::string tabIdent = tabDir.path().filename().string();
+    	auto ib = m_tables.insert_i(tabIdent, nullptr);
     	invariant(ib.second);
     }
 
@@ -181,7 +143,6 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
     }
 
     {
-        NarkDbSession session(_conn);
         fs::path fpath = m_pathNark / "size-store.hash_strmap";
 		_sizeStorer.setFilePath(fpath.string());
         if (fs::exists(fpath)) {
@@ -191,76 +152,40 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 }
 
 NarkDbKVEngine::~NarkDbKVEngine() {
-    if (_conn) {
-        cleanShutdown();
-    }
-    _sessionCache.reset(NULL);
+    cleanShutdown();
 }
 
 void NarkDbKVEngine::cleanShutdown() {
     log() << "NarkDbKVEngine shutting down";
     syncSizeInfo(true);
-    if (_conn) {
-        // these must be the last things we do before _conn->close();
-        if (_journalFlusher)
-            _journalFlusher->shutdown();
-        _sessionCache->shuttingDown();
-
-// We want NarkDb to leak memory for faster shutdown except when we are running tools to
-// look for memory leaks.
-#if !__has_feature(address_sanitizer)
-        bool leak_memory = true;
-#else
-        bool leak_memory = false;
-#endif
-        const char* config = nullptr;
-
-        if (RUNNING_ON_VALGRIND) {
-            leak_memory = false;
-        }
-
-        if (leak_memory) {
-            config = "leak_memory=true";
-        }
-        m_tables.reset();
-    }
+    m_tables.clear();
 }
 
 Status NarkDbKVEngine::okToRename(OperationContext* opCtx,
-                                      StringData fromNS,
-                                      StringData toNS,
-                                      StringData ident,
-                                      const RecordStore* originalRecordStore) const {
-    _sizeStorer.storeToCache(_uri(ident),
-    		originalRecordStore->numRecords(opCtx),
-			originalRecordStore->dataSize(opCtx));
-    syncSizeInfo(true);
+                                  StringData fromNS,
+                                  StringData toNS,
+                                  StringData ident,
+                                  const RecordStore* originalRecordStore) const {
     return Status::OK();
 }
 
 int64_t NarkDbKVEngine::getIdentSize(OperationContext* opCtx, StringData ident) {
-    NarkDbSession* session = NarkDbRecoveryUnit::get(opCtx)->getSession(opCtx);
-    return NarkDbUtil::getIdentSize(session->getSession(), _uri(ident));
+	size_t i = m_tables.find_i(ident);
+	if (m_tables.end_i() == i) {
+		return 0;
+	}
+	return m_tables.val(i)->dataStorageSize();
 }
 
 Status NarkDbKVEngine::repairIdent(OperationContext* opCtx, StringData ident) {
-    NarkDbSession* session = NarkDbRecoveryUnit::get(opCtx)->getSession(opCtx);
-    session->closeAllCursors();
-    if (isEphemeral()) {
-        return Status::OK();
-    }
-    string uri = _uri(ident);
-    return _salvageIfNeeded(uri.c_str());
-}
-
-Status NarkDbKVEngine::_salvageIfNeeded(const char* uri) {
+	return Status::OK();
 }
 
 int NarkDbKVEngine::flushAllFiles(bool sync) {
     LOG(1) << "NarkDbKVEngine::flushAllFiles";
     syncSizeInfo(true);
-    m_tables->for_each([](fstring ident, const CompositeTablePtr& tab) {
-    	tab->flush();
+    m_tables.for_each([](const TableMap::value_type& x) {
+    	x.second->flush();
     });
 //  _sessionCache->waitUntilDurable(true);
 
@@ -269,7 +194,7 @@ int NarkDbKVEngine::flushAllFiles(bool sync) {
 
 Status NarkDbKVEngine::beginBackup(OperationContext* txn) {
     invariant(!_backupSession);
-    _backupSession = std::move(m_tables);
+//  _backupSession = std::move(m_tables);
     return Status::OK();
 }
 
@@ -277,19 +202,8 @@ void NarkDbKVEngine::endBackup(OperationContext* txn) {
     _backupSession.reset();
 }
 
-void NarkDbKVEngine::syncSizeInfo(bool sync) const {
-    if (!_sizeStorer)
-        return;
-
-    try {
-        _sizeStorer->syncCache(sync);
-    } catch (const WriteConflictException&) {
-        // ignore, we'll try again later.
-    }
-}
-
 RecoveryUnit* NarkDbKVEngine::newRecoveryUnit() {
-    return new NarkDbRecoveryUnit(_sessionCache.get());
+    return new NarkDbRecoveryUnit();
 }
 
 void NarkDbKVEngine::setRecordStoreExtraOptions(const std::string& options) {
@@ -301,12 +215,9 @@ void NarkDbKVEngine::setSortedDataInterfaceExtraOptions(const std::string& optio
 }
 
 Status NarkDbKVEngine::createRecordStore(OperationContext* opCtx,
-                                             StringData ns,
-                                             StringData ident,
-                                             const CollectionOptions& options) {
-    _checkIdentPath(ident);
-    NarkDbSession session(_conn);
-
+										 StringData ns,
+                                         StringData ident,
+                                         const CollectionOptions& options) {
     StatusWith<std::string> result =
         NarkDbRecordStore::generateCreateString(ns, options, _rsOptions);
     if (!result.isOK()) {
@@ -314,10 +225,8 @@ Status NarkDbKVEngine::createRecordStore(OperationContext* opCtx,
     }
     std::string config = result.getValue();
 
-    string uri = _uri(ident);
-    NarkDb_SESSION* s = session.getSession();
-    LOG(2) << "NarkDbKVEngine::createRecordStore uri: " << uri << " config: " << config;
-    return narkDbRCToStatus(s->create(s, uri.c_str(), config.c_str()));
+    LOG(2) << "NarkDbKVEngine::createRecordStore: ns:" << ns << ", config: " << config;
+    return Status::OK();
 }
 
 RecordStore* NarkDbKVEngine::getRecordStore(OperationContext* opCtx,
@@ -326,6 +235,7 @@ RecordStore* NarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 											const CollectionOptions& options) {
 	const bool ephemeral = false;
     if (options.capped) {
+		/*
         return new NarkDbRecordStore(opCtx,
 									 ns,
 									 _uri(ident),
@@ -333,18 +243,13 @@ RecordStore* NarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 									 ephemeral,
 									 options.cappedSize ? options.cappedSize : 4096,
 									 options.cappedMaxDocs ? options.cappedMaxDocs : -1,
-									 NULL,
-									 _sizeStorer.get());
+									 NULL);
+	*/
     } else {
         return new NarkDbRecordStore(opCtx,
 									 ns,
 									 _uri(ident),
-									 false,
-									 ephemeral,
-									 -1,
-									 -1,
-									 NULL,
-									 _sizeStorer.get());
+									 NULL);
     }
 }
 
@@ -353,13 +258,11 @@ string NarkDbKVEngine::_uri(StringData ident) const {
 }
 
 Status NarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
-                                                     StringData ident,
-                                                     const IndexDescriptor* desc) {
-    _checkIdentPath(ident);
-
+                                                 StringData ident,
+                                                 const IndexDescriptor* desc) {
     std::string collIndexOptions;
     const Collection* collection = desc->getCollection();
-
+/*
     // Treat 'collIndexOptions' as an empty string when the collection member of 'desc' is NULL in
     // order to allow for unit testing NarkDbKVEngine::createSortedDataInterface().
     if (collection) {
@@ -384,103 +287,32 @@ Status NarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
     LOG(2) << "NarkDbKVEngine::createSortedDataInterface ident: " << ident
            << " config: " << config;
     return narkDbRCToStatus(NarkDbIndex::Create(opCtx, _uri(ident), config));
+*/
+    size_t i = m_indices.find_i(ident);
+    if (i < m_indices.end_i()) {
+
+    }
+    return Status::OK();
 }
 
 SortedDataInterface* NarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
-                                                                StringData ident,
-                                                                const IndexDescriptor* desc) {
+															StringData ident,
+															const IndexDescriptor* desc) {
     if (desc->unique())
         return new NarkDbIndexUnique(opCtx, _uri(ident), desc);
-    return new NarkDbIndexStandard(opCtx, _uri(ident), desc);
+    else
+    	return new NarkDbIndexStandard(opCtx, _uri(ident), desc);
 }
 
 Status NarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
+    LOG(1) << "NarkDb drop table: ident=" << ident << "\n";
     _drop(ident);
     return Status::OK();
 }
 
 bool NarkDbKVEngine::_drop(StringData ident) {
-    string uri = _uri(ident);
-
-    NarkDbSession session(_conn);
-
-    int ret = session.getSession()->drop(session.getSession(), uri.c_str(), "force");
-    LOG(1) << "NarkDb drop of  " << uri << " res " << ret;
-
-    if (ret == 0) {
-        // yay, it worked
-        return true;
-    }
-
-    if (ret == EBUSY) {
-        // this is expected, queue it up
-        {
-            stdx::lock_guard<stdx::mutex> lk(_identToDropMutex);
-            _identToDrop.insert(uri);
-        }
-        _sessionCache->closeAll();
-        return false;
-    }
-
-    invariantNarkDbOK(ret);
-    return false;
-}
-
-bool NarkDbKVEngine::haveDropsQueued() const {
-    Date_t now = Date_t::now();
-    Milliseconds delta = now - _previousCheckedDropsQueued;
-
-    if (_sizeStorerSyncTracker.intervalHasElapsed()) {
-        _sizeStorerSyncTracker.resetLastTime();
-        syncSizeInfo(false);
-    }
-
-    // We only want to check the queue max once per second or we'll thrash
-    // This is done in haveDropsQueued, not dropAllQueued so we skip the mutex
-    if (delta < Milliseconds(1000))
-        return false;
-
-    _previousCheckedDropsQueued = now;
-    stdx::lock_guard<stdx::mutex> lk(_identToDropMutex);
-    return !_identToDrop.empty();
-}
-
-void NarkDbKVEngine::dropAllQueued() {
-    set<string> mine;
-    {
-        stdx::lock_guard<stdx::mutex> lk(_identToDropMutex);
-        mine = _identToDrop;
-    }
-
-    set<string> deleted;
-
-    {
-        NarkDbSession session(_conn);
-        for (set<string>::const_iterator it = mine.begin(); it != mine.end(); ++it) {
-            string uri = *it;
-            int ret = session.getSession()->drop(session.getSession(), uri.c_str(), "force");
-            LOG(1) << "NarkDb queued drop of  " << uri << " res " << ret;
-
-            if (ret == 0) {
-                deleted.insert(uri);
-                continue;
-            }
-
-            if (ret == EBUSY) {
-                // leave in qeuue
-                continue;
-            }
-
-            invariantNarkDbOK(ret);
-        }
-    }
-
-    {
-        stdx::lock_guard<stdx::mutex> lk(_identToDropMutex);
-        for (set<string>::const_iterator it = deleted.begin(); it != deleted.end(); ++it) {
-            _identToDrop.erase(*it);
-        }
-    }
+    m_tables.erase(ident);
+    return true;
 }
 
 bool NarkDbKVEngine::supportsDocLocking() const {
@@ -492,75 +324,22 @@ bool NarkDbKVEngine::supportsDirectoryPerDB() const {
 }
 
 bool NarkDbKVEngine::hasIdent(OperationContext* opCtx, StringData ident) const {
-    return _hasUri(NarkDbRecoveryUnit::get(opCtx)->getSession(opCtx)->getSession(),
-                   _uri(ident));
-}
-
-bool NarkDbKVEngine::_hasUri(NarkDb_SESSION* session, const std::string& uri) const {
-    // can't use NarkDbCursor since this is called from constructor.
-    NarkDb_CURSOR* c = NULL;
-    int ret = session->open_cursor(session, "metadata:", NULL, NULL, &c);
-    if (ret == ENOENT)
-        return false;
-    invariantNarkDbOK(ret);
-    ON_BLOCK_EXIT(c->close, c);
-
-    c->set_key(c, uri.c_str());
-    return c->search(c) == 0;
+	return m_tables.exists(ident);
 }
 
 std::vector<std::string> NarkDbKVEngine::getAllIdents(OperationContext* opCtx) const {
     std::vector<std::string> all;
-    NarkDbCursor cursor("metadata:", NarkDbSession::kMetadataTableId, false, opCtx);
-    NarkDb_CURSOR* c = cursor.get();
-    if (!c)
-        return all;
-
-    while (c->next(c) == 0) {
-        const char* raw;
-        c->get_key(c, &raw);
-        StringData key(raw);
-        size_t idx = key.find(':');
-        if (idx == string::npos)
-            continue;
-        StringData type = key.substr(0, idx);
-        if (type != "table")
-            continue;
-
-        StringData ident = key.substr(idx + 1);
-        if (ident == "sizeStorer")
-            continue;
-
-        all.push_back(ident.toString());
+    all.reserve(m_tables.size());
+    for (size_t i = m_tables.beg_i(); i < m_tables.end_i(); i = m_tables.next_i(i)) {
+    	all.push_back(m_tables.key(i).str());
     }
-
     return all;
 }
 
 int NarkDbKVEngine::reconfigure(const char* str) {
-    return _conn->reconfigure(_conn, str);
+    //return _conn->reconfigure(_conn, str);
+	return 0;
 }
 
-void NarkDbKVEngine::_checkIdentPath(StringData ident) {
-    size_t start = 0;
-    size_t idx;
-    while ((idx = ident.find('/', start)) != string::npos) {
-        StringData dir = ident.substr(0, idx);
-
-        boost::filesystem::path subdir = _path;
-        subdir /= dir.toString();
-        if (!boost::filesystem::exists(subdir)) {
-            LOG(1) << "creating subdirectory: " << dir;
-            try {
-                boost::filesystem::create_directory(subdir);
-            } catch (const std::exception& e) {
-                error() << "error creating path " << subdir.string() << ' ' << e.what();
-                throw;
-            }
-        }
-
-        start = idx + 1;
-    }
-}
 } }  // namespace mongo::nark
 

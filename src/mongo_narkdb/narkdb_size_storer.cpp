@@ -31,16 +31,20 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include "narkdb_size_storer.h"
+
 #include <nark/db/db_table.hpp>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/service_context.h"
+#include <mongo/db/storage/record_store.h>
 #include "mongo/stdx/thread.h"
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 #include <nark/io/DataIO.hpp>
 #include <nark/io/FileStream.hpp>
+#include <nark/io/MemStream.hpp>
 #include <nark/io/StreamBuffer.hpp>
 
 namespace mongo { namespace narkdb {
@@ -49,15 +53,18 @@ using namespace nark;
 
 using std::string;
 
-struct NarkDbSizeStorer::Entry {
-    Entry() : numRecords(0), dataSize(0), dirty(false), rs(NULL) {}
-    llong numRecords;
-    llong dataSize;
-    RecordStore* rs;  // not owned
-    bool dirty;
-    static const size_t MySize = 2 * sizeof(llong);
-    DATA_IO_LOAD_SAVE(Entry, &numRecords&dataSize)
-};
+//DATA_IO_LOAD_SAVE_E(NarkDbSizeStorer::Entry, &numRecords&dataSize)
+
+template<class DataIO>
+void DataIO_loadObject(DataIO& dio, NarkDbSizeStorer::Entry& x) {
+	dio >> x.numRecords;
+	dio >> x.dataSize;
+}
+template<class DataIO>
+void DataIO_saveObject(DataIO& dio, const NarkDbSizeStorer::Entry& x) {
+	dio << x.numRecords;
+	dio << x.dataSize;
+}
 
 NarkDbSizeStorer::NarkDbSizeStorer() {
 }
@@ -84,7 +91,7 @@ void NarkDbSizeStorer::onDestroy(RecordStore* rs) {
 }
 
 void NarkDbSizeStorer::storeToCache(nark::fstring uri, llong numRecords, llong dataSize) {
-    stdx::lock_guard<stdx::mutex> lk(m_entries);
+    stdx::lock_guard<stdx::mutex> lk(m_mutex);
     Entry& entry = m_entries[uri];
     entry.numRecords = numRecords;
     entry.dataSize = dataSize;
@@ -116,6 +123,7 @@ void NarkDbSizeStorer::fillCache() {
 }
 
 void NarkDbSizeStorer::syncCache(bool syncToDisk) {
+	using namespace nark;
 	NativeDataOutput<AutoGrownMemIO> buf;
 	{
 		stdx::lock_guard<stdx::mutex> lk(m_mutex);

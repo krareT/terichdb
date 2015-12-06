@@ -43,6 +43,7 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/concurrency/synchronization.h"
 #include "mongo/util/fail_point_service.h"
+#include "narkdb_size_storer.h"
 
 /**
  * Either executes the specified operation and returns it's value or randomly throws a write
@@ -56,13 +57,6 @@ typedef std::list<RecordId> SortedRecordIds;
 
 class NarkDbRecordStore : public RecordStore {
 public:
-    /**
-     * Parses collections options for wired tiger configuration string for table creation.
-     * The document 'options' is typically obtained from the 'narkDb' field of
-     * CollectionOptions::storageEngine.
-     */
-    static StatusWith<std::string> parseOptionsField(const BSONObj options);
-
     /**
      * Creates a configuration string suitable for 'config' parameter in NarkDb_SESSION::create().
      * Configuration string is constructed from:
@@ -168,22 +162,22 @@ public:
     virtual Status touch(OperationContext* txn, BSONObjBuilder* output) const;
 
     virtual void temp_cappedTruncateAfter(OperationContext* txn, RecordId end, bool inclusive);
+/*
+    boost::optional<RecordId> oplogStartHack(OperationContext* txn,
+                                             const RecordId& startingPosition) const override;
 
-    virtual boost::optional<RecordId> oplogStartHack(OperationContext* txn,
-                                                     const RecordId& startingPosition) const;
-
-    virtual Status oplogDiskLocRegister(OperationContext* txn, const Timestamp& opTime);
-
-    virtual void updateStatsAfterRepair(OperationContext* txn,
-                                        long long numRecords,
-                                        long long dataSize);
+    Status oplogDiskLocRegister(OperationContext* txn, const Timestamp& opTime) override;
+*/
+    void updateStatsAfterRepair(OperationContext* txn,
+                                long long numRecords,
+                                long long dataSize) override;
 
     const std::string& getURI() const {
         return _uri;
     }
 
     void setSizeStorer(NarkDbSizeStorer* ss) {
-        _sizeStorer = ss;
+        //_sizeStorer = ss;
     }
 
     bool inShutdown() const;
@@ -192,39 +186,19 @@ public:
 
 private:
     class Cursor;
-    class RandomCursor;
-
-    class CappedInsertChange;
-    class NumRecordsChange;
-    class DataSizeChange;
-
-    static NarkDbRecoveryUnit* _getRecoveryUnit(OperationContext* txn);
-
-    static int64_t _makeKey(const RecordId& id);
-    static RecordId _fromKey(int64_t k);
-
-    void _dealtWithCappedId(SortedRecordIds::iterator it);
-    void _addUncommitedRecordId_inlock(OperationContext* txn, const RecordId& id);
-
-    RecordId _nextId();
-    void _setId(RecordId id);
-    bool cappedAndNeedDelete() const;
-    void _changeNumRecords(OperationContext* txn, int64_t diff);
-    void _increaseDataSize(OperationContext* txn, int64_t amount);
-    RecordData _getData(const NarkDbCursor& cursor) const;
-    void _oplogSetStartHack(NarkDbRecoveryUnit* wru) const;
 
     const std::string _uri;
 
-    SortedRecordIds _uncommittedRecordIds;
-    mutable stdx::mutex _uncommittedRecordIdsMutex;
-
-    AtomicInt64 _nextIdNum;
-    AtomicInt64 _dataSize;
-    AtomicInt64 _numRecords;
-
-    NarkDbSizeStorer* _sizeStorer;  // not owned, can be NULL
-    int _sizeStorerCounter;
+    class MyThreadData {
+    public:
+    	nark::db::DbContextPtr m_dbCtx;
+    	mongo::narkdb::SchemaRecordCoder m_coder;
+    	nark::valvec<unsigned char> m_recData;
+    };
+//  mutable nark::db::MyRwMutex m_threadcacheMutex;
+    mutable std::mutex m_threadcacheMutex;
+    mutable nark::gold_hash_map<std::thread::id, MyThreadData> m_threadcache;
+    MyThreadData& getMyThreadData() const;
 
     bool _shuttingDown;
 };

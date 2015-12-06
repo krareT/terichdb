@@ -1,4 +1,10 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+#ifdef _MSC_VER
+#pragma warning(disable: 4800) // bool conversion
+#pragma warning(disable: 4244) // 'return': conversion from '__int64' to 'double', possible loss of data
+#pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
+#endif
+
 #include <mongo/util/log.h>
 
 #include "record_codec.h"
@@ -121,6 +127,17 @@ SchemaRecordCoder::SchemaRecordCoder() {
 SchemaRecordCoder::~SchemaRecordCoder() {
 }
 
+template<class Vec>
+static void Move_AutoGrownMemIO_to_valvec(AutoGrownMemIO& io, Vec& v) {
+	BOOST_STATIC_ASSERT(sizeof(typename Vec::value_type) == 1);
+	BOOST_STATIC_ASSERT(sizeof(v[0]) == 1);
+	v.clear();
+	v.risk_set_size(io.tell());
+	v.risk_set_data((typename Vec::value_type*)io.buf());
+	v.risk_set_capacity(io.size());
+	io.risk_release_ownership();
+}
+
 // for WritableSegment, param schema is m_rowSchema, param exclude is nullptr
 // for ReadonlySegment, param schema is m_nonIndexSchema,
 //                      param exclude is m_uniqIndexFields
@@ -163,21 +180,32 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			assert(schema->getColumnType(i) == nark::db::ColumnType::Uint08);
 			break;
 		case NumberInt:
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			// offset binary encoding for byte lex compare
+			{
+				int x = ConstDataView(value).read<LittleEndian<int>>();
+				int y = x ^ (1 << 31);
+				encoded->append((char*)&y, 4);
+			}
+		#else
 			encoded->append(value, 4);
+		#endif
 			assert(schema->getColumnType(i) == nark::db::ColumnType::Sint32);
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
 		case mongo::Date:
-			assert(schema->getColumnType(i) == nark::db::ColumnType::Sint64);
-			encoded->append(value, 8);
-			break;
 		case NumberDouble:
-			assert(schema->getColumnType(i) == nark::db::ColumnType::Float64);
-			encoded->append(value, 8);
-			break;
 		case NumberLong:
-			assert(schema->getColumnType(i) == nark::db::ColumnType::Sint64);
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			// offset binary encoding for byte lex compare
+			{
+				auto x = ConstDataView(value).read<LittleEndian<long long>>();
+				auto y = x ^ (1LL << 63);
+				encoded->append((char*)&y, 8);
+			}
+		#else
 			encoded->append(value, 8);
+		#endif
 			break;
 		case jstOID:
 		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
@@ -291,12 +319,12 @@ SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude, const BSO
 	return encoded;
 }
 
-typedef LittleEndianDataOutput<AutoGrownMemIO> MyBufBuilder;
+typedef LittleEndianDataOutput<AutoGrownMemIO> MyBsonBuilder;
 
-static void narkDecodeBsonObject(MyBufBuilder& bb, const char*& pos, const char* end);
-static void narkDecodeBsonArray(MyBufBuilder& bb, const char*& pos, const char* end);
+static void narkDecodeBsonObject(MyBsonBuilder& bb, const char*& pos, const char* end);
+static void narkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const char* end);
 
-static void narkDecodeBsonElemVal(MyBufBuilder& bb, const char*& pos, const char* end, int type) {
+static void narkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const char* end, int type) {
 	switch (type) {
 	case EOO:
 		invariant(!"narkDecodeBsonElemVal: encountered EOO");
@@ -386,7 +414,7 @@ static void narkDecodeBsonElemVal(MyBufBuilder& bb, const char*& pos, const char
 
 }
 
-static void narkDecodeBsonObject(MyBufBuilder& bb, const char*& pos, const char* end) {
+static void narkDecodeBsonObject(MyBsonBuilder& bb, const char*& pos, const char* end) {
 	int byteNumOffset = bb.tell();
 	bb << 0; // reserve 4 bytes for object byteNum
 	for (;;) {
@@ -407,7 +435,7 @@ static void narkDecodeBsonObject(MyBufBuilder& bb, const char*& pos, const char*
 	(int&)bb.buf()[byteNumOffset] = objByteNum;
 }
 
-static void narkDecodeBsonArray(MyBufBuilder& bb, const char*& pos, const char* end) {
+static void narkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const char* end) {
 	int cnt = nark::load_var_uint32((unsigned char*)pos, (const unsigned char**)&pos);
 	if (0 == cnt) {
 		bb << int(5); // 5 is empty bson object size
@@ -433,10 +461,10 @@ static void narkDecodeBsonArray(MyBufBuilder& bb, const char*& pos, const char* 
 	(int&)bb.buf()[arrByteNumOffset] = arrByteNum;
 }
 
-BSONObj
+SharedBuffer
 SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	assert(nullptr != schema);
-	MyBufBuilder bb;
+	MyBsonBuilder bb;
 	const char* pos = data;
 	bb.resize(size);
 	bb.skip(sizeof(SharedBuffer::Holder));
@@ -459,15 +487,33 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			pos++;
 			break;
 		case NumberInt:
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			{
+				int x = ConstDataView(pos).read<BigEndian<int>>();
+				x ^= 1 << 31;
+				bb << x;
+				pos += 4;
+			}
+		#else
 			bb.ensureWrite(pos, 4);
 			pos += 4;
+		#endif
 			break;
 		case bsonTimestamp:
 		case mongo::Date:
 		case NumberDouble:
 		case NumberLong:
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			{
+				long long x = ConstDataView(pos).read<BigEndian<long long>>();
+				x ^= (long long)1 << 63;
+				bb << x;
+				pos += 8;
+			}
+		#else
 			bb.ensureWrite(pos, 8);
 			pos += 8;
+		#endif
 			break;
 		case jstOID:
 			bb.ensureWrite(pos, OID::kOIDSize);
@@ -551,20 +597,22 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	invariant(pos == data + size);
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
 			.write<LittleEndian<int>>(int(bb.tell() - sizeof(SharedBuffer::Holder)));
-	return BSONObj::takeOwnership((char*)bb.release());
+
+	return SharedBuffer::takeOwnership((char*)bb.release());
+//	return BSONObj::takeOwnership((char*)bb.release());
 }
 
-BSONObj
+SharedBuffer
 SchemaRecordCoder::decode(const Schema* schema, const nark::valvec<char>& encoded) {
 	return decode(schema, encoded.data(), encoded.size());
 }
 
-BSONObj
+SharedBuffer
 SchemaRecordCoder::decode(const Schema* schema, StringData encoded) {
 	return decode(schema, encoded.rawData(), encoded.size());
 }
 
-BSONObj
+SharedBuffer
 SchemaRecordCoder::decode(const Schema* schema, nark::fstring encoded) {
 	return decode(schema, encoded.data(), encoded.size());
 }

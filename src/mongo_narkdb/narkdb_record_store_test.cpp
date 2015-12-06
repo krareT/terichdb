@@ -45,7 +45,6 @@
 #include "narkdb_record_store_oplog_stones.h"
 #include "narkdb_session_cache.h"
 #include "narkdb_size_storer.h"
-#include "narkdb_util.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 

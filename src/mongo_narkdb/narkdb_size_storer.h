@@ -31,13 +31,23 @@
 
 #pragma once
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4800) // bool conversion
+#pragma warning(disable: 4244) // 'return': conversion from '__int64' to 'double', possible loss of data
+#pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
+#endif
+
 #include <map>
 #include <string>
 #include <nark/db/db_table.hpp>
-
+#include "mongo_narkdb_common.hpp"
 #include "mongo/base/string_data.h"
 #include <mutex>
 #include <nark/hash_strmap.hpp>
+
+namespace mongo {
+	class RecordStore;
+} // namespace mongo
 
 namespace mongo { namespace narkdb {
 
@@ -57,8 +67,15 @@ public:
     void fillCache();
     void syncCache(bool syncToDisk);
 
+    struct Entry {
+        Entry() : numRecords(0), dataSize(0), dirty(false), rs(NULL) {}
+        llong numRecords;
+        llong dataSize;
+        RecordStore* rs;  // not owned
+        bool dirty;
+        static const size_t MySize = 2 * sizeof(llong);
+    };
 private:
-    struct Entry;
     std::string m_filepath;
     nark::hash_strmap<Entry> m_entries;
     mutable stdx::mutex m_mutex;

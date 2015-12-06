@@ -26,6 +26,11 @@
  *    exception statement from all source files in the program, then also delete
  *    it in the license file.
  */
+#ifdef _MSC_VER
+#pragma warning(disable: 4800) // bool conversion
+#pragma warning(disable: 4244) // 'return': conversion from '__int64' to 'double', possible loss of data
+#pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
+#endif
 
 #include "mongo/platform/basic.h"
 

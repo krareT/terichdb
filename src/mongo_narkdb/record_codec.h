@@ -38,10 +38,10 @@ public:
 	nark::valvec<char>
 	encode(const Schema* schema, const Schema* exclude, const BSONObj& key);
 
-	BSONObj decode(const Schema* schema, const char* data, size_t size);
-	BSONObj decode(const Schema* schema, const nark::valvec<char>& encoded);
-	BSONObj decode(const Schema* schema, StringData encoded);
-	BSONObj decode(const Schema* schema, nark::fstring encoded);
+	SharedBuffer decode(const Schema* schema, const char* data, size_t size);
+	SharedBuffer decode(const Schema* schema, const nark::valvec<char>& encoded);
+	SharedBuffer decode(const Schema* schema, StringData encoded);
+	SharedBuffer decode(const Schema* schema, nark::fstring encoded);
 };
 
 } } // namespace mongo::narkdb

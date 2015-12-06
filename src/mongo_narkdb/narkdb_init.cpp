@@ -45,7 +45,6 @@
 #include "narkdb_parameters.h"
 #include "narkdb_record_store.h"
 #include "narkdb_server_status.h"
-#include "narkdb_util.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/util/log.h"
 

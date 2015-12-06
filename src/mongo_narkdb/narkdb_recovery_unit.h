@@ -47,7 +47,7 @@ namespace mongo { namespace narkdb {
 
 class NarkDbRecoveryUnit final : public RecoveryUnit {
 public:
-    NarkDbRecoveryUnit(NarkDbSessionCache* sc);
+    NarkDbRecoveryUnit();
 
     virtual ~NarkDbRecoveryUnit();
 
@@ -81,18 +81,6 @@ public:
 
     // ---- NarkDb STUFF
 
-    NarkDbSession* getSession(OperationContext* opCtx);
-
-    /**
-     * Returns a session without starting a new NarkDb txn on the session. Will not close any already
-     * running session.
-     */
-
-    NarkDbSession* getSessionNoTxn(OperationContext* opCtx);
-
-    NarkDbSessionCache* getSessionCache() {
-        return _sessionCache;
-    }
     bool inActiveTxn() const {
         return _active;
     }
@@ -129,8 +117,6 @@ private:
     void _txnClose(bool commit);
     void _txnOpen(OperationContext* opCtx);
 
-    NarkDbSessionCache* _sessionCache;  // not owned
-    NarkDbSession* _session;            // owned, but from pool
     bool _areWriteUnitOfWorksBanned = false;
     bool _inUnitOfWork;
     bool _active;
@@ -149,44 +135,5 @@ private:
     TicketHolderReleaser _ticket;
 };
 
-/**
- * This is a smart pointer that wraps a NarkDb_CURSOR and knows how to obtain and get from pool.
- */
-class NarkDbCursor {
-public:
-    NarkDbCursor(const std::string& uri,
-                     uint64_t tableID,
-                     bool forRecordStore,
-                     OperationContext* txn);
-
-    ~NarkDbCursor();
-
-
-    NarkDb_CURSOR* get() const {
-        // TODO(SERVER-16816): assertInActiveTxn();
-        return _cursor;
-    }
-
-    NarkDb_CURSOR* operator->() const {
-        return get();
-    }
-
-    NarkDbSession* getSession() {
-        return _session;
-    }
-    NarkDb_SESSION* getWTSession();
-
-    void reset();
-
-    void assertInActiveTxn() const {
-        _ru->assertInActiveTxn();
-    }
-
-private:
-    uint64_t _tableID;
-    NarkDbRecoveryUnit* _ru;  // not owned
-    nark::db::CompositeTablePtr _session;
-    NarkDb_CURSOR* _cursor;  // owned, but pulled
-};
 } } // namespace mongo::nark
 

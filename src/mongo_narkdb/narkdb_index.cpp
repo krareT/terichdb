@@ -46,8 +46,7 @@
 #include "narkdb_customization_hooks.h"
 #include "narkdb_global_options.h"
 #include "narkdb_record_store.h"
-#include "narkdb_session_cache.h"
-#include "narkdb_util.h"
+//#include "narkdb_session_cache.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
@@ -76,8 +75,6 @@ using std::string;
 using std::vector;
 
 static const int TempKeyMaxSize = 1024;  // this goes away with SERVER-3372
-
-static const NarkDbItem emptyItem(NULL, 0);
 
 static const int kMinimumIndexVersion = 6;
 static const int kCurrentIndexVersion = 6;  // New indexes use this by default.
@@ -200,45 +197,20 @@ StatusWith<std::string> NarkDbIndex::generateCreateString(const std::string& eng
     return StatusWith<std::string>(ss);
 }
 
-int NarkDbIndex::Create(OperationContext* txn,
-                            const std::string& uri,
-                            const std::string& config) {
-    // Don't use the session from the recovery unit: create should not be used in a transaction
-    NarkDbSession session(NarkDbRecoveryUnit::get(txn)->getSessionCache()->conn());
-    NarkDb_SESSION* s = session.getSession();
-    LOG(1) << "create uri: " << uri << " config: " << config;
-    return s->create(s, uri.c_str(), config.c_str());
+int NarkDbIndex::Create(OperationContext* txn, const std::string& uri, const std::string& config) {
 }
 
 NarkDbIndex::NarkDbIndex(CompositeTablePtr table, OperationContext* ctx, const IndexDescriptor* desc)
     : _ordering(Ordering::make(desc->keyPattern())),
       _uri(uri),
-      _tableId(NarkDbSession::genTableId()),
       _collectionNamespace(desc->parentNS()),
       _indexName(desc->indexName()) {
-    Status versionStatus = NarkDbUtil::checkApplicationMetadataFormatVersion(
-        ctx, uri, kMinimumIndexVersion, kMaximumIndexVersion);
-    if (!versionStatus.isOK()) {
-        fassertFailedWithStatusNoTrace(28579, versionStatus);
-    }
 }
 
 Status NarkDbIndex::insert(OperationContext* txn,
                                const BSONObj& key,
                                const RecordId& id,
                                bool dupsAllowed) {
-    invariant(id.isNormal());
-    dassert(!hasFieldNames(key));
-
-    Status s = checkKeySize(key);
-    if (!s.isOK())
-        return s;
-
-    NarkDbCursor curwrap(_uri, _tableId, false, txn);
-    curwrap.assertInActiveTxn();
-    NarkDb_CURSOR* c = curwrap.get();
-
-    return _insert(c, key, id, dupsAllowed);
 }
 
 void NarkDbIndex::unindex(OperationContext* txn,
@@ -247,106 +219,19 @@ void NarkDbIndex::unindex(OperationContext* txn,
                               bool dupsAllowed) {
     invariant(id.isNormal());
     dassert(!hasFieldNames(key));
-
-    NarkDbCursor curwrap(_uri, _tableId, false, txn);
-    curwrap.assertInActiveTxn();
-    NarkDb_CURSOR* c = curwrap.get();
-    invariant(c);
-
-    _unindex(c, key, id, dupsAllowed);
 }
 
 void NarkDbIndex::fullValidate(OperationContext* txn,
-                                   bool full,
-                                   long long* numKeysOut,
-                                   BSONObjBuilder* output) const {
-    if (!NarkDbRecoveryUnit::get(txn)->getSessionCache()->isEphemeral()) {
-        std::vector<std::string> errors;
-        int err = NarkDbUtil::verifyTable(txn, _uri, output ? &errors : NULL);
-        if (err == EBUSY) {
-            const char* msg = "verify() returned EBUSY. Not treating as invalid.";
-            warning() << msg;
-            if (output) {
-                if (!errors.empty()) {
-                    *output << "errors" << errors;
-                }
-                *output << "warning" << msg;
-            }
-        } else if (err) {
-            std::string msg = str::stream() << "verify() returned " << narkdb_strerror(err)
-                                            << ". "
-                                            << "This indicates structural damage. "
-                                            << "Not examining individual index entries.";
-            error() << msg;
-            if (output) {
-                errors.push_back(msg);
-                *output << "errors" << errors;
-                *output << "valid" << false;
-            }
-            return;
-        }
-    }
-
-    if (output)
-        *output << "valid" << true;
-
-    auto cursor = newCursor(txn);
-    long long count = 0;
-    TRACE_INDEX << " fullValidate";
-
-    const auto requestedInfo = TRACING_ENABLED ? Cursor::kKeyAndLoc : Cursor::kJustExistance;
-    for (auto kv = cursor->seek(BSONObj(), true, requestedInfo); kv; kv = cursor->next()) {
-        TRACE_INDEX << "\t" << kv->key << ' ' << kv->loc;
-        count++;
-    }
-
-    if (numKeysOut) {
-        *numKeysOut = count;
-    }
-
-    // Nothing further to do if 'full' validation is not requested.
-    if (!full) {
-        return;
-    }
-
-    invariant(output);
+							   bool full,
+							   long long* numKeysOut,
+							   BSONObjBuilder* output) const {
 }
 
 bool NarkDbIndex::appendCustomStats(OperationContext* txn,
-                                        BSONObjBuilder* output,
-                                        double scale) const {
+									BSONObjBuilder* output,
+									double scale) const {
     {
         BSONObjBuilder metadata(output->subobjStart("metadata"));
-        Status status = NarkDbUtil::getApplicationMetadata(txn, uri(), &metadata);
-        if (!status.isOK()) {
-            metadata.append("error", "unable to retrieve metadata");
-            metadata.append("code", static_cast<int>(status.code()));
-            metadata.append("reason", status.reason());
-        }
-    }
-    std::string type, sourceURI;
-    NarkDbUtil::fetchTypeAndSourceURI(txn, _uri, &type, &sourceURI);
-    StatusWith<std::string> metadataResult = NarkDbUtil::getMetadata(txn, sourceURI);
-    StringData creationStringName("creationString");
-    if (!metadataResult.isOK()) {
-        BSONObjBuilder creationString(output->subobjStart(creationStringName));
-        creationString.append("error", "unable to retrieve creation config");
-        creationString.append("code", static_cast<int>(metadataResult.getStatus().code()));
-        creationString.append("reason", metadataResult.getStatus().reason());
-    } else {
-        output->append(creationStringName, metadataResult.getValue());
-        // Type can be "lsm" or "file"
-        output->append("type", type);
-    }
-
-    NarkDbSession* session = NarkDbRecoveryUnit::get(txn)->getSession(txn);
-    NarkDb_SESSION* s = session->getSession();
-    Status status =
-        NarkDbUtil::exportTableToBSON(s, "statistics:" + uri(), "statistics=(fast)", output);
-    if (!status.isOK()) {
-        output->append("error", "unable to retrieve statistics");
-        output->append("code", static_cast<int>(status.code()));
-        output->append("reason", status.reason());
     }
     return true;
 }
@@ -355,63 +240,23 @@ Status NarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, const
     invariant(!hasFieldNames(key));
     invariant(unique());
 
-    NarkDbCursor curwrap(_uri, _tableId, false, txn);
-    NarkDb_CURSOR* c = curwrap.get();
-
-    if (isDup(c, key, id))
-        return dupKeyError(key);
     return Status::OK();
 }
 
 bool NarkDbIndex::isEmpty(OperationContext* txn) {
-    NarkDbCursor curwrap(_uri, _tableId, false, txn);
-    NarkDb_CURSOR* c = curwrap.get();
-    if (!c)
-        return true;
-    int ret = NarkDb_OP_CHECK(c->next(c));
-    if (ret == NarkDb_NOTFOUND)
-        return true;
-    invariantNarkDbOK(ret);
     return false;
 }
 
 Status NarkDbIndex::touch(OperationContext* txn) const {
-    if (NarkDbRecoveryUnit::get(txn)->getSessionCache()->isEphemeral()) {
-        // Everything is already in memory.
-        return Status::OK();
-    }
     return Status(ErrorCodes::CommandNotSupported, "this storage engine does not support touch");
 }
 
 
 long long NarkDbIndex::getSpaceUsedBytes(OperationContext* txn) const {
-    NarkDbSession* session = NarkDbRecoveryUnit::get(txn)->getSession(txn);
-    return static_cast<long long>(NarkDbUtil::getIdentSize(session->getSession(), _uri));
+    return 0;
 }
 
 bool NarkDbIndex::isDup(NarkDb_CURSOR* c, const BSONObj& key, const RecordId& id) {
-    invariant(unique());
-    // First check whether the key exists.
-    KeyString data(key, _ordering);
-    NarkDbItem item(data.getBuffer(), data.getSize());
-    c->set_key(c, item.Get());
-    int ret = NarkDb_OP_CHECK(c->search(c));
-    if (ret == NarkDb_NOTFOUND) {
-        return false;
-    }
-    invariantNarkDbOK(ret);
-
-    // If the key exists, check if we already have this id at this key. If so, we don't
-    // consider that to be a dup.
-    NarkDb_ITEM value;
-    invariantNarkDbOK(c->get_value(c, &value));
-    BufReader br(value.data, value.size);
-    while (br.remaining()) {
-        if (KeyString::decodeRecordId(&br) == id)
-            return false;
-
-        KeyString::TypeBits::fromBuffer(&br);  // Just calling this to advance reader.
-    }
     return true;
 }
 
@@ -420,53 +265,6 @@ Status NarkDbIndex::initAsEmpty(OperationContext* txn) {
     return Status::OK();
 }
 
-/**
- * Base class for NarkDbIndex bulk builders.
- *
- * Manages the bulk cursor used by bulk builders.
- */
-class NarkDbIndex::BulkBuilder : public SortedDataBuilderInterface {
-public:
-    BulkBuilder(NarkDbIndex* idx, OperationContext* txn)
-        : _ordering(idx->_ordering),
-          _txn(txn),
-          _session(NarkDbRecoveryUnit::get(_txn)->getSessionCache()->getSession()),
-          _cursor(openBulkCursor(idx)) {}
-
-    ~BulkBuilder() {
-        _cursor->close(_cursor);
-        NarkDbRecoveryUnit::get(_txn)->getSessionCache()->releaseSession(_session);
-    }
-
-protected:
-    NarkDb_CURSOR* openBulkCursor(NarkDbIndex* idx) {
-        // Open cursors can cause bulk open_cursor to fail with EBUSY.
-        // TODO any other cases that could cause EBUSY?
-        NarkDbSession* outerSession = NarkDbRecoveryUnit::get(_txn)->getSession(_txn);
-        outerSession->closeAllCursors();
-
-        // Not using cursor cache since we need to set "bulk".
-        NarkDb_CURSOR* cursor;
-        // We use our own session to ensure we aren't in a transaction.
-        NarkDb_SESSION* session = _session->getSession();
-        int err = session->open_cursor(session, idx->uri().c_str(), NULL, "bulk", &cursor);
-        if (!err)
-            return cursor;
-
-        warning() << "failed to create NarkDb bulk cursor: " << narkdb_strerror(err);
-        warning() << "falling back to non-bulk cursor for index " << idx->uri();
-
-        invariantNarkDbOK(session->open_cursor(session, idx->uri().c_str(), NULL, NULL, &cursor));
-        return cursor;
-    }
-
-    const Ordering _ordering;
-    OperationContext* const _txn;
-    NarkDbSession* const _session;
-    NarkDb_CURSOR* const _cursor;
-};
-
-/**
  * Bulk builds a non-unique index.
  */
 class NarkDbIndex::StandardBulkBuilder : public BulkBuilder {

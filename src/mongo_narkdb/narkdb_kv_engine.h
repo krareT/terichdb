@@ -38,12 +38,13 @@
 
 #include "mongo/bson/ordering.h"
 #include "mongo/db/storage/kv/kv_engine.h"
-#include "narkdb_session_cache.h"
+//#include "narkdb_session_cache.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/elapsed_tracker.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 
 #include <nark/hash_strmap.hpp>
+#include "narkdb_size_storer.h"
 
 namespace mongo { namespace narkdb {
 
@@ -123,27 +124,10 @@ public:
 
     void syncSizeInfo(bool sync) const;
 
-    /**
-     * Initializes a background job to remove excess documents in the oplog collections.
-     * This applies to the capped collections in the local.oplog.* namespaces (specifically
-     * local.oplog.rs for replica sets and local.oplog.$main for master/slave replication).
-     * Returns true if a background job is running for the namespace.
-     */
-    static bool initRsOplogBackgroundThread(StringData ns);
-
 private:
-    class NarkDbJournalFlusher;
-
-    Status _salvageIfNeeded(const char* uri);
-    void _checkIdentPath(StringData ident);
-
-    bool _hasUri(WT_SESSION* session, const std::string& uri) const;
-
     std::string _uri(StringData ident) const;
     bool _drop(StringData ident);
 
-    WT_CONNECTION* _conn;
-    WT_EVENT_HANDLER _eventHandler;
     std::unique_ptr<WiredTigerSessionCache> _sessionCache;
     std::string _path;
     fs::path m_pathNark;
@@ -151,15 +135,23 @@ private:
     // for: 1. capped collection
     //      2. metadata(use wiredtiger)
     //      3. ephemeral table/index, ephemeral will use WiredTigerKVEngine
-    std::string m_pathWt;
+    fs::path m_pathWt;
     std::unique_ptr<WiredTigerKVEngine> m_wtEngine;
 
     typedef nark::hash_strmap<CompositeTablePtr> TableMap;
 
-    std::unique_ptr<TableMap> m_tables;
+    TableMap m_tables;
+
+    struct TableIndex {
+    	size_t indexId;
+    	CompositeTablePtr m_table;
+    	SortedDataInterface* m_index = nullptr;
+    };
+
+    typedef nark::hash_strmap<TableIndex> IndexMap;
+    IndexMap m_indices;
 
     bool _durable;
-    std::unique_ptr<NarkDbJournalFlusher> _journalFlusher;
 
     std::string _rsOptions;
     std::string _indexOptions;

@@ -41,7 +41,6 @@
 #include "narkdb_record_store.h"
 #include "narkdb_recovery_unit.h"
 #include "narkdb_session_cache.h"
-#include "narkdb_util.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"

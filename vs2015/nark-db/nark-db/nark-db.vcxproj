@@ -71,23 +71,27 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\osc\mongo\src;C:\osc\nark\src;C:\osc\boost-home;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\boost_1_59_0\stage\lib;C:\osc\tbb\build\vs2010\ia32\Debug-MT;C:\osc\tbb\build\vs2010\ia32\Release-MT;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\nark\src;C:\osc\boost-home;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\boost_1_59_0\stage\lib;C:\osc\tbb\build\vs2010\ia32\Debug-MT;C:\osc\tbb\build\vs2010\ia32\Release-MT;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\osc\mongo\src;C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\osc\mongo\src;C:\osc\nark\src;C:\osc\boost-home;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\boost_1_59_0\stage\lib;C:\osc\tbb\build\vs2010\ia32\Debug-MT;C:\osc\tbb\build\vs2010\ia32\Release-MT;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\nark\src;C:\osc\boost-home;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\boost_1_59_0\stage\lib;C:\osc\tbb\build\vs2010\ia32\Debug-MT;C:\osc\tbb\build\vs2010\ia32\Release-MT;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\osc\mongo\src;C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -171,7 +175,18 @@
     <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\oid.h" />
     <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\ordering.h" />
     <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\timestamp.h" />
-    <ClInclude Include="..\..\..\src\mongo_narkdb\index_key.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\mongo_narkdb_common.hpp" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_customization_hooks.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_global_options.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_index.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_kv_engine.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_parameters.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store_oplog_stones.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_recovery_unit.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_server_status.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_size_storer.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_snapshot_manager.h" />
     <ClInclude Include="..\..\..\src\mongo_narkdb\record_codec.h" />
     <ClInclude Include="..\..\..\src\nark\db\data_index.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\data_store.hpp" />
@@ -197,7 +212,11 @@
     <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\json.cpp" />
     <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\oid.cpp" />
     <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\timestamp.cpp" />
-    <ClCompile Include="..\..\..\src\mongo_narkdb\index_key.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_customization_hooks.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_global_options.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_kv_engine.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_record_store.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_size_storer.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\record_codec.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\data_index.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\data_store.cpp" />

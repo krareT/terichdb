@@ -36,8 +36,8 @@
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/server_parameters.h"
 #include "narkdb_recovery_unit.h"
-#include "narkdb_session_cache.h"
-#include "narkdb_util.h"
+//#include "narkdb_session_cache.h"
+//#include "narkdb_util.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/concurrency/ticketholder.h"
@@ -47,9 +47,8 @@
 
 namespace mongo { namespace narkdb {
 
-NarkDbRecoveryUnit::NarkDbRecoveryUnit(NarkDbSessionCache* sc)
-    : _sessionCache(sc),
-      _session(NULL),
+NarkDbRecoveryUnit::NarkDbRecoveryUnit()
+    :
       _inUnitOfWork(false),
       _active(false),
       _myTransactionCount(1),
@@ -59,10 +58,6 @@ NarkDbRecoveryUnit::NarkDbRecoveryUnit(NarkDbSessionCache* sc)
 NarkDbRecoveryUnit::~NarkDbRecoveryUnit() {
     invariant(!_inUnitOfWork);
     _abort();
-    if (_session) {
-        _sessionCache->releaseSession(_session);
-        _session = NULL;
-    }
 }
 
 void NarkDbRecoveryUnit::reportState(BSONObjBuilder* b) const {
@@ -80,14 +75,12 @@ void NarkDbRecoveryUnit::prepareForCreateSnapshot(OperationContext* opCtx) {
     invariant(!_inUnitOfWork);
     invariant(!_readFromMajorityCommittedSnapshot);
 
-    // Starts the NarkDb transaction that will be the basis for creating a named snapshot.
-    getSession(opCtx);
     _areWriteUnitOfWorksBanned = true;
 }
 
 void NarkDbRecoveryUnit::_commit() {
     try {
-        if (_session && _active) {
+        if (_active) {
             _txnClose(true);
         }
 
@@ -104,7 +97,7 @@ void NarkDbRecoveryUnit::_commit() {
 
 void NarkDbRecoveryUnit::_abort() {
     try {
-        if (_session && _active) {
+        if (_active) {
             _txnClose(false);
         }
 
@@ -144,20 +137,10 @@ void NarkDbRecoveryUnit::abortUnitOfWork() {
 }
 
 void NarkDbRecoveryUnit::_ensureSession() {
-    if (!_session) {
-        _session = _sessionCache->getSession();
-    }
 }
 
 bool NarkDbRecoveryUnit::waitUntilDurable() {
     invariant(!_inUnitOfWork);
-    // For inMemory storage engines, the data is "as durable as it's going to get".
-    // That is, a restart is equivalent to a complete node failure.
-    if (_sessionCache->isEphemeral()) {
-        return true;
-    }
-    // _session may be nullptr. We cannot _ensureSession() here as that needs shutdown protection.
-    _sessionCache->waitUntilDurable(false);
     return true;
 }
 
@@ -173,20 +156,6 @@ NarkDbRecoveryUnit* NarkDbRecoveryUnit::get(OperationContext* txn) {
 
 void NarkDbRecoveryUnit::assertInActiveTxn() const {
     fassert(28575, _active);
-}
-
-NarkDbSession* NarkDbRecoveryUnit::getSession(OperationContext* opCtx) {
-    _ensureSession();
-
-    if (!_active) {
-        _txnOpen(opCtx);
-    }
-    return _session;
-}
-
-NarkDbSession* NarkDbRecoveryUnit::getSessionNoTxn(OperationContext* opCtx) {
-    _ensureSession();
-    return _session;
 }
 
 void NarkDbRecoveryUnit::abandonSnapshot() {
@@ -272,14 +241,6 @@ void NarkDbRecoveryUnit::appendGlobalStats(BSONObjBuilder& b) {
 
 void NarkDbRecoveryUnit::_txnClose(bool commit) {
     invariant(_active);
-    NarkDb_SESSION* s = _session->getSession();
-    if (commit) {
-        invariantNarkDbOK(s->commit_transaction(s, NULL));
-        LOG(2) << "NarkDb commit_transaction";
-    } else {
-        invariantNarkDbOK(s->rollback_transaction(s, NULL));
-        LOG(2) << "NarkDb rollback_transaction";
-    }
     _active = false;
     _myTransactionCount++;
     _ticket.reset(NULL);
@@ -291,13 +252,6 @@ SnapshotId NarkDbRecoveryUnit::getSnapshotId() const {
 }
 
 Status NarkDbRecoveryUnit::setReadFromMajorityCommittedSnapshot() {
-    auto snapshotName = _sessionCache->snapshotManager().getMinSnapshotForNextCommittedRead();
-    if (!snapshotName) {
-        return {ErrorCodes::ReadConcernMajorityNotAvailableYet,
-                "Read concern majority reads are currently not possible."};
-    }
-
-    _majorityCommittedSnapshot = *snapshotName;
     _readFromMajorityCommittedSnapshot = true;
     return Status::OK();
 }
@@ -342,46 +296,10 @@ void NarkDbRecoveryUnit::_txnOpen(OperationContext* opCtx) {
     invariant(!_active);
     _getTicket(opCtx);
 
-    NarkDb_SESSION* s = _session->getSession();
-
-    if (_readFromMajorityCommittedSnapshot) {
-        _majorityCommittedSnapshot =
-            _sessionCache->snapshotManager().beginTransactionOnCommittedSnapshot(s);
-    } else {
-        invariantNarkDbOK(s->begin_transaction(s, NULL));
-    }
-
     LOG(2) << "NarkDb begin_transaction";
     _timer.reset();
     _active = true;
 }
 
-// ---------------------
-
-NarkDbCursor::NarkDbCursor(const std::string& uri,
-                                   uint64_t tableId,
-                                   bool forRecordStore,
-                                   OperationContext* txn) {
-    _tableID = tableId;
-    _ru = NarkDbRecoveryUnit::get(txn);
-    _session = _ru->getSession(txn);
-    _cursor = _session->getCursor(uri, tableId, forRecordStore);
-    if (!_cursor) {
-        error() << "no cursor for uri: " << uri;
-    }
-}
-
-NarkDbCursor::~NarkDbCursor() {
-    _session->releaseCursor(_tableID, _cursor);
-    _cursor = NULL;
-}
-
-void NarkDbCursor::reset() {
-    invariantNarkDbOK(_cursor->reset(_cursor));
-}
-
-NarkDb_SESSION* NarkDbCursor::getWTSession() {
-    return _session->getSession();
-}
 } }  // namespace mongo::nark
 

@@ -123,10 +123,43 @@
     <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\timestamp.h">
       <Filter>Header Files\mongo\bson</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\mongo_narkdb\index_key.h">
+    <ClInclude Include="..\..\..\src\mongo_narkdb\record_codec.h">
       <Filter>Header Files\mongo_narkdb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\mongo_narkdb\record_codec.h">
+    <ClInclude Include="..\..\..\src\mongo_narkdb\mongo_narkdb_common.hpp">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_customization_hooks.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_global_options.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_index.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_kv_engine.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_parameters.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store_oplog_stones.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_recovery_unit.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_server_status.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_size_storer.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_snapshot_manager.h">
       <Filter>Header Files\mongo_narkdb</Filter>
     </ClInclude>
   </ItemGroup>
@@ -188,10 +221,22 @@
     <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\timestamp.cpp">
       <Filter>Source Files\mongo\bson</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\mongo_narkdb\index_key.cpp">
+    <ClCompile Include="..\..\..\src\mongo_narkdb\record_codec.cpp">
       <Filter>Source Files\mongo_narkdb</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\mongo_narkdb\record_codec.cpp">
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_record_store.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_customization_hooks.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_global_options.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_kv_engine.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_size_storer.cpp">
       <Filter>Source Files\mongo_narkdb</Filter>
     </ClCompile>
   </ItemGroup>

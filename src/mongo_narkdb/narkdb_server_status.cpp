@@ -39,7 +39,7 @@
 #include "narkdb_record_store.h"
 #include "narkdb_recovery_unit.h"
 #include "narkdb_session_cache.h"
-#include "narkdb_util.h"
+//#include "narkdb_util.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/scopeguard.h"
 
@@ -54,25 +54,10 @@ bool NarkDbServerStatusSection::includeByDefault() const {
     return true;
 }
 
-BSONObj NarkDbServerStatusSection::generateSection(OperationContext* txn,
-                                                       const BSONElement& configElement) const {
-    // The session does not open a transaction here as one is not needed and opening one would
-    // mean that execution could become blocked when a new transaction cannot be allocated
-    // immediately.
-    NarkDbSession* session = NarkDbRecoveryUnit::get(txn)->getSessionNoTxn(txn);
-    invariant(session);
-
-    NarkDb_SESSION* s = session->getSession();
-    invariant(s);
-    const string uri = "statistics:";
-
+BSONObj
+NarkDbServerStatusSection::generateSection(OperationContext* txn,
+                                           const BSONElement& configElement) const {
     BSONObjBuilder bob;
-    Status status = NarkDbUtil::exportTableToBSON(s, uri, "statistics=(fast)", &bob);
-    if (!status.isOK()) {
-        bob.append("error", "unable to retrieve statistics");
-        bob.append("code", static_cast<int>(status.code()));
-        bob.append("reason", status.reason());
-    }
 
     NarkDbRecoveryUnit::appendGlobalStats(bob);
 

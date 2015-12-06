@@ -44,7 +44,7 @@ public:
      * The document 'options' is typically obtained from the 'storageEngine.narkDb' field
      * of an IndexDescriptor's info object.
      */
-    static StatusWith<std::string> parseIndexOptions(const BSONObj& options);
+//    static StatusWith<std::string> parseIndexOptions(const BSONObj& options);
 
     /**
      * Creates a configuration string suitable for 'config' parameter in NarkDb_SESSION::create().
@@ -133,8 +133,8 @@ protected:
 class NarkDbIndexUnique : public NarkDbIndex {
 public:
     NarkDbIndexUnique(OperationContext* ctx,
-                          const std::string& uri,
-                          const IndexDescriptor* desc);
+                      const std::string& uri,
+                      const IndexDescriptor* desc);
 
     std::unique_ptr<SortedDataInterface::Cursor>
     newCursor(OperationContext* txn, bool forward) const override;
