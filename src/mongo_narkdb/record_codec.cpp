@@ -15,6 +15,9 @@
 
 namespace mongo { namespace narkdb {
 
+// all non-schema fields packed into this field as ColumnType::CarBin
+const char G_schemaLessFieldName[] = "$$";
+
 using namespace nark;
 
 static void narkEncodeBsonArray(const BSONObj& arr, valvec<char>& encoded);
@@ -158,10 +161,14 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 	m_stored.resize_fill(m_fields.end_i(), false);
 
 	// last is $$ field, the schema-less fields
-	size_t schemaColumn = schema->columnNum() - 1;
-
+	size_t schemaColumn
+		= schema->m_columnsMeta.end_key(1) == G_schemaLessFieldName
+		? schema->m_columnsMeta.end_i() - 1
+		: schema->m_columnsMeta.end_i()
+		;
 	for(size_t i = 0; i < schemaColumn; ++i) {
 		fstring colname = schema->getColumnName(i);
+		assert(colname != G_schemaLessFieldName);
 		size_t j = m_fields.find_i(colname);
 		invariant(j < m_fields.end_i());
 		BSONElement elem(m_fields.key(j).data() - 1, colname.size()+1,
@@ -294,7 +301,17 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		m_stored.set1(j);
 	}
 
-	size_t excludeColumnNum = exclude->columnNum();
+	if (schemaColumn == schema->columnNum()) {
+		// has no schema-less column
+		bool isAllStored = m_stored.isall1();
+		assert(isAllStored);
+		if (!isAllStored) {
+			THROW_STD(invalid_argument,
+				"schema is forced on all fields, but input data has extra fields");
+		}
+		return;
+	}
+
 	size_t idx = 0;
 	for (auto it = obj.begin(), End = obj.end(); it != End; ++it, ++idx) {
 		if (m_stored.is1(idx))
@@ -304,7 +321,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		assert(fieldName.ende(0) == 0);
 		if (exclude) {
 			size_t colid = exclude->m_columnsMeta.find_i(fieldName);
-			if (colid >= excludeColumnNum)
+			if (colid >= exclude->columnNum())
 				continue;
 		}
 		encoded->append(fieldName.data(), fieldName.size()+1);

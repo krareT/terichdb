@@ -119,11 +119,6 @@ public:
     // held by this class
     int reconfigure(const char* str);
 
-    void dropAllQueued();
-    bool haveDropsQueued() const;
-
-    void syncSizeInfo(bool sync) const;
-
 private:
     std::string _uri(StringData ident) const;
     bool _drop(StringData ident);

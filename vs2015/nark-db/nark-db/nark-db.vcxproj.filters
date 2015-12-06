@@ -239,5 +239,8 @@
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_size_storer.cpp">
       <Filter>Source Files\mongo_narkdb</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_index.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -214,6 +214,7 @@
     <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\timestamp.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_customization_hooks.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_global_options.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_index.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_kv_engine.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_record_store.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_size_storer.cpp" />

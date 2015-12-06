@@ -33,6 +33,7 @@
 #include "mongo/base/status_with.h"
 #include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/sorted_data_interface.h"
+#include "mongo/db/index/index_descriptor.h"
 #include "narkdb_recovery_unit.h"
 
 namespace mongo { namespace narkdb {
@@ -44,7 +45,7 @@ public:
      * The document 'options' is typically obtained from the 'storageEngine.narkDb' field
      * of an IndexDescriptor's info object.
      */
-//    static StatusWith<std::string> parseIndexOptions(const BSONObj& options);
+    static StatusWith<std::string> parseIndexOptions(const BSONObj& options);
 
     /**
      * Creates a configuration string suitable for 'config' parameter in NarkDb_SESSION::create().
@@ -63,13 +64,11 @@ public:
                                                         const std::string& collIndexConfig,
                                                         const IndexDescriptor& desc);
 
-    static int Create(OperationContext* txn, const std::string& uri, const std::string& config);
-
     /**
      * @param unique - If this is a unique index.
      *                 Note: even if unique, it may be allowed to be non-unique at times.
      */
-    NarkDbIndex(CompositeTablePtr table, OperationContext* ctx, const IndexDescriptor* desc);
+    NarkDbIndex(CompositeTable* table, OperationContext* ctx, const IndexDescriptor* desc);
 
     virtual Status insert(OperationContext* txn,
                           const BSONObj& key,
@@ -88,7 +87,8 @@ public:
     virtual bool appendCustomStats(OperationContext* txn,
                                    BSONObjBuilder* output,
                                    double scale) const;
-    virtual Status dupKeyCheck(OperationContext* txn, const BSONObj& key, const RecordId& id);
+    virtual Status dupKeyCheck(OperationContext* txn,
+							   const BSONObj& key, const RecordId& id);
 
     virtual bool isEmpty(OperationContext* txn);
 
@@ -102,9 +102,6 @@ public:
         return _uri;
     }
 
-    uint64_t tableId() const {
-        return _tableId;
-    }
     Ordering ordering() const {
         return _ordering;
     }
@@ -113,47 +110,62 @@ public:
 
     Status dupKeyError(const BSONObj& key);
 
-protected:
-    class BulkBuilder;
-    class StandardBulkBuilder;
-    class UniqueBulkBuilder;
-
-    const Ordering _ordering;
-    std::string _uri;
-    uint64_t _tableId;
-    std::string _collectionNamespace;
-    std::string _indexName;
-
     // nark::db
     size_t m_indexId;
     nark::db::CompositeTablePtr m_table;
+
+	const nark::db::Schema* getIndexSchema() const {
+		return &m_table->getIndexSchema(m_indexId);
+	}
+
+	bool insertIndexKey(const BSONObj& newKey, const RecordId& id,
+						nark::db::DbContext*);
+
+protected:
+    class BulkBuilder;
+	class MyThreadData {
+    public:
+    	nark::db::DbContextPtr m_dbCtx;
+    	mongo::narkdb::SchemaRecordCoder m_coder;
+    	nark::valvec<unsigned char> m_buf;
+    };
+	mutable gold_hash_map<std::thread::id, MyThreadData> m_threadcache;
+	mutable std::mutex m_threadcacheMutex;
+    MyThreadData& getMyThreadData() const;
+
+    const Ordering _ordering;
+    std::string _uri;
+    std::string _collectionNamespace;
+    std::string _indexName;
 };
 
 
 class NarkDbIndexUnique : public NarkDbIndex {
 public:
-    NarkDbIndexUnique(OperationContext* ctx,
-                      const std::string& uri,
+    NarkDbIndexUnique(CompositeTable* tab,
+                      OperationContext* opCtx,
                       const IndexDescriptor* desc);
 
     std::unique_ptr<SortedDataInterface::Cursor>
     newCursor(OperationContext* txn, bool forward) const override;
 
-    SortedDataBuilderInterface* getBulkBuilder(OperationContext* txn, bool dupsAllowed) override;
+    SortedDataBuilderInterface*
+	getBulkBuilder(OperationContext* txn, bool dupsAllowed) override;
 
     bool unique() const override { return true; }
 };
 
 class NarkDbIndexStandard : public NarkDbIndex {
 public:
-    NarkDbIndexStandard(OperationContext* ctx,
-                            const std::string& uri,
-                            const IndexDescriptor* desc);
+    NarkDbIndexStandard(CompositeTable* tab,
+                        OperationContext* opCtx,
+                        const IndexDescriptor* desc);
 
     std::unique_ptr<SortedDataInterface::Cursor>
     newCursor(OperationContext* txn, bool forward) const override;
 
-    SortedDataBuilderInterface* getBulkBuilder(OperationContext* txn, bool dupsAllowed) override;
+    SortedDataBuilderInterface*
+	getBulkBuilder(OperationContext* txn, bool dupsAllowed) override;
 
     bool unique() const override { return false; }
 };

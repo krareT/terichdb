@@ -22,6 +22,8 @@ using nark::db::SchemaSet;
 using nark::db::SchemaSetPtr;
 using nark::db::SegmentSchema;
 
+extern const char G_schemaLessFieldName[];
+
 class SchemaRecordCoder {
 public:
 	nark::febitvec m_stored;
@@ -30,6 +32,13 @@ public:
 
 	SchemaRecordCoder();
 	~SchemaRecordCoder();
+
+	void
+	encode(const Schema* schema, const Schema* exclude,	const BSONObj& key,
+		   nark::valvec<unsigned char>* encoded) {
+		encode(schema, exclude, key,
+			reinterpret_cast<nark::valvec<char>*>(encoded));
+	}
 
 	void
 	encode(const Schema* schema, const Schema* exclude,	const BSONObj& key,

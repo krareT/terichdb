@@ -157,7 +157,7 @@ NarkDbKVEngine::~NarkDbKVEngine() {
 
 void NarkDbKVEngine::cleanShutdown() {
     log() << "NarkDbKVEngine shutting down";
-    syncSizeInfo(true);
+//  syncSizeInfo(true);
     m_tables.clear();
 }
 
@@ -183,7 +183,7 @@ Status NarkDbKVEngine::repairIdent(OperationContext* opCtx, StringData ident) {
 
 int NarkDbKVEngine::flushAllFiles(bool sync) {
     LOG(1) << "NarkDbKVEngine::flushAllFiles";
-    syncSizeInfo(true);
+//  syncSizeInfo(true);
     m_tables.for_each([](const TableMap::value_type& x) {
     	x.second->flush();
     });
@@ -297,11 +297,19 @@ Status NarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
 
 SortedDataInterface* NarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
 															StringData ident,
-															const IndexDescriptor* desc) {
+															const IndexDescriptor* desc)
+{
+	auto tabDir = m_pathNark / "tables" / ident.toString();
+	size_t idx = m_tables.insert_i(ident).second;
+	auto& tab = m_tables.val(idx);
+	if (tab == nullptr) {
+		tab = new MockCompositeTable();
+		tab->load(tabDir.string());
+	}
     if (desc->unique())
-        return new NarkDbIndexUnique(opCtx, _uri(ident), desc);
+        return new NarkDbIndexUnique(&*tab, opCtx, desc);
     else
-    	return new NarkDbIndexStandard(opCtx, _uri(ident), desc);
+    	return new NarkDbIndexStandard(&*tab, opCtx, desc);
 }
 
 Status NarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {

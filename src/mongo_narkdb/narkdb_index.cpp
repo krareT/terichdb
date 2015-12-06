@@ -129,11 +129,13 @@ StatusWith<std::string> NarkDbIndex::parseIndexOptions(const BSONObj& options) {
     StringBuilder ss;
     BSONForEach(elem, options) {
         if (elem.fieldNameStringData() == "configString") {
+		/*
             Status status = NarkDbUtil::checkTableCreationOptions(elem);
             if (!status.isOK()) {
                 return status;
             }
             ss << elem.valueStringData() << ',';
+		*/
         } else {
             // Return error on first unrecognized field.
             return StatusWith<std::string>(ErrorCodes::InvalidOptions,
@@ -197,28 +199,66 @@ StatusWith<std::string> NarkDbIndex::generateCreateString(const std::string& eng
     return StatusWith<std::string>(ss);
 }
 
-int NarkDbIndex::Create(OperationContext* txn, const std::string& uri, const std::string& config) {
+NarkDbIndex::NarkDbIndex(CompositeTable* table, OperationContext* ctx, const IndexDescriptor* desc)
+    : m_table(table)
+	, _ordering(Ordering::make(desc->keyPattern()))
+    , _collectionNamespace(desc->parentNS())
+    , _indexName(desc->indexName())
+{
+	std::string indexColumnNames;
+	BSONForEach(elem, desc->keyPattern()) {
+		indexColumnNames.append(elem.fieldName());
+		indexColumnNames.push_back(',');
+	}
+	indexColumnNames.pop_back();
+	const size_t indexId = table->getIndexId(indexColumnNames);
+	if (indexId == table->getIndexNum()) {
+		// no such index
+		THROW_STD(invalid_argument,
+			"index(%s) on collection(%s) is not defined",
+			indexColumnNames.c_str(),
+			desc->parentNS().c_str());
+	}
+	m_indexId = indexId;
 }
 
-NarkDbIndex::NarkDbIndex(CompositeTablePtr table, OperationContext* ctx, const IndexDescriptor* desc)
-    : _ordering(Ordering::make(desc->keyPattern())),
-      _uri(uri),
-      _collectionNamespace(desc->parentNS()),
-      _indexName(desc->indexName()) {
+NarkDbIndex::MyThreadData& NarkDbIndex::getMyThreadData() const {
+	auto tid = std::this_thread::get_id();
+	std::lock_guard<std::mutex> lock(m_threadcacheMutex);
+	size_t i = m_threadcache.insert_i(tid).first;
+	if (m_threadcache.val(i).m_dbCtx == nullptr)
+		m_threadcache.val(i).m_dbCtx = m_table->createDbContext();
+	return m_threadcache.val(i);
 }
 
 Status NarkDbIndex::insert(OperationContext* txn,
-                               const BSONObj& key,
-                               const RecordId& id,
-                               bool dupsAllowed) {
+                           const BSONObj& key,
+                           const RecordId& id,
+                           bool dupsAllowed)
+{
+	auto& td = getMyThreadData();
+	auto indexSchema = getIndexSchema();
+	td.m_coder.encode(indexSchema, nullptr, key);
+	llong recIdx = id.repr() - 1;
+	if (m_table->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
+		return Status::OK();
+	} else {
+		return Status(ErrorCodes::DuplicateKey, "dup key in NarkDbIndex::insert");
+	}
 }
 
 void NarkDbIndex::unindex(OperationContext* txn,
-                              const BSONObj& key,
-                              const RecordId& id,
-                              bool dupsAllowed) {
+                          const BSONObj& key,
+                          const RecordId& id,
+                          bool dupsAllowed)
+{
     invariant(id.isNormal());
     dassert(!hasFieldNames(key));
+	auto& td = getMyThreadData();
+	auto indexSchema = getIndexSchema();
+	td.m_coder.encode(indexSchema, nullptr, key);
+	llong recIdx = id.repr() - 1;
+	m_table->indexRemove(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx);
 }
 
 void NarkDbIndex::fullValidate(OperationContext* txn,
@@ -251,148 +291,14 @@ Status NarkDbIndex::touch(OperationContext* txn) const {
     return Status(ErrorCodes::CommandNotSupported, "this storage engine does not support touch");
 }
 
-
 long long NarkDbIndex::getSpaceUsedBytes(OperationContext* txn) const {
-    return 0;
-}
-
-bool NarkDbIndex::isDup(NarkDb_CURSOR* c, const BSONObj& key, const RecordId& id) {
-    return true;
+    return m_table->indexStorageSize(m_indexId);
 }
 
 Status NarkDbIndex::initAsEmpty(OperationContext* txn) {
     // No-op
     return Status::OK();
 }
-
- * Bulk builds a non-unique index.
- */
-class NarkDbIndex::StandardBulkBuilder : public BulkBuilder {
-public:
-    StandardBulkBuilder(NarkDbIndex* idx, OperationContext* txn)
-        : BulkBuilder(idx, txn), _idx(idx) {}
-
-    Status addKey(const BSONObj& key, const RecordId& id) {
-        {
-            const Status s = checkKeySize(key);
-            if (!s.isOK())
-                return s;
-        }
-
-        KeyString data(key, _idx->_ordering, id);
-
-        // Can't use NarkDbCursor since we aren't using the cache.
-        NarkDbItem item(data.getBuffer(), data.getSize());
-        _cursor->set_key(_cursor, item.Get());
-
-        NarkDbItem valueItem = data.getTypeBits().isAllZeros()
-            ? emptyItem
-            : NarkDbItem(data.getTypeBits().getBuffer(), data.getTypeBits().getSize());
-
-        _cursor->set_value(_cursor, valueItem.Get());
-
-        invariantNarkDbOK(_cursor->insert(_cursor));
-
-        return Status::OK();
-    }
-
-    void commit(bool mayInterrupt) {
-        // TODO do we still need this?
-        // this is bizarre, but required as part of the contract
-        WriteUnitOfWork uow(_txn);
-        uow.commit();
-    }
-
-private:
-    NarkDbIndex* _idx;
-};
-
-/**
- * Bulk builds a unique index.
- *
- * In order to support unique indexes in dupsAllowed mode this class only does an actual insert
- * after it sees a key after the one we are trying to insert. This allows us to gather up all
- * duplicate ids and insert them all together. This is necessary since bulk cursors can only
- * append data.
- */
-class NarkDbIndex::UniqueBulkBuilder : public BulkBuilder {
-public:
-    UniqueBulkBuilder(NarkDbIndex* idx, OperationContext* txn, bool dupsAllowed)
-        : BulkBuilder(idx, txn), _idx(idx), _dupsAllowed(dupsAllowed) {}
-
-    Status addKey(const BSONObj& newKey, const RecordId& id) {
-        {
-            const Status s = checkKeySize(newKey);
-            if (!s.isOK())
-                return s;
-        }
-
-        const int cmp = newKey.woCompare(_key, _ordering);
-        if (cmp != 0) {
-            if (!_key.isEmpty()) {   // _key.isEmpty() is only true on the first call to addKey().
-                invariant(cmp > 0);  // newKey must be > the last key
-                // We are done with dups of the last key so we can insert it now.
-                doInsert();
-            }
-            invariant(_records.empty());
-        } else {
-            // Dup found!
-            if (!_dupsAllowed) {
-                return _idx->dupKeyError(newKey);
-            }
-
-            // If we get here, we are in the weird mode where dups are allowed on a unique
-            // index, so add ourselves to the list of duplicate ids. This also replaces the
-            // _key which is correct since any dups seen later are likely to be newer.
-        }
-
-        _key = newKey.getOwned();
-        _keyString.resetToKey(_key, _idx->ordering());
-        _records.push_back(std::make_pair(id, _keyString.getTypeBits()));
-
-        return Status::OK();
-    }
-
-    void commit(bool mayInterrupt) {
-        WriteUnitOfWork uow(_txn);
-        if (!_records.empty()) {
-            // This handles inserting the last unique key.
-            doInsert();
-        }
-        uow.commit();
-    }
-
-private:
-    void doInsert() {
-        invariant(!_records.empty());
-
-        KeyString value;
-        for (size_t i = 0; i < _records.size(); i++) {
-            value.appendRecordId(_records[i].first);
-            // When there is only one record, we can omit AllZeros TypeBits. Otherwise they need
-            // to be included.
-            if (!(_records[i].second.isAllZeros() && _records.size() == 1)) {
-                value.appendTypeBits(_records[i].second);
-            }
-        }
-
-        NarkDbItem keyItem(_keyString.getBuffer(), _keyString.getSize());
-        NarkDbItem valueItem(value.getBuffer(), value.getSize());
-
-        _cursor->set_key(_cursor, keyItem.Get());
-        _cursor->set_value(_cursor, valueItem.Get());
-
-        invariantNarkDbOK(_cursor->insert(_cursor));
-
-        _records.clear();
-    }
-
-    NarkDbIndex* _idx;
-    const bool _dupsAllowed;
-    BSONObj _key;
-    KeyString _keyString;
-    std::vector<std::pair<RecordId, KeyString::TypeBits>> _records;
-};
 
 namespace {
 
@@ -403,33 +309,38 @@ class NarkDbIndexCursorBase : public SortedDataInterface::Cursor {
 public:
     NarkDbIndexCursorBase(const NarkDbIndex& idx, OperationContext* txn, bool forward)
         : _txn(txn), _idx(idx), _forward(forward) {
-        _cursor.emplace(_idx.uri(), _idx.tableId(), false, _txn);
+		if (forward)
+			idx.m_table->createIndexIterForward(idx.m_indexId);
+		else
+			idx.m_table->createIndexIterBackward(idx.m_indexId);
     }
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
-        // Advance on a cursor at the end is a no-op
-        if (_eof)
+        if (_eof) // Advance on a cursor at the end is a no-op
             return {};
-
-        if (!_lastMoveWasRestore)
-            advanceWTCursor();
-        updatePosition();
-        return curr(parts);
+        if (!_lastMoveWasRestore) {
+			llong recIdx = -1;
+			_cursorAtEof = _cursor->increment(&recIdx, &m_curKey);
+			if (!_cursorAtEof) {
+				_id = RecordId(recIdx + 1);
+		        return curr(parts);
+			}
+			return {};
+		} else {
+			_lastMoveWasRestore = false;
+	        return curr(parts);
+		}
     }
 
     void setEndPosition(const BSONObj& key, bool inclusive) override {
         TRACE_CURSOR << "setEndPosition inclusive: " << inclusive << ' ' << key;
         if (key.isEmpty()) {
             // This means scan to end of index.
-            _endPosition.reset();
-            return;
+            _endPositionKey.erase_all();
         }
-
-        // NOTE: this uses the opposite rules as a normal seek because a forward scan should
-        // end after the key if inclusive and before if exclusive.
-        const auto discriminator =
-            _forward == inclusive ? KeyString::kExclusiveAfter : KeyString::kExclusiveBefore;
-        _endPosition = stdx::make_unique<KeyString>();
-        _endPosition->resetToKey(stripFieldNames(key), _idx.ordering(), discriminator);
+		else {
+			m_coder.encode(_idx.getIndexSchema(), nullptr, key, &_endPositionKey);
+			_endPositionInclude = inclusive;
+		}
     }
 
     boost::optional<IndexKeyEntry> seek(const BSONObj& key,
@@ -441,8 +352,8 @@ public:
 
         // By using a discriminator other than kInclusive, there is no need to distinguish
         // unique vs non-unique key formats since both start with the key.
-        _query.resetToKey(finalKey, _idx.ordering(), discriminator);
-        seekWTCursor(_query);
+        // _query.resetToKey(finalKey, _idx.ordering(), discriminator);
+        seekWTCursor(key);
         updatePosition();
         return curr(parts);
     }
@@ -453,19 +364,15 @@ public:
         BSONObj key = IndexEntryComparison::makeQueryObject(seekPoint, _forward);
 
         // makeQueryObject handles the discriminator in the real exclusive cases.
-        const auto discriminator =
-            _forward ? KeyString::kExclusiveBefore : KeyString::kExclusiveAfter;
-        _query.resetToKey(key, _idx.ordering(), discriminator);
-        seekWTCursor(_query);
+        seekWTCursor(key);
         updatePosition();
         return curr(parts);
     }
 
     void save() override {
         try {
-            if (_cursor)
-                _cursor->reset();
-        } catch (const WriteConflictException& wce) {
+            _cursor->reset();
+        } catch (const WriteConflictException&) {
             // Ignore since this is only called when we are about to kill our transaction
             // anyway.
         }
@@ -480,13 +387,6 @@ public:
     }
 
     void restore() override {
-        if (!_cursor) {
-            _cursor.emplace(_idx.uri(), _idx.tableId(), false, _txn);
-        }
-
-        // Ensure an active session exists, so any restored cursors will bind to it
-        invariant(NarkDbRecoveryUnit::get(_txn)->getSession(_txn) == _cursor->getSession());
-
         if (!_eof) {
             // Unique indices *don't* include the record id in their KeyStrings. If we seek to the
             // same key with a new record id, seeking will successfully find the key and will return
@@ -496,26 +396,23 @@ public:
             // Standard (non-unique) indices *do* include the record id in their KeyStrings. This
             // means that restoring to the same key with a new record id will return false, and we
             // will *not* skip the key with the new record id.
-            _lastMoveWasRestore = !seekWTCursor(_key);
+            _lastMoveWasRestore = !seekWTCursor();
             TRACE_CURSOR << "restore _lastMoveWasRestore:" << _lastMoveWasRestore;
         }
     }
 
     void detachFromOperationContext() final {
         _txn = nullptr;
-        _cursor = boost::none;
+        _cursor = nullptr;
     }
 
     void reattachToOperationContext(OperationContext* txn) final {
         _txn = txn;
-        // _cursor recreated in restore() to avoid risk of NarkDb_ROLLBACK issues.
+        // _cursor recreated in restore() to avoid risk of WT_ROLLBACK issues.
     }
 
 protected:
-    // Called after _key has been filled in. Must not throw WriteConflictException.
-    virtual void updateIdAndTypeBits() = 0;
-
-    boost::optional<IndexKeyEntry> curr(RequestedInfo parts) const {
+    boost::optional<IndexKeyEntry> curr(RequestedInfo parts) {
         if (_eof)
             return {};
 
@@ -524,7 +421,7 @@ protected:
 
         BSONObj bson;
         if (TRACING_ENABLED || (parts & kWantKey)) {
-            bson = KeyString::toBson(_key.getBuffer(), _key.getSize(), _idx.ordering(), _typeBits);
+            bson = BSONObj(m_coder.decode(_idx.getIndexSchema(), fstring(m_curKey)));
 
             TRACE_CURSOR << " returning " << bson << ' ' << _id;
         }
@@ -535,63 +432,49 @@ protected:
     bool atOrPastEndPointAfterSeeking() const {
         if (_eof)
             return true;
-        if (!_endPosition)
+        if (_endPositionKey.empty())
             return false;
 
-        const int cmp = _key.compare(*_endPosition);
-
-        // We set up _endPosition to be in between the last in-range value and the first
-        // out-of-range value. In particular, it is constructed to never equal any legal index
-        // key.
-        dassert(cmp != 0);
+        const int cmp = _idx.getIndexSchema()->compareData(m_curKey, _endPositionKey);
 
         if (_forward) {
             // We may have landed after the end point.
-            return cmp > 0;
+            return cmp > 0 || (cmp == 0 && !_endPositionInclude);
         } else {
             // We may have landed before the end point.
-            return cmp < 0;
+            return cmp < 0 || (cmp == 0 && !_endPositionInclude);
         }
     }
 
     void advanceWTCursor() {
-        NarkDb_CURSOR* c = _cursor->get();
-        int ret = NarkDb_OP_CHECK(_forward ? c->next(c) : c->prev(c));
-        if (ret == NarkDb_NOTFOUND) {
-            _cursorAtEof = true;
-            return;
-        }
-        invariantNarkDbOK(ret);
-        _cursorAtEof = false;
+		llong recIdx = -1;
+        _cursorAtEof = _cursor->increment(&recIdx, &m_curKey);
+		if (!_cursorAtEof) {
+			_id = RecordId(recIdx + 1);
+		}
     }
 
     // Seeks to query. Returns true on exact match.
-    bool seekWTCursor(const KeyString& query) {
-        NarkDb_CURSOR* c = _cursor->get();
-
-        int cmp = -1;
-        const NarkDbItem keyItem(query.getBuffer(), query.getSize());
-        c->set_key(c, keyItem.Get());
-
-        int ret = NarkDb_OP_CHECK(c->search_near(c, &cmp));
-        if (ret == NarkDb_NOTFOUND) {
+    bool seekWTCursor(const BSONObj& bsonKey) {
+		auto indexSchema = _idx.getIndexSchema();
+		m_coder.encode(indexSchema, nullptr, bsonKey, &m_qryKey);
+		return seekWTCursor();
+	}
+    bool seekWTCursor() {
+		llong recIdx = -1;
+        int ret = _cursor->seekLowerBound(m_qryKey, &recIdx, &m_curKey);
+        if (ret < 0) {
             _cursorAtEof = true;
-            TRACE_CURSOR << "\t not found";
+            TRACE_CURSOR << "\t not found, queryKey is greater than all keys";
             return false;
         }
-        invariantNarkDbOK(ret);
         _cursorAtEof = false;
 
-        TRACE_CURSOR << "\t cmp: " << cmp;
+        TRACE_CURSOR << "\t lowerBound ret: " << ret;
 
-        if (cmp == 0) {
+        if (ret == 0) {
             // Found it!
             return true;
-        }
-
-        // Make sure we land on a matching key (after/before for forward/reverse).
-        if (_forward ? cmp < 0 : cmp > 0) {
-            advanceWTCursor();
         }
 
         return false;
@@ -607,35 +490,25 @@ protected:
         if (_cursorAtEof) {
             _eof = true;
             _id = RecordId();
-            return;
         }
-
-        _eof = false;
-
-        NarkDb_CURSOR* c = _cursor->get();
-        NarkDb_ITEM item;
-        invariantNarkDbOK(c->get_key(c, &item));
-        _key.resetFromBuffer(item.data, item.size);
-
-        if (atOrPastEndPointAfterSeeking()) {
-            _eof = true;
-            return;
-        }
-
-        updateIdAndTypeBits();
+		else {
+			_eof = atOrPastEndPointAfterSeeking();
+		}
     }
 
-    OperationContext* _txn;
-    boost::optional<NarkDbCursor> _cursor;
     const NarkDbIndex& _idx;  // not owned
-    const bool _forward;
+    OperationContext*  _txn;
+    nark::db::IndexIteratorPtr  _cursor;
+	nark::valvec<unsigned char> m_curKey;
+	nark::valvec<         char> m_qryKey;
+	mongo::narkdb::SchemaRecordCoder m_coder;
 
     // These are where this cursor instance is. They are not changed in the face of a failing
     // next().
-    KeyString _key;
-    KeyString::TypeBits _typeBits;
     RecordId _id;
-    bool _eof = true;
+
+    const bool _forward;
+	bool _eof = true;
 
     // This differs from _eof in that it always reflects the result of the most recent call to
     // reposition _cursor.
@@ -645,303 +518,91 @@ protected:
     // false by any operation that moves the cursor, other than subsequent save/restore pairs.
     bool _lastMoveWasRestore = false;
 
-    KeyString _query;
-
-    std::unique_ptr<KeyString> _endPosition;
-};
-
-class NarkDbIndexStandardCursor final : public NarkDbIndexCursorBase {
-public:
-    NarkDbIndexStandardCursor(const NarkDbIndex& idx, OperationContext* txn, bool forward)
-        : NarkDbIndexCursorBase(idx, txn, forward) {}
-
-    void updateIdAndTypeBits() override {
-        _id = KeyString::decodeRecordIdAtEnd(_key.getBuffer(), _key.getSize());
-
-        NarkDb_CURSOR* c = _cursor->get();
-        NarkDb_ITEM item;
-        invariantNarkDbOK(c->get_value(c, &item));
-        BufReader br(item.data, item.size);
-        _typeBits.resetFromBuffer(&br);
-    }
-};
-
-class NarkDbIndexUniqueCursor final : public NarkDbIndexCursorBase {
-public:
-    NarkDbIndexUniqueCursor(const NarkDbIndex& idx, OperationContext* txn, bool forward)
-        : NarkDbIndexCursorBase(idx, txn, forward) {}
-
-    void updateIdAndTypeBits() override {
-        // We assume that cursors can only ever see unique indexes in their "pristine" state,
-        // where no duplicates are possible. The cases where dups are allowed should hold
-        // sufficient locks to ensure that no cursor ever sees them.
-        NarkDb_CURSOR* c = _cursor->get();
-        NarkDb_ITEM item;
-        invariantNarkDbOK(c->get_value(c, &item));
-
-        BufReader br(item.data, item.size);
-        _id = KeyString::decodeRecordId(&br);
-        _typeBits.resetFromBuffer(&br);
-
-        if (!br.atEof()) {
-            severe() << "Unique index cursor seeing multiple records for key "
-                     << curr(kWantKey)->key;
-            fassertFailed(28608);
-        }
-    }
-
-    boost::optional<IndexKeyEntry> seekExact(const BSONObj& key, RequestedInfo parts) override {
-        _query.resetToKey(stripFieldNames(key), _idx.ordering());
-        const NarkDbItem keyItem(_query.getBuffer(), _query.getSize());
-
-        NarkDb_CURSOR* c = _cursor->get();
-        c->set_key(c, keyItem.Get());
-
-        // Using search rather than search_near.
-        int ret = NarkDb_OP_CHECK(c->search(c));
-        if (ret != NarkDb_NOTFOUND)
-            invariantNarkDbOK(ret);
-        _cursorAtEof = ret == NarkDb_NOTFOUND;
-        updatePosition();
-        dassert(_eof || _key.compare(_query) == 0);
-        return curr(parts);
-    }
+	bool _endPositionInclude;
+    nark::valvec<unsigned char> _endPositionKey;
 };
 
 }  // namespace
 
-NarkDbIndexUnique::NarkDbIndexUnique(OperationContext* ctx,
-                                             const std::string& uri,
-                                             const IndexDescriptor* desc)
-    : NarkDbIndex(ctx, uri, desc) {}
+/**
+ * Bulk builds a unique index.
+ *
+ * In order to support unique indexes in dupsAllowed mode this class only does an actual insert
+ * after it sees a key after the one we are trying to insert. This allows us to gather up all
+ * duplicate ids and insert them all together. This is necessary since bulk cursors can only
+ * append data.
+ */
+class NarkDbIndex::BulkBuilder : public SortedDataBuilderInterface {
+public:
+    BulkBuilder(NarkDbIndex* idx, OperationContext* txn, bool dupsAllowed)
+        : _idx(idx), _txn(txn)
+		, _ctx(idx->m_table->createDbContext())
+		, _dupsAllowed(dupsAllowed)
+	{
+	//	_ctx->syncIndex = false;
+	}
 
-std::unique_ptr<SortedDataInterface::Cursor> NarkDbIndexUnique::newCursor(OperationContext* txn,
-                                                                              bool forward) const {
-    return stdx::make_unique<NarkDbIndexUniqueCursor>(*this, txn, forward);
+    Status addKey(const BSONObj& newKey, const RecordId& id) override {
+        {
+            const Status s = checkKeySize(newKey);
+            if (!s.isOK())
+                return s;
+        }
+		if (_idx->insertIndexKey(newKey, id, &*_ctx)) {
+	        return Status::OK();
+		} else {
+			return Status(ErrorCodes::DuplicateKey,
+				"Dup key in NarkDbIndex::BulkBuilder");
+		}
+    }
+
+    void commit(bool mayInterrupt) override {
+        // TODO do we still need this?
+        // this is bizarre, but required as part of the contract
+        WriteUnitOfWork uow(_txn);
+        uow.commit();
+    }
+
+private:
+    NarkDbIndex*      const _idx;
+    OperationContext* const _txn;
+	const nark::db::DbContextPtr _ctx;
+    const bool _dupsAllowed;
+};
+
+NarkDbIndexUnique::NarkDbIndexUnique(CompositeTable* tab,
+									 OperationContext* opCtx,
+                                     const IndexDescriptor* desc)
+    : NarkDbIndex(tab, opCtx, desc)
+{}
+
+std::unique_ptr<SortedDataInterface::Cursor>
+NarkDbIndexUnique::newCursor(OperationContext* txn, bool forward) const {
+    return stdx::make_unique<NarkDbIndexCursorBase>(*this, txn, forward);
 }
 
-SortedDataBuilderInterface* NarkDbIndexUnique::getBulkBuilder(OperationContext* txn,
-                                                                  bool dupsAllowed) {
-    return new UniqueBulkBuilder(this, txn, dupsAllowed);
-}
-
-Status NarkDbIndexUnique::_insert(NarkDb_CURSOR* c,
-                                      const BSONObj& key,
-                                      const RecordId& id,
-                                      bool dupsAllowed) {
-    const KeyString data(key, _ordering);
-    NarkDbItem keyItem(data.getBuffer(), data.getSize());
-
-    KeyString value(id);
-    if (!data.getTypeBits().isAllZeros())
-        value.appendTypeBits(data.getTypeBits());
-
-    NarkDbItem valueItem(value.getBuffer(), value.getSize());
-    c->set_key(c, keyItem.Get());
-    c->set_value(c, valueItem.Get());
-    int ret = NarkDb_OP_CHECK(c->insert(c));
-
-    if (ret != NarkDb_DUPLICATE_KEY) {
-        return narkDbRCToStatus(ret);
-    }
-
-    // we might be in weird mode where there might be multiple values
-    // we put them all in the "list"
-    // Note that we can't omit AllZeros when there are multiple ids for a value. When we remove
-    // down to a single value, it will be cleaned up.
-    ret = NarkDb_OP_CHECK(c->search(c));
-    invariantNarkDbOK(ret);
-
-    NarkDb_ITEM old;
-    invariantNarkDbOK(c->get_value(c, &old));
-
-    bool insertedId = false;
-
-    value.resetToEmpty();
-    BufReader br(old.data, old.size);
-    while (br.remaining()) {
-        RecordId idInIndex = KeyString::decodeRecordId(&br);
-        if (id == idInIndex)
-            return Status::OK();  // already in index
-
-        if (!insertedId && id < idInIndex) {
-            value.appendRecordId(id);
-            value.appendTypeBits(data.getTypeBits());
-            insertedId = true;
-        }
-
-        // Copy from old to new value
-        value.appendRecordId(idInIndex);
-        value.appendTypeBits(KeyString::TypeBits::fromBuffer(&br));
-    }
-
-    if (!dupsAllowed)
-        return dupKeyError(key);
-
-    if (!insertedId) {
-        // This id is higher than all currently in the index for this key
-        value.appendRecordId(id);
-        value.appendTypeBits(data.getTypeBits());
-    }
-
-    valueItem = NarkDbItem(value.getBuffer(), value.getSize());
-    c->set_value(c, valueItem.Get());
-    return narkDbRCToStatus(c->update(c));
-}
-
-void NarkDbIndexUnique::_unindex(NarkDb_CURSOR* c,
-                                     const BSONObj& key,
-                                     const RecordId& id,
-                                     bool dupsAllowed) {
-    KeyString data(key, _ordering);
-    NarkDbItem keyItem(data.getBuffer(), data.getSize());
-    c->set_key(c, keyItem.Get());
-
-    if (!dupsAllowed) {
-        // nice and clear
-        int ret = NarkDb_OP_CHECK(c->remove(c));
-        if (ret == NarkDb_NOTFOUND) {
-            return;
-        }
-        invariantNarkDbOK(ret);
-        return;
-    }
-
-    // dups are allowed, so we have to deal with a vector of RecordIds.
-
-    int ret = NarkDb_OP_CHECK(c->search(c));
-    if (ret == NarkDb_NOTFOUND)
-        return;
-    invariantNarkDbOK(ret);
-
-    NarkDb_ITEM old;
-    invariantNarkDbOK(c->get_value(c, &old));
-
-    bool foundId = false;
-    std::vector<std::pair<RecordId, KeyString::TypeBits>> records;
-
-    BufReader br(old.data, old.size);
-    while (br.remaining()) {
-        RecordId idInIndex = KeyString::decodeRecordId(&br);
-        KeyString::TypeBits typeBits = KeyString::TypeBits::fromBuffer(&br);
-
-        if (id == idInIndex) {
-            if (records.empty() && !br.remaining()) {
-                // This is the common case: we are removing the only id for this key.
-                // Remove the whole entry.
-                invariantNarkDbOK(NarkDb_OP_CHECK(c->remove(c)));
-                return;
-            }
-
-            foundId = true;
-            continue;
-        }
-
-        records.push_back(std::make_pair(idInIndex, typeBits));
-    }
-
-    if (!foundId) {
-        warning().stream() << id << " not found in the index for key " << key;
-        return;  // nothing to do
-    }
-
-    // Put other ids for this key back in the index.
-    KeyString newValue;
-    invariant(!records.empty());
-    for (size_t i = 0; i < records.size(); i++) {
-        newValue.appendRecordId(records[i].first);
-        // When there is only one record, we can omit AllZeros TypeBits. Otherwise they need
-        // to be included.
-        if (!(records[i].second.isAllZeros() && records.size() == 1)) {
-            newValue.appendTypeBits(records[i].second);
-        }
-    }
-
-    NarkDbItem valueItem = NarkDbItem(newValue.getBuffer(), newValue.getSize());
-    c->set_value(c, valueItem.Get());
-    invariantNarkDbOK(c->update(c));
+SortedDataBuilderInterface*
+NarkDbIndexUnique::getBulkBuilder(OperationContext* txn, bool dupsAllowed) {
+    return new BulkBuilder(this, txn, dupsAllowed);
 }
 
 // ------------------------------
 
-NarkDbIndexStandard::NarkDbIndexStandard(OperationContext* ctx,
-                                                 const std::string& uri,
-                                                 const IndexDescriptor* desc)
-    : NarkDbIndex(ctx, uri, desc) {}
+NarkDbIndexStandard::NarkDbIndexStandard(CompositeTable* tab,
+                                         OperationContext* opCtx,
+                                         const IndexDescriptor* desc)
+    : NarkDbIndex(tab, opCtx, desc) {}
 
-std::unique_ptr<SortedDataInterface::Cursor> NarkDbIndexStandard::newCursor(
-    OperationContext* txn, bool forward) const {
-    return stdx::make_unique<NarkDbIndexStandardCursor>(*this, txn, forward);
+std::unique_ptr<SortedDataInterface::Cursor>
+NarkDbIndexStandard::newCursor(OperationContext* txn, bool forward) const {
+    return stdx::make_unique<NarkDbIndexCursorBase>(*this, txn, forward);
 }
 
-SortedDataBuilderInterface* NarkDbIndexStandard::getBulkBuilder(OperationContext* txn,
-                                                                    bool dupsAllowed) {
+SortedDataBuilderInterface*
+NarkDbIndexStandard::getBulkBuilder(OperationContext* txn, bool dupsAllowed) {
     // We aren't unique so dups better be allowed.
     invariant(dupsAllowed);
-    return new StandardBulkBuilder(this, txn);
-}
-
-Status NarkDbIndexStandard::_insert(NarkDb_CURSOR* c,
-                                        const BSONObj& keyBson,
-                                        const RecordId& id,
-                                        bool dupsAllowed) {
-    invariant(dupsAllowed);
-
-    TRACE_INDEX << " key: " << keyBson << " id: " << id;
-
-    KeyString key(keyBson, _ordering, id);
-    NarkDbItem keyItem(key.getBuffer(), key.getSize());
-
-    NarkDbItem valueItem = key.getTypeBits().isAllZeros()
-        ? emptyItem
-        : NarkDbItem(key.getTypeBits().getBuffer(), key.getTypeBits().getSize());
-
-    c->set_key(c, keyItem.Get());
-    c->set_value(c, valueItem.Get());
-    int ret = NarkDb_OP_CHECK(c->insert(c));
-
-    if (ret != NarkDb_DUPLICATE_KEY)
-        return narkDbRCToStatus(ret);
-    // If the record was already in the index, we just return OK.
-    // This can happen, for example, when building a background index while documents are being
-    // written and reindexed.
-    return Status::OK();
-}
-
-void NarkDbIndexStandard::_unindex(NarkDb_CURSOR* c,
-                                       const BSONObj& key,
-                                       const RecordId& id,
-                                       bool dupsAllowed) {
-    invariant(dupsAllowed);
-    KeyString data(key, _ordering, id);
-    NarkDbItem item(data.getBuffer(), data.getSize());
-    c->set_key(c, item.Get());
-    int ret = NarkDb_OP_CHECK(c->remove(c));
-    if (ret != NarkDb_NOTFOUND) {
-        invariantNarkDbOK(ret);
-    }
-}
-
-// ---------------- for compatability with rc4 and previous ------
-
-int index_collator_customize(NarkDb_COLLATOR* coll,
-                             NarkDb_SESSION* s,
-                             const char* uri,
-                             NarkDb_CONFIG_ITEM* metadata,
-                             NarkDb_COLLATOR** collp) {
-    fassertFailedWithStatusNoTrace(28580,
-                                   Status(ErrorCodes::UnsupportedFormat,
-                                          str::stream()
-                                              << "Found an index from an unsupported RC version."
-                                              << " Please restart with --repair to fix."));
-}
-
-extern "C" MONGO_COMPILER_API_EXPORT int index_collator_extension(NarkDb_CONNECTION* conn,
-                                                                  NarkDb_CONFIG_ARG* cfg) {
-    static NarkDb_COLLATOR idx_static;
-
-    idx_static.customize = index_collator_customize;
-    return conn->add_collator(conn, "mongo_index", &idx_static, NULL);
+    return new BulkBuilder(this, txn, dupsAllowed);
 }
 
 } } // namespace mongo::narkdb
