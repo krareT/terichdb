@@ -1106,9 +1106,9 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 }
 
 class TableIndexIter : public IndexIterator {
-	CompositeTablePtr m_tab;
-	DbContextPtr m_ctx;
-	size_t m_indexId;
+	const CompositeTablePtr m_tab;
+	const DbContextPtr m_ctx;
+	const size_t m_indexId;
 	struct OneSeg {
 		ReadableSegmentPtr seg;
 		IndexIteratorPtr   iter;
@@ -1153,7 +1153,7 @@ class TableIndexIter : public IndexIterator {
 	friend class HeapKeyCompare;
 	valvec<byte> m_keyBuf;
 	nark::valvec<size_t> m_heap;
-	bool m_forward;
+	const bool m_forward;
 	bool m_isHeapBuilt;
 
 	IndexIterator* createIter(const ReadableSegment& seg) {
@@ -1186,39 +1186,28 @@ class TableIndexIter : public IndexIterator {
 	}
 
 public:
-	TableIndexIter(const CompositeTable* tab, size_t indexId, bool forward) {
+	TableIndexIter(const CompositeTable* tab, size_t indexId, bool forward)
+	  : m_tab(const_cast<CompositeTable*>(tab))
+	  , m_ctx(tab->createDbContext())
+	  , m_indexId(indexId)
+	  , m_forward(forward)
+	{
 		assert(tab->m_indexSchemaSet->getSchema(indexId)->m_isOrdered);
 		{
 			MyRwLock lock(tab->m_rwMutex);
 			tab->m_tableScanningRefCount++;
 		}
-		m_ctx = tab->createDbContext();
-		m_tab = const_cast<CompositeTable*>(tab);
-		m_indexId = indexId;
-		m_forward = forward;
 		m_isHeapBuilt = false;
 	}
 	~TableIndexIter() {
 		MyRwLock lock(m_tab->m_rwMutex);
 		m_tab->m_tableScanningRefCount--;
 	}
-	void reset(PermanentablePtr p2) override {
+	void reset() override {
 		m_heap.erase_all();
 		m_segs.erase_all();
+		m_keyBuf.erase_all();
 		m_isHeapBuilt = false;
-		if (!p2) {
-			return;
-		}
-		auto tab = dynamic_cast<CompositeTable*>(p2.get());
-		if (m_tab.get() == tab) {
-			return;
-		}
-		{
-			MyRwLock lock(m_tab->m_rwMutex);
-			m_tab->m_tableScanningRefCount--;
-		}
-		m_ctx = tab->createDbContext();
-		m_tab = tab;
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		if (nark_unlikely(!m_isHeapBuilt)) {
@@ -1336,7 +1325,7 @@ IndexIteratorPtr CompositeTable::createIndexIterBackward(size_t indexId) const {
 	assert(indexId < m_indexSchemaSet->m_nested.end_i());
 	const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(indexId);
 	assert(iSchema.m_isOrdered);
-	return new TableIndexIter(this, indexId, true);
+	return new TableIndexIter(this, indexId, false);
 }
 
 IndexIteratorPtr CompositeTable::createIndexIterBackward(fstring indexCols) const {

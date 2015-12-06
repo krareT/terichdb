@@ -133,6 +133,10 @@ namespace nark { namespace db {
 		bool m_canEncodeToLexByteComparable;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
+		// used for ordered index, m_indexOrder.is1(i) means i'th column
+		// is ordered desc, don't support in first version
+		// static_bitmap<MaxProjColumns> m_indexOrder;
+
 	protected:
 		void compileProject(const Schema* parent);
 		size_t computeFixedRowLen() const; // return 0 if RowLen is not fixed

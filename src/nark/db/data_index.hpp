@@ -10,7 +10,7 @@ typedef boost::intrusive_ptr<class ReadableIndex> ReadableIndexPtr;
 class NARK_DB_DLL IndexIterator : public RefCounter {
 public:
 	virtual ~IndexIterator();
-	virtual void reset(PermanentablePtr owner) = 0;
+	virtual void reset() = 0;
 	virtual bool increment(llong* id, valvec<byte>* key) = 0;
 
 	///@returns: ret = compare(*retKey, key)

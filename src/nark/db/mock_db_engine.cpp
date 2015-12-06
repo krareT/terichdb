@@ -164,9 +164,7 @@ public:
 		}
 		return false;
 	}
-	void reset(PermanentablePtr p2) {
-		assert(!p2 || dynamic_cast<MockReadonlyIndex*>(p2.get()));
-		m_index.reset(dynamic_cast<MockReadonlyIndex*>(p2.get()));
+	void reset() override {
 		m_pos = 0;
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
@@ -198,11 +196,8 @@ public:
 		}
 		return false;
 	}
-	void reset(PermanentablePtr p2) {
-		assert(p2);
-		auto owner = dynamic_cast<MockReadonlyIndex*>(p2.get());
-		assert(owner);
-		m_index.reset(owner);
+	void reset() {
+		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
 		m_pos = owner->m_ids.size();
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
@@ -598,10 +593,8 @@ public:
 		}
 		return false;
 	}
-	void reset(PermanentablePtr p2) {
-		assert(!p2 || dynamic_cast<MockWritableIndex*>(p2.get()));
+	void reset() override {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
-		m_index.reset(const_cast<MockWritableIndex*>(owner));
 		m_iter = owner->m_kv.begin();
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
@@ -641,10 +634,8 @@ public:
 		}
 		return false;
 	}
-	void reset(PermanentablePtr p2) {
-		assert(!p2 || dynamic_cast<MockWritableIndex*>(p2.get()));
+	void reset() {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
-		m_index.reset(const_cast<MockWritableIndex*>(owner));
 		m_iter = owner->m_kv.end();
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
