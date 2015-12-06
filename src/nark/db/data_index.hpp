@@ -14,7 +14,7 @@ public:
 	virtual bool increment(llong* id, valvec<byte>* key) = 0;
 
 	///@returns: ret = compare(*retKey, key)
-	/// analog with wiredtiger.cursor.search_near
+	/// similar with wiredtiger.cursor.search_near
 	/// for all iter:
 	///          ret == 0 : exact match
 	/// for forward iter:
@@ -38,19 +38,25 @@ public:
 	bool isOrdered() const { return m_isOrdered; }
 	bool isUnique() const { return m_isUnique; }
 
-	virtual void encodeIndexKey(const Schema&, valvec<byte>& key) const;
-	virtual void decodeIndexKey(const Schema&, valvec<byte>& key) const;
-
-	virtual IndexIterator* createIndexIterForward(DbContext*) const = 0;
-	virtual IndexIterator* createIndexIterBackward(DbContext*) const = 0;
+	///@{ ordered and unordered index
 	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
 
 	virtual llong searchExact(fstring key, DbContext*) const = 0;
 	virtual bool  exists(fstring key, DbContext*) const;
+	///@}
+
+	///@{ ordered index only
+	virtual void encodeIndexKey(const Schema&, valvec<byte>& key) const;
+	virtual void decodeIndexKey(const Schema&, valvec<byte>& key) const;
+
+	virtual IndexIterator* createIndexIterForward(DbContext*) const = 0;
+	virtual IndexIterator* createIndexIterBackward(DbContext*) const = 0;
+	///@}
 };
 typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
+/// both ordered and unordered index can be writable
 class NARK_DB_DLL WritableIndex : public ReadableIndex {
 public:
 	virtual bool remove(fstring key, llong id, DbContext*) = 0;
@@ -68,35 +74,6 @@ typedef boost::intrusive_ptr<ReadableIndexStore> ReadableIndexStorePtr;
 class NARK_DB_DLL WritableIndexStore :
 		   public WritableIndex, public ReadableStore {};
 typedef boost::intrusive_ptr<WritableIndexStore> WritableIndexStorePtr;
-
-/*
-class CompositeIndex : public WritableIndex {
-	friend class CompositeIterator;
-	std::string m_myDir;
-	valvec<class CompositeIterator*> m_iterSet;
-	valvec<ReadableIndexPtr> m_readonly;
-	const valvec<llong>* m_rowNumVec; // owned by DataStore
-	const febitvec* m_isDeleted; // owned by DataStore
-	WritableIndex* m_writable;
-	mutable std::mutex m_mutex;
-
-public:
-	CompositeIndex(fstring dir, const valvec<llong>* rowNumVec, const febitvec* isDel);
-	llong numIndexRows() const override;
-	IndexIterator* createIndexIterForward() const override;
-	llong indexStorageSize() const override;
-
-	size_t remove(fstring key) override;
-	size_t remove(fstring key, llong id) override;
-	size_t insert(fstring key, llong id) override;
-	size_t replace(fstring key, llong oldId, llong newId) override;
-
-	void compact();
-	virtual ReadableIndex* mergeToReadonly(const valvec<ReadableIndexPtr>& input) const = 0;
-	virtual WritableIndex* createWritable() const = 0;
-};
-typedef boost::intrusive_ptr<CompositeIndex> CompositeIndexPtr;
-*/
 
 } } // namespace nark::db
 

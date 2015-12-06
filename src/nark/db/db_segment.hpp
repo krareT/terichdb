@@ -59,6 +59,18 @@ public:
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
+// Every index is a ReadableIndexStore
+//
+// The <<store>> is multi-part, because the <<store>> may be
+// very large, and the compressible database algo need to fit
+// all uncompressed data into memory during compression, split
+// the whole data into multi-part reduce the memory usage during
+// compression, because just a few part of <<store>> data need
+// to fit into memory at a time for compression.
+//
+// The <<index>> is single-part, because index is much smaller
+// than the whole <<store>> data.
+//
 class NARK_DB_DLL ReadonlySegment : public ReadableSegment {
 public:
 	ReadonlySegment();
@@ -144,9 +156,10 @@ class NARK_DB_DLL PlainWritableSegment : public WritableSegment {
 public:
 protected:
 };
-typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
+typedef boost::intrusive_ptr<PlainWritableSegment> PlainWritableSegmentPtr;
 
 // Every index is a WritableIndexStore
+// But the <<store>> is not multi-part(such as ReadonlySegment)
 class NARK_DB_DLL SmartWritableSegment : public WritableSegment {
 public:
 protected:
@@ -166,7 +179,7 @@ protected:
 	ReadableStorePtr m_nonIndexStore;
 	class MyStoreIterator; friend class MyStoreIterator;
 };
-typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
+typedef boost::intrusive_ptr<SmartWritableSegment> SmartWritableSegmentPtr;
 
 } } // namespace nark::db
 
