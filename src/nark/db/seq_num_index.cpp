@@ -11,11 +11,7 @@ public:
 		m_index.reset(const_cast<SeqNumIndex*>(owner));
 		m_curr = 0;
 	}
-	void reset(PermanentablePtr p2) override {
-		assert(p2);
-		auto owner = dynamic_cast<SeqNumIndex*>(p2.get());
-		assert(nullptr != owner);
-		m_index.reset(owner);
+	void reset() override {
 		m_curr = 0;
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
@@ -70,11 +66,8 @@ public:
 		m_index.reset(const_cast<SeqNumIndex*>(owner));
 		m_curr = owner->m_cnt;
 	}
-	void reset(PermanentablePtr p2) override {
-		assert(p2);
-		auto owner = dynamic_cast<SeqNumIndex*>(p2.get());
-		assert(nullptr != owner);
-		m_index.reset(owner);
+	void reset() override {
+		auto owner = static_cast<const SeqNumIndex*>(m_index.get());
 		m_curr = owner->m_cnt;
 	}
 	bool increment(llong* id, valvec<byte>* key) override {

@@ -29,6 +29,10 @@ public:
 	size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
 	size_t columnNum() const { return m_rowSchema->columnNum(); }
 
+	size_t getIndexId(fstring indexColumnNames) const {
+		return m_indexSchemaSet->m_nested.find_i(indexColumnNames);
+	}
+
 	void copySchema(const SegmentSchema& y);
 	const SegmentSchema& segSchema() const { return *this; }
 

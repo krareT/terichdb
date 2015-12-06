@@ -1105,6 +1105,19 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 	return m_wrSeg->m_indices[indexId]->replace(indexKey, oldSubId, newSubId, txn);
 }
 
+llong CompositeTable::indexStorageSize(size_t indexId) const {
+	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
+		THROW_STD(invalid_argument,
+			"Invalid indexId=%lld, indexNum=%lld",
+			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
+	}
+	llong sum = 0;
+	for (size_t i = 0; i < m_segments.size(); ++i) {
+		sum += m_segments[i]->getReadableIndex(indexId)->indexStorageSize();
+	}
+	return sum;
+}
+
 class TableIndexIter : public IndexIterator {
 	const CompositeTablePtr m_tab;
 	const DbContextPtr m_ctx;

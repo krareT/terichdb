@@ -44,6 +44,8 @@ public:
 	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);
 
+	llong indexStorageSize(size_t indexId) const;
+
 	IndexIteratorPtr createIndexIterForward(size_t indexId) const;
 	IndexIteratorPtr createIndexIterForward(fstring indexCols) const;
 
