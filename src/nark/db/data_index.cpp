@@ -5,11 +5,57 @@ namespace nark { namespace db {
 ReadableIndex::ReadableIndex()
   : m_isOrdered(false)
   , m_isUnique(true)
+  , m_isIndexKeyByteLex(false)
 {
 }
 ReadableIndex::~ReadableIndex() {
 }
 
+IndexIterator* ReadableIndex::createIndexIterForward(DbContext*) const {
+	// ordered index must implement this method
+	// unordered index is not required to implement this method
+	assert(!m_isOrdered);
+	return nullptr;
+}
+IndexIterator* ReadableIndex::createIndexIterBackward(DbContext*) const {
+	// ordered index must implement this method
+	// unordered index is not required to implement this method
+	assert(!m_isOrdered);
+	return nullptr;
+}
+
+void ReadableIndex::encodeIndexKey(const Schema& schema, valvec<byte>& key) const {
+	// unordered index need not to encode index key
+	assert(!m_isOrdered);
+
+	// m_isIndexKeyByteLex is just a common encoding
+	//
+	// some index may use a custom encoding method, in this case,
+	// it just ignore m_isIndexKeyByteLex
+	//
+	if (m_isIndexKeyByteLex) {
+		assert(schema.m_canEncodeToLexByteComparable);
+		schema.byteLexConvert(key);
+	}
+}
+
+void ReadableIndex::decodeIndexKey(const Schema& schema, valvec<byte>& key) const {
+	// unordered index need not to decode index key
+	assert(!m_isOrdered);
+
+	if (m_isIndexKeyByteLex) {
+		assert(schema.m_canEncodeToLexByteComparable);
+		schema.byteLexConvert(key);
+	}
+}
+
+bool ReadableIndex::exists(fstring key, DbContext* ctx) const {
+	// default implementation
+	llong id = this->searchExact(key, ctx);
+	return id >= 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////
 IndexIterator::~IndexIterator() {
 }
 
@@ -27,7 +73,7 @@ public:
 	CompositeIterator(const CompositeIndex* owner) {
 		m_readonly.reserve(owner->m_readonly.size());
 		for (auto index : owner->m_readonly) {
-			m_readonly.push_back(index->createIndexIter());
+			m_readonly.push_back(index->createIndexIterForward());
 		}
 		m_index = owner;
 		m_idx = 0;
@@ -177,7 +223,7 @@ llong CompositeIndex::numIndexRows() const {
 	return sum;
 }
 
-IndexIterator* CompositeIndex::createIndexIter() const {
+IndexIterator* CompositeIndex::createIndexIterForward() const {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	CompositeIterator* iter = new CompositeIterator(this);
 	return iter;
@@ -205,7 +251,7 @@ void CompositeIndex::compact() {
 			if (iter->m_idx == m_readonly.size()) { // absolute end
 				iter->m_idx++; // new absolute end
 			}
-			iter->m_readonly.push_back(m_writable->createIndexIter());
+			iter->m_readonly.push_back(m_writable->createIndexIterForward());
 		}
 		m_readonly.emplace_back(m_writable);
 	}
@@ -218,7 +264,7 @@ void CompositeIndex::compact() {
 				delete iter->m_readonly[i];
 				iter->m_readonly[i] = nullptr;
 			}
-			IndexIterator* subIter = merged->createIndexIter();
+			IndexIterator* subIter = merged->createIndexIterForward();
 			size_t& idx = iter->m_idx;
 			if (idx >= start && idx < start + input.size()) {
 				idx = start;

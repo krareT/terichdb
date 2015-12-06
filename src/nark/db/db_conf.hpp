@@ -99,6 +99,8 @@ namespace nark { namespace db {
 			return m_proj[myColumnId];
 		}
 
+		void byteLexConvert(valvec<byte>&) const;
+
 		std::string toJsonStr(fstring row) const;
 
 		ColumnType getColumnType(size_t columnId) const;
@@ -128,6 +130,7 @@ namespace nark { namespace db {
 		hash_strmap<ColumnMeta> m_columnsMeta;
 		bool m_isOrdered; // just for index schema
 		bool m_isUnique;
+		bool m_canEncodeToLexByteComparable;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
 	protected:
@@ -221,6 +224,10 @@ namespace nark { namespace db {
 		gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
 		size_t m_flattenColumnNum;
 		size_t indexNum() const { return m_nested.end_i(); }
+		const Schema* getSchema(size_t nth) const {
+			assert(nth < m_nested.end_i());
+			return &*m_nested.elem_at(nth);
+		}
 		void compileSchemaSet(const Schema* parent);
 	};
 	typedef boost::intrusive_ptr<SchemaSet> SchemaSetPtr;

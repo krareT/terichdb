@@ -41,6 +41,7 @@ int main(int argc, char* argv[]) {
 	NativeDataOutput<AutoGrownMemIO> rowBuilder;
 	TestRow recRow;
 
+	size_t insertedRows = 0;
 	size_t maxRowNum = 1000;
 	febitvec bits(maxRowNum + 1);
 	for (size_t i = 0; i < maxRowNum; ++i) {
@@ -55,13 +56,13 @@ int main(int argc, char* argv[]) {
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
 		size_t oldsegments = tab->getSegNum();
 		if (bits[recRow.id]) {
-			int xxx = 1;
 			printf("dupkey: %s\n", tab->m_rowSchema->toJsonStr(binRow).c_str());
 		}
 		if (ctx->insertRow(binRow) < 0) {
 		//	assert(bits.is1(recRow.id));
 			printf("Insert failed: %s\n", ctx->errMsg.c_str());
 		} else {
+			insertedRows++;
 			assert(bits.is0(recRow.id));
 		}
 		bits.set1(recRow.id);
@@ -80,11 +81,11 @@ int main(int argc, char* argv[]) {
 		valvec<byte> keyHit, val;
 		valvec<llong> idvec;
 		for (size_t indexId = 0; indexId < tab->getIndexNum(); ++indexId) {
-			IndexIteratorPtr indexIter = tab->createIndexIter(indexId);
+			IndexIteratorPtr indexIter = tab->createIndexIterForward(indexId);
 			const Schema& indexSchema = tab->getIndexSchema(indexId);
 			std::string indexName = indexSchema.joinColumnNames();
 			std::string keyData;
-			for (size_t i = 0; i < maxRowNum/50; ++i) {
+			for (size_t i = 0; i < maxRowNum/5; ++i) {
 				llong keyInt = rand() % (maxRowNum * 11 / 10);
 				char keyBuf[64];
 				switch (indexId) {
@@ -95,28 +96,28 @@ int main(int argc, char* argv[]) {
 					keyData.assign((char*)&keyInt, 8);
 					break;
 				case 1: // str0
-					sprintf(keyBuf, "s0:%06llX", keyInt);
+					sprintf(keyBuf, "s0:%06lld", keyInt);
 					keyData = keyBuf;
 					break;
 				case 2: // str1
-					sprintf(keyBuf, "s1:%06llX", keyInt);
+					sprintf(keyBuf, "s1:%06lld", keyInt);
 					keyData = keyBuf;
 					break;
 				case 3: // str2
-					sprintf(keyBuf, "s2:%06llX", keyInt);
+					sprintf(keyBuf, "s2:%06lld", keyInt);
 					keyData = keyBuf;
 					break;
 				case 4: // fix
 					assert(indexSchema.getFixedRowLen() > 0);
 					keyData.resize(0);
 					keyData.resize(indexSchema.getFixedRowLen());
-					sprintf(&keyData[0], "%06llX", keyInt);
+					sprintf(&keyData[0], "%06lld", keyInt);
 					break;
 				case 5: // str0,str1
-					sprintf(keyBuf, "s0:%06llX", keyInt);
+					sprintf(keyBuf, "s0:%06lld", keyInt);
 					keyData = keyBuf;
 					keyData.push_back('\0');
-					sprintf(keyBuf, "s0:%06llX", keyInt);
+					sprintf(keyBuf, "s0:%06lld", keyInt);
 					keyData.append(keyBuf);
 					break;
 				}
@@ -125,15 +126,29 @@ int main(int argc, char* argv[]) {
 				printf("find index key = %s", keyJson.c_str());
 				fflush(stdout);
 				llong recId;
-				if (indexIter->seekLowerBound(keyData)) {
-					while (indexIter->increment(&recId, &keyHit)) {
+				int ret = indexIter->seekLowerBound(keyData, &recId, &keyHit);
+				if (ret > 0) {
+					printf(", found upper_bound key=%s, recId=%lld\n",
+						indexSchema.toJsonStr(keyHit).c_str(), recId);
+				//	printf(", found hitkey > key, show first upper_bound:\n");
+				//	idvec.push_back(recId);
+				}
+				else if (ret < 0) { // all keys are less than search key
+					printf(", all keys are less than search key\n");
+				}
+				else if (ret == 0) { // found exact key
+					idvec.push_back(recId);
+					int hasNext; // int as bool
+					while ((hasNext = indexIter->increment(&recId, &keyHit))
+							&& fstring(keyHit) == keyData) {
 						assert(recId < tab->numDataRows());
-						if (fstring(keyHit) != keyData)
-							break;
 						idvec.push_back(recId);
 					}
+					if (hasNext)
+						idvec.push_back(recId);
+					printf(", found %zd exact and %d upper_bound\n",
+						idvec.size()-hasNext, hasNext);
 				}
-				printf(", found %zd entries\n", idvec.size());
 				for (size_t i = 0; i < idvec.size(); ++i) {
 					recId = idvec[i];
 					ctx->getValue(recId, &val);
@@ -144,14 +159,17 @@ int main(int argc, char* argv[]) {
 	}
 
 	{
-		printf("test iterate table ...\n");
+		printf("test iterate table, numDataRows=%lld ...\n", tab->numDataRows());
 		StoreIteratorPtr storeIter = ctx->createTableIter();
 		llong recId;
 		valvec<byte> val;
+		llong iterRows = 0;
 		while (storeIter->increment(&recId, &val)) {
 			printf("%8lld  | %s\n", recId, tab->toJsonStr(val).c_str());
+			++iterRows;
 		}
-		printf("test iterate table passed\n");
+		printf("test iterate table passed, iterRows=%lld, insertedRows=%lld\n",
+			iterRows, insertedRows);
 	}
     return 0;
 }

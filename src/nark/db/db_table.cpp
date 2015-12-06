@@ -379,7 +379,7 @@ struct CompareBy_baseId {
 	bool operator()(llong x, llong y) const { return x < y; }
 };
 
-class CompositeTable::MyStoreIterator : public StoreIterator {
+class CompositeTable::MyStoreIterForward : public StoreIterator {
 	size_t m_segIdx = 0;
 	DbContextPtr m_ctx;
 	struct OneSeg {
@@ -389,7 +389,7 @@ class CompositeTable::MyStoreIterator : public StoreIterator {
 	};
 	valvec<OneSeg> m_segs;
 public:
-	explicit MyStoreIterator(const CompositeTable* tab, DbContext* ctx) {
+	explicit MyStoreIterForward(const CompositeTable* tab, DbContext* ctx) {
 		this->m_store.reset(const_cast<CompositeTable*>(tab));
 		this->m_ctx.reset(ctx);
 		{
@@ -406,7 +406,7 @@ public:
 			assert(tab->m_segments.size() > 0);
 		}
 	}
-	~MyStoreIterator() {
+	~MyStoreIterForward() {
 		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
 		{
@@ -473,12 +473,12 @@ public:
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
-		MyRwLock lock(tab->m_rwMutex, false);
 		size_t upp = upper_bound_0(m_segs.data(), m_segs.size(), id, CompareBy_baseId());
 		if (upp < m_segs.size()) {
 			m_segIdx = upp-1;
 			llong subId = id - m_segs[upp-1].baseId;
 			auto& cur = m_segs[upp-1];
+			MyRwLock lock(tab->m_rwMutex, false);
 			if (!cur.seg->m_isDel[subId]) {
 				if (nark_unlikely(!cur.iter))
 					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
@@ -497,10 +497,135 @@ public:
 	}
 };
 
+class CompositeTable::MyStoreIterBackward : public StoreIterator {
+	size_t m_segIdx;
+	DbContextPtr m_ctx;
+	struct OneSeg {
+		ReadableSegmentPtr seg;
+		StoreIteratorPtr   iter;
+		llong  baseId;
+	};
+	valvec<OneSeg> m_segs;
+public:
+	explicit MyStoreIterBackward(const CompositeTable* tab, DbContext* ctx) {
+		this->m_store.reset(const_cast<CompositeTable*>(tab));
+		this->m_ctx.reset(ctx);
+		{
+		// MyStoreIterator creation is rarely used, lock it by m_rwMutex
+			MyRwLock lock(tab->m_rwMutex, false);
+			m_segs.resize(tab->m_segments.size() + 1);
+			for (size_t i = 0; i < m_segs.size()-1; ++i) {
+				m_segs[i].seg = tab->m_segments[i];
+				m_segs[i].baseId = tab->m_rowNumVec[i];
+			}
+			m_segs.back().baseId = tab->m_rowNumVec.back();
+			lock.upgrade_to_writer();
+			tab->m_tableScanningRefCount++;
+			assert(tab->m_segments.size() > 0);
+		}
+		m_segIdx = m_segs.size()-1;
+	}
+	~MyStoreIterBackward() {
+		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		{
+			MyRwLock lock(tab->m_rwMutex, true);
+			tab->m_tableScanningRefCount--;
+		}
+	}
+	bool increment(llong* id, valvec<byte>* val) override {
+		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		llong subId = -1;
+		while (incrementNoCheckDel(&subId, val)) {
+			assert(subId >= 0);
+			assert(subId < m_segs[m_segIdx-1].seg->numDataRows());
+			llong baseId = m_segs[m_segIdx-1].baseId;
+			if (m_segIdx > 0) {
+				if (!m_segs[m_segIdx-1].seg->m_isDel[subId]) {
+					*id = baseId + subId;
+					assert(*id < tab->numDataRows());
+					return true;
+				}
+			}
+			else {
+				MyRwLock lock(tab->m_rwMutex, false);
+				if (!tab->m_segments[m_segIdx-1]->m_isDel[subId]) {
+					*id = baseId + subId;
+					assert(*id < tab->numDataRows());
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		if (nark_unlikely(!m_segs[m_segIdx-1].iter))
+			 m_segs[m_segIdx-1].iter = m_segs[m_segIdx-1].seg->createStoreIterBackward(&*m_ctx);
+		if (!m_segs[m_segIdx-1].iter->increment(subId, val)) {
+			MyRwLock lock(tab->m_rwMutex, false);
+			m_segs.resize(tab->m_segments.size() + 1);
+			for (size_t i = 0; i < m_segs.size()-1; ++i) {
+				if (m_segs[i].seg != tab->m_segments[i]) {
+					m_segs[i].seg = tab->m_segments[i];
+					m_segs[i].iter.reset();
+					m_segs[i].baseId = tab->m_rowNumVec[i];
+				}
+			}
+			m_segs.back().baseId = tab->m_rowNumVec.back();
+			if (m_segIdx > 1) {
+				m_segIdx--;
+				auto& cur = m_segs[m_segIdx-1];
+				if (nark_unlikely(!cur.iter))
+					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
+				bool ret = cur.iter->increment(subId, val);
+				if (ret) {
+					assert(*subId < m_segs[m_segIdx-1].seg->numDataRows());
+				}
+				return ret;
+			}
+			return false;
+		}
+		assert(*subId < m_segs[m_segIdx-1].seg->numDataRows());
+		return true;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		size_t upp = upper_bound_0(m_segs.data(), m_segs.size(), id, CompareBy_baseId());
+		if (upp < m_segs.size()) {
+			m_segIdx = upp;
+			llong subId = id - m_segs[upp-1].baseId;
+			auto& cur = m_segs[upp-1];
+			MyRwLock lock(tab->m_rwMutex, false);
+			if (!cur.seg->m_isDel[subId]) {
+				if (nark_unlikely(!cur.iter))
+					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
+				return cur.iter->seekExact(subId, val);
+			}
+		}
+		return false;
+	}
+	void reset() override {
+		for (size_t i = 0; i < m_segs.size()-1; ++i) {
+			m_segs[i].iter->reset();
+		}
+		m_segs.ende(1).baseId = m_segs.ende(2).baseId +
+								m_segs.ende(2).seg->numDataRows();
+		m_segIdx = m_segs.size()-1;
+	}
+};
+
 StoreIterator* CompositeTable::createStoreIterForward(DbContext* ctx) const {
 	assert(m_rowSchema);
 	assert(m_indexSchemaSet);
-	return new MyStoreIterator(this, ctx);
+	return new MyStoreIterForward(this, ctx);
+}
+
+StoreIterator* CompositeTable::createStoreIterBackward(DbContext* ctx) const {
+	assert(m_rowSchema);
+	assert(m_indexSchemaSet);
+	return new MyStoreIterBackward(this, ctx);
 }
 
 llong CompositeTable::totalStorageSize() const {
@@ -665,7 +790,7 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn) 
 			auto rIndex = seg->getReadableIndex(indexId);
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			if (rIndex->exists(txn->key1)) {
+			if (rIndex->exists(txn->key1, txn)) {
 				// std::move makes it no temps
 				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
 							+ ", in freezen seg: " + seg->m_segDir;
@@ -795,7 +920,7 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn)
 			auto rIndex = seg->getReadableIndex(indexId);
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			if (rIndex->exists(txn->key1)) {
+			if (rIndex->exists(txn->key1, txn)) {
 				// std::move makes it no temps
 				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
 							+ ", in freezen seg: " + seg->m_segDir;
@@ -980,165 +1105,7 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 	return m_wrSeg->m_indices[indexId]->replace(indexKey, oldSubId, newSubId, txn);
 }
 
-class TableIndexIterUnOrdered : public IndexIterator {
-	CompositeTablePtr m_tab;
-	DbContextPtr m_ctx;
-	size_t m_indexId;
-	size_t m_segIdx;
-	struct OneSeg {
-		ReadableSegmentPtr seg;
-		IndexIteratorPtr   iter;
-	};
-	valvec<OneSeg> m_segs;
-
-	void init(CompositeTable* tab, size_t indexId) {
-		m_tab.reset(tab);
-		m_indexId = indexId;
-		m_segIdx = -1;
-		m_ctx = tab->createDbContext();
-		{
-			MyRwLock lock(tab->m_rwMutex);
-			tab->m_tableScanningRefCount++;
-		}
-		refresh();
-	}
-
-	void refresh() {
-		MyRwLock lock(m_tab->m_rwMutex, false);
-		m_segs.resize(m_tab->m_segments.size());
-		for (size_t i = 0; i < m_segs.size(); ++i) {
-			auto& cur = m_segs[i];
-			assert(m_tab->m_segments[i]);
-			if (cur.seg == m_tab->m_segments[i]) {
-				if (cur.iter)
-					cur.iter->reset(nullptr);
-			} else {
-				cur.seg = m_tab->m_segments[i];
-				cur.iter = nullptr;
-			}
-		}
-	}
-
-public:
-	TableIndexIterUnOrdered(const CompositeTable* tab, size_t indexId) {
-		init(const_cast<CompositeTable*>(tab), indexId);
-	}
-	~TableIndexIterUnOrdered() {
-		MyRwLock lock(m_tab->m_rwMutex);
-		m_tab->m_tableScanningRefCount--;
-	}
-	void reset(PermanentablePtr p2) override {
-		CompositeTablePtr tab;
-		if (!p2 || m_tab == (tab = dynamic_cast<CompositeTable*>(&*p2))) {
-			m_segIdx = -1;
-			refresh();
-			return;
-		}
-		{
-			MyRwLock lock(m_tab->m_rwMutex);
-			m_tab->m_tableScanningRefCount--;
-		}
-		init(tab.detach(), m_indexId);
-	}
-	bool increment(llong* id, valvec<byte>* key) override {
-		if (nark_unlikely(size_t(-1) == m_segIdx)) {
-			m_segIdx = 0;
-		}
-		if (nark_unlikely(!m_segs[m_segIdx].iter)) {
-			m_segs[m_segIdx].iter = m_segs[m_segIdx].seg->
-				getReadableIndex(m_indexId)->createIndexIter(&*m_ctx);
-		}
-		llong subId = -1;
-		while (incrementNoCheckDel(&subId, key)) {
-			if (!isDeleted(subId)) {
-				llong baseId = m_tab->m_rowNumVec[m_segIdx];
-				*id = baseId + subId;
-				return true;
-			}
-		}
-		return false;
-	}
-	bool incrementNoCheckDel(llong* subId, valvec<byte>* key) {
-		bool ret = m_segs[m_segIdx].iter->increment(subId, key);
-		if (nark_unlikely(!ret)) {
-			if (m_segs.size()-1 == m_segIdx) {
-				assert(m_segs.size() <= m_tab->m_segments.size());
-				if (m_segs.size() == m_tab->m_segments.size()) {
-					return false;
-				}
-				refresh();
-			}
-			m_segIdx++;
-			ret = m_segs[m_segIdx].iter->increment(subId, key);
-		}
-		return ret;
-	}
-	bool decrement(llong* id, valvec<byte>* key) override {
-		if (nark_unlikely(size_t(-1) == m_segIdx)) {
-			MyRwLock lock(m_tab->m_rwMutex, false);
-			m_segIdx = m_segs.size() - 1;
-		}
-		llong subId = -1;
-		while (decrementNoCheckDel(&subId, key)) {
-			if (!isDeleted(subId)) {
-				llong baseId = m_tab->m_rowNumVec[m_segIdx];
-				*id = baseId + subId;
-				return true;
-			}
-		}
-		return false;
-	}
-	bool isDeleted(llong subId) {
-		if (m_tab->m_segments.size()-1 == m_segIdx) {
-			MyRwLock lock(m_tab->m_rwMutex, false);
-			return m_segs[m_segIdx].seg->m_isDel[subId];
-		} else {
-			return m_segs[m_segIdx].seg->m_isDel[subId];
-		}
-	}
-	bool decrementNoCheckDel(llong* subId, valvec<byte>* key) {
-		bool ret = m_segs[m_segIdx].iter->increment(subId, key);
-		if (nark_unlikely(!ret)) {
-			if (m_segs.size()-1 == m_segIdx) {
-				assert(m_segs.size() <= m_tab->m_segments.size());
-				if (m_segs.size() == m_tab->m_segments.size()) {
-					return false;
-				}
-				refresh();
-			}
-			m_segIdx++;
-			ret = m_segs[m_segIdx].iter->increment(subId, key);
-		}
-		return ret;
-	}
-	bool seekExact(fstring key) override {
-		auto schema = m_tab->m_indexSchemaSet->m_nested.elem_at(m_indexId);
-		size_t fixlen = schema->getFixedRowLen();
-		assert(fixlen == 0 || key.size() == fixlen);
-		if (fixlen && key.size() != fixlen) {
-			THROW_STD(invalid_argument,
-				"bad key, len=%d is not same as fixed-len=%d",
-				key.ilen(), int(fixlen));
-		}
-		for (size_t i = m_segs.size(); i > 0; --i) {
-			size_t segIdx = i - 1;
-			if (m_segs[segIdx].iter->seekExact(key)) {
-				if (m_segIdx != segIdx && size_t(-1) != m_segIdx) {
-					m_segs[m_segIdx].iter->reset(nullptr);
-				}
-				m_segIdx = segIdx;
-				return true;
-			}
-		}
-		return false;
-	}
-	bool seekLowerBound(fstring key) override {
-		return seekExact(key);
-	}
-};
-
-class TableIndexIterOrdered : public IndexIterator {
-	// bi-directional multiple segment iterator can not use heap or loser-tree
+class TableIndexIter : public IndexIterator {
 	CompositeTablePtr m_tab;
 	DbContextPtr m_ctx;
 	size_t m_indexId;
@@ -1146,17 +1113,13 @@ class TableIndexIterOrdered : public IndexIterator {
 		ReadableSegmentPtr seg;
 		IndexIteratorPtr   iter;
 		valvec<byte>       data;
-		llong              subId;
+		llong              subId = -1;
+		llong              baseId;
 	};
 	valvec<OneSeg> m_segs;
-	valvec<byte> m_keyBuf;
-	class SetKeyCompare {
-		TableIndexIterOrdered* owner;
-		const Schema* schema;
-	public:
-		bool operator()(size_t x, size_t y) const {
-			const auto& xkey = owner->m_segs[x].data;
-			const auto& ykey = owner->m_segs[y].data;
+	bool lessThanImp(const Schema* schema, size_t x, size_t y) {
+			const auto& xkey = m_segs[x].data;
+			const auto& ykey = m_segs[y].data;
 			if (xkey.empty()) {
 				if (ykey.empty())
 					return x < y;
@@ -1164,84 +1127,117 @@ class TableIndexIterOrdered : public IndexIterator {
 					return true; // xkey < ykey
 			}
 			if (ykey.empty())
-				return false;
+				return false; // xkey > ykey
 			int r = schema->compareData(xkey, ykey);
 			if (r) return r < 0;
 			else   return x < y;
+	}
+	bool lessThan(const Schema* schema, size_t x, size_t y) {
+		if (m_forward)
+			return lessThanImp(schema, x, y);
+		else
+			return lessThanImp(schema, y, x);
+	}
+	class HeapKeyCompare {
+		TableIndexIter* owner;
+		const Schema* schema;
+	public:
+		bool operator()(size_t x, size_t y) const {
+			// min heap's compare is 'greater'
+			return owner->lessThan(schema, y, x);
 		}
-		SetKeyCompare(TableIndexIterOrdered* o, const Schema* s)
-			: owner(o), schema(s) {}
+		HeapKeyCompare(TableIndexIter* o)
+			: owner(o)
+			, schema(o->m_tab->m_indexSchemaSet->getSchema(o->m_indexId)) {}
 	};
-	friend class SetKeyCompare;
-	std::set<size_t, SetKeyCompare> m_set;
+	friend class HeapKeyCompare;
+	valvec<byte> m_keyBuf;
+	nark::valvec<size_t> m_heap;
+	bool m_forward;
+	bool m_isHeapBuilt;
 
-	void init(CompositeTable* tab, size_t indexId) {
-		m_tab.reset(tab);
-		m_indexId = indexId;
-		m_ctx = tab->createDbContext();
-		{
-			MyRwLock lock(tab->m_rwMutex);
-			tab->m_tableScanningRefCount++;
-		}
-		refresh();
+	IndexIterator* createIter(const ReadableSegment& seg) {
+		auto index = seg.getReadableIndex(m_indexId);
+		if (m_forward)
+			return index->createIndexIterForward(&*m_ctx);
+		else
+			return index->createIndexIterBackward(&*m_ctx);
 	}
 
-	void refresh() {
+	size_t syncSegPtr() {
+		size_t numChangedSegs = 0;
 		MyRwLock lock(m_tab->m_rwMutex, false);
 		m_segs.resize(m_tab->m_segments.size());
 		for (size_t i = 0; i < m_segs.size(); ++i) {
 			auto& cur = m_segs[i];
 			assert(m_tab->m_segments[i]);
 			if (cur.seg != m_tab->m_segments[i]) {
-				cur.seg = m_tab->m_segments[i];
-				cur.iter = cur.seg->getReadableIndex(m_indexId)->createIndexIter(&*m_ctx);
-				if (!cur.data.empty()) {
-					m_set.erase(i);
-					cur.iter->seekLowerBound(cur.data);
+				if (cur.seg) { // segment converted
+					cur.subId = -2; // need re-seek position??
 				}
-				if (cur.iter->increment(&cur.subId, &cur.data)) {
-					m_set.insert(i);
-				}
+				cur.seg  = m_tab->m_segments[i];
+				cur.iter = nullptr;
+				cur.data.erase_all();
+				cur.baseId = m_tab->m_rowNumVec[i];
+				numChangedSegs++;
 			}
 		}
+		return numChangedSegs;
 	}
 
 public:
-	TableIndexIterOrdered(const CompositeTable* tab, size_t indexId)
-	 : m_set(SetKeyCompare(this, &*tab->m_indexSchemaSet->m_nested.elem_at(indexId)))
-	{
-		assert(tab->m_indexSchemaSet->m_nested.elem_at(indexId)->m_isOrdered);
-		init(const_cast<CompositeTable*>(tab), indexId);
+	TableIndexIter(const CompositeTable* tab, size_t indexId, bool forward) {
+		assert(tab->m_indexSchemaSet->getSchema(indexId)->m_isOrdered);
+		{
+			MyRwLock lock(tab->m_rwMutex);
+			tab->m_tableScanningRefCount++;
+		}
+		m_ctx = tab->createDbContext();
+		m_tab = const_cast<CompositeTable*>(tab);
+		m_indexId = indexId;
+		m_forward = forward;
+		m_isHeapBuilt = false;
 	}
-	~TableIndexIterOrdered() {
+	~TableIndexIter() {
 		MyRwLock lock(m_tab->m_rwMutex);
 		m_tab->m_tableScanningRefCount--;
 	}
 	void reset(PermanentablePtr p2) override {
+		m_heap.erase_all();
+		m_segs.erase_all();
+		m_isHeapBuilt = false;
 		if (!p2) {
-			refresh();
 			return;
 		}
 		auto tab = dynamic_cast<CompositeTable*>(p2.get());
 		if (m_tab.get() == tab) {
-			refresh();
 			return;
 		}
 		{
 			MyRwLock lock(m_tab->m_rwMutex);
 			m_tab->m_tableScanningRefCount--;
 		}
-		m_set.clear();
-		m_segs.clear();
-		init(tab, m_indexId);
+		m_ctx = tab->createDbContext();
+		m_tab = tab;
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
-		while (!m_set.empty()) {
+		if (nark_unlikely(!m_isHeapBuilt)) {
+			if (syncSegPtr()) {
+				for (auto& cur : m_segs)
+					if (cur.iter == nullptr)
+						cur.iter = createIter(*cur.seg);
+			}
+			m_heap.erase_all();
+			m_heap.reserve(m_segs.size());
+			std::make_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
+			m_isHeapBuilt = true;
+		}
+		while (!m_heap.empty()) {
 			llong subId;
 			size_t segIdx = incrementNoCheckDel(&subId);
 			if (!isDeleted(segIdx, subId)) {
 				assert(subId < m_segs[segIdx].seg->numDataRows());
-				llong baseId = m_tab->m_rowNumVec[segIdx];
+				llong baseId = m_segs[segIdx].baseId;
 				*id = baseId + subId;
 				assert(*id < m_tab->numDataRows());
 				if (key)
@@ -1252,47 +1248,20 @@ public:
 		return false;
 	}
 	size_t incrementNoCheckDel(llong* subId) {
-		assert(!m_set.empty());
-		size_t segIdx = *m_set.begin();
-		m_set.erase(m_set.begin());
+		assert(!m_heap.empty());
+		size_t segIdx = m_heap[0];
+		std::pop_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
 		auto& cur = m_segs[segIdx];
-		if (cur.iter->increment(subId, &m_keyBuf)) {
-			m_set.insert(segIdx);
+		*subId = cur.subId;
+		m_keyBuf.swap(cur.data); // should be assign, but swap is more efficient
+		if (cur.iter->increment(&cur.subId, &cur.data)) {
+			assert(m_heap.back() == segIdx);
+			std::push_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
 		} else {
-			m_keyBuf.erase_all();
+			m_heap.pop_back();
+			cur.subId = -3; // eof
+			cur.data.erase_all();
 		}
-		std::swap(cur.subId, *subId); // wa! it's cool
-		m_keyBuf.swap(cur.data);          // wa! it's cool
-		return segIdx;
-	}
-	bool decrement(llong* id, valvec<byte>* key) override {
-		while (!m_set.empty()) {
-			llong subId;
-			size_t segIdx = decrementNoCheckDel(&subId);
-			if (!isDeleted(segIdx, subId)) {
-				assert(subId < m_segs[segIdx].seg->numDataRows());
-				llong baseId = m_tab->m_rowNumVec[segIdx];
-				*id = baseId + subId;
-				if (key)
-					key->swap(m_keyBuf);
-				return true;
-			}
-		}
-		return false;
-	}
-	size_t decrementNoCheckDel(llong* subId) {
-		assert(!m_set.empty());
-		auto last = m_set.end();
-		size_t segIdx = *--last;
-		m_set.erase(last);
-		auto& cur = m_segs[segIdx];
-		if (cur.iter->decrement(subId, &m_keyBuf)) {
-			m_set.insert(segIdx);
-		} else {
-			m_keyBuf.erase_all();
-		}
-		std::swap(cur.subId, *subId); // wa! it's cool
-		m_keyBuf.swap(cur.data);      // wa! it's cool
 		return segIdx;
 	}
 	bool isDeleted(size_t segIdx, llong subId) {
@@ -1303,10 +1272,7 @@ public:
 			return m_segs[segIdx].seg->m_isDel[subId];
 		}
 	}
-	bool seekExact(fstring key) override {
-		return seekLowerBound(key);
-	}
-	bool seekLowerBound(fstring key) override {
+	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		const Schema& schema = *m_tab->m_indexSchemaSet->m_nested.elem_at(m_indexId);
 		size_t fixlen = schema.getFixedRowLen();
 		assert(fixlen == 0 || key.size() == fixlen);
@@ -1315,36 +1281,70 @@ public:
 				"bad key, len=%d is not same as fixed-len=%d",
 				key.ilen(), int(fixlen));
 		}
-		m_set.clear();
-		bool ret = false;
+		if (syncSegPtr()) {
+			for (auto& cur : m_segs)
+				if (cur.iter == nullptr)
+					cur.iter = createIter(*cur.seg);
+		}
+		m_heap.erase_all();
+		m_heap.reserve(m_segs.size());
 		for(size_t i = 0; i < m_segs.size(); ++i) {
 			auto& cur = m_segs[i];
-			if (cur.iter->seekLowerBound(key)) {
-				ret = true;
-			}
-			if (cur.iter->increment(&cur.subId, &cur.data)) {
-				m_set.insert(i);
+			int ret = cur.iter->seekLowerBound(key, &cur.subId, &cur.data);
+			if (ret >= 0)
+				m_heap.push_back(i);
+		}
+		m_isHeapBuilt = true;
+		if (m_heap.size()) {
+			std::make_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
+			while (!m_heap.empty()) {
+				llong subId;
+				size_t segIdx = incrementNoCheckDel(&subId);
+				if (!isDeleted(segIdx, subId)) {
+					assert(subId < m_segs[segIdx].seg->numDataRows());
+					llong baseId = m_segs[segIdx].baseId;
+					*id = baseId + subId;
+					assert(*id < m_tab->numDataRows());
+					assert(schema.compareData(key, m_keyBuf) <= 0);
+					int ret = (key == m_keyBuf) ? 0 : 1;
+					if (retKey)
+						retKey->swap(m_keyBuf);
+					return ret;
+				}
 			}
 		}
-		return ret;
+		return -1;
 	}
 };
 
-IndexIteratorPtr CompositeTable::createIndexIter(size_t indexId) const {
+IndexIteratorPtr CompositeTable::createIndexIterForward(size_t indexId) const {
 	assert(indexId < m_indexSchemaSet->m_nested.end_i());
 	const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(indexId);
-	if (iSchema.m_isOrdered)
-		return new TableIndexIterOrdered(this, indexId);
-	else
-		return new TableIndexIterUnOrdered(this, indexId);
+	assert(iSchema.m_isOrdered);
+	return new TableIndexIter(this, indexId, true);
 }
 
-IndexIteratorPtr CompositeTable::createIndexIter(fstring indexCols) const {
+IndexIteratorPtr CompositeTable::createIndexIterForward(fstring indexCols) const {
 	size_t indexId = m_indexSchemaSet->m_nested.find_i(indexCols);
 	if (m_indexSchemaSet->m_nested.end_i() == indexId) {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
 	}
-	return createIndexIter(indexId);
+	return createIndexIterForward(indexId);
+}
+
+IndexIteratorPtr CompositeTable::createIndexIterBackward(size_t indexId) const {
+	assert(indexId < m_indexSchemaSet->m_nested.end_i());
+	const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(indexId);
+	assert(iSchema.m_isOrdered);
+	return new TableIndexIter(this, indexId, true);
+}
+
+IndexIteratorPtr CompositeTable::createIndexIterBackward(fstring indexCols) const {
+	size_t indexId = m_indexSchemaSet->m_nested.find_i(indexCols);
+	if (m_indexSchemaSet->m_nested.end_i() == indexId) {
+		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
+	}
+	return createIndexIterBackward(indexId);
 }
 
 bool CompositeTable::compact() {

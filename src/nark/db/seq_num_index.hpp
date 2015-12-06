@@ -10,13 +10,14 @@ template<class Int>
 class NARK_DB_DLL SeqNumIndex : public WritableIndexStore {
 	Int m_min;
 	Int m_cnt;
-	class MyIndexIter; friend class MyIndexIter;
+	class MyIndexIterForward; friend class MyIndexIterForward;
+	class MyIndexIterBackward; friend class MyIndexIterBackward;
 	class MyStoreIter; friend class MyStoreIter;
 public:
 	SeqNumIndex(Int min, Int cnt);
 	~SeqNumIndex();
 
-	IndexIterator* createIndexIter(DbContext*) const override;
+	IndexIterator* createIndexIterForward(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 

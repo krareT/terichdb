@@ -1,4 +1,5 @@
 #include "db_conf.hpp"
+#include <nark/io/DataIO_Basic.hpp>
 //#include <nark/io/DataIO.hpp>
 //#include <nark/io/MemStream.hpp>
 //#include <nark/io/StreamBuffer.hpp>
@@ -52,15 +53,27 @@ Schema::Schema() {
 	m_fixedLen = size_t(-1);
 	m_parent = nullptr;
 	m_isOrdered = false;
+	m_canEncodeToLexByteComparable = false;
 	m_keepCols.fill(true);
 }
 Schema::~Schema() {
 }
 
 void Schema::compile(const Schema* parent) {
+	assert(!m_columnsMeta.empty());
 	m_fixedLen = computeFixedRowLen();
 	if (parent) {
 		compileProject(parent);
+	}
+	m_canEncodeToLexByteComparable = true;
+	size_t colnum = m_columnsMeta.end_i();
+	for (size_t i = 0; i < colnum - 1; ++i) {
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
+		if (ColumnType::Binary == colmeta.type ||
+			ColumnType::CarBin == colmeta.type) {
+			m_canEncodeToLexByteComparable = false;
+			break;
+		}
 	}
 }
 
@@ -394,6 +407,125 @@ void Schema::selectParent(const valvec<fstring>& parentCols, valvec<fstring>* my
 		size_t j = m_proj[i];
 		assert(j < parentCols.size());
 		myCols->push_back(parentCols[j]);
+	}
+}
+
+void Schema::byteLexConvert(valvec<byte>& indexKey) const {
+	assert(size_t(-1) != m_fixedLen);
+	assert(m_canEncodeToLexByteComparable);
+	byte* curr = indexKey.begin();
+	byte* last = indexKey.end();
+	size_t colnum = m_columnsMeta.end_i();
+	for (size_t i = 0; i < colnum; ++i) {
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
+		switch (colmeta.type) {
+		default:
+			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Uint08:
+		case ColumnType::Sint08:
+			CHECK_CURR_LAST(1);
+			curr += 1;
+			break;
+		case ColumnType::Uint16:
+		case ColumnType::Sint16:
+			CHECK_CURR_LAST(2);
+			{
+				uint16_t x = unaligned_load<uint16_t>(curr);
+				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+				x ^= 1 << 15;
+				unaligned_save(curr, x);
+			}
+			curr += 2;
+			break;
+		case ColumnType::Uint32:
+		case ColumnType::Sint32:
+		case ColumnType::Float32:
+			CHECK_CURR_LAST(4);
+			{
+				uint32_t x = unaligned_load<uint32_t>(curr);
+				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+				x ^= 1 << 15;
+				unaligned_save(curr, x);
+			}
+			curr += 4;
+			break;
+		case ColumnType::Uint64:
+		case ColumnType::Sint64:
+		case ColumnType::Float64:
+			CHECK_CURR_LAST(8);
+			{
+				uint64_t x = unaligned_load<uint64_t>(curr);
+				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+				x ^= 1 << 15;
+				unaligned_save(curr, x);
+			}
+			curr += 8;
+			break;
+		case ColumnType::Uint128:
+		case ColumnType::Sint128:
+			CHECK_CURR_LAST(16);
+			// TODO: int128
+			assert(0);
+			curr += 16;
+			break;
+		case ColumnType::Float128:
+			CHECK_CURR_LAST(16);
+			// TODO:
+			assert(0);
+			curr += 16;
+			break;
+		case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+			curr += 16;
+			break;
+		case ColumnType::Fixed:   // Fixed length binary
+			CHECK_CURR_LAST(colmeta.fixedLen);
+			curr += colmeta.fixedLen;
+			break;
+		case ColumnType::StrZero: // Zero ended string
+			{
+				intptr_t len = strnlen((const char*)curr, last - curr);
+				if (i < colnum - 1) {
+					CHECK_CURR_LAST(len + 1);
+				}
+				else { // the last column
+					if (len + 1 < last - curr) {
+						// '\0' is optional, if '\0' exists, it must at string end
+						THROW_STD(invalid_argument,
+							"'\\0' in StrZero is not at string end");
+					}
+				}
+				curr += len + 1;
+			}
+			break;
+		case ColumnType::TwoStrZero: // Two Zero ended string
+			{
+				intptr_t n1 = strnlen((const char*)curr, last - curr);
+				if (i < colnum - 1) {
+					CHECK_CURR_LAST(n1 + 1);
+					intptr_t n2 = strnlen((const char*)curr+n1+1, last-curr-n1-1);
+					CHECK_CURR_LAST(n1 + 1 + n2 + 1);
+					curr += n1 + 1 + n2 + 1;
+				}
+				else { // the last column
+					// 2nd '\0' is optional, if exists, it must at string end
+					if (n1+1 < last-curr) {
+						intptr_t n2 = strnlen((char*)curr+n1+1, last-curr-n1-1);
+						if (n1+1 + n2+1 < last - curr) {
+							THROW_STD(invalid_argument,
+								"second '\\0' in TwoStrZero is not at string end");
+						}
+					}
+				}
+			}
+			break;
+		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+			assert(colnum - 1 == i);
+			break;
+		case ColumnType::CarBin:  // Prefixed by uint32 length
+			assert(colnum - 1 == i);
+			break;
+		}
 	}
 }
 

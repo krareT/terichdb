@@ -27,7 +27,7 @@ public:
 	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId);
 
 public:
-	CompositeTablePtr m_tab;
+	CompositeTable* m_tab;
 	std::string  errMsg;
 	valvec<byte> buf1;
 	valvec<byte> buf2;

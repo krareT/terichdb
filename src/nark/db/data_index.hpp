@@ -12,9 +12,18 @@ public:
 	virtual ~IndexIterator();
 	virtual void reset(PermanentablePtr owner) = 0;
 	virtual bool increment(llong* id, valvec<byte>* key) = 0;
-	virtual bool decrement(llong* id, valvec<byte>* key) = 0;
-	virtual bool seekExact(fstring key) = 0;
-	virtual bool seekLowerBound(fstring key) = 0;
+
+	///@returns: ret = compare(*retKey, key)
+	/// analog with wiredtiger.cursor.search_near
+	/// for all iter:
+	///          ret == 0 : exact match
+	/// for forward iter:
+	///          ret >  0 : *retKey > key
+	///          ret <  0 : key is greater than all keys, iter is eof
+	/// for backward iter:
+	///          ret >  0 : *retKey < key
+	///          ret <  0 : key is less than all keys, iter is eof
+	virtual int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) = 0;
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
@@ -22,16 +31,23 @@ class NARK_DB_DLL ReadableIndex : virtual public Permanentable {
 protected:
 	bool m_isOrdered;
 	bool m_isUnique;
+	bool m_isIndexKeyByteLex;
 public:
 	ReadableIndex();
 	virtual ~ReadableIndex();
 	bool isOrdered() const { return m_isOrdered; }
 	bool isUnique() const { return m_isUnique; }
 
-	virtual IndexIterator* createIndexIter(DbContext*) const = 0;
+	virtual void encodeIndexKey(const Schema&, valvec<byte>& key) const;
+	virtual void decodeIndexKey(const Schema&, valvec<byte>& key) const;
+
+	virtual IndexIterator* createIndexIterForward(DbContext*) const = 0;
+	virtual IndexIterator* createIndexIterBackward(DbContext*) const = 0;
 	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
-	virtual bool  exists(fstring key) const = 0;
+
+	virtual llong searchExact(fstring key, DbContext*) const = 0;
+	virtual bool  exists(fstring key, DbContext*) const;
 };
 typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
@@ -67,7 +83,7 @@ class CompositeIndex : public WritableIndex {
 public:
 	CompositeIndex(fstring dir, const valvec<llong>* rowNumVec, const febitvec* isDel);
 	llong numIndexRows() const override;
-	IndexIterator* createIndexIter() const override;
+	IndexIterator* createIndexIterForward() const override;
 	llong indexStorageSize() const override;
 
 	size_t remove(fstring key) override;

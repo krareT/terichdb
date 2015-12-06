@@ -28,10 +28,13 @@ typedef boost::intrusive_ptr<MockReadonlyStore> MockReadonlyStorePtr;
 
 class NARK_DB_DLL MockReadonlyIndex : public ReadableIndexStore {
 	friend class MockReadonlyIndexIterator;
+	friend class MockReadonlyIndexIterBackward;
 	fstrvec          m_keys; // keys[recId] is the key
 	valvec<uint32_t> m_ids;  // keys[ids[i]] <= keys[ids[i+1]]
 	size_t m_fixedLen;
 	const Schema* m_schema;
+	void getIndexKey(llong* id, valvec<byte>* key, size_t pos) const;
+	int forwardLowerBound(fstring key, size_t* pLower) const;
 public:
 	MockReadonlyIndex(const Schema& schema);
 	~MockReadonlyIndex();
@@ -46,9 +49,12 @@ public:
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
-	bool exists(fstring key) const override;
 
-	IndexIterator* createIndexIter(DbContext*) const override;
+	llong searchExact(fstring key, DbContext*) const override;
+//	bool exists(fstring key, DbContext*) const override; // use default
+
+	IndexIterator* createIndexIterForward(DbContext*) const override;
+	IndexIterator* createIndexIterBackward(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 };
@@ -79,7 +85,8 @@ typedef boost::intrusive_ptr<MockWritableStore> MockWritableStorePtr;
 
 template<class Key>
 class NARK_DB_DLL MockWritableIndex : public WritableIndex {
-	class MyIndexIter; friend class MyIndexIter;
+	class MyIndexIterForward;  friend class MyIndexIterForward;
+	class MyIndexIterBackward; friend class MyIndexIterBackward;
 	typedef std::pair<Key, llong> kv_t;
 	std::set<kv_t> m_kv;
 	size_t m_keysLen = 0;
@@ -88,15 +95,18 @@ public:
 	void save(fstring) const override;
 	void load(fstring) override;
 
-	IndexIterator* createIndexIter(DbContext*) const override;
+	IndexIterator* createIndexIterForward(DbContext*) const override;
+	IndexIterator* createIndexIterBackward(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 	bool remove(fstring key, llong id, DbContext*) override;
 	bool insert(fstring key, llong id, DbContext*) override;
 	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
-	bool exists(fstring key) const override;
+//	bool exists(fstring key, DbContext*) const override; // use default
 	void clear() override;
 	void flush() const override;
+
+	llong searchExact(fstring key, DbContext*) const override;
 };
 
 class NARK_DB_DLL MockReadonlySegment : public ReadonlySegment {

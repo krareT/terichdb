@@ -10,12 +10,13 @@ namespace nark {
 
 namespace nark { namespace db {
 
+typedef tbb::queuing_rw_mutex              MyRwMutex;
 typedef tbb::queuing_rw_mutex::scoped_lock MyRwLock;
 
 // is not a WritableStore
 class NARK_DB_DLL CompositeTable : public ReadableStore, public SegmentSchema {
-	class MyStoreIterator;
-	friend class MyStoreIterator;
+	class MyStoreIterForward;	friend class MyStoreIterForward;
+	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 public:
 	CompositeTable();
 
@@ -27,6 +28,7 @@ public:
 	void save(fstring dir) const override;
 
 	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	virtual DbContext* createDbContext() const = 0;
 
 	llong totalStorageSize() const;
@@ -42,8 +44,11 @@ public:
 	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);
 
-	IndexIteratorPtr createIndexIter(size_t indexId) const;
-	IndexIteratorPtr createIndexIter(fstring indexCols) const;
+	IndexIteratorPtr createIndexIterForward(size_t indexId) const;
+	IndexIteratorPtr createIndexIterForward(fstring indexCols) const;
+
+	IndexIteratorPtr createIndexIterBackward(size_t indexId) const;
+	IndexIteratorPtr createIndexIterBackward(fstring indexCols) const;
 
 	bool compact();
 	void clear();
@@ -94,7 +99,8 @@ protected:
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
 	friend class TableIndexIterUnOrdered;
-	friend class TableIndexIterOrdered;
+	friend class TableIndexIter;
+	friend class TableIndexIterBackward;
 };
 typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 

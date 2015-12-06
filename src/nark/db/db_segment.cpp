@@ -39,7 +39,8 @@ void SegmentSchema::compileSchema() {
 			m_nonIndexRowSchema->m_columnsMeta.insert_i(colname, colmeta);
 		}
 	}
-	m_nonIndexRowSchema->compile(m_rowSchema.get());
+	if (m_nonIndexRowSchema->columnNum() > 0)
+		m_nonIndexRowSchema->compile(m_rowSchema.get());
 }
 
 ReadableSegment::ReadableSegment() {
