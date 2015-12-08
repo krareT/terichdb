@@ -394,7 +394,9 @@ llong MockReadonlyIndex::dataStorageSize() const {
 		+ m_keys.strpool.used_mem_size();
 }
 
-void MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, DbContext*) const {
+void
+MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, DbContext*)
+const {
 	assert(id < (llong)m_ids.size());
 	assert(id >= 0);
 	if (m_fixedLen) {

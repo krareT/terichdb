@@ -40,6 +40,9 @@ public:
 	llong replaceRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
 
+	llong indexSearchExact(size_t indexId, fstring key, DbContext*) const;
+	bool indexKeyExists(size_t indexId, fstring key, DbContext*) const;
+
 	bool indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);

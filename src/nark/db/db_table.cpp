@@ -1035,6 +1035,31 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 }
 
 bool
+CompositeTable::indexKeyExists(size_t indexId, fstring key, DbContext* ctx)
+const {
+	MyRwLock lock(m_rwMutex, false);
+	for (size_t i = m_segments.size(); i > 0; ) {
+		auto index = m_segments[--i]->getReadableIndex(indexId);
+		if (index->exists(key, ctx))
+			return true;
+	}
+	return false;
+}
+
+llong
+CompositeTable::indexSearchExact(size_t indexId, fstring key, DbContext* ctx)
+const {
+	MyRwLock lock(m_rwMutex, false);
+	for (size_t i = m_segments.size(); i > 0; ) {
+		auto index = m_segments[--i]->getReadableIndex(indexId);
+		llong recId = index->searchExact(key, ctx);
+		if (recId >= 0)
+			return recId;
+	}
+	return -1;
+}
+
+bool
 CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 							DbContext* txn)
 {
