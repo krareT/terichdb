@@ -113,7 +113,8 @@ public:
     }
 
     virtual Status validateIndexStorageOptions(const BSONObj& options) const {
-        return NarkDbIndex::parseIndexOptions(options).getStatus();
+        //return NarkDbIndex::parseIndexOptions(options).getStatus();
+		return Status::OK();
     }
 
     virtual Status validateMetadata(const StorageEngineMetadata& metadata,
