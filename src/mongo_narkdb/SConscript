@@ -1,5 +1,4 @@
 Import("env")
-Import("narkdb")
 
 env.Library(
     target='storage_narkdb_customization_hooks',
@@ -12,14 +11,14 @@ env.Library(
     ],
     )
 
-if narkdb:
-    wtEnv = env.Clone()
-    #wtEnv.InjectThirdPartyIncludePaths(libraries=['narkdb'])
-    wtEnv.InjectThirdPartyIncludePaths(libraries=['zlib'])
-    wtEnv.InjectThirdPartyIncludePaths(libraries=['valgrind'])
+if 1:
+    nkEnv = env.Clone()
+    #nkEnv.InjectThirdPartyIncludePaths(libraries=['narkdb'])
+    nkEnv.InjectThirdPartyIncludePaths(libraries=['zlib'])
+    nkEnv.InjectThirdPartyIncludePaths(libraries=['valgrind'])
 
     # This is the smallest possible set of files that wraps WT
-    wtEnv.Library(
+    nkEnv.Library(
         target='storage_narkdb_core',
         source= [
             'narkdb_global_options.cpp',
@@ -54,9 +53,10 @@ if narkdb:
             # a unique definition.
             'incomplete',
         ],
+		SYSLIBDEPS= ['nark-r', 'nark-db-r']
         )
 
-    wtEnv.Library(
+    nkEnv.Library(
         target='storage_narkdb',
         source=[
             'narkdb_init.cpp',
@@ -77,7 +77,7 @@ if narkdb:
         ],
         )
 
-    wtEnv.Library(
+    nkEnv.Library(
         target='storage_narkdb_mock',
         source=[
             'narkdb_record_store_mock.cpp',
@@ -87,7 +87,7 @@ if narkdb:
         )
 
 if 0:
-    wtEnv.CppUnitTest(
+    nkEnv.CppUnitTest(
         target='storage_narkdb_record_store_test',
         source=['narkdb_record_store_test.cpp',
                 ],
@@ -97,7 +97,7 @@ if 0:
             ],
         )
 
-    wtEnv.CppUnitTest(
+    nkEnv.CppUnitTest(
         target='storage_narkdb_index_test',
         source=['narkdb_index_test.cpp',
                 ],
@@ -107,7 +107,7 @@ if 0:
             ],
         )
 
-    wtEnv.CppUnitTest(
+    nkEnv.CppUnitTest(
         target='storage_narkdb_init_test',
         source=['narkdb_init_test.cpp',
                 ],
@@ -118,7 +118,7 @@ if 0:
         NO_CRUTCH=True,
         )
 
-    wtEnv.CppUnitTest(
+    nkEnv.CppUnitTest(
         target='storage_narkdb_kv_engine_test',
         source=['narkdb_kv_engine_test.cpp',
                 ],
@@ -128,7 +128,7 @@ if 0:
             ],
         )
 
-    wtEnv.CppUnitTest(
+    nkEnv.CppUnitTest(
         target='storage_narkdb_util_test',
         source=['narkdb_util_test.cpp',
                 ],
