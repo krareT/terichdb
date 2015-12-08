@@ -53,6 +53,21 @@ public:
 	SharedBuffer decode(const Schema* schema, nark::fstring encoded);
 };
 
+void encodeIndexKey(const Schema& indexSchema,
+					const BSONObj& bson,
+					nark::valvec<char>* encoded);
+void encodeIndexKey(const Schema& indexSchema,
+					const BSONObj& bson,
+					nark::valvec<unsigned char>* encoded);
+
+SharedBuffer
+decodeIndexKey(const Schema& indexSchema, const char* data, size_t size);
+
+inline SharedBuffer
+decodeIndexKey(const Schema& indexSchema, nark::fstring data) {
+	return decodeIndexKey(indexSchema, data.data(), data.size());
+}
+
 } } // namespace mongo::narkdb
 
 

@@ -182,6 +182,7 @@
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_kv_engine.h" />
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_parameters.h" />
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store.h" />
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store_capped.h" />
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store_oplog_stones.h" />
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_recovery_unit.h" />
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_server_status.h" />
@@ -215,8 +216,10 @@
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_customization_hooks.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_global_options.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_index.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_init.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_kv_engine.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_record_store.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_record_store_capped.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_size_storer.cpp" />
     <ClCompile Include="..\..\..\src\mongo_narkdb\record_codec.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\data_index.cpp" />

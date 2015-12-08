@@ -27,6 +27,12 @@
  *    it in the license file.
  */
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4244)
+#pragma warning(disable: 4267)
+#pragma warning(disable: 4800)
+#endif
+
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include "mongo/platform/basic.h"
@@ -91,7 +97,9 @@ public:
         options.directoryPerDB = params.directoryperdb;
         options.directoryForIndexes = narkDbGlobalOptions.directoryForIndexes;
         options.forRepair = params.repair;
-        return new KVStorageEngine(kv, options);
+        auto fuck = new KVStorageEngine(kv, options);
+		kv->m_fuckKVCatalog = fuck->getCatalog();
+		return fuck;
     }
 
     virtual StringData getCanonicalName() const {
@@ -99,7 +107,9 @@ public:
     }
 
     virtual Status validateCollectionStorageOptions(const BSONObj& options) const {
-        return NarkDbRecordStore::parseOptionsField(options).getStatus();
+		// return NarkDbRecordStore::parseOptionsField(options).getStatus();
+		// TODO: parse narkdb schema definition
+		return Status::OK();
     }
 
     virtual Status validateIndexStorageOptions(const BSONObj& options) const {

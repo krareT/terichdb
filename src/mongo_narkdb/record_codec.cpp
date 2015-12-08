@@ -5,9 +5,9 @@
 #pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
 #endif
 
-#include <mongo/util/log.h>
-
 #include "record_codec.h"
+
+#include <mongo/util/log.h>
 #include <mongo/bson/bsonobjbuilder.h>
 #include <mongo/util/hex.h>
 #include <nark/io/DataIO.hpp>
@@ -634,6 +634,229 @@ SchemaRecordCoder::decode(const Schema* schema, nark::fstring encoded) {
 	return decode(schema, encoded.data(), encoded.size());
 }
 
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+void encodeIndexKey(const Schema& indexSchema,
+					const BSONObj& bson,
+					nark::valvec<char>* encoded) {
+	encoded->erase_all();
+	using nark::db::ColumnType;
+	BSONObj::iterator iter = bson.begin();
+	for(size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
+	//	fstring colname = indexSchema.m_columnsMeta.key(i);
+		BSONElement elem(*iter);
+		assert(elem.type() == indexSchema.m_columnsMeta.val(i).uType);
+		const char* value = elem.value();
+		switch (elem.type()) {
+		case EOO:
+		case Undefined:
+		case jstNULL:
+		case MaxKey:
+		case MinKey:
+			break;
+		case mongo::Bool:
+			encoded->push_back(value[0] ? 1 : 0);
+			assert(indexSchema.getColumnType(i) == ColumnType::Uint08);
+			break;
+		case NumberInt:
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			// offset binary encoding for byte lex compare
+			{
+				int x = ConstDataView(value).read<LittleEndian<int>>();
+				int y = x ^ (1 << 31);
+				encoded->append((char*)&y, 4);
+			}
+		#else
+			encoded->append(value, 4);
+		#endif
+			assert(indexSchema.getColumnType(i) == ColumnType::Sint32);
+			break;
+		case bsonTimestamp: // low 32 bit is always positive
+		case mongo::Date:
+		case NumberDouble:
+		case NumberLong:
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			// offset binary encoding for byte lex compare
+			{
+				auto x = ConstDataView(value).read<LittleEndian<long long>>();
+				auto y = x ^ (1LL << 63);
+				encoded->append((char*)&y, 8);
+			}
+		#else
+			encoded->append(value, 8);
+		#endif
+			break;
+		case jstOID:
+		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
+			encoded->append(value, OID::kOIDSize);
+			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::Fixed);
+			assert(indexSchema.m_columnsMeta.val(i).fixedLen == OID::kOIDSize);
+			break;
+		case Symbol:
+		case Code:
+		case mongo::String:
+		//	log() << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
+			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::StrZero);
+			encoded->append(value + 4, elem.valuestrsize());
+			break;
+		case DBRef:
+			assert(0); // deprecated, should not in data
+			encoded->append(value + 4, elem.valuestrsize() + OID::kOIDSize);
+			break;
+		case mongo::Array:
+			break;
+		case Object:
+			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::CarBin);
+			break;
+		case CodeWScope:
+			assert(indexSchema.getColumnType(i) == ColumnType::CarBin);
+			break;
+		case BinData:
+			assert(indexSchema.getColumnType(i) == ColumnType::CarBin);
+			break;
+		case RegEx:
+			{
+				const char* p = value;
+				size_t len1 = strlen(p); // regex len
+				p += len1 + 1;
+				size_t len2 = strlen(p);
+				encoded->append(p, len1 + 1 + len2 + 1);
+			}
+			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::TwoStrZero);
+			break;
+		default:
+			{
+				StringBuilder ss;
+				ss << BOOST_CURRENT_FUNCTION
+				   << ": BSONElement: bad elem.type " << (int)elem.type();
+				std::string msg = ss.str();
+				massert(10320, msg.c_str(), false);
+			}
+		}
+	}
+}
+
+void encodeIndexKey(const Schema& indexSchema,
+					const BSONObj& bson,
+					nark::valvec<unsigned char>* encoded) {
+	encodeIndexKey(indexSchema, bson,
+		reinterpret_cast<nark::valvec<char>*>(encoded));
+}
+
+SharedBuffer
+decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
+	MyBsonBuilder bb;
+	const char* pos = data;
+	bb.resize(size);
+	bb.skip(sizeof(SharedBuffer::Holder));
+	for (size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
+		fstring     colname = indexSchema.m_columnsMeta.key(i);
+		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
+		bb.writeByte(colmeta.uType);
+		bb.ensureWrite(colname.data(), colname.size()+1); // include '\0'
+		switch (colmeta.uType) {
+		case EOO:
+			invariant(!"narkDecodeBsonElemVal: encountered EOO");
+			break;
+		case Undefined:
+		case jstNULL:
+		case MaxKey:
+		case MinKey:
+			break;
+		case mongo::Bool:
+			bb << char(*pos ? 1 : 0);
+			pos++;
+			break;
+		case NumberInt:
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			{
+				int x = ConstDataView(pos).read<BigEndian<int>>();
+				x ^= 1 << 31;
+				bb << x;
+				pos += 4;
+			}
+		#else
+			bb.ensureWrite(pos, 4);
+			pos += 4;
+		#endif
+			break;
+		case bsonTimestamp:
+		case mongo::Date:
+		case NumberDouble:
+		case NumberLong:
+		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
+			{
+				long long x = ConstDataView(pos).read<BigEndian<long long>>();
+				x ^= (long long)1 << 63;
+				bb << x;
+				pos += 8;
+			}
+		#else
+			bb.ensureWrite(pos, 8);
+			pos += 8;
+		#endif
+			break;
+		case jstOID:
+			bb.ensureWrite(pos, OID::kOIDSize);
+			pos += OID::kOIDSize;
+			break;
+		case Symbol:
+		case Code:
+		case mongo::String:
+			{
+				size_t len = strlen(pos);
+				bb << int(len + 1);
+				bb.ensureWrite(pos, len + 1);
+			//	log() << "decode: strlen=" << len << ", str=" << pos;
+				pos += len + 1;
+			}
+			break;
+		case DBRef:
+			{
+				size_t len = strlen(pos);
+				bb << int(len + 1);
+				bb.ensureWrite(pos + 4, len + 1 + OID::kOIDSize);
+				pos += len + 1 + OID::kOIDSize;
+			}
+			break;
+		case mongo::Array:
+			THROW_STD(invalid_argument, "mongo::Array must not be a index key field");
+			break;
+		case Object:
+			THROW_STD(invalid_argument, "mongo::Object must not be a index key field");
+			break;
+		case CodeWScope:
+			THROW_STD(invalid_argument, "mongo::CodeWScope must not be a index key field");
+			break;
+		case BinData:
+			THROW_STD(invalid_argument, "mongo::BinData could'nt not be a index key field");
+			break;
+		case RegEx:
+			{
+				size_t len1 = strlen(pos); // regex len
+				size_t len2 = strlen(pos + len1 + 1);
+				size_t len3 = len1 + len2 + 2;
+				bb.ensureWrite(pos, len3);
+				pos += len3;
+			}
+			break;
+		default:
+			{
+				StringBuilder ss;
+				ss << "narkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.uType;
+				std::string msg = ss.str();
+				massert(10320, msg.c_str(), false);
+			}
+		}
+	}
+	invariant(data + size == pos);
+	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
+			.write<LittleEndian<int>>(int(bb.tell() - sizeof(SharedBuffer::Holder)));
+
+	return SharedBuffer::takeOwnership((char*)bb.release());
+}
 
 } } // namespace mongo::narkdb
 

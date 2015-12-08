@@ -41,30 +41,6 @@ namespace mongo { namespace narkdb {
 class NarkDbIndex : public SortedDataInterface {
 public:
     /**
-     * Parses index options for wired tiger configuration string suitable for table creation.
-     * The document 'options' is typically obtained from the 'storageEngine.narkDb' field
-     * of an IndexDescriptor's info object.
-     */
-    static StatusWith<std::string> parseIndexOptions(const BSONObj& options);
-
-    /**
-     * Creates a configuration string suitable for 'config' parameter in NarkDb_SESSION::create().
-     * Configuration string is constructed from:
-     *     built-in defaults
-     *     'sysIndexConfig'
-     *     'collIndexConfig'
-     *     storageEngine.narkDb.configString in index descriptor's info object.
-     * Performs simple validation on the supplied parameters.
-     * Returns error status if validation fails.
-     * Note that even if this function returns an OK status, NarkDb_SESSION:create() may still
-     * fail with the constructed configuration string.
-     */
-    static StatusWith<std::string> generateCreateString(const std::string& engineName,
-                                                        const std::string& sysIndexConfig,
-                                                        const std::string& collIndexConfig,
-                                                        const IndexDescriptor& desc);
-
-    /**
      * @param unique - If this is a unique index.
      *                 Note: even if unique, it may be allowed to be non-unique at times.
      */
@@ -118,18 +94,17 @@ public:
 		return &m_table->getIndexSchema(m_indexId);
 	}
 
-	bool insertIndexKey(const BSONObj& newKey, const RecordId& id,
-						nark::db::DbContext*);
-
-protected:
-    class BulkBuilder;
 	class MyThreadData {
     public:
     	nark::db::DbContextPtr m_dbCtx;
-    	mongo::narkdb::SchemaRecordCoder m_coder;
     	nark::valvec<unsigned char> m_buf;
     };
-	mutable gold_hash_map<std::thread::id, MyThreadData> m_threadcache;
+	bool insertIndexKey(const BSONObj& newKey, const RecordId& id,
+						MyThreadData* td);
+
+protected:
+    class BulkBuilder;
+	mutable nark::gold_hash_map_p<std::thread::id, MyThreadData> m_threadcache;
 	mutable std::mutex m_threadcacheMutex;
     MyThreadData& getMyThreadData() const;
 
@@ -152,7 +127,7 @@ public:
     SortedDataBuilderInterface*
 	getBulkBuilder(OperationContext* txn, bool dupsAllowed) override;
 
-    bool unique() const override { return true; }
+    bool unique() const override;
 };
 
 class NarkDbIndexStandard : public NarkDbIndex {
@@ -167,7 +142,7 @@ public:
     SortedDataBuilderInterface*
 	getBulkBuilder(OperationContext* txn, bool dupsAllowed) override;
 
-    bool unique() const override { return false; }
+    bool unique() const override;
 };
 
 } }  // namespace mongo::nark

@@ -46,6 +46,10 @@
 #include <nark/hash_strmap.hpp>
 #include "narkdb_size_storer.h"
 
+namespace mongo {
+	class KVCatalog; // fuckMongoKVCatalog
+}
+
 namespace mongo { namespace narkdb {
 
 class NarkDbKVEngine final : public KVEngine {
@@ -119,13 +123,13 @@ public:
     // held by this class
     int reconfigure(const char* str);
 
-private:
-    std::string _uri(StringData ident) const;
-    bool _drop(StringData ident);
+	const KVCatalog* m_fuckKVCatalog;
 
+private:
     std::unique_ptr<WiredTigerSessionCache> _sessionCache;
     std::string _path;
     fs::path m_pathNark;
+    fs::path m_pathNarkTables;
 
     // for: 1. capped collection
     //      2. metadata(use wiredtiger)
@@ -135,7 +139,7 @@ private:
 
     typedef nark::hash_strmap<CompositeTablePtr> TableMap;
 
-    TableMap m_tables;
+    mutable TableMap m_tables;
 
     struct TableIndex {
     	size_t indexId;
@@ -145,6 +149,7 @@ private:
 
     typedef nark::hash_strmap<TableIndex> IndexMap;
     IndexMap m_indices;
+	mutable std::mutex m_mutex;
 
     bool _durable;
 
@@ -159,7 +164,7 @@ private:
 
     mutable Date_t _previousCheckedDropsQueued;
 
-    std::unique_ptr<TableMap> _backupSession;
+	std::unique_ptr<TableMap> _backupSession;
 };
 } }  // namespace mongo::nark
 

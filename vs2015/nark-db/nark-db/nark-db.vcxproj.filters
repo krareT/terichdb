@@ -162,6 +162,9 @@
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_snapshot_manager.h">
       <Filter>Header Files\mongo_narkdb</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store_capped.h">
+      <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -240,6 +243,12 @@
       <Filter>Source Files\mongo_narkdb</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_index.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_record_store_capped.cpp">
+      <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_init.cpp">
       <Filter>Source Files\mongo_narkdb</Filter>
     </ClCompile>
   </ItemGroup>

@@ -45,15 +45,7 @@
 #include "mongo/util/fail_point_service.h"
 #include "narkdb_size_storer.h"
 
-/**
- * Either executes the specified operation and returns it's value or randomly throws a write
- * conflict exception if the NarkDbWriteConflictException failpoint is enabled.
- */
-#define NarkDb_OP_CHECK(x) (((MONGO_FAIL_POINT(NarkDbWriteConflictException))) ? (NarkDb_ROLLBACK) : (x))
-
 namespace mongo { namespace narkdb {
-
-typedef std::list<RecordId> SortedRecordIds;
 
 class NarkDbRecordStore : public RecordStore {
 public:
@@ -74,7 +66,8 @@ public:
 
     NarkDbRecordStore(OperationContext* txn,
 					  StringData ns,
-					  StringData uri,
+					  StringData ident,
+					  CompositeTable* tab,
 					  NarkDbSizeStorer* sizeStorer);
 
     virtual ~NarkDbRecordStore();
@@ -172,10 +165,6 @@ public:
                                 long long numRecords,
                                 long long dataSize) override;
 
-    const std::string& getURI() const {
-        return _uri;
-    }
-
     void setSizeStorer(NarkDbSizeStorer* ss) {
         //_sizeStorer = ss;
     }
@@ -186,8 +175,7 @@ public:
 
 private:
     class Cursor;
-
-    const std::string _uri;
+    const std::string _ident;
 
     class MyThreadData {
     public:
@@ -197,7 +185,7 @@ private:
     };
 //  mutable nark::db::MyRwMutex m_threadcacheMutex;
     mutable std::mutex m_threadcacheMutex;
-    mutable nark::gold_hash_map<std::thread::id, MyThreadData> m_threadcache;
+    mutable nark::gold_hash_map_p<std::thread::id, MyThreadData> m_threadcache;
     MyThreadData& getMyThreadData() const;
 
     bool _shuttingDown;

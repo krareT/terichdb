@@ -57,6 +57,7 @@
 #include "narkdb_global_options.h"
 #include "narkdb_index.h"
 #include "narkdb_record_store.h"
+#include "narkdb_record_store_capped.h"
 #include "narkdb_recovery_unit.h"
 //#include "narkdb_session_cache.h"
 #include "narkdb_size_storer.h"
@@ -67,6 +68,9 @@
 #include "mongo/util/processinfo.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
+#include "mongo/db/storage/kv/kv_catalog.h"
+
 
 #if !defined(__has_feature)
 #define __has_feature(x) 0
@@ -84,11 +88,21 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 							   bool repair)
     : _path(path),
       _durable(durable),
-      _sizeStorerSyncTracker(100000, 60 * 1000) {
-
+      _sizeStorerSyncTracker(100000, 60 * 1000)
+{
     boost::filesystem::path basePath = path;
 	m_pathNark = basePath / "nark";
 	m_pathWt = basePath / "wt";
+	m_pathNarkTables = m_pathNark / "tables";
+
+	m_wtEngine.reset(new WiredTigerKVEngine(
+				kWiredTigerEngineName,
+				m_pathWt.string(),
+				extraOpenOptions,
+				cacheSizeGB,
+				durable,
+				false, // ephemeral
+				repair));
 
     boost::filesystem::path journalPath = basePath / "journal";
     if (_durable) {
@@ -127,16 +141,17 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
         ss << ",log=(enabled=false),";
         */
     }
+/*
     log() << "narkdb_open : " << path;
     for (auto& tabDir : fs::directory_iterator(m_pathNark / "tables")) {
-    	std::string strTabDir = tabDir.path().string();
+    //	std::string strTabDir = tabDir.path().string();
     	// CompositeTablePtr tab = new MockCompositeTable();
     	// tab->load(strTabDir);
-    	std::string tabIdent = tabDir.path().filename().string();
-    	auto ib = m_tables.insert_i(tabIdent, nullptr);
-    	invariant(ib.second);
+    //	std::string tabIdent = tabDir.path().filename().string();
+    //	auto ib = m_tables.insert_i(tabIdent, nullptr);
+    //	invariant(ib.second);
     }
-
+*/
     if (_durable) {
     //    _journalFlusher = stdx::make_unique<NarkDbJournalFlusher>(_sessionCache.get());
     //    _journalFlusher->go();
@@ -158,37 +173,66 @@ NarkDbKVEngine::~NarkDbKVEngine() {
 void NarkDbKVEngine::cleanShutdown() {
     log() << "NarkDbKVEngine shutting down";
 //  syncSizeInfo(true);
+	std::lock_guard<std::mutex> lock(m_mutex);
     m_tables.clear();
 }
 
-Status NarkDbKVEngine::okToRename(OperationContext* opCtx,
-                                  StringData fromNS,
-                                  StringData toNS,
-                                  StringData ident,
-                                  const RecordStore* originalRecordStore) const {
+Status
+NarkDbKVEngine::okToRename(OperationContext* opCtx,
+                           StringData fromNS,
+                           StringData toNS,
+                           StringData ident,
+                           const RecordStore* originalRecordStore) const {
+	std::lock_guard<std::mutex> lock(m_mutex);
+	size_t i = m_tables.find_i(fromNS);
+	if (m_tables.end_i() == i) {
+		return m_wtEngine->
+			okToRename(opCtx, fromNS, toNS, ident, originalRecordStore);
+	}
+	fs::rename(m_pathNarkTables / fromNS.toString(),
+			   m_pathNarkTables / toNS.toString());
     return Status::OK();
 }
 
-int64_t NarkDbKVEngine::getIdentSize(OperationContext* opCtx, StringData ident) {
+int64_t
+NarkDbKVEngine::getIdentSize(OperationContext* opCtx, StringData ident) {
+	std::lock_guard<std::mutex> lock(m_mutex);
 	size_t i = m_tables.find_i(ident);
 	if (m_tables.end_i() == i) {
-		return 0;
+		return m_wtEngine->getIdentSize(opCtx, ident);
 	}
 	return m_tables.val(i)->dataStorageSize();
 }
 
-Status NarkDbKVEngine::repairIdent(OperationContext* opCtx, StringData ident) {
-	return Status::OK();
+Status
+NarkDbKVEngine::repairIdent(OperationContext* opCtx, StringData ident) {
+	// ident must be a table
+	invariant(ident.startsWith("collection-"));
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		size_t i = m_tables.find_i(ident);
+		if (i < m_tables.end_i()) {
+			return Status::OK();
+		}
+	}
+	return m_wtEngine->repairIdent(opCtx, ident);
 }
 
 int NarkDbKVEngine::flushAllFiles(bool sync) {
     LOG(1) << "NarkDbKVEngine::flushAllFiles";
+	nark::valvec<CompositeTablePtr> tabCopy(m_tables.end_i()+2);
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_tables.for_each([&](const TableMap::value_type& x) {
+			tabCopy.push_back(x.second);
+		});
+	}
 //  syncSizeInfo(true);
-    m_tables.for_each([](const TableMap::value_type& x) {
-    	x.second->flush();
-    });
+	for (auto& tabPtr : tabCopy) {
+		tabPtr->flush();
+	}
 //  _sessionCache->waitUntilDurable(true);
-
+	m_wtEngine->flushAllFiles(sync);
     return 1;
 }
 
@@ -214,11 +258,24 @@ void NarkDbKVEngine::setSortedDataInterfaceExtraOptions(const std::string& optio
     _indexOptions = options;
 }
 
-Status NarkDbKVEngine::createRecordStore(OperationContext* opCtx,
-										 StringData ns,
-                                         StringData ident,
-                                         const CollectionOptions& options) {
-    StatusWith<std::string> result =
+Status
+NarkDbKVEngine::createRecordStore(OperationContext* opCtx,
+								  StringData ns,
+                                  StringData ident,
+                                  const CollectionOptions& options) {
+	if (ident == "_mdb_catalog") {
+		return m_wtEngine->createRecordStore(opCtx, ns, ident, options);
+	}
+	if (NamespaceString(ns).isOnInternalDb()) {
+		return m_wtEngine->createRecordStore(opCtx, ns, ident, options);
+	}
+    if (options.capped) {
+		// now don't use NarkDbRecordStoreCapped
+		// use NarkDbRecordStoreCapped when we need hook some virtual functions
+		return m_wtEngine->createRecordStore(opCtx, ns, ident, options);
+    }
+/*
+	StatusWith<std::string> result =
         NarkDbRecordStore::generateCreateString(ns, options, _rsOptions);
     if (!result.isOK()) {
         return result.getStatus();
@@ -226,43 +283,69 @@ Status NarkDbKVEngine::createRecordStore(OperationContext* opCtx,
     std::string config = result.getValue();
 
     LOG(2) << "NarkDbKVEngine::createRecordStore: ns:" << ns << ", config: " << config;
-    return Status::OK();
+*/
+	auto tabDir = m_pathNark / "tables" / ns.toString();
+
+	if (fs::exists(tabDir)) {
+		return Status::OK();
+	}
+	else {
+		// TODO: parse options.storageEngine.NarkSegDB to define schema
+		return Status(ErrorCodes::CommandNotSupported,
+			"dynamic create RecordStore is not supported, schema is required");
+	}
 }
 
-RecordStore* NarkDbKVEngine::getRecordStore(OperationContext* opCtx,
-											StringData ns,
-											StringData ident,
-											const CollectionOptions& options) {
-	const bool ephemeral = false;
+RecordStore*
+NarkDbKVEngine::getRecordStore(OperationContext* opCtx,
+							   StringData ns,
+							   StringData ident,
+							   const CollectionOptions& options) {
+	if (ident == "_mdb_catalog") {
+		return m_wtEngine->getRecordStore(opCtx, ns, ident, options);
+	}
+	if (NamespaceString(ns).isOnInternalDb()) {
+		return m_wtEngine->getRecordStore(opCtx, ns, ident, options);
+	}
     if (options.capped) {
-		/*
-        return new NarkDbRecordStore(opCtx,
-									 ns,
-									 _uri(ident),
-									 options.capped,
-									 ephemeral,
-									 options.cappedSize ? options.cappedSize : 4096,
-									 options.cappedMaxDocs ? options.cappedMaxDocs : -1,
-									 NULL);
-	*/
-    } else {
-        return new NarkDbRecordStore(opCtx,
-									 ns,
-									 _uri(ident),
-									 NULL);
+		// now don't use NarkDbRecordStoreCapped
+		// use NarkDbRecordStoreCapped when we need hook some virtual functions
+		// const bool ephemeral = false;
+		return m_wtEngine->getRecordStore(opCtx, ns, ident, options);
     }
+
+	auto tabDir = m_pathNarkTables / ns.toString();
+	if (!fs::exists(tabDir)) {
+		return NULL;
+	}
+	std::lock_guard<std::mutex> lock(m_mutex);
+	CompositeTablePtr& tab = m_tables[ident];
+	if (tab == nullptr) {
+		tab = new MockCompositeTable();
+		tab->load(tabDir.string());
+	}
+    return new NarkDbRecordStore(opCtx, ns, ident, &*tab, NULL);
 }
 
-string NarkDbKVEngine::_uri(StringData ident) const {
-    return string("table:") + ident.toString();
-}
+Status
+NarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
+                                          StringData ident,
+                                          const IndexDescriptor* desc) {
+	if (ident == "_mdb_catalog") {
+		return m_wtEngine->createSortedDataInterface(opCtx, ident, desc);
+	}
+	if (desc->getCollection()->ns().isOnInternalDb()) {
+		return m_wtEngine->createSortedDataInterface(opCtx, ident, desc);
+	}
+    if (desc->getCollection()->isCapped()) {
+		// now don't use NarkDbRecordStoreCapped
+		// use NarkDbRecordStoreCapped when we need hook some virtual functions
+		// const bool ephemeral = false;
+		return m_wtEngine->createSortedDataInterface(opCtx, ident, desc);
+    }
 
-Status NarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
-                                                 StringData ident,
-                                                 const IndexDescriptor* desc) {
     std::string collIndexOptions;
     const Collection* collection = desc->getCollection();
-/*
     // Treat 'collIndexOptions' as an empty string when the collection member of 'desc' is NULL in
     // order to allow for unit testing NarkDbKVEngine::createSortedDataInterface().
     if (collection) {
@@ -271,37 +354,48 @@ Status NarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
 
         if (!collOptions.indexOptionDefaults["storageEngine"].eoo()) {
             BSONObj storageEngineOptions = collOptions.indexOptionDefaults["storageEngine"].Obj();
-            collIndexOptions = storageEngineOptions.getFieldDotted(_canonicalName + ".configString")
-                                   .valuestrsafe();
+            collIndexOptions = storageEngineOptions.getFieldDotted(kNarkDbEngineName).toString();
         }
     }
 
-    StatusWith<std::string> result = NarkDbIndex::generateCreateString(
-        _canonicalName, _indexOptions, collIndexOptions, *desc);
-    if (!result.isOK()) {
-        return result.getStatus();
-    }
-
-    std::string config = result.getValue();
-
     LOG(2) << "NarkDbKVEngine::createSortedDataInterface ident: " << ident
-           << " config: " << config;
-    return narkDbRCToStatus(NarkDbIndex::Create(opCtx, _uri(ident), config));
-*/
-    size_t i = m_indices.find_i(ident);
+           << " collIndexOptions: " << collIndexOptions;
+	std::string tableNS = desc->getCollection()->ns().toString();
+	std::string tableIdent = m_fuckKVCatalog->getCollectionIdent(tableNS);
+	std::lock_guard<std::mutex> lock(m_mutex);
+    size_t i = m_indices.find_i(tableIdent);
     if (i < m_indices.end_i()) {
-
+	//	return new NarkDbIndexStandard(&*m_tables.val(i), opCtx, desc);
+	    return Status::OK();
     }
-    return Status::OK();
+	else {
+		return Status(ErrorCodes::CommandNotSupported,
+						"dynamic creating index is not supported");
+	}
 }
 
-SortedDataInterface* NarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
-															StringData ident,
-															const IndexDescriptor* desc)
+SortedDataInterface*
+NarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
+									   StringData ident,
+									   const IndexDescriptor* desc)
 {
-	auto tabDir = m_pathNark / "tables" / ident.toString();
-	size_t idx = m_tables.insert_i(ident).second;
-	auto& tab = m_tables.val(idx);
+	if (ident == "_mdb_catalog") {
+		return m_wtEngine->getSortedDataInterface(opCtx, ident, desc);
+	}
+	if (desc->getCollection()->ns().isOnInternalDb()) {
+		return m_wtEngine->getSortedDataInterface(opCtx, ident, desc);
+	}
+    if (desc->getCollection()->isCapped()) {
+		// now don't use NarkDbRecordStoreCapped
+		// use NarkDbRecordStoreCapped when we need hook some virtual functions
+		// const bool ephemeral = false;
+		return m_wtEngine->getSortedDataInterface(opCtx, ident, desc);
+    }
+	std::string tableNS = desc->getCollection()->ns().toString();
+	std::string tableIdent = m_fuckKVCatalog->getCollectionIdent(tableNS);
+	auto tabDir = m_pathNarkTables / tableNS;
+	std::lock_guard<std::mutex> lock(m_mutex);
+	auto& tab = m_tables[ident];
 	if (tab == nullptr) {
 		tab = new MockCompositeTable();
 		tab->load(tabDir.string());
@@ -313,14 +407,20 @@ SortedDataInterface* NarkDbKVEngine::getSortedDataInterface(OperationContext* op
 }
 
 Status NarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
-    LOG(1) << "NarkDb drop table: ident=" << ident << "\n";
-    _drop(ident);
-    return Status::OK();
-}
-
-bool NarkDbKVEngine::_drop(StringData ident) {
-    m_tables.erase(ident);
-    return true;
+    LOG(1) << "NarkDb dropIdent(): =" << ident << "\n";
+	LOG(1) << "NarkDb dropIdent(): opCtx->getNS()=" << opCtx->getNS();
+	bool isNarkDb = false;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		// Fuck, is opCtx->getNS() must be ident's NS?
+		if (m_tables.erase(opCtx->getNS()))
+			isNarkDb = true;
+	}
+	if (isNarkDb) {
+		fs::remove_all(m_pathNarkTables / opCtx->getNS());
+		return Status::OK();
+	}
+	return m_wtEngine->dropIdent(opCtx, ident);
 }
 
 bool NarkDbKVEngine::supportsDocLocking() const {
@@ -332,12 +432,19 @@ bool NarkDbKVEngine::supportsDirectoryPerDB() const {
 }
 
 bool NarkDbKVEngine::hasIdent(OperationContext* opCtx, StringData ident) const {
-	return m_tables.exists(ident);
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_tables.exists(ident))
+			return true;
+	}
+	return m_wtEngine->hasIdent(opCtx, ident);
 }
 
-std::vector<std::string> NarkDbKVEngine::getAllIdents(OperationContext* opCtx) const {
-    std::vector<std::string> all;
-    all.reserve(m_tables.size());
+std::vector<std::string>
+NarkDbKVEngine::getAllIdents(OperationContext* opCtx) const {
+    std::vector<std::string> all = m_wtEngine->getAllIdents(opCtx);
+    all.reserve(all.size() + m_tables.size());
+	std::lock_guard<std::mutex> lock(m_mutex);
     for (size_t i = m_tables.beg_i(); i < m_tables.end_i(); i = m_tables.next_i(i)) {
     	all.push_back(m_tables.key(i).str());
     }
@@ -345,8 +452,7 @@ std::vector<std::string> NarkDbKVEngine::getAllIdents(OperationContext* opCtx) c
 }
 
 int NarkDbKVEngine::reconfigure(const char* str) {
-    //return _conn->reconfigure(_conn, str);
-	return 0;
+	return m_wtEngine->reconfigure(str);
 }
 
 } }  // namespace mongo::nark

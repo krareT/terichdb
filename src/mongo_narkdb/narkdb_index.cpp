@@ -124,93 +124,20 @@ Status NarkDbIndex::dupKeyError(const BSONObj& key) {
     return Status(ErrorCodes::DuplicateKey, sb.str());
 }
 
-// static
-StatusWith<std::string> NarkDbIndex::parseIndexOptions(const BSONObj& options) {
-    StringBuilder ss;
-    BSONForEach(elem, options) {
-        if (elem.fieldNameStringData() == "configString") {
-		/*
-            Status status = NarkDbUtil::checkTableCreationOptions(elem);
-            if (!status.isOK()) {
-                return status;
-            }
-            ss << elem.valueStringData() << ',';
-		*/
-        } else {
-            // Return error on first unrecognized field.
-            return StatusWith<std::string>(ErrorCodes::InvalidOptions,
-                                           str::stream() << '\'' << elem.fieldNameStringData()
-                                                         << '\'' << " is not a supported option.");
-        }
-    }
-    return StatusWith<std::string>(ss.str());
-}
-
-// static
-StatusWith<std::string> NarkDbIndex::generateCreateString(const std::string& engineName,
-                                                              const std::string& sysIndexConfig,
-                                                              const std::string& collIndexConfig,
-                                                              const IndexDescriptor& desc) {
-    str::stream ss;
-
-    // Separate out a prefix and suffix in the default string. User configuration will override
-    // values in the prefix, but not values in the suffix.  Page sizes are chosen so that index
-    // keys (up to 1024 bytes) will not overflow.
-    ss << "type=file,internal_page_max=16k,leaf_page_max=16k,";
-    ss << "checksum=on,";
-    if (narkDbGlobalOptions.useIndexPrefixCompression) {
-        ss << "prefix_compression=true,";
-    }
-
-    ss << "block_compressor=" << narkDbGlobalOptions.indexBlockCompressor << ",";
-    ss << NarkDbCustomizationHooks::get(getGlobalServiceContext())->getOpenConfig(desc.parentNS());
-    ss << sysIndexConfig << ",";
-    ss << collIndexConfig << ",";
-
-    // Validate configuration object.
-    // Raise an error about unrecognized fields that may be introduced in newer versions of
-    // this storage engine.
-    // Ensure that 'configString' field is a string. Raise an error if this is not the case.
-    BSONElement storageEngineElement = desc.getInfoElement("storageEngine");
-    if (storageEngineElement.isABSONObj()) {
-        BSONObj storageEngine = storageEngineElement.Obj();
-        StatusWith<std::string> parseStatus =
-            parseIndexOptions(storageEngine.getObjectField(engineName));
-        if (!parseStatus.isOK()) {
-            return parseStatus;
-        }
-        if (!parseStatus.getValue().empty()) {
-            ss << "," << parseStatus.getValue();
-        }
-    }
-
-    // WARNING: No user-specified config can appear below this line. These options are required
-    // for correct behavior of the server.
-
-    // Indexes need to store the metadata for collation to work as expected.
-    ss << ",key_format=u,value_format=u";
-
-    // Index metadata
-    ss << ",app_metadata=("
-       << "formatVersion=" << kCurrentIndexVersion << ','
-       << "infoObj=" << desc.infoObj().jsonString() << "),";
-
-    LOG(3) << "index create string: " << ss.ss.str();
-    return StatusWith<std::string>(ss);
-}
-
 NarkDbIndex::NarkDbIndex(CompositeTable* table, OperationContext* ctx, const IndexDescriptor* desc)
     : m_table(table)
 	, _ordering(Ordering::make(desc->keyPattern()))
     , _collectionNamespace(desc->parentNS())
     , _indexName(desc->indexName())
 {
+	LOG(2) << "NarkDbIndex::NarkDbIndex(): keyPattern=" << desc->keyPattern().toString();
 	std::string indexColumnNames;
 	BSONForEach(elem, desc->keyPattern()) {
 		indexColumnNames.append(elem.fieldName());
 		indexColumnNames.push_back(',');
 	}
 	indexColumnNames.pop_back();
+	LOG(2) << "NarkDbIndex::NarkDbIndex(): indexColumnNames=" << indexColumnNames;
 	const size_t indexId = table->getIndexId(indexColumnNames);
 	if (indexId == table->getIndexNum()) {
 		// no such index
@@ -220,15 +147,18 @@ NarkDbIndex::NarkDbIndex(CompositeTable* table, OperationContext* ctx, const Ind
 			desc->parentNS().c_str());
 	}
 	m_indexId = indexId;
+	invariant(desc->unique() == getIndexSchema()->m_isUnique);
 }
 
 NarkDbIndex::MyThreadData& NarkDbIndex::getMyThreadData() const {
 	auto tid = std::this_thread::get_id();
 	std::lock_guard<std::mutex> lock(m_threadcacheMutex);
-	size_t i = m_threadcache.insert_i(tid).first;
-	if (m_threadcache.val(i).m_dbCtx == nullptr)
-		m_threadcache.val(i).m_dbCtx = m_table->createDbContext();
-	return m_threadcache.val(i);
+	auto& tdptr = m_threadcache.get_map()[tid];
+	if (tdptr == nullptr) {
+		tdptr = new MyThreadData();
+		tdptr->m_dbCtx = m_table->createDbContext();
+	}
+	return *tdptr;
 }
 
 Status NarkDbIndex::insert(OperationContext* txn,
@@ -238,7 +168,7 @@ Status NarkDbIndex::insert(OperationContext* txn,
 {
 	auto& td = getMyThreadData();
 	auto indexSchema = getIndexSchema();
-	td.m_coder.encode(indexSchema, nullptr, key);
+	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
 	if (m_table->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
 		return Status::OK();
@@ -256,7 +186,7 @@ void NarkDbIndex::unindex(OperationContext* txn,
     dassert(!hasFieldNames(key));
 	auto& td = getMyThreadData();
 	auto indexSchema = getIndexSchema();
-	td.m_coder.encode(indexSchema, nullptr, key);
+	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
 	m_table->indexRemove(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx);
 }
@@ -265,6 +195,7 @@ void NarkDbIndex::fullValidate(OperationContext* txn,
 							   bool full,
 							   long long* numKeysOut,
 							   BSONObjBuilder* output) const {
+	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, Not supported now";
 }
 
 bool NarkDbIndex::appendCustomStats(OperationContext* txn,
@@ -279,8 +210,14 @@ bool NarkDbIndex::appendCustomStats(OperationContext* txn,
 Status NarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, const RecordId& id) {
     invariant(!hasFieldNames(key));
     invariant(unique());
-
-    return Status::OK();
+	auto& td = getMyThreadData();
+	auto indexSchema = getIndexSchema();
+	encodeIndexKey(*indexSchema, key, &td.m_buf);
+	llong recIdx = m_table->indexSearchExact(m_indexId, td.m_buf, &*td.m_dbCtx);
+	if (recIdx < 0 || id.repr() == recIdx) {
+	    return Status::OK();
+	}
+	return Status(ErrorCodes::DuplicateKey, "NarkDbIndex::dupKeyCheck");
 }
 
 bool NarkDbIndex::isEmpty(OperationContext* txn) {
@@ -298,6 +235,13 @@ long long NarkDbIndex::getSpaceUsedBytes(OperationContext* txn) const {
 Status NarkDbIndex::initAsEmpty(OperationContext* txn) {
     // No-op
     return Status::OK();
+}
+
+bool
+NarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id,
+							MyThreadData* td) {
+	encodeIndexKey(*getIndexSchema(), newKey, &td->m_buf);
+	return m_table->indexInsert(m_indexId, td->m_buf, id.repr()-1, &*td->m_dbCtx);
 }
 
 namespace {
@@ -338,7 +282,7 @@ public:
             _endPositionKey.erase_all();
         }
 		else {
-			m_coder.encode(_idx.getIndexSchema(), nullptr, key, &_endPositionKey);
+			encodeIndexKey(*_idx.getIndexSchema(), key, &_endPositionKey);
 			_endPositionInclude = inclusive;
 		}
     }
@@ -457,7 +401,7 @@ protected:
     // Seeks to query. Returns true on exact match.
     bool seekWTCursor(const BSONObj& bsonKey) {
 		auto indexSchema = _idx.getIndexSchema();
-		m_coder.encode(indexSchema, nullptr, bsonKey, &m_qryKey);
+		encodeIndexKey(*indexSchema, bsonKey, &m_qryKey);
 		return seekWTCursor();
 	}
     bool seekWTCursor() {
@@ -536,10 +480,9 @@ class NarkDbIndex::BulkBuilder : public SortedDataBuilderInterface {
 public:
     BulkBuilder(NarkDbIndex* idx, OperationContext* txn, bool dupsAllowed)
         : _idx(idx), _txn(txn)
-		, _ctx(idx->m_table->createDbContext())
 		, _dupsAllowed(dupsAllowed)
 	{
-	//	_ctx->syncIndex = false;
+		m_td.m_dbCtx = idx->m_table->createDbContext();
 	}
 
     Status addKey(const BSONObj& newKey, const RecordId& id) override {
@@ -548,7 +491,7 @@ public:
             if (!s.isOK())
                 return s;
         }
-		if (_idx->insertIndexKey(newKey, id, &*_ctx)) {
+		if (_idx->insertIndexKey(newKey, id, &m_td)) {
 	        return Status::OK();
 		} else {
 			return Status(ErrorCodes::DuplicateKey,
@@ -566,7 +509,7 @@ public:
 private:
     NarkDbIndex*      const _idx;
     OperationContext* const _txn;
-	const nark::db::DbContextPtr _ctx;
+	MyThreadData  m_td;
     const bool _dupsAllowed;
 };
 
@@ -586,6 +529,10 @@ NarkDbIndexUnique::getBulkBuilder(OperationContext* txn, bool dupsAllowed) {
     return new BulkBuilder(this, txn, dupsAllowed);
 }
 
+bool NarkDbIndexUnique::unique() const {
+	return true;
+}
+
 // ------------------------------
 
 NarkDbIndexStandard::NarkDbIndexStandard(CompositeTable* tab,
@@ -603,6 +550,10 @@ NarkDbIndexStandard::getBulkBuilder(OperationContext* txn, bool dupsAllowed) {
     // We aren't unique so dups better be allowed.
     invariant(dupsAllowed);
     return new BulkBuilder(this, txn, dupsAllowed);
+}
+
+bool NarkDbIndexStandard::unique() const {
+	return false;
 }
 
 } } // namespace mongo::narkdb

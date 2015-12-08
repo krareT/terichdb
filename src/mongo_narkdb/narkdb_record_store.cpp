@@ -273,9 +273,12 @@ StatusWith<std::string> NarkDbRecordStore::generateCreateString(
 
 NarkDbRecordStore::NarkDbRecordStore(OperationContext* ctx,
 									 StringData ns,
-									 StringData uri,
+									 StringData ident,
+									 CompositeTable* tab,
 									 NarkDbSizeStorer* sizeStorer)
 		: RecordStore(ns),
+		  m_table(tab),
+		  _ident(ident.toString()),
 		  _shuttingDown(false)
 {
 /*    Status versionStatus = NarkDbUtil::checkApplicationMetadataFormatVersion(
@@ -320,24 +323,18 @@ int64_t NarkDbRecordStore::storageSize(OperationContext* txn,
 NarkDbRecordStore::MyThreadData& NarkDbRecordStore::getMyThreadData() const {
 //	nark::db::MyRwLock lock(m_threadcacheMutex, false);
 	std::lock_guard<std::mutex> lock(m_threadcacheMutex);
-	MyThreadData& td = m_threadcache[std::this_thread::get_id()];
-	if (!td.m_dbCtx) {
-		td.m_dbCtx = m_table->createDbContext();
-		td.m_dbCtx->syncIndex = false;
+	MyThreadData*& td = m_threadcache.get_map()[std::this_thread::get_id()];
+	if (td == nullptr) {
+		td = new MyThreadData();
+		td->m_dbCtx = m_table->createDbContext();
+		td->m_dbCtx->syncIndex = false;
 	}
-	return td;
+	return *td;
 }
 
-RecordData NarkDbRecordStore::dataFor(OperationContext* txn, const RecordId& id) const {
-    llong recIdx = id.repr() - 1;
-    auto& td = getMyThreadData();
-    m_table->getValue(recIdx, &td.m_recData, &*td.m_dbCtx);
-    SharedBuffer buf = td.m_coder.decode(&*m_table->m_rowSchema,
-    		(char*)td.m_recData.data(), td.m_recData.size());
-
-//  size_t bufsize = sizeof(SharedBuffer::Holder) + bson.objsize();
-	int bufsize = ConstDataView(buf.get()).read<LittleEndian<int>>();
-    return RecordData(buf, bufsize);
+RecordData
+NarkDbRecordStore::dataFor(OperationContext* txn, const RecordId& id) const {
+	return RecordStore::dataFor(txn, id);
 }
 
 bool NarkDbRecordStore::findRecord(OperationContext* txn,
@@ -368,8 +365,7 @@ Status NarkDbRecordStore::insertRecords(OperationContext* txn,
     auto& td = getMyThreadData();
     for (Record& rec : *records) {
     	BSONObj bson(rec.data.data());
-    	td.m_coder.encode(&*m_table->m_rowSchema, nullptr, bson,
-    			(nark::valvec<char>*)&td.m_recData);
+    	td.m_coder.encode(&*m_table->m_rowSchema, nullptr, bson, &td.m_recData);
     	rec.id = RecordId(1 + m_table->insertRow(td.m_recData, &*td.m_dbCtx));
     }
     return Status::OK();
@@ -379,13 +375,12 @@ StatusWith<RecordId> NarkDbRecordStore::insertRecord(OperationContext* txn,
 													 const char* data,
 													 int len,
 													 bool enforceQuota) {
-    std::vector<Record> records;
-    Record record = {RecordId(), RecordData(data, len)};
-    records.push_back(record);
-    Status status = insertRecords(txn, &records, enforceQuota);
-    if (!status.isOK())
-        return StatusWith<RecordId>(status);
-    return StatusWith<RecordId>(records[0].id);
+    auto& td = getMyThreadData();
+    BSONObj bson(data);
+	invariant(bson.objsize() == len);
+    td.m_coder.encode(&*m_table->m_rowSchema, nullptr, bson, &td.m_recData);
+    llong recIdx = m_table->insertRow(td.m_recData, &*td.m_dbCtx);
+	return {RecordId(recIdx + 1)};
 }
 
 StatusWith<RecordId> NarkDbRecordStore::insertRecord(OperationContext* txn,
@@ -399,18 +394,19 @@ StatusWith<RecordId> NarkDbRecordStore::insertRecord(OperationContext* txn,
     return insertRecord(txn, buf.get(), len, enforceQuota);
 }
 
-StatusWith<RecordId> NarkDbRecordStore::updateRecord(OperationContext* txn,
-													 const RecordId& id,
-													 const char* data,
-													 int len,
-													 bool enforceQuota,
-													 UpdateNotifier* notifier) {
+StatusWith<RecordId>
+NarkDbRecordStore::updateRecord(OperationContext* txn,
+								const RecordId& id,
+								const char* data,
+								int len,
+								bool enforceQuota,
+								UpdateNotifier* notifier) {
     auto& td = getMyThreadData();
     BSONObj bson(data);
     td.m_coder.encode(&*m_table->m_rowSchema, nullptr, bson,
     		(nark::valvec<char>*)&td.m_recData);
-	llong newId = m_table->replaceRow(id.repr()-1, td.m_recData, &*td.m_dbCtx);
-	return StatusWith<RecordId>(RecordId(newId + 1));
+	llong newIdx = m_table->replaceRow(id.repr()-1, td.m_recData, &*td.m_dbCtx);
+	return StatusWith<RecordId>(RecordId(newIdx + 1));
 }
 
 bool NarkDbRecordStore::updateWithDamagesSupported() const {
@@ -436,8 +432,8 @@ std::unique_ptr<RecordCursor> NarkDbRecordStore::getRandomCursor(OperationContex
     return nullptr;
 }
 
-std::vector<std::unique_ptr<RecordCursor>> NarkDbRecordStore::getManyCursors(
-    OperationContext* txn) const {
+std::vector<std::unique_ptr<RecordCursor>>
+NarkDbRecordStore::getManyCursors(OperationContext* txn) const {
     std::vector<std::unique_ptr<RecordCursor>> cursors(1);
     cursors[0] = stdx::make_unique<Cursor>(txn, *this, /*forward=*/true);
     return cursors;
@@ -457,11 +453,11 @@ Status NarkDbRecordStore::compact(OperationContext* txn,
 }
 
 Status NarkDbRecordStore::validate(OperationContext* txn,
-                                       bool full,
-                                       bool scanData,
-                                       ValidateAdaptor* adaptor,
-                                       ValidateResults* results,
-                                       BSONObjBuilder* output) {
+                                   bool full,
+                                   bool scanData,
+                                   ValidateAdaptor* adaptor,
+                                   ValidateResults* results,
+                                   BSONObjBuilder* output) {
     output->appendNumber("nrecords", m_table->numDataRows());
     return Status::OK();
 }
@@ -483,11 +479,13 @@ Status NarkDbRecordStore::touch(OperationContext* txn, BSONObjBuilder* output) c
 void NarkDbRecordStore::updateStatsAfterRepair(OperationContext* txn,
 											   long long numRecords,
 											   long long dataSize) {
+	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, not implemented now";
 }
 
 void NarkDbRecordStore::temp_cappedTruncateAfter(OperationContext* txn,
 												 RecordId end,
 												 bool inclusive) {
+	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, not implemented now";
 }
 
 } } // namespace mongo::narkdb
