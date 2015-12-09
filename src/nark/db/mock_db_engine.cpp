@@ -709,14 +709,14 @@ bool MockWritableIndex<Key>::insert(fstring key, llong id, DbContext*) {
 	Key k = makeKey<Key>(key);
 	if (this->m_isUnique) {
 		auto iter = m_kv.lower_bound(std::make_pair(k, 0));
-		if (m_kv.end() != iter && iter->first == k)
+		if (m_kv.end() != iter && iter->first == k && id != iter->second)
 			return false;
 	}
 	auto ib = m_kv.insert(std::make_pair(k, id));
 	if (ib.second) {
 		m_keysLen += keyHeapLen(ib.first->first);
 	}
-	return ib.second;
+	return true;
 }
 
 template<class Key>
@@ -743,7 +743,7 @@ template<class Key>
 bool MockWritableIndex<Key>::remove(fstring key, llong id, DbContext*) {
 	auto iter = m_kv.find(std::make_pair(makeKey<Key>(key), id));
 	if (m_kv.end() != iter) {
-		m_keysLen = keyHeapLen(iter->first);
+		m_keysLen -= keyHeapLen(iter->first);
 		m_kv.erase(iter);
 		return 1;
 	}

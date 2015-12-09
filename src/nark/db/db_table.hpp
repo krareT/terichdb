@@ -19,6 +19,7 @@ class NARK_DB_DLL CompositeTable : public ReadableStore, public SegmentSchema {
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 public:
 	CompositeTable();
+	~CompositeTable();
 
 	void setMaxWritableSegSize(llong size) { m_maxWrSegSize = size; }
 	void setReadonlySegBufSize(llong size) { m_readonlyDataMemSize = size; }
@@ -58,6 +59,8 @@ public:
 	bool compact();
 	void clear();
 	void flush();
+
+	void dropTable();
 
 	std::string toJsonStr(fstring row) const;
 
@@ -103,6 +106,7 @@ protected:
 	llong m_maxWrSegSize;
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
+	bool m_tobeDrop;
 	friend class TableIndexIterUnOrdered;
 	friend class TableIndexIter;
 	friend class TableIndexIterBackward;

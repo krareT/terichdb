@@ -35,6 +35,14 @@ CompositeTable::CompositeTable() {
 	m_segments.reserve(DEFAULT_maxSegNum);
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
 	m_rowNumVec.push_back(0);
+	m_tobeDrop = false;
+}
+
+CompositeTable::~CompositeTable() {
+	if (m_tobeDrop) {
+		// should delete m_dir?
+		fs::remove_all(m_dir);
+	}
 }
 
 void
@@ -1441,6 +1449,15 @@ void CompositeTable::flush() {
 			wSeg->flushSegment();
 		}
 	}
+}
+
+void CompositeTable::dropTable() {
+	assert(!m_dir.empty());
+	for (auto& seg : m_segments) {
+		seg->deleteSegment();
+	}
+	m_segments.erase_all();
+	m_tobeDrop = true;
 }
 
 std::string CompositeTable::toJsonStr(fstring row) const {
