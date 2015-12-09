@@ -214,7 +214,7 @@ Status NarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, const
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = m_table->indexSearchExact(m_indexId, td.m_buf, &*td.m_dbCtx);
-	if (recIdx < 0 || id.repr() == recIdx) {
+	if (recIdx < 0 || id.repr() == recIdx+1) {
 	    return Status::OK();
 	}
 	return Status(ErrorCodes::DuplicateKey, "NarkDbIndex::dupKeyCheck");
@@ -290,7 +290,7 @@ public:
     boost::optional<IndexKeyEntry> seek(const BSONObj& key,
                                         bool inclusive,
                                         RequestedInfo parts) override {
-        const BSONObj finalKey = stripFieldNames(key);
+//        const BSONObj finalKey = stripFieldNames(key);
 //        const auto discriminator =
 //           _forward == inclusive ? KeyString::kExclusiveBefore : KeyString::kExclusiveAfter;
 

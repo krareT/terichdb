@@ -111,15 +111,13 @@ public:
                 _eof = true;
                 return {};
             }
-        	m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema,
-        			(char*)m_recBuf.data(), m_recBuf.size());
         }
+        m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
         _lastReturnedId = id;
 		BSONObj bson(m_bson.get());
-        return {{id, {static_cast<const char*>(bson.objdata()),
-        			  static_cast<int>(bson.objsize())}}};
+        return {{id, {m_bson, bson.objsize()}}};
     }
 
     boost::optional<Record> seekExact(const RecordId& id) final {
@@ -129,13 +127,11 @@ public:
             _eof = true;
             return {};
         }
-    	m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema,
-    			(char*)m_recBuf.data(), m_recBuf.size());
+    	m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
         _lastReturnedId = id;
         _eof = false;
 		BSONObj bson(m_bson.get());
-        return {{id, {static_cast<const char*>(bson.objdata()),
-        			  static_cast<int>(bson.objsize())}}};
+        return {{id, {m_bson,bson.objsize()}}};
     }
 
     void save() final {
@@ -149,10 +145,10 @@ public:
 
     void saveUnpositioned() final {
         save();
-        _lastReturnedId = RecordId();
+        _eof = true;
     }
 
-    bool restore() final {
+    bool restore() override final {
         _skipNextAdvance = false;
 
         // If we've hit EOF, then this iterator is done and need not be restored.
@@ -168,8 +164,7 @@ public:
             return false;
         }
 
-    	m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema,
-    			(char*)m_recBuf.data(), m_recBuf.size());
+    	m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
     	_skipNextAdvance = true;
 
         return true;  // Landed right where we left off.
@@ -345,8 +340,7 @@ bool NarkDbRecordStore::findRecord(OperationContext* txn,
     llong recIdx = id.repr() - 1;
     auto& td = getMyThreadData();
     m_table->getValue(recIdx, &td.m_recData, &*td.m_dbCtx);
-    SharedBuffer bson = td.m_coder.decode(&*m_table->m_rowSchema,
-    		(char*)td.m_recData.data(), td.m_recData.size());
+    SharedBuffer bson = td.m_coder.decode(&*m_table->m_rowSchema, td.m_recData);
 
 //  size_t bufsize = sizeof(SharedBuffer::Holder) + bson.objsize();
     int bufsize = ConstDataView(bson.get()).read<LittleEndian<int>>();
@@ -403,8 +397,7 @@ NarkDbRecordStore::updateRecord(OperationContext* txn,
 								UpdateNotifier* notifier) {
     auto& td = getMyThreadData();
     BSONObj bson(data);
-    td.m_coder.encode(&*m_table->m_rowSchema, nullptr, bson,
-    		(nark::valvec<char>*)&td.m_recData);
+    td.m_coder.encode(&*m_table->m_rowSchema, nullptr, bson, &td.m_recData);
 	llong newIdx = m_table->replaceRow(id.repr()-1, td.m_recData, &*td.m_dbCtx);
 	return StatusWith<RecordId>(RecordId(newIdx + 1));
 }
@@ -469,11 +462,14 @@ void NarkDbRecordStore::appendCustomStats(OperationContext* txn,
 }
 
 Status NarkDbRecordStore::touch(OperationContext* txn, BSONObjBuilder* output) const {
+    return Status::OK();
+#if 0
     if (true/*_isEphemeral*/) {
         // Everything is already in memory.
         return Status::OK();
     }
     return Status(ErrorCodes::CommandNotSupported, "this storage engine does not support touch");
+#endif
 }
 
 void NarkDbRecordStore::updateStatsAfterRepair(OperationContext* txn,
