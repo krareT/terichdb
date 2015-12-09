@@ -291,8 +291,8 @@ public:
                                         bool inclusive,
                                         RequestedInfo parts) override {
         const BSONObj finalKey = stripFieldNames(key);
-        const auto discriminator =
-            _forward == inclusive ? KeyString::kExclusiveBefore : KeyString::kExclusiveAfter;
+//        const auto discriminator =
+//           _forward == inclusive ? KeyString::kExclusiveBefore : KeyString::kExclusiveAfter;
 
         // By using a discriminator other than kInclusive, there is no need to distinguish
         // unique vs non-unique key formats since both start with the key.
@@ -440,8 +440,8 @@ protected:
 		}
     }
 
-    const NarkDbIndex& _idx;  // not owned
     OperationContext*  _txn;
+    const NarkDbIndex& _idx;  // not owned
     nark::db::IndexIteratorPtr  _cursor;
 	nark::valvec<unsigned char> m_curKey;
 	nark::valvec<         char> m_qryKey;

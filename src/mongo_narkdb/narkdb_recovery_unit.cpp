@@ -29,6 +29,11 @@
  */
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+#ifdef _MSC_VER
+#pragma warning(disable: 4800) // bool conversion
+#pragma warning(disable: 4244) // 'return': conversion from '__int64' to 'double', possible loss of data
+#pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
+#endif
 
 #include "mongo/base/checked_cast.h"
 #include "mongo/base/init.h"

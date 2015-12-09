@@ -66,6 +66,7 @@ public:
     // un-used API
     virtual void* writingPtr(void* data, size_t len) {
         invariant(!"don't call writingPtr");
+		return nullptr; // remove compiler warning
     }
 
     virtual void setRollbackWritesDisabled() {}

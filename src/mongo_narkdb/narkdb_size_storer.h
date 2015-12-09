@@ -68,7 +68,7 @@ public:
     void syncCache(bool syncToDisk);
 
     struct Entry {
-        Entry() : numRecords(0), dataSize(0), dirty(false), rs(NULL) {}
+        Entry() : numRecords(0), dataSize(0), rs(NULL), dirty(false) {}
         llong numRecords;
         llong dataSize;
         RecordStore* rs;  // not owned

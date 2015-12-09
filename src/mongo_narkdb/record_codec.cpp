@@ -173,7 +173,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		invariant(j < m_fields.end_i());
 		BSONElement elem(m_fields.key(j).data() - 1, colname.size()+1,
 						 BSONElement::FieldNameSizeTag());
-		assert(elem.type() == schema->m_columnsMeta.val(i).uType);
+		assert((unsigned char)elem.type() == schema->m_columnsMeta.val(i).uType);
 		const char* value = elem.value();
 		switch (elem.type()) {
 		case EOO:
@@ -490,7 +490,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		const auto& colmeta = schema->m_columnsMeta.val(i);
 		bb.writeByte(colmeta.uType);
 		bb.ensureWrite(colname.data(), colname.size()+1); // include '\0'
-		switch (colmeta.uType) {
+		switch ((signed char)colmeta.uType) {
 		case EOO:
 			invariant(!"narkDecodeBsonElemVal: encountered EOO");
 			break;
@@ -756,7 +756,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
 		bb.writeByte(colmeta.uType);
 		bb.ensureWrite(colname.data(), colname.size()+1); // include '\0'
-		switch (colmeta.uType) {
+		switch ((signed char)colmeta.uType) {
 		case EOO:
 			invariant(!"narkDecodeBsonElemVal: encountered EOO");
 			break;

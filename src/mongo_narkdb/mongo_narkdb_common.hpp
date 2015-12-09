@@ -22,6 +22,7 @@
 #include <boost/filesystem.hpp>
 
 #include "record_codec.h"
+#include <thread>
 
 namespace nark { namespace db {
 

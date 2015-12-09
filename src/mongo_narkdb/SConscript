@@ -1,139 +1,49 @@
 Import("env")
 
-env.Library(
-    target='storage_narkdb_customization_hooks',
-    source= ['narkdb_customization_hooks.cpp'],
-    LIBDEPS= ['$BUILD_DIR/mongo/base',
-              '$BUILD_DIR/mongo/db/service_context'],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod',
-        '$BUILD_DIR/mongo/mongos',
-    ],
-    )
+nkEnv = env.Clone()
+nkEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+nkEnv.InjectThirdPartyIncludePaths(libraries=['zlib'])
+nkEnv.InjectThirdPartyIncludePaths(libraries=['valgrind'])
 
-if 1:
-    nkEnv = env.Clone()
-    #nkEnv.InjectThirdPartyIncludePaths(libraries=['narkdb'])
-    nkEnv.InjectThirdPartyIncludePaths(libraries=['zlib'])
-    nkEnv.InjectThirdPartyIncludePaths(libraries=['valgrind'])
+nkEnv.Library(
+	target='storage_narkdb',
+	source= [
+        'narkdb_customization_hooks.cpp',
+		'narkdb_global_options.cpp',
+		'narkdb_init.cpp',
+		'narkdb_index.cpp',
+		'narkdb_kv_engine.cpp',
+		'narkdb_record_store.cpp',
+		'narkdb_recovery_unit.cpp',
+		'narkdb_size_storer.cpp',
+		'narkdb_server_status.cpp',
+		'narkdb_recovery_unit.cpp',
+		'narkdb_parameters.cpp',
+		'record_codec.cpp',
+		],
+	LIBDEPS= [
+		'$BUILD_DIR/mongo/base',
+		'$BUILD_DIR/mongo/db/namespace_string',
+		'$BUILD_DIR/mongo/db/catalog/collection_options',
+		'$BUILD_DIR/mongo/db/concurrency/write_conflict_exception',
+		'$BUILD_DIR/mongo/db/index/index_descriptor',
+		'$BUILD_DIR/mongo/db/service_context',
+		'$BUILD_DIR/mongo/db/storage/index_entry_comparison',
+		'$BUILD_DIR/mongo/db/storage/key_string',
+		'$BUILD_DIR/mongo/db/storage/oplog_hack',
+		'$BUILD_DIR/mongo/db/storage/storage_options',
+        '$BUILD_DIR/mongo/db/storage/kv/kv_engine',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
+		'$BUILD_DIR/mongo/util/elapsed_tracker',
+		'$BUILD_DIR/mongo/util/foundation',
+		'$BUILD_DIR/mongo/util/processinfo',
+		'$BUILD_DIR/mongo/util/concurrency/ticketholder',
+		'$BUILD_DIR/third_party/shim_wiredtiger',
+		'$BUILD_DIR/third_party/shim_snappy',
+		'$BUILD_DIR/third_party/shim_zlib',
+		],
+    LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/serveronly'],
+	SYSLIBDEPS= ['nark-r', 'nark-NarkDB-r']
+	)
 
-    # This is the smallest possible set of files that wraps WT
-    nkEnv.Library(
-        target='storage_narkdb_core',
-        source= [
-            'narkdb_global_options.cpp',
-            'narkdb_index.cpp',
-            'narkdb_kv_engine.cpp',
-            'narkdb_record_store.cpp',
-            'narkdb_recovery_unit.cpp',
-            'narkdb_size_storer.cpp',
-            ],
-        LIBDEPS= [
-            'storage_narkdb_customization_hooks',
-            '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/db/namespace_string',
-            '$BUILD_DIR/mongo/db/catalog/collection_options',
-            '$BUILD_DIR/mongo/db/concurrency/write_conflict_exception',
-            '$BUILD_DIR/mongo/db/index/index_descriptor',
-            '$BUILD_DIR/mongo/db/service_context',
-            '$BUILD_DIR/mongo/db/storage/index_entry_comparison',
-            '$BUILD_DIR/mongo/db/storage/key_string',
-            '$BUILD_DIR/mongo/db/storage/oplog_hack',
-            '$BUILD_DIR/mongo/db/storage/storage_options',
-            '$BUILD_DIR/mongo/util/elapsed_tracker',
-            '$BUILD_DIR/mongo/util/foundation',
-            '$BUILD_DIR/mongo/util/processinfo',
-            '$BUILD_DIR/mongo/util/concurrency/ticketholder',
-            '$BUILD_DIR/third_party/shim_wiredtiger',
-            '$BUILD_DIR/third_party/shim_snappy',
-            '$BUILD_DIR/third_party/shim_zlib',
-            ],
-        LIBDEPS_TAGS=[
-            # References WiredTigerKVEngine::initRsOplogBackgroundThread which does not have
-            # a unique definition.
-            'incomplete',
-        ],
-		SYSLIBDEPS= ['nark-r', 'nark-db-r']
-        )
-
-    nkEnv.Library(
-        target='storage_narkdb',
-        source=[
-            'narkdb_init.cpp',
-            'narkdb_options_init.cpp',
-            'narkdb_parameters.cpp',
-            'narkdb_record_store_mongod.cpp',
-            'narkdb_server_status.cpp',
-            ],
-        LIBDEPS=['storage_narkdb_core',
-                 'storage_narkdb_customization_hooks',
-                 '$BUILD_DIR/mongo/db/storage/kv/kv_engine',
-                 '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
-                 '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
-                 ],
-        LIBDEPS_TAGS=[
-            # Depends on symbols defined in serverOnlyfiles
-            'incomplete',
-        ],
-        )
-
-    nkEnv.Library(
-        target='storage_narkdb_mock',
-        source=[
-            'narkdb_record_store_mock.cpp',
-            ],
-        LIBDEPS=['storage_narkdb_core',
-             ]
-        )
-
-if 0:
-    nkEnv.CppUnitTest(
-        target='storage_narkdb_record_store_test',
-        source=['narkdb_record_store_test.cpp',
-                ],
-        LIBDEPS=[
-            'storage_narkdb_mock',
-            '$BUILD_DIR/mongo/db/storage/record_store_test_harness',
-            ],
-        )
-
-    nkEnv.CppUnitTest(
-        target='storage_narkdb_index_test',
-        source=['narkdb_index_test.cpp',
-                ],
-        LIBDEPS=[
-            'storage_narkdb_mock',
-            '$BUILD_DIR/mongo/db/storage/sorted_data_interface_test_harness',
-            ],
-        )
-
-    nkEnv.CppUnitTest(
-        target='storage_narkdb_init_test',
-        source=['narkdb_init_test.cpp',
-                ],
-        LIBDEPS=[
-            '$BUILD_DIR/mongo/db/serveronly',
-            '$BUILD_DIR/mongo/util/ntservice_mock',
-            ],
-        NO_CRUTCH=True,
-        )
-
-    nkEnv.CppUnitTest(
-        target='storage_narkdb_kv_engine_test',
-        source=['narkdb_kv_engine_test.cpp',
-                ],
-        LIBDEPS=[
-            'storage_narkdb_mock',
-            '$BUILD_DIR/mongo/db/storage/kv/kv_engine_test_harness',
-            ],
-        )
-
-    nkEnv.CppUnitTest(
-        target='storage_narkdb_util_test',
-        source=['narkdb_util_test.cpp',
-                ],
-        LIBDEPS=[
-            '$BUILD_DIR/mongo/db/service_context',
-            'storage_narkdb_mock',
-            ],
-        )

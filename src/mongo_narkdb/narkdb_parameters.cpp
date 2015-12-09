@@ -26,6 +26,11 @@
 *    it in the license file.
 */
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+#ifdef _MSC_VER
+#pragma warning(disable: 4800) // bool conversion
+#pragma warning(disable: 4244) // 'return': conversion from '__int64' to 'double', possible loss of data
+#pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
+#endif
 
 #include "mongo/platform/basic.h"
 
@@ -79,7 +84,7 @@ Status NarkDbEngineRuntimeConfigParameter::setFromString(const std::string& str)
     if (ret != 0) {
         string result =
             (mongoutils::str::stream() << "NarkDb reconfiguration failed with error code ("
-                                       << ret << "): " << narkdb_strerror(ret));
+                                       << ret << ")");
         error() << result;
 
         return Status(ErrorCodes::BadValue, result);
