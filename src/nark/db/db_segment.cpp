@@ -46,12 +46,16 @@ void SegmentSchema::compileSchema() {
 ReadableSegment::ReadableSegment() {
 	m_delcnt = 0;
 	m_tobeDel = false;
+	m_isDirty = false;
 }
 ReadableSegment::~ReadableSegment() {
 	if (m_isDelMmap) {
 		size_t bitBytes = m_isDel.capacity()/8;
 		mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);
 		m_isDel.risk_release_ownership();
+	}
+	else if (m_isDirty && !m_tobeDel && !m_segDir.empty()) {
+		saveIsDel(m_segDir);
 	}
 	assert(!m_segDir.empty());
 	if (m_tobeDel && !m_segDir.empty()) {
@@ -82,6 +86,14 @@ void ReadableSegment::saveIsDel(fstring dir) const {
 }
 
 void ReadableSegment::loadIsDel(fstring dir) {
+	if (m_isDelMmap) {
+		m_isDel.risk_release_ownership();
+		m_isDelMmap = nullptr;
+	}
+	else {
+		m_isDel.clear(); // free memory
+	}
+	m_delcnt = 0;
 	fs::path isDelFpath = fs::path(dir.str()) / "isDel";
 	size_t bytes = 0;
 	bool writable = true;
@@ -620,6 +632,7 @@ void WritableSegment::flushSegment() {
 	if (!m_isDelMmap) {
 		saveIsDel(m_segDir);
 	}
+	m_isDirty = false;
 }
 
 void WritableSegment::openIndices(fstring dir) {

@@ -60,6 +60,7 @@ public:
 	byte*       m_isDelMmap = nullptr;
 	std::string m_segDir;
 	bool        m_tobeDel;
+	bool        m_isDirty;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 

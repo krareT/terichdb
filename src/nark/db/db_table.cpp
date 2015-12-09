@@ -14,6 +14,8 @@
 #include <nark/util/fstrvec.hpp>
 #include <nark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/scope_exit.hpp>
+#include <thread>
 
 #include "json.hpp"
 
@@ -691,6 +693,10 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 			m_segments.push_back(m_wrSeg);
 			llong newMaxRowNum = m_rowNumVec.back();
 			m_rowNumVec.push_back(newMaxRowNum);
+			// freeze oldwrseg, this may be too slow
+			// auto& oldwrseg = m_segments.ende(2);
+			// oldwrseg->saveIsDel(oldwrseg->m_segDir);
+			// oldwrseg->loadIsDel(oldwrseg->m_segDir); // mmap
 		}
 		lock.downgrade_to_reader();
 	}
@@ -1030,14 +1036,18 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 				wrIndex->remove(key, subId, txn);
 			}
 		}
+		// TODO: if remove fail, set m_isDel[subId] = 1 ??
 		m_wrSeg->remove(subId, txn);
-		if (m_wrSeg->m_isDel.size()-1 == subId) {
+		if (m_wrSeg->m_isDel.size()-1 == size_t(subId)) {
 			m_wrSeg->m_isDel.resize(m_wrSeg->m_isDel.size()-1);
 		}
+		m_wrSeg->m_isDirty = true;
 	}
-	else {
-		m_wrSeg->m_isDel.set1(subId);
-		m_wrSeg->m_delcnt++;
+	else { // freezed segment, just set del mark
+		auto seg = m_segments[j-1].get();
+		seg->m_isDel.set1(subId);
+		seg->m_delcnt++;
+		seg->m_isDirty = true;
 	}
 	return true;
 }
@@ -1085,6 +1095,7 @@ CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 			"Invalid rowId=%lld, minWrRowNum=%lld", id, minWrRowNum);
 	}
 	llong subId = id - minWrRowNum;
+	m_wrSeg->m_isDirty = true;
 	return m_wrSeg->m_indices[indexId]->insert(indexKey, subId, txn);
 }
 
@@ -1105,6 +1116,7 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 			"Invalid rowId=%lld, minWrRowNum=%lld", id, minWrRowNum);
 	}
 	llong subId = id - minWrRowNum;
+	m_wrSeg->m_isDirty = true;
 	return m_wrSeg->m_indices[indexId]->remove(indexKey, subId, txn);
 }
 
@@ -1135,6 +1147,7 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 	}
 	llong oldSubId = oldId - minWrRowNum;
 	llong newSubId = newId - minWrRowNum;
+	m_wrSeg->m_isDirty = true;
 	return m_wrSeg->m_indices[indexId]->replace(indexKey, oldSubId, newSubId, txn);
 }
 
@@ -1405,6 +1418,7 @@ bool CompositeTable::compact() {
 				break;
 		}
 		if (firstWrSegIdx == lastWrSegIdx) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 			goto MergeReadonlySeg;
 		}
 	}
@@ -1485,39 +1499,36 @@ void CompositeTable::save(fstring dir) const {
 		fprintf(stderr, "WARN: save self(%s), skipped\n", dir.c_str());
 		return;
 	}
-	try {
-		MyRwLock lock(m_rwMutex, true);
-		m_tableScanningRefCount++;
-		size_t segNum = m_segments.size();
+	MyRwLock lock(m_rwMutex, true);
 
-		// save segments except m_wrSeg
-		lock.release(); // doesn't need any lock
-		AutoGrownMemIO buf(1024);
-		for (size_t segIdx = 0; segIdx < segNum-1; ++segIdx) {
-			auto seg = m_segments[segIdx];
-			if (seg->getWritableStore())
-				seg->save(getSegPath2(dir, "wr", segIdx, buf));
-			else
-				seg->save(getSegPath2(dir, "rd", segIdx, buf));
-		}
+	m_tableScanningRefCount++;
+	BOOST_SCOPE_EXIT(&m_tableScanningRefCount){
+		m_tableScanningRefCount--;
+	}BOOST_SCOPE_EXIT_END;
 
-		// save the remained segments, new segment may created during
-		// time pieriod of saving previous segments
-		lock.acquire(m_rwMutex, false); // need read lock
-		size_t segNum2 = m_segments.size();
-		for (size_t segIdx = segNum-1; segIdx < segNum2; ++segIdx) {
-			auto seg = m_segments[segIdx];
-			assert(seg->getWritableStore());
+	size_t segNum = m_segments.size();
+
+	// save segments except m_wrSeg
+	lock.release(); // doesn't need any lock
+	AutoGrownMemIO buf(1024);
+	for (size_t segIdx = 0; segIdx < segNum-1; ++segIdx) {
+		auto seg = m_segments[segIdx];
+		if (seg->getWritableStore())
 			seg->save(getSegPath2(dir, "wr", segIdx, buf));
-		}
-		lock.upgrade_to_writer();
-		m_tableScanningRefCount--;
+		else
+			seg->save(getSegPath2(dir, "rd", segIdx, buf));
 	}
-	catch (...) {
-		MyRwLock lock(m_rwMutex, true);
-		m_tableScanningRefCount--;
-		throw;
+
+	// save the remained segments, new segment may created during
+	// time pieriod of saving previous segments
+	lock.acquire(m_rwMutex, false); // need read lock
+	size_t segNum2 = m_segments.size();
+	for (size_t segIdx = segNum-1; segIdx < segNum2; ++segIdx) {
+		auto seg = m_segments[segIdx];
+		assert(seg->getWritableStore());
+		seg->save(getSegPath2(dir, "wr", segIdx, buf));
 	}
+	lock.upgrade_to_writer();
 	saveMetaJson(dir);
 }
 
