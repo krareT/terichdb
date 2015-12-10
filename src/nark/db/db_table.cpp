@@ -79,7 +79,10 @@ void CompositeTable::load(fstring dir) {
 			long(m_rowSchema->columnNum()));
 	}
 	m_dir = dir.str();
-	loadMetaJson(dir);
+	{
+		fs::path jsonFile = fs::path(m_dir) / "dbmeta.json";
+		loadMetaJson(jsonFile.string());
+	}
 	for (auto& x : fs::directory_iterator(fs::path(m_dir))) {
 		std::string fname = x.path().filename().string();
 		long segIdx = -1;
@@ -255,13 +258,14 @@ void CompositeTable::saveMetaDFA(fstring dir) const {
 }
 #endif
 
-void CompositeTable::loadMetaJson(fstring dir) {
-	std::string jsonFile = dir + "/dbmeta.json";
+void CompositeTable::loadMetaJson(fstring jsonFile) {
 	LineBuf alljson;
 	alljson.read_all(jsonFile.c_str());
 	using nark::json;
-	const json meta = json::parse(alljson.p + // UTF8 BOM Check
-						(fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0));
+	const json meta = json::parse(alljson.p
+					// UTF8 BOM Check, fixed in nlohmann::json
+					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
+					);
 	const json& rowSchema = meta["RowSchema"];
 	const json& cols = rowSchema["columns"];
 	m_rowSchema.reset(new Schema());
@@ -346,7 +350,7 @@ void CompositeTable::loadMetaJson(fstring dir) {
 	compileSchema();
 }
 
-void CompositeTable::saveMetaJson(fstring dir) const {
+void CompositeTable::saveMetaJson(fstring jsonFile) const {
 	using nark::json;
 	json meta;
 	json& rowSchema = meta["RowSchema"];
@@ -373,7 +377,6 @@ void CompositeTable::saveMetaJson(fstring dir) const {
 		}
 		indexSet.push_back(indexCols);
 	}
-	std::string jsonFile = dir + "/dbmeta.json";
 	std::string jsonStr = meta.dump(2);
 	FileStream fp(jsonFile.c_str(), "w");
 	fp.ensureWrite(jsonStr.data(), jsonStr.size());
@@ -788,7 +791,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		m_wrSeg->m_isDel.set0(subId);
 		m_wrSeg->m_delcnt--;
 	}
-	llong id = wrBaseId + subId;
+//	llong id = wrBaseId + subId;
 	return wrBaseId + subId;
 }
 
@@ -1367,8 +1370,7 @@ public:
 
 IndexIteratorPtr CompositeTable::createIndexIterForward(size_t indexId) const {
 	assert(indexId < m_indexSchemaSet->m_nested.end_i());
-	const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(indexId);
-	assert(iSchema.m_isOrdered);
+	assert(getIndexSchema(indexId).m_isOrdered);
 	return new TableIndexIter(this, indexId, true);
 }
 
@@ -1382,8 +1384,7 @@ IndexIteratorPtr CompositeTable::createIndexIterForward(fstring indexCols) const
 
 IndexIteratorPtr CompositeTable::createIndexIterBackward(size_t indexId) const {
 	assert(indexId < m_indexSchemaSet->m_nested.end_i());
-	const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(indexId);
-	assert(iSchema.m_isOrdered);
+	assert(getIndexSchema(indexId).m_isOrdered);
 	return new TableIndexIter(this, indexId, false);
 }
 
@@ -1529,7 +1530,8 @@ void CompositeTable::save(fstring dir) const {
 		seg->save(getSegPath2(dir, "wr", segIdx, buf));
 	}
 	lock.upgrade_to_writer();
-	saveMetaJson(dir);
+	fs::path jsonFile = fs::path(dir.str()) / "dbmeta.json";
+	saveMetaJson(jsonFile.string());
 }
 
 } } // namespace nark::db

@@ -66,6 +66,9 @@ public:
 
 	size_t getSegNum () const { return m_segments.size(); }
 
+	void loadMetaJson(fstring jsonFile);
+	void saveMetaJson(fstring jsonFile) const;
+
 protected:
 
 	void maybeCreateNewSegment(MyRwLock&);
@@ -82,9 +85,6 @@ protected:
 	void saveMetaDFA(fstring dir) const;
 	void loadMetaDFA(fstring dir);
 #endif
-	void loadMetaJson(fstring dir);
-	void saveMetaJson(fstring dir) const;
-
 	virtual ReadonlySegment* createReadonlySegment(fstring segDir) const = 0;
 	virtual WritableSegment* createWritableSegment(fstring segDir) const = 0;
 	virtual WritableSegment* openWritableSegment(fstring segDir) const = 0;

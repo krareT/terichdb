@@ -43,6 +43,24 @@
     <Filter Include="Source Files\mongo_narkdb">
       <UniqueIdentifier>{afaaa108-d0aa-41ae-86b5-a5b1a95c396c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\mongo\base">
+      <UniqueIdentifier>{1c026bd3-027e-44a4-9ea4-c7fe93c0bf7c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo\util">
+      <UniqueIdentifier>{1c7559ba-3825-42ea-b05f-c4dc20df7c65}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo\platform">
+      <UniqueIdentifier>{ce27e033-a893-49f3-8e9e-26d230dac319}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo_third_party">
+      <UniqueIdentifier>{b58c6fa9-66d7-44fd-b703-5df81591d113}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo\logger">
+      <UniqueIdentifier>{d8c85e33-e48d-4b63-858d-fedc4444785b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\mongo\util\concurrency">
+      <UniqueIdentifier>{8711c5b4-84de-49a5-bf1c-240d079deb43}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -259,6 +277,234 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\mongo_narkdb\narkdb_server_status.cpp">
       <Filter>Source Files\mongo_narkdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\counter_test.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_range.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_range_cursor.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_type.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_type_string_data.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_type_terminated.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\error_codes.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\global_initializer.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\global_initializer_registerer.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\init.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer_context.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer_dependency_graph.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer_test.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\make_string_vector.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\parse_number.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\secure_allocator.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\status.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\string_data.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\system_error.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\validate_locale.cpp">
+      <Filter>Source Files\mongo\base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\assert_util.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\base64.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\debugger.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\elapsed_tracker.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\exception_filter_win32.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\file.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\hex.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\intrusive_counter.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\itoa.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\log.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\md5.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\md5main.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\ntservice.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\password.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\password_digest.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\platform_init.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\processinfo.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\processinfo_windows.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\progress_meter.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\safe_num.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\secure_zero_memory.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\signal_handlers.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\signal_handlers_synchronous.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\signal_win32.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\stacktrace.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\stacktrace_windows.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\static_observer.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\stringutils.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\text.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\thread_safe_string.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\tick_source_mock.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\time_support.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\timer.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\touch_pages.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\platform\decimal128.cpp">
+      <Filter>Source Files\mongo\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\third_party\murmurhash3\MurmurHash3.cpp">
+      <Filter>Source Files\mongo_third_party</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\allocator.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\quick_exit.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\logger.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\logstream_builder.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\ramlog.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\component_message_log_domain.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\console.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_component.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_component_settings.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_manager.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_severity.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\message_event_utf8_encoder.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\message_log_domain.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\parse_log_component_settings.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\rotatable_file_manager.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\rotatable_file_writer.cpp">
+      <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\concurrency\thread_name.cpp">
+      <Filter>Source Files\mongo\util\concurrency</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\system_tick_source.cpp">
+      <Filter>Source Files\mongo\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\platform\random.cpp">
+      <Filter>Source Files\mongo\platform</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

@@ -69,6 +69,7 @@
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
+//#include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/kv/kv_catalog.h"
 
 
@@ -105,43 +106,7 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 				false, // ephemeral
 				repair));
 
-    boost::filesystem::path journalPath = basePath / "journal";
-    if (_durable) {
-        if (!boost::filesystem::exists(journalPath)) {
-            try {
-                boost::filesystem::create_directory(journalPath);
-            } catch (std::exception& e) {
-                log() << "error creating journal dir " << journalPath.string() << ' ' << e.what();
-                throw;
-            }
-        }
-    }
-
     _previousCheckedDropsQueued = Date_t::now();
-
-    std::stringstream ss;
-    if (!_durable) {
-        // If we started without the journal, but previously used the journal then open with the
-        // NarkDb log enabled to perform any unclean shutdown recovery and then close and reopen in
-        // the normal path without the journal.
-    	/*
-        if (boost::filesystem::exists(journalPath)) {
-            string config = ss.str();
-            log() << "Detected NarkDb journal files.  Running recovery from last checkpoint.";
-            log() << "journal to nojournal transition config: " << config;
-            int ret = narkdb_open(path.c_str(), &_eventHandler, config.c_str(), &_conn);
-            if (ret == EINVAL) {
-                fassertFailedNoTrace(28717);
-            } else if (ret != 0) {
-                Status s(narkDbRCToStatus(ret));
-                msgassertedNoTrace(28718, s.reason());
-            }
-            invariantNarkDbOK(_conn->close(_conn, NULL));
-        }
-        // This setting overrides the earlier setting because it is later in the config string.
-        ss << ",log=(enabled=false),";
-        */
-    }
 /*
     log() << "narkdb_open : " << path;
     for (auto& tabDir : fs::directory_iterator(m_pathNark / "tables")) {
@@ -153,11 +118,6 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
     //	invariant(ib.second);
     }
 */
-    if (_durable) {
-    //    _journalFlusher = stdx::make_unique<NarkDbJournalFlusher>(_sessionCache.get());
-    //    _journalFlusher->go();
-    }
-
     {
         fs::path fpath = m_pathNark / "size-store.hash_strmap";
 		_sizeStorer.setFilePath(fpath.string());
@@ -240,7 +200,7 @@ int NarkDbKVEngine::flushAllFiles(bool sync) {
 
 Status NarkDbKVEngine::beginBackup(OperationContext* txn) {
     invariant(!_backupSession);
-//  _backupSession = std::move(m_tables);
+	m_wtEngine->beginBackup(txn);
     return Status::OK();
 }
 
@@ -249,7 +209,8 @@ void NarkDbKVEngine::endBackup(OperationContext* txn) {
 }
 
 RecoveryUnit* NarkDbKVEngine::newRecoveryUnit() {
-    return new NarkDbRecoveryUnit();
+	return m_wtEngine->newRecoveryUnit();
+//    return new NarkDbRecoveryUnit();
 }
 
 void NarkDbKVEngine::setRecordStoreExtraOptions(const std::string& options) {
@@ -286,7 +247,9 @@ NarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 
     LOG(2) << "NarkDbKVEngine::createRecordStore: ns:" << ns << ", config: " << config;
 */
-	auto tabDir = m_pathNark / "tables" / ns.toString();
+	auto tabDir = m_pathNarkTables / ns.toString();
+    LOG(2)	<< "NarkDbKVEngine::createRecordStore: ns:" << ns
+			<< ", tabDir=" << tabDir.string();
 
 	if (fs::exists(tabDir)) {
 		return Status::OK();
@@ -356,23 +319,27 @@ NarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
             collIndexOptions = storageEngineOptions.getFieldDotted(kNarkDbEngineName).toString();
         }
     }
-    LOG(2) << "NarkDbKVEngine::createSortedDataInterface ident: " << ident
-           << " collIndexOptions: " << collIndexOptions;
 	const string tableNS = desc->getCollection()->ns().toString();
 	const string tableIdent = m_fuckKVCatalog->getCollectionIdent(tableNS);
+    LOG(2)	<< "NarkDbKVEngine::createSortedDataInterface ident: " << ident
+			<< ", tableNS=" << tableNS << ", tableIdent=" << tableIdent
+			<< " collIndexOptions: " << collIndexOptions;
 	if (tableIdent == "_mdb_catalog") {
 		return m_wtEngine->createSortedDataInterface(opCtx, ident, desc);
 	}
-	std::lock_guard<std::mutex> lock(m_mutex);
-    size_t i = m_indices.find_i(tableIdent);
-    if (i < m_indices.end_i()) {
-	//	return new NarkDbIndexStandard(&*m_tables.val(i), opCtx, desc);
-	    return Status::OK();
-    }
-	else {
-		return Status(ErrorCodes::CommandNotSupported,
-						"dynamic creating index is not supported");
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		size_t i = m_indices.find_i(tableIdent);
+		if (i < m_indices.end_i()) {
+			return Status::OK();
+		}
 	}
+	const fs::path tabDir = m_pathNarkTables / tableNS;
+	if (fs::exists(tabDir)) {
+		return Status::OK();
+	}
+	return Status(ErrorCodes::CommandNotSupported,
+					"dynamic creating index is not supported");
 }
 
 SortedDataInterface*

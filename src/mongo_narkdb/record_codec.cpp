@@ -150,6 +150,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 	encoded->resize(0);
 
 	m_fields.erase_all();
+	std::string fieldnames;
 	BSONForEach(elem, obj) {
 		const char* fieldname = elem.fieldName();
 		auto ib = m_fields.insert_i(fieldname);
@@ -157,7 +158,23 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			THROW_STD(invalid_argument,
 					"bad bson: duplicate fieldname: %s", fieldname);
 		}
+		invariant(m_fields.elem_at(ib.first).size() == strlen(fieldname));
+		fieldnames += fieldname;
+		fieldnames.push_back(',');
 	}
+	fieldnames.pop_back();
+	LOG(1)	<< "SchemaRecordCoder::encode: bsonFields=" << fieldnames;
+
+	fieldnames.resize(0);
+	for (size_t i = 0; i < m_fields.end_i(); ++i) {
+		fstring fieldname = m_fields.elem_at(i);
+		fieldnames.append(fieldname.c_str());
+		fieldnames.push_back(',');
+		invariant(m_fields.find_i(fieldname) == i);
+	}
+	fieldnames.pop_back();
+	LOG(1)	<< "SchemaRecordCoder::encode: m_fields=" << fieldnames;
+
 	m_stored.resize_fill(m_fields.end_i(), false);
 
 	// last is $$ field, the schema-less fields
@@ -167,13 +184,20 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		: schema->m_columnsMeta.end_i()
 		;
 	for(size_t i = 0; i < schemaColumn; ++i) {
-		fstring colname = schema->getColumnName(i);
+		const fstring colname = schema->getColumnName(i);
+		const auto&   colmeta = schema->getColumnMeta(i);
 		assert(colname != G_schemaLessFieldName);
 		size_t j = m_fields.find_i(colname);
+		if (j >= m_fields.end_i()) {
+			LOG(1)	<< "colname=" << colname.str() << " is missing"
+					<< ", j=" << j
+					<< ", m_fields.end_i()=" << m_fields.end_i()
+					<< ", bson=" << obj.toString();
+		}
 		invariant(j < m_fields.end_i());
 		BSONElement elem(m_fields.key(j).data() - 1, colname.size()+1,
 						 BSONElement::FieldNameSizeTag());
-		assert((unsigned char)elem.type() == schema->m_columnsMeta.val(i).uType);
+		assert((unsigned char)elem.type() == colmeta.uType);
 		const char* value = elem.value();
 		switch (elem.type()) {
 		case EOO:
@@ -184,7 +208,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			break;
 		case mongo::Bool:
 			encoded->push_back(value[0] ? 1 : 0);
-			assert(schema->getColumnType(i) == nark::db::ColumnType::Uint08);
+			assert(colmeta.type == nark::db::ColumnType::Uint08);
 			break;
 		case NumberInt:
 		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
@@ -197,7 +221,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		#else
 			encoded->append(value, 4);
 		#endif
-			assert(schema->getColumnType(i) == nark::db::ColumnType::Sint32);
+			assert(colmeta.type == nark::db::ColumnType::Sint32);
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
 		case mongo::Date:
@@ -217,14 +241,14 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		case jstOID:
 		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
 			encoded->append(value, OID::kOIDSize);
-			assert(schema->m_columnsMeta.val(i).type == nark::db::ColumnType::Fixed);
-			assert(schema->m_columnsMeta.val(i).fixedLen == OID::kOIDSize);
+			assert(colmeta.type == nark::db::ColumnType::Fixed);
+			assert(colmeta.fixedLen == OID::kOIDSize);
 			break;
 		case Symbol:
 		case Code:
 		case mongo::String:
 		//	log() << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
-			assert(schema->m_columnsMeta.val(i).type == nark::db::ColumnType::StrZero);
+			assert(colmeta.type == nark::db::ColumnType::StrZero);
 			encoded->append(value + 4, elem.valuestrsize());
 			break;
 		case DBRef:
@@ -232,7 +256,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			encoded->append(value + 4, elem.valuestrsize() + OID::kOIDSize);
 			break;
 		case mongo::Array:
-			assert(schema->m_columnsMeta.val(i).type == nark::db::ColumnType::CarBin);
+			assert(colmeta.type == nark::db::ColumnType::CarBin);
 			{
 				size_t oldsize = encoded->size();
 				encoded->resize(oldsize + 4); // reserve for uint32 length
@@ -243,7 +267,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			}
 			break;
 		case Object:
-			assert(schema->m_columnsMeta.val(i).type == nark::db::ColumnType::CarBin);
+			assert(colmeta.type == nark::db::ColumnType::CarBin);
 			{
 				size_t oldsize = encoded->size();
 				encoded->resize(oldsize + 4); // reserve for uint32 length
@@ -254,9 +278,9 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			}
 			break;
 		case CodeWScope:
-			assert(schema->getColumnType(i) == nark::db::ColumnType::CarBin);
+			assert(colmeta.type == nark::db::ColumnType::CarBin);
 			{
-				assert(schema->m_columnsMeta.val(i).type == nark::db::ColumnType::CarBin);
+				assert(colmeta.type == nark::db::ColumnType::CarBin);
 				size_t oldsize = encoded->size();
 				encoded->resize(oldsize + 8); // reserve for uint32 length + uint32 codelen
 				DataView(encoded->data()+oldsize + 4)
@@ -271,7 +295,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			break;
 		case BinData:
 			{
-				assert(schema->getColumnType(i) == nark::db::ColumnType::CarBin);
+				assert(colmeta.type == nark::db::ColumnType::CarBin);
 				uint32_t len = elem.valuestrsize() + 1; // 1 is for subtype byte
 				encoded->resize(encoded->size() + 4);
 				DataView(encoded->end() - 4)
@@ -287,7 +311,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 				size_t len2 = strlen(p);
 				encoded->append(p, len1 + 1 + len2 + 1);
 			}
-			assert(schema->m_columnsMeta.val(i).type == nark::db::ColumnType::TwoStrZero);
+			assert(colmeta.type == nark::db::ColumnType::TwoStrZero);
 			break;
 		default:
 			{
@@ -485,7 +509,14 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	const char* pos = data;
 	bb.resize(size);
 	bb.skip(sizeof(SharedBuffer::Holder));
-	for (size_t i = 0; i < schema->m_columnsMeta.end_i(); ++i) {
+	bb.skip(4); // object size
+	// last is $$ field, the schema-less fields
+	size_t schemaColumn
+		= schema->m_columnsMeta.end_key(1) == G_schemaLessFieldName
+		? schema->m_columnsMeta.end_i() - 1
+		: schema->m_columnsMeta.end_i()
+		;
+	for (size_t i = 0; i < schemaColumn; ++i) {
 		fstring     colname = schema->m_columnsMeta.key(i);
 		const auto& colmeta = schema->m_columnsMeta.val(i);
 		bb.writeByte(colmeta.uType);
@@ -498,6 +529,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		case jstNULL:
 		case MaxKey:
 		case MinKey:
+			assert(0);
 			break;
 		case mongo::Bool:
 			bb << char(*pos ? 1 : 0);
@@ -610,10 +642,29 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			}
 		}
 	}
-	narkDecodeBsonObject(bb, pos, data + size);
-	invariant(pos == data + size);
+	const char* end = data + size;
+	if (pos < end) {
+		while (pos < end) {
+			const int type = (unsigned char)(*pos++);
+			bb << char(type);
+			if (type == EOO) {
+				invariant(pos == end);
+				break;
+			}
+			StringData fieldname = pos;
+			bb.ensureWrite(fieldname.begin(), fieldname.size()+1);
+			pos += fieldname.size() + 1;
+			narkDecodeBsonElemVal(bb, pos, end, type);
+		}
+		invariant(pos == data + size);
+	}
+	else {
+		invariant(pos == data + size);
+		bb << char(EOO); // End of object
+	}
+	int bsonSize = int(bb.tell() - sizeof(SharedBuffer::Holder));
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
-			.write<LittleEndian<int>>(int(bb.tell() - sizeof(SharedBuffer::Holder)));
+			.write<LittleEndian<int>>(bsonSize);
 
 	return SharedBuffer::takeOwnership((char*)bb.release());
 //	return BSONObj::takeOwnership((char*)bb.release());
@@ -645,9 +696,10 @@ void encodeIndexKey(const Schema& indexSchema,
 	using nark::db::ColumnType;
 	BSONObj::iterator iter = bson.begin();
 	for(size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
-	//	fstring colname = indexSchema.m_columnsMeta.key(i);
-		BSONElement elem(*iter);
-		assert(elem.type() == indexSchema.m_columnsMeta.val(i).uType);
+	//	fstring     colname = indexSchema.m_columnsMeta.key(i);
+		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
+		BSONElement elem(iter.next());
+		assert(elem.type() == colmeta.uType);
 		const char* value = elem.value();
 		switch (elem.type()) {
 		case EOO:
@@ -691,14 +743,14 @@ void encodeIndexKey(const Schema& indexSchema,
 		case jstOID:
 		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
 			encoded->append(value, OID::kOIDSize);
-			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::Fixed);
-			assert(indexSchema.m_columnsMeta.val(i).fixedLen == OID::kOIDSize);
+			assert(colmeta.type == ColumnType::Fixed);
+			assert(colmeta.fixedLen == OID::kOIDSize);
 			break;
 		case Symbol:
 		case Code:
 		case mongo::String:
 		//	log() << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
-			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::StrZero);
+			assert(colmeta.type == ColumnType::StrZero);
 			encoded->append(value + 4, elem.valuestrsize());
 			break;
 		case DBRef:
@@ -708,7 +760,7 @@ void encodeIndexKey(const Schema& indexSchema,
 		case mongo::Array:
 			break;
 		case Object:
-			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::CarBin);
+			assert(colmeta.type == ColumnType::CarBin);
 			break;
 		case CodeWScope:
 			assert(indexSchema.getColumnType(i) == ColumnType::CarBin);
@@ -724,7 +776,7 @@ void encodeIndexKey(const Schema& indexSchema,
 				size_t len2 = strlen(p);
 				encoded->append(p, len1 + 1 + len2 + 1);
 			}
-			assert(indexSchema.m_columnsMeta.val(i).type == ColumnType::TwoStrZero);
+			assert(colmeta.type == ColumnType::TwoStrZero);
 			break;
 		default:
 			{
@@ -751,6 +803,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 	const char* pos = data;
 	bb.resize(size);
 	bb.skip(sizeof(SharedBuffer::Holder));
+	bb.skip(4); // object size loc
 	for (size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
 		fstring     colname = indexSchema.m_columnsMeta.key(i);
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
@@ -852,6 +905,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 		}
 	}
 	invariant(data + size == pos);
+	bb << char(EOO); // end of object
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
 			.write<LittleEndian<int>>(int(bb.tell() - sizeof(SharedBuffer::Holder)));
 
