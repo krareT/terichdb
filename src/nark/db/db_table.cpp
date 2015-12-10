@@ -1092,12 +1092,12 @@ CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
 	MyRwLock lock(m_rwMutex, true);
-	llong minWrRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
-	if (id < minWrRowNum) {
+	llong wrBaseId = m_rowNumVec.ende(2);
+	if (id < wrBaseId) {
 		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, minWrRowNum=%lld", id, minWrRowNum);
+			"Invalid rowId=%lld, wrBaseId=%lld", id, wrBaseId);
 	}
-	llong subId = id - minWrRowNum;
+	llong subId = id - wrBaseId;
 	m_wrSeg->m_isDirty = true;
 	return m_wrSeg->m_indices[indexId]->insert(indexKey, subId, txn);
 }
@@ -1113,12 +1113,12 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
 	MyRwLock lock(m_rwMutex, true);
-	llong minWrRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
-	if (id < minWrRowNum) {
+	llong wrBaseId = m_rowNumVec.ende(2);
+	if (id < wrBaseId) {
 		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, minWrRowNum=%lld", id, minWrRowNum);
+			"Invalid rowId=%lld, wrBaseId=%lld", id, wrBaseId);
 	}
-	llong subId = id - minWrRowNum;
+	llong subId = id - wrBaseId;
 	m_wrSeg->m_isDirty = true;
 	return m_wrSeg->m_indices[indexId]->remove(indexKey, subId, txn);
 }
@@ -1139,17 +1139,17 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 		return true;
 	}
 	MyRwLock lock(m_rwMutex, true);
-	llong minWrRowNum = m_rowNumVec.back() + m_wrSeg->numDataRows();
-	if (oldId < minWrRowNum) {
+	llong wrBaseId = m_rowNumVec.ende(2);
+	if (oldId < wrBaseId) {
 		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, minWrRowNum=%lld", oldId, minWrRowNum);
+			"Invalid rowId=%lld, wrBaseId=%lld", oldId, wrBaseId);
 	}
-	if (newId < minWrRowNum) {
+	if (newId < wrBaseId) {
 		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, minWrRowNum=%lld", newId, minWrRowNum);
+			"Invalid rowId=%lld, wrBaseId=%lld", newId, wrBaseId);
 	}
-	llong oldSubId = oldId - minWrRowNum;
-	llong newSubId = newId - minWrRowNum;
+	llong oldSubId = oldId - wrBaseId;
+	llong newSubId = newId - wrBaseId;
 	m_wrSeg->m_isDirty = true;
 	return m_wrSeg->m_indices[indexId]->replace(indexKey, oldSubId, newSubId, txn);
 }

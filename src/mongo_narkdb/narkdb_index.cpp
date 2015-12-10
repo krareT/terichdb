@@ -254,9 +254,9 @@ public:
     NarkDbIndexCursorBase(const NarkDbIndex& idx, OperationContext* txn, bool forward)
         : _txn(txn), _idx(idx), _forward(forward) {
 		if (forward)
-			idx.m_table->createIndexIterForward(idx.m_indexId);
+			_cursor = idx.m_table->createIndexIterForward(idx.m_indexId);
 		else
-			idx.m_table->createIndexIterBackward(idx.m_indexId);
+			_cursor = idx.m_table->createIndexIterBackward(idx.m_indexId);
     }
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
         if (_eof) // Advance on a cursor at the end is a no-op

@@ -816,7 +816,9 @@ namespace {
 			colname2val["uint128"] = ColumnType::Uint128;
 			colname2val["sint128"] = ColumnType::Sint128;
 			colname2val["float32"] = ColumnType::Float32;
+			colname2val["float"]   = ColumnType::Float32;
 			colname2val["float64"] = ColumnType::Float64;
+			colname2val["double"]  = ColumnType::Float64;
 			colname2val["float128"] = ColumnType::Float128;
 			colname2val["uuid"] = ColumnType::Uuid;
 			colname2val["fixed"] = ColumnType::Fixed;
