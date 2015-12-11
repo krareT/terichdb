@@ -11,7 +11,7 @@
 namespace nark { namespace db {
 
 ColumnMeta::ColumnMeta() {
-	type = ColumnType::Binary;
+	type = ColumnType::Any;
 	uType = 255; // unknown
 }
 
@@ -20,6 +20,9 @@ ColumnMeta::ColumnMeta(ColumnType t) {
 	switch (t) {
 	default:
 		THROW_STD(runtime_error, "Invalid data row");
+		break;
+	case ColumnType::Any:
+		fixedLen = 0;
 		break;
 	case ColumnType::Uint08:
 	case ColumnType::Sint08: fixedLen = 1; break;
@@ -38,6 +41,8 @@ ColumnMeta::ColumnMeta(ColumnType t) {
 	case ColumnType::Fixed:
 		fixedLen = 0; // to be set later
 		break;
+	case ColumnType::VarSint:
+	case ColumnType::VarUint:
 	case ColumnType::StrZero:
 	case ColumnType::TwoStrZero:
 	case ColumnType::Binary:
@@ -89,7 +94,7 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 	const byte* last = row.size() + curr;
 
 #define CHECK_CURR_LAST3(curr, last, len) \
-	if (curr + len > last) { \
+	if (nark_unlikely(curr + (len) > last)) { \
 		THROW_STD(out_of_range, "len=%ld remain=%ld", \
 			long(len), long(last-curr)); \
 	}
@@ -102,6 +107,9 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 		switch (colmeta.type) {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Any:
+			abort(); // Any is not implemented yet
 			break;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
@@ -153,6 +161,22 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 			CHECK_CURR_LAST(colmeta.fixedLen);
 			coldata.n = colmeta.fixedLen;
 			curr += colmeta.fixedLen;
+			break;
+		case ColumnType::VarSint:
+			{
+				const byte* next = nullptr;
+				load_var_int64(curr, &next);
+				coldata.n = next - curr;
+				curr = next;
+			}
+			break;
+		case ColumnType::VarUint:
+			{
+				const byte* next = nullptr;
+				load_var_uint64(curr, &next);
+				coldata.n = next - curr;
+				curr = next;
+			}
 			break;
 		case ColumnType::StrZero: // Zero ended string
 			coldata.n = strnlen((const char*)curr, last - curr);
@@ -237,6 +261,9 @@ void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) 
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
 			break;
+		case ColumnType::Any:
+			abort(); // Any is not implemented yet
+			break;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
 			assert(1 == coldata.size());
@@ -278,6 +305,10 @@ void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) 
 		case ColumnType::Fixed:   // Fixed length binary
 			assert(colmeta.fixedLen == coldata.size());
 			myRowData->append(coldata.udata(), colmeta.fixedLen);
+			break;
+		case ColumnType::VarSint:
+		case ColumnType::VarUint:
+			myRowData->append(coldata.udata(), coldata.size());
 			break;
 		case ColumnType::StrZero: // Zero ended string
 		case ColumnType::TwoStrZero: // Two Zero ended strings
@@ -325,6 +356,9 @@ void Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRow
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
 			break;
+		case ColumnType::Any:
+			abort(); // Any is not implemented yet
+			break;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
 			assert(1 == coldata.size());
@@ -366,6 +400,10 @@ void Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRow
 		case ColumnType::Fixed:   // Fixed length binary
 			assert(colmeta.fixedLen == coldata.size());
 			myRowData->append(coldata.udata(), colmeta.fixedLen);
+			break;
+		case ColumnType::VarSint:
+		case ColumnType::VarUint:
+			myRowData->append(coldata.udata(), coldata.size());
 			break;
 		case ColumnType::StrZero: // Zero ended string
 		case ColumnType::TwoStrZero: // Two Zero ended strings
@@ -421,6 +459,9 @@ void Schema::byteLexConvert(valvec<byte>& indexKey) const {
 		switch (colmeta.type) {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Any:
+			THROW_STD(invalid_argument, "ColumnType::Any can not be lex-converted");
 			break;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
@@ -482,6 +523,12 @@ void Schema::byteLexConvert(valvec<byte>& indexKey) const {
 			CHECK_CURR_LAST(colmeta.fixedLen);
 			curr += colmeta.fixedLen;
 			break;
+		case ColumnType::VarSint:
+			THROW_STD(invalid_argument, "VarSint can not be lex-coverted");
+			break;
+		case ColumnType::VarUint:
+			THROW_STD(invalid_argument, "VarUint can not be lex-coverted");
+			break;
 		case ColumnType::StrZero: // Zero ended string
 			{
 				intptr_t len = strnlen((const char*)curr, last - curr);
@@ -542,6 +589,9 @@ std::string Schema::toJsonStr(fstring row) const {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
 			break;
+		case ColumnType::Any:
+			THROW_STD(invalid_argument, "ColumnType::Any to json is not implemented");
+			break;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
 			CHECK_CURR_LAST(1);
@@ -596,6 +646,24 @@ std::string Schema::toJsonStr(fstring row) const {
 			CHECK_CURR_LAST(colmeta.fixedLen);
 			js[colname.str()] = std::string((char*)curr, colmeta.fixedLen);
 			curr += colmeta.fixedLen;
+			break;
+		case ColumnType::VarSint:
+			{
+				const byte* next = nullptr;
+				int64_t x = load_var_int64(curr, &next);
+				CHECK_CURR_LAST(next - curr);
+				js[colname.str()] = x;
+				curr = next;
+			}
+			break;
+		case ColumnType::VarUint:
+			{
+				const byte* next = nullptr;
+				uint64_t x = load_var_uint64(curr, &next);
+				CHECK_CURR_LAST(next - curr);
+				js[colname.str()] = x;
+				curr = next;
+			}
 			break;
 		case ColumnType::StrZero: // Zero ended string
 			{
@@ -686,6 +754,7 @@ const char* Schema::columnTypeStr(ColumnType t) {
 	switch (t) {
 	default:
 		THROW_STD(invalid_argument, "Bad column type = %d", int(t));
+	case ColumnType::Any:  return "any";
 	case ColumnType::Uint08:  return "uint08";
 	case ColumnType::Sint08:  return "sint08";
 	case ColumnType::Uint16:  return "uint16";
@@ -701,6 +770,8 @@ const char* Schema::columnTypeStr(ColumnType t) {
 	case ColumnType::Float128:return "float128";
 	case ColumnType::Uuid:    return "uuid";
 	case ColumnType::Fixed:   return "fixed";
+	case ColumnType::VarSint: return "varsint";
+	case ColumnType::VarUint: return "varuint";
 	case ColumnType::StrZero: return "strzero";
 	case ColumnType::TwoStrZero: return "twostrzero";
 	case ColumnType::Binary:  return "binary";
@@ -758,6 +829,8 @@ size_t Schema::computeFixedRowLen() const {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
 			break;
+		case ColumnType::Any:
+			return 0;
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
 			rowLen += 1;
@@ -791,6 +864,8 @@ size_t Schema::computeFixedRowLen() const {
 		case ColumnType::Fixed:   // Fixed length binary
 			rowLen += colmeta.fixedLen;
 			break;
+		case ColumnType::VarSint:
+		case ColumnType::VarUint:
 		case ColumnType::StrZero: // Zero ended string
 		case ColumnType::TwoStrZero: // Two Zero ended string
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
@@ -805,6 +880,8 @@ namespace {
 	struct ColumnTypeMap : hash_strmap<ColumnType> {
 		ColumnTypeMap() {
 			auto& colname2val = *this;
+			colname2val["any"] = ColumnType::Any;
+			colname2val["anytype"] = ColumnType::Any;
 			colname2val["uint08"] = ColumnType::Uint08;
 			colname2val["sint08"] = ColumnType::Sint08;
 			colname2val["uint16"] = ColumnType::Uint16;
@@ -822,6 +899,8 @@ namespace {
 			colname2val["float128"] = ColumnType::Float128;
 			colname2val["uuid"] = ColumnType::Uuid;
 			colname2val["fixed"] = ColumnType::Fixed;
+			colname2val["varsint"] = ColumnType::VarSint;
+			colname2val["varuint"] = ColumnType::VarUint;
 			colname2val["strzero"] = ColumnType::StrZero;
 			colname2val["twostrzero"] = ColumnType::TwoStrZero;
 			colname2val["binary"] = ColumnType::Binary;
@@ -876,6 +955,10 @@ int Schema::compareData(fstring x, fstring y) const {
 		switch (colmeta.type) {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
+			break;
+		case ColumnType::Any:
+		//	THROW_STD(invalid_arugment, "ColumnType::Any can not be lex");
+			abort(); // not implemented yet
 			break;
 		case ColumnType::Uint08:
 			CHECK_CURR_LAST3(xcurr, ylast, 1);
@@ -956,6 +1039,32 @@ int Schema::compareData(fstring x, fstring y) const {
 				xcurr += xn + 1;
 				ycurr += yn + 1;
 				break;
+			}
+			break;
+		case ColumnType::VarSint:
+			{
+				const byte *xnext, *ynext;
+				int64_t xv = load_var_int64(xcurr, &xnext);
+				int64_t yv = load_var_int64(ycurr, &ynext);
+				CHECK_CURR_LAST3(xcurr, xlast, xnext - xcurr);
+				CHECK_CURR_LAST3(ycurr, ylast, ynext - ycurr);
+				if (xv < yv) return -1;
+				if (xv > yv) return +1;
+				xcurr = xnext;
+				ycurr = ynext;
+			}
+			break;
+		case ColumnType::VarUint:
+			{
+				const byte *xnext, *ynext;
+				uint64_t xv = load_var_uint64(xcurr, &xnext);
+				uint64_t yv = load_var_uint64(ycurr, &ynext);
+				CHECK_CURR_LAST3(xcurr, xlast, xnext - xcurr);
+				CHECK_CURR_LAST3(ycurr, ylast, ynext - ycurr);
+				if (xv < yv) return -1;
+				if (xv > yv) return +1;
+				xcurr = xnext;
+				ycurr = ynext;
 			}
 			break;
 		case ColumnType::TwoStrZero: // Zero ended string

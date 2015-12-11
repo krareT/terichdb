@@ -48,6 +48,7 @@ namespace nark { namespace db {
 
 	enum class ColumnType : unsigned char {
 		// all number types are LittleEndian
+		Any, // real type is stored as first byte of the data
 		Uint08,
 		Sint08,
 		Uint16,
@@ -63,6 +64,8 @@ namespace nark { namespace db {
 		Float128,
 		Uuid,    // 16 bytes(128 bits) binary
 		Fixed,   // Fixed length binary
+		VarSint,
+		VarUint,
 		StrZero, // Zero ended string
 		TwoStrZero, // Special, now just for BSON RegEx type
 		Binary,  // Prefixed by length(var_uint) in bytes
