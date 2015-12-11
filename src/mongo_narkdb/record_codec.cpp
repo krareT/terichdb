@@ -12,6 +12,7 @@
 #include <mongo/util/hex.h>
 #include <nark/io/DataIO.hpp>
 #include <nark/io/MemStream.hpp>
+#include <nark/lcast.hpp>
 
 namespace mongo { namespace narkdb {
 
@@ -144,16 +145,9 @@ static void Move_AutoGrownMemIO_to_valvec(AutoGrownMemIO& io, Vec& v) {
 
 template<class FromType>
 static void
-encodeConvertFrom(ColumnType type, const char* value, valvec<char>* encoded) {
+encodeConvertFrom(ColumnType type, const char* value,
+				  valvec<char>* encoded, bool isLastField) {
 	typedef unsigned char byte;
-#ifdef MONGO_NARK_ENCODE_BYTE_LEX
-	// offset binary encoding for byte lex compare
-	{
-		int x = ConstDataView(value).read<LittleEndian<int>>();
-		int y = x ^ (1 << 31);
-		encoded->append((char*)&y, 4);
-	}
-#else
 	FromType x = unaligned_load<FromType>((const byte*)value);
 	switch (type) {
 	default:
@@ -189,13 +183,211 @@ encodeConvertFrom(ColumnType type, const char* value, valvec<char>* encoded) {
 		break;
 	case ColumnType::Float64:
 		BOOST_STATIC_ASSERT(sizeof(double) == 8);
-		unaligned_save((byte*)encoded->grow_no_init(4), double(x));
+		unaligned_save((byte*)encoded->grow_no_init(8), double(x));
+		break;
+	case ColumnType::Float128:
+		abort(); // not implemented yet
+		break;
+	case ColumnType::StrZero:
+		encoded->append(nark::lcast(x));
+		if (!isLastField)
+			encoded->push_back('\0');
+		break;
+	case ColumnType::Binary: {
+		std::string str = nark::lcast(x);
+		invariant(str.size() < 127);
+		if (!isLastField) {
+			encoded->push_back(byte(str.size()+1)); // a one-byte var_uint
+		}
+		encoded->append(str.c_str(), str.size() + 1); // with '\0'
+		break; }
+	}
+}
+
+template<class NumType>
+NumType patchMongoLogStream(NumType x) { return x; }
+char patchMongoLogStream(signed char x) { return x; }
+char patchMongoLogStream(unsigned char x) { return x; }
+int patchMongoLogStream(short x) { return x; }
+
+template<class NumType>
+static void
+appendNumber(double x, valvec<char>* encoded) {
+	NumType y;
+	if (x <= std::numeric_limits<NumType>::min())
+		y = std::numeric_limits<NumType>::min();
+	else if (x >= std::numeric_limits<NumType>::max())
+		y = std::numeric_limits<NumType>::max();
+	else
+		y = static_cast<NumType>(x);
+//	LOG(2) << "x=" << x << ", y=" << patchMongoLogStream(y);
+	unaligned_save((unsigned char*)encoded->grow_no_init(sizeof(y)), y);
+}
+
+static void
+encodeConvertFromDouble(ColumnType type, const char* value,
+						valvec<char>* encoded, bool isLastField) {
+	typedef unsigned char byte;
+	double x = unaligned_load<double>((const byte*)value);
+	switch (type) {
+	default:
+		invariant(!"encodeConvertFromDouble: bad type conversion");
+		break;
+	case ColumnType::Sint08:
+		appendNumber<int8_t>(x, encoded);
+		break;
+	case ColumnType::Uint08:
+		appendNumber<uint8_t>(x, encoded);
+		break;
+	case ColumnType::Sint16:
+		appendNumber<int16_t>(x, encoded);
+		break;
+	case ColumnType::Uint16:
+		appendNumber<uint16_t>(x, encoded);
+		break;
+	case ColumnType::Sint32:
+		appendNumber<int32_t>(x, encoded);
+		break;
+	case ColumnType::Uint32:
+		appendNumber<uint32_t>(x, encoded);
+		break;
+	case ColumnType::Sint64:
+		appendNumber<int64_t>(x, encoded);
+		break;
+	case ColumnType::Uint64:
+		appendNumber<uint64_t>(x, encoded);
+		break;
+	case ColumnType::Float32:
+		BOOST_STATIC_ASSERT(sizeof(float) == 4);
+		unaligned_save((byte*)encoded->grow_no_init(4), float(x));
+		break;
+	case ColumnType::Float64:
+		BOOST_STATIC_ASSERT(sizeof(double) == 8);
+		unaligned_save((byte*)encoded->grow_no_init(8), double(x));
+		break;
+	case ColumnType::Float128:
+		abort(); // not implemented yet
+		break;
+	case ColumnType::StrZero:
+		encoded->append(nark::lcast(x));
+		if (!isLastField)
+			encoded->push_back('\0');
+		break;
+	case ColumnType::Binary: {
+		std::string str = nark::lcast(x);
+		invariant(str.size() < 127);
+		if (!isLastField) {
+			encoded->push_back(byte(str.size()+1)); // a one-byte var_uint
+		}
+		encoded->append(str.c_str(), str.size() + 1); // with '\0'
+		break; }
+	}
+}
+
+static void
+encodeConvertString(ColumnType type, const char* str, valvec<char>* encoded) {
+	typedef unsigned char byte;
+	char* endp = nullptr;
+	switch (type) {
+	default:
+		invariant(!"encodeConvertString: bad type conversion");
+		break;
+	case ColumnType::Sint08:
+		{
+			int8_t x = (int8_t)strtol(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(1), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Uint08:
+		{
+			uint8_t x = (uint8_t)strtoul(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(1), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Sint16:
+		{
+			int16_t x = (int16_t)strtol(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(2), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Uint16:
+		{
+			uint16_t x = (uint16_t)strtoul(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(2), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Sint32:
+		{
+			int32_t x = (int32_t)strtol(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(4), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Uint32:
+		{
+			uint32_t x = (uint32_t)strtoul(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(4), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Sint64:
+		{
+			int64_t x = (int64_t)strtoll(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(8), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Uint64:
+		{
+			uint64_t x = (uint64_t)strtoull(str, &endp, 10);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(8), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Float32:
+		BOOST_STATIC_ASSERT(sizeof(float) == 4);
+		{
+			float x = strtof(str, &endp);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(4), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
+		break;
+	case ColumnType::Float64:
+		BOOST_STATIC_ASSERT(sizeof(double) == 8);
+		{
+			double x = strtod(str, &endp);
+			if ('\0' == *endp)
+				unaligned_save((byte*)encoded->grow_no_init(8), x);
+			else
+				THROW_STD(invalid_argument, "str is not a number");
+		}
 		break;
 	case ColumnType::Float128:
 		abort(); // not implemented yet
 		break;
 	}
-#endif
 }
 
 // for WritableSegment, param schema is m_rowSchema, param exclude is nullptr
@@ -256,6 +448,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 					<< ", bson=" << obj.toString();
 		}
 		invariant(j < m_fields.end_i());
+		bool isLastField = schema->m_columnsMeta.end_i() - 1 == i;
 		BSONElement elem(m_fields.key(j).data() - 1, colname.size()+1,
 						 BSONElement::FieldNameSizeTag());
 		BSONType elemType = elem.type();
@@ -272,13 +465,13 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			assert(colmeta.type == nark::db::ColumnType::Uint08);
 			break;
 		case NumberInt:
-			encodeConvertFrom<int32_t>(colmeta.type, value, encoded);
+			encodeConvertFrom<int32_t>(colmeta.type, value, encoded, isLastField);
 			break;
 		case NumberDouble:
-			encodeConvertFrom<double>(colmeta.type, value, encoded);
+			encodeConvertFromDouble(colmeta.type, value, encoded, isLastField);
 			break;
 		case NumberLong:
-			encodeConvertFrom<int64_t>(colmeta.type, value, encoded);
+			encodeConvertFrom<int64_t>(colmeta.type, value, encoded, isLastField);
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
 		case mongo::Date:
@@ -303,8 +496,12 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		case Code:
 		case mongo::String:
 		//	log() << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
-			assert(colmeta.type == nark::db::ColumnType::StrZero);
-			encoded->append(value + 4, elem.valuestrsize());
+			if (colmeta.type == nark::db::ColumnType::StrZero) {
+				encoded->append(value + 4, elem.valuestrsize());
+			}
+			else {
+				encodeConvertString(colmeta.type, value + 4, encoded);
+			}
 			break;
 		case DBRef:
 			assert(0); // deprecated, should not in data
@@ -562,7 +759,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	assert(nullptr != schema);
 	MyBsonBuilder bb;
 	const char* pos = data;
-	bb.resize(size);
+	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2 * size);
 	bb.skip(sizeof(SharedBuffer::Holder));
 	bb.skip(4); // object size
 	// last is $$ field, the schema-less fields
@@ -717,6 +914,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		invariant(pos == data + size);
 		bb << char(EOO); // End of object
 	}
+	bb.shrink_to_fit();
 	int bsonSize = int(bb.tell() - sizeof(SharedBuffer::Holder));
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
 			.write<LittleEndian<int>>(bsonSize);
@@ -768,13 +966,16 @@ void encodeIndexKey(const Schema& indexSchema,
 			assert(indexSchema.getColumnType(i) == ColumnType::Uint08);
 			break;
 		case NumberInt:
-			encodeConvertFrom<int32_t>(colmeta.type, value, encoded);
+			encodeConvertFrom<int32_t>(colmeta.type, value, encoded,
+				indexSchema.m_columnsMeta.end_i()-1 == i);
 			break;
 		case NumberDouble:
-			encodeConvertFrom<double>(colmeta.type, value, encoded);
+			encodeConvertFromDouble(colmeta.type, value, encoded,
+				indexSchema.m_columnsMeta.end_i()-1 == i);
 			break;
 		case NumberLong:
-			encodeConvertFrom<int64_t>(colmeta.type, value, encoded);
+			encodeConvertFrom<int64_t>(colmeta.type, value, encoded,
+				indexSchema.m_columnsMeta.end_i()-1 == i);
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
 		case mongo::Date:
@@ -790,8 +991,12 @@ void encodeIndexKey(const Schema& indexSchema,
 		case Code:
 		case mongo::String:
 		//	log() << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
-			assert(colmeta.type == ColumnType::StrZero);
-			encoded->append(value + 4, elem.valuestrsize());
+			if (colmeta.type == ColumnType::StrZero) {
+				encoded->append(value + 4, elem.valuestrsize());
+			}
+			else {
+				encodeConvertString(colmeta.type, value + 4, encoded);
+			}
 			break;
 		case DBRef:
 			assert(0); // deprecated, should not in data
@@ -841,7 +1046,7 @@ SharedBuffer
 decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 	MyBsonBuilder bb;
 	const char* pos = data;
-	bb.resize(size);
+	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2*size);
 	bb.skip(sizeof(SharedBuffer::Holder));
 	bb.skip(4); // object size loc
 	for (size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
@@ -946,6 +1151,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 	}
 	invariant(data + size == pos);
 	bb << char(EOO); // end of object
+	bb.shrink_to_fit();
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
 			.write<LittleEndian<int>>(int(bb.tell() - sizeof(SharedBuffer::Holder)));
 

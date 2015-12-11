@@ -54,7 +54,7 @@
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
-#define TRACING_ENABLED 0
+#define TRACING_ENABLED 1
 
 #if TRACING_ENABLED
 #define TRACE_CURSOR log() << "NarkDb index (" << (const void*)&_idx << ") "
@@ -259,17 +259,22 @@ public:
 			_cursor = idx.m_table->createIndexIterBackward(idx.m_indexId);
     }
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
-        if (_eof) // Advance on a cursor at the end is a no-op
+        if (_eof) { // Advance on a cursor at the end is a no-op
+	        TRACE_CURSOR << "next(): _eof=true";
             return {};
+		}
         if (!_lastMoveWasRestore) {
 			llong recIdx = -1;
-			_cursorAtEof = _cursor->increment(&recIdx, &m_curKey);
-			if (!_cursorAtEof) {
+			if (_cursor->increment(&recIdx, &m_curKey)) {
+				_cursorAtEof = false;
 				_id = RecordId(recIdx + 1);
+		        TRACE_CURSOR << "next(): curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
 		        return curr(parts);
 			}
+			_cursorAtEof = true;
 			return {};
 		} else {
+			TRACE_CURSOR << "next(): curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
 			_lastMoveWasRestore = false;
 	        return curr(parts);
 		}
@@ -280,10 +285,13 @@ public:
         if (key.isEmpty()) {
             // This means scan to end of index.
             _endPositionKey.erase_all();
+			_endPositionInclude = false;
         }
 		else {
 			encodeIndexKey(*_idx.getIndexSchema(), key, &_endPositionKey);
 			_endPositionInclude = inclusive;
+	        TRACE_CURSOR << "setEndPosition: _endPositionKey="
+						 << _idx.getIndexSchema()->toJsonStr(_endPositionKey);
 		}
     }
 
@@ -297,20 +305,25 @@ public:
         // By using a discriminator other than kInclusive, there is no need to distinguish
         // unique vs non-unique key formats since both start with the key.
         // _query.resetToKey(finalKey, _idx.ordering(), discriminator);
-        seekWTCursor(key);
+        seekWTCursor(key, inclusive);
         updatePosition();
-        return curr(parts);
+		if (!_cursorAtEof)
+			return curr(parts);
+		else
+			return {};
     }
 
     boost::optional<IndexKeyEntry> seek(const IndexSeekPoint& seekPoint,
                                         RequestedInfo parts) override {
         // TODO: don't go to a bson obj then to a KeyString, go straight
-        BSONObj key = IndexEntryComparison::makeQueryObject(seekPoint, _forward);
-
         // makeQueryObject handles the discriminator in the real exclusive cases.
-        seekWTCursor(key);
+        BSONObj key = IndexEntryComparison::makeQueryObject(seekPoint, _forward);
+        seekWTCursor(key, true);
         updatePosition();
-        return curr(parts);
+		if (!_cursorAtEof)
+			return curr(parts);
+		else
+			return {};
     }
 
     void save() override {
@@ -340,7 +353,8 @@ public:
             // Standard (non-unique) indices *do* include the record id in their KeyStrings. This
             // means that restoring to the same key with a new record id will return false, and we
             // will *not* skip the key with the new record id.
-            _lastMoveWasRestore = !seekWTCursor();
+			m_qryKey.assign(m_curKey);
+            _lastMoveWasRestore = !seekWTCursor(true);
             TRACE_CURSOR << "restore _lastMoveWasRestore:" << _lastMoveWasRestore;
         }
     }
@@ -365,7 +379,7 @@ protected:
 
         BSONObj bson;
         if (TRACING_ENABLED || (parts & kWantKey)) {
-            bson = BSONObj(m_coder.decode(_idx.getIndexSchema(), fstring(m_curKey)));
+            bson = BSONObj(m_coder.decode(_idx.getIndexSchema(), m_curKey));
 
             TRACE_CURSOR << " returning " << bson << ' ' << _id;
         }
@@ -392,19 +406,21 @@ protected:
 
     void advanceWTCursor() {
 		llong recIdx = -1;
-        _cursorAtEof = _cursor->increment(&recIdx, &m_curKey);
-		if (!_cursorAtEof) {
+		if (_cursor->increment(&recIdx, &m_curKey)) {
+	        _cursorAtEof = false;
 			_id = RecordId(recIdx + 1);
+		} else {
+	        _cursorAtEof = true;
 		}
     }
 
     // Seeks to query. Returns true on exact match.
-    bool seekWTCursor(const BSONObj& bsonKey) {
+    bool seekWTCursor(const BSONObj& bsonKey, bool inclusive) {
 		auto indexSchema = _idx.getIndexSchema();
 		encodeIndexKey(*indexSchema, bsonKey, &m_qryKey);
-		return seekWTCursor();
+		return seekWTCursor(inclusive);
 	}
-    bool seekWTCursor() {
+    bool seekWTCursor(bool inclusive) {
 		llong recIdx = -1;
         int ret = _cursor->seekLowerBound(m_qryKey, &recIdx, &m_curKey);
         if (ret < 0) {
@@ -412,9 +428,22 @@ protected:
             TRACE_CURSOR << "\t not found, queryKey is greater than all keys";
             return false;
         }
-        _cursorAtEof = false;
-
-        TRACE_CURSOR << "\t lowerBound ret: " << ret;
+        TRACE_CURSOR << "\t lowerBound ret: " << ret
+			<< ", recIdx=" << recIdx
+			<< ", curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
+		if (!inclusive && fstring(m_qryKey) == m_curKey) {
+			if (_cursor->increment(&recIdx, &m_curKey)) {
+				_cursorAtEof = false;
+				_id = RecordId(recIdx + 1);
+			} else {
+				_cursorAtEof = true;
+				return false;
+			}
+		}
+		else {
+			_id = RecordId(recIdx + 1);
+	        _cursorAtEof = false;
+		}
 
         if (ret == 0) {
             // Found it!
@@ -452,7 +481,7 @@ protected:
     RecordId _id;
 
     const bool _forward;
-	bool _eof = true;
+	bool _eof = false;
 
     // This differs from _eof in that it always reflects the result of the most recent call to
     // reposition _cursor.
@@ -463,6 +492,7 @@ protected:
     bool _lastMoveWasRestore = false;
 
 	bool _endPositionInclude;
+	bool m_isEndKeyMax = true;
     nark::valvec<unsigned char> _endPositionKey;
 };
 

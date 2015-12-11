@@ -95,9 +95,9 @@ public:
           _txn(txn) {
     	m_ctx = dynamic_cast<MongoNarkDbContext*>(rs.m_table->createDbContext());
     	if (forward)
-    		_cursor = rs.m_table->createStoreIterForward(&*m_ctx);
+    		_cursor = rs.m_table->createStoreIterForward(m_ctx.get());
     	else
-    		_cursor = rs.m_table->createStoreIterBackward(&*m_ctx);
+    		_cursor = rs.m_table->createStoreIterBackward(m_ctx.get());
     }
 
     boost::optional<Record> next() final {
@@ -107,17 +107,16 @@ public:
         llong recIdx = _lastReturnedId.repr() - 1;
         if (!_skipNextAdvance) {
             if (!_cursor->increment(&recIdx, &m_recBuf)) {
-            	_lastReturnedId = RecordId(recIdx + 1);
                 _eof = true;
                 return {};
             }
         }
-        m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
+        SharedBuffer sbuf = m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
         _lastReturnedId = id;
-		BSONObj bson(m_bson.get());
-        return {{id, {m_bson, bson.objsize()}}};
+		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
+        return {{id, {sbuf, len}}};
     }
 
     boost::optional<Record> seekExact(const RecordId& id) final {
@@ -127,11 +126,11 @@ public:
             _eof = true;
             return {};
         }
-    	m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
+        SharedBuffer sbuf = m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
+        _skipNextAdvance = false;
         _lastReturnedId = id;
-        _eof = false;
-		BSONObj bson(m_bson.get());
-        return {{id, {m_bson,bson.objsize()}}};
+		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
+        return {{id, {sbuf, len}}};
     }
 
     void save() final {
@@ -164,7 +163,6 @@ public:
             return false;
         }
 
-    	m_bson = m_ctx->m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
     	_skipNextAdvance = true;
 
         return true;  // Landed right where we left off.
@@ -184,10 +182,10 @@ private:
     OperationContext* _txn;
     bool _skipNextAdvance = false;
     bool _eof = false;
-    MongoNarkDbContextPtr m_ctx;
+	SchemaRecordCoder m_coder;
+    nark::db::DbContextPtr m_ctx;
     nark::db::StoreIteratorPtr _cursor;
     nark::valvec<unsigned char> m_recBuf;
-    SharedBuffer m_bson;
     RecordId _lastReturnedId;  // If null, need to seek to first/last record.
 };
 

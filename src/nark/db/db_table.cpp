@@ -456,7 +456,7 @@ public:
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
 		if (nark_unlikely(!m_segs[m_segIdx].iter))
-			 m_segs[m_segIdx].iter = m_segs[m_segIdx].seg->createStoreIterForward(&*m_ctx);
+			 m_segs[m_segIdx].iter = m_segs[m_segIdx].seg->createStoreIterForward(m_ctx.get());
 		if (!m_segs[m_segIdx].iter->increment(subId, val)) {
 			MyRwLock lock(tab->m_rwMutex, false);
 			m_segs.resize(tab->m_segments.size() + 1);
@@ -472,7 +472,7 @@ public:
 				m_segIdx++;
 				auto& cur = m_segs[m_segIdx];
 				if (nark_unlikely(!cur.iter))
-					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
+					cur.iter = cur.seg->createStoreIterForward(m_ctx.get());
 				bool ret = cur.iter->increment(subId, val);
 				if (ret) {
 					assert(*subId < m_segs[m_segIdx].seg->numDataRows());
@@ -494,7 +494,7 @@ public:
 			MyRwLock lock(tab->m_rwMutex, false);
 			if (!cur.seg->m_isDel[subId]) {
 				if (nark_unlikely(!cur.iter))
-					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
+					cur.iter = cur.seg->createStoreIterForward(m_ctx.get());
 				return cur.iter->seekExact(subId, val);
 			}
 		}
@@ -575,7 +575,7 @@ public:
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
 		auto tab = static_cast<const CompositeTable*>(m_store.get());
 		if (nark_unlikely(!m_segs[m_segIdx-1].iter))
-			 m_segs[m_segIdx-1].iter = m_segs[m_segIdx-1].seg->createStoreIterBackward(&*m_ctx);
+			 m_segs[m_segIdx-1].iter = m_segs[m_segIdx-1].seg->createStoreIterBackward(m_ctx.get());
 		if (!m_segs[m_segIdx-1].iter->increment(subId, val)) {
 			MyRwLock lock(tab->m_rwMutex, false);
 			m_segs.resize(tab->m_segments.size() + 1);
@@ -591,7 +591,7 @@ public:
 				m_segIdx--;
 				auto& cur = m_segs[m_segIdx-1];
 				if (nark_unlikely(!cur.iter))
-					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
+					cur.iter = cur.seg->createStoreIterForward(m_ctx.get());
 				bool ret = cur.iter->increment(subId, val);
 				if (ret) {
 					assert(*subId < m_segs[m_segIdx-1].seg->numDataRows());
@@ -613,7 +613,7 @@ public:
 			MyRwLock lock(tab->m_rwMutex, false);
 			if (!cur.seg->m_isDel[subId]) {
 				if (nark_unlikely(!cur.iter))
-					cur.iter = cur.seg->createStoreIterForward(&*m_ctx);
+					cur.iter = cur.seg->createStoreIterForward(m_ctx.get());
 				return cur.iter->seekExact(subId, val);
 			}
 		}
@@ -1221,9 +1221,9 @@ class TableIndexIter : public IndexIterator {
 	IndexIterator* createIter(const ReadableSegment& seg) {
 		auto index = seg.getReadableIndex(m_indexId);
 		if (m_forward)
-			return index->createIndexIterForward(&*m_ctx);
+			return index->createIndexIterForward(m_ctx.get());
 		else
-			return index->createIndexIterBackward(&*m_ctx);
+			return index->createIndexIterBackward(m_ctx.get());
 	}
 
 	size_t syncSegPtr() {
@@ -1274,12 +1274,21 @@ public:
 	bool increment(llong* id, valvec<byte>* key) override {
 		if (nark_unlikely(!m_isHeapBuilt)) {
 			if (syncSegPtr()) {
-				for (auto& cur : m_segs)
+				for (auto& cur : m_segs) {
 					if (cur.iter == nullptr)
 						cur.iter = createIter(*cur.seg);
+					else
+						cur.iter->reset();
+				}
 			}
 			m_heap.erase_all();
 			m_heap.reserve(m_segs.size());
+			for (size_t i = 0; i < m_segs.size(); ++i) {
+				auto& cur = m_segs[i];
+				if (cur.iter->increment(&cur.subId, &cur.data)) {
+					m_heap.push_back(i);
+				}
+			}
 			std::make_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
 			m_isHeapBuilt = true;
 		}
@@ -1325,6 +1334,22 @@ public:
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		const Schema& schema = *m_tab->m_indexSchemaSet->m_nested.elem_at(m_indexId);
+#if 0
+		if (key.size() == 0)
+			fprintf(stderr, "TableIndexIter::seekLowerBound: segs=%zd key.len=0\n",
+					m_tab->m_segments.size());
+		else
+			fprintf(stderr, "TableIndexIter::seekLowerBound: segs=%zd key=%s\n",
+					m_tab->m_segments.size(), schema.toJsonStr(key).c_str());
+#endif
+		if (key.size() == 0) {
+			// empty key indicate min key in both forward and backword mode
+			this->reset();
+			if (increment(id, retKey))
+				return (retKey->size() == 0) ? 0 : 1;
+			else
+				return -1;
+		}
 		size_t fixlen = schema.getFixedRowLen();
 		assert(fixlen == 0 || key.size() == fixlen);
 		if (fixlen && key.size() != fixlen) {
