@@ -27,11 +27,15 @@ extern const char G_schemaLessFieldName[];
 class SchemaRecordCoder {
 public:
 	nark::febitvec m_stored;
-	nark::gold_hash_set<nark::fstring,
-		nark::fstring_func::hash, nark::fstring_func::equal> m_fields;
+	typedef nark::gold_hash_set<nark::fstring,
+		nark::fstring_func::hash, nark::fstring_func::equal> FieldsMap;
+	FieldsMap m_fields;
 
 	SchemaRecordCoder();
 	~SchemaRecordCoder();
+
+	static void parseToFields(const BSONObj&, FieldsMap*);
+	static bool fieldsEqual(const FieldsMap&, const FieldsMap&);
 
 	void
 	encode(const Schema* schema, const Schema* exclude,	const BSONObj& key,

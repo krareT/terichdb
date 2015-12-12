@@ -663,6 +663,7 @@ public:
 template<class Key>
 MockWritableIndex<Key>::MockWritableIndex(bool isUnique) {
 	this->m_isUnique = isUnique;
+	m_keysLen = 0;
 }
 
 template<class Key>

@@ -89,7 +89,7 @@ class NARK_DB_DLL MockWritableIndex : public WritableIndex {
 	class MyIndexIterBackward; friend class MyIndexIterBackward;
 	typedef std::pair<Key, llong> kv_t;
 	std::set<kv_t> m_kv;
-	size_t m_keysLen = 0;
+	size_t m_keysLen;
 public:
 	explicit MockWritableIndex(bool isUnique);
 	void save(fstring) const override;

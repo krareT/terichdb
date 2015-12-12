@@ -390,27 +390,49 @@ encodeConvertString(ColumnType type, const char* str, valvec<char>* encoded) {
 	}
 }
 
-// for WritableSegment, param schema is m_rowSchema, param exclude is nullptr
-// for ReadonlySegment, param schema is m_nonIndexSchema,
-//                      param exclude is m_uniqIndexFields
-void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
-							   const BSONObj& obj, valvec<char>* encoded) {
-	assert(nullptr != schema);
-	encoded->resize(0);
+// static
+bool SchemaRecordCoder::fieldsEqual(const FieldsMap& x, const FieldsMap& y) {
+	if (x.end_i() != y.end_i()) {
+		return false;
+	}
+	for (size_t i = 0; i < x.end_i(); ++i) {
+		fstring xname = x.key(i);
+		size_t j = y.find_i(xname);
+		if (j == y.end_i()) {
+			return false;
+		}
+		fstring yname = y.key(j);
+		BSONElement xe(xname.data()-1, xname.size()+1, BSONElement::FieldNameSizeTag());
+		BSONElement ye(yname.data()-1, yname.size()+1, BSONElement::FieldNameSizeTag());
+		if (xe.type() == NumberDouble || ye.type() == NumberDouble) {
+			double xd = xe.numberDouble();
+			double yd = ye.numberDouble();
+			if (fabs((xd - yd) / xd) > 0.1)
+				return false;
+			else
+				continue;
+		}
+		else if (xe != ye)
+			return false;
+	}
+	return true;
+}
 
-	m_fields.erase_all();
+// static
+void SchemaRecordCoder::parseToFields(const BSONObj& obj, FieldsMap* fields) {
+	fields->erase_all();
 //	std::string fieldnames;
 	BSONForEach(elem, obj) {
 	//	const char* fieldname = elem.fieldName(); // gcc-4.9.3 produce error code
 		fstring fieldname = elem.fieldName(); // gcc is ok
-		auto ib = m_fields.insert_i(fieldname);
+		auto ib = fields->insert_i(fieldname);
 	//	LOG(1)	<< "insert('" << fieldname.c_str() << "', len=" << fieldname.size() << ")=" << ib.first;
-	//	LOG(1)	<< "find_i('" << fieldname.c_str() << "', len=" << fieldname.size() << ")=" << m_fields.find_i(fieldname);
+	//	LOG(1)	<< "find_i('" << fieldname.c_str() << "', len=" << fieldname.size() << ")=" << fields->find_i(fieldname);
 		if (!ib.second) {
 			THROW_STD(invalid_argument,
 					"bad bson: duplicate fieldname: %s", fieldname.c_str());
 		}
-		invariant(m_fields.elem_at(ib.first).size() == fieldname.size());
+		invariant(fields->elem_at(ib.first).size() == fieldname.size());
 //		fieldnames += fieldname.c_str();
 //		fieldnames.push_back(',');
 	}
@@ -418,16 +440,26 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 //	LOG(1)	<< "SchemaRecordCoder::encode: bsonFields=" << fieldnames;
 /*
 	fieldnames.resize(0);
-	for (size_t i = 0; i < m_fields.end_i(); ++i) {
-		fstring fieldname = m_fields.elem_at(i);
+	for (size_t i = 0; i < fields->end_i(); ++i) {
+		fstring fieldname = fields->elem_at(i);
 		fieldnames.append(fieldname.c_str());
 		fieldnames.push_back(',');
-		LOG(1) << "hash(fieldname='" << fieldname.str() << "')=" << m_fields.hash_v(fieldname);
-		invariant(m_fields.find_i(fieldname) == i);
+		LOG(1) << "hash(fieldname='" << fieldname.str() << "')=" << fields->hash_v(fieldname);
+		invariant(fields->find_i(fieldname) == i);
 	}
 	fieldnames.pop_back();
 	LOG(1)	<< "SchemaRecordCoder::encode: m_fields=" << fieldnames;
 */
+}
+
+// for WritableSegment, param schema is m_rowSchema, param exclude is nullptr
+// for ReadonlySegment, param schema is m_nonIndexSchema,
+//                      param exclude is m_uniqIndexFields
+void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
+							   const BSONObj& obj, valvec<char>* encoded) {
+	assert(nullptr != schema);
+	encoded->resize(0);
+	parseToFields(obj, &m_fields);
 	m_stored.resize_fill(m_fields.end_i(), false);
 
 	// last is $$ field, the schema-less fields
@@ -475,16 +507,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
 		case mongo::Date:
-		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
-			// offset binary encoding for byte lex compare
-			{
-				auto x = ConstDataView(value).read<LittleEndian<long long>>();
-				auto y = x ^ (1LL << 63);
-				encoded->append((char*)&y, 8);
-			}
-		#else
-			encoded->append(value, 8);
-		#endif
+			encodeConvertFrom<int64_t>(colmeta.type, value, encoded, isLastField);
 			break;
 		case jstOID:
 		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
@@ -594,12 +617,13 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			continue;
 		BSONElement elem = *it;
 		fstring fieldName = elem.fieldName();
-		assert(fieldName.ende(0) == 0);
+		assert(fieldName.end()[0] == 0);
 		if (exclude) {
 			size_t colid = exclude->m_columnsMeta.find_i(fieldName);
 			if (colid >= exclude->columnNum())
 				continue;
 		}
+		encoded->push_back((unsigned char)elem.type());
 		encoded->append(fieldName.data(), fieldName.size()+1);
 		narkEncodeBsonElemVal(elem, *encoded);
 	}
@@ -616,6 +640,83 @@ typedef LittleEndianDataOutput<AutoGrownMemIO> MyBsonBuilder;
 
 static void narkDecodeBsonObject(MyBsonBuilder& bb, const char*& pos, const char* end);
 static void narkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const char* end);
+
+template<class TargetBsonType>
+static TargetBsonType
+decodeConvertTo(ColumnType fromSchemaType, const char*& pos) {
+	TargetBsonType val = 0;
+	switch (fromSchemaType) {
+	default:
+		invariant(!"encodeConvertFrom: bad type conversion");
+		break;
+	case ColumnType::Sint08:
+		val = TargetBsonType((signed char)*pos++);
+		break;
+	case ColumnType::Uint08:
+		val = TargetBsonType((unsigned char)*pos++);
+		break;
+	case ColumnType::Sint16:
+		val = TargetBsonType(unaligned_load<int16_t>(pos));
+		pos += 2;
+		break;
+	case ColumnType::Uint16:
+		val = TargetBsonType(unaligned_load<uint16_t>(pos));
+		pos += 2;
+		break;
+	case ColumnType::Sint32:
+		val = TargetBsonType(unaligned_load<int32_t>(pos));
+		pos += 4;
+		break;
+	case ColumnType::Uint32:
+		val = TargetBsonType(unaligned_load<uint32_t>(pos));
+		pos += 4;
+		break;
+	case ColumnType::Sint64:
+		val = TargetBsonType(unaligned_load<int64_t>(pos));
+		pos += 8;
+		break;
+	case ColumnType::Uint64:
+		val = TargetBsonType(unaligned_load<uint64_t>(pos));
+		pos += 8;
+		break;
+	case ColumnType::Float32:
+		if (boost::is_floating_point<TargetBsonType>::value) {
+			BOOST_STATIC_ASSERT(sizeof(float) == 4);
+			val = unaligned_load<float>(pos);
+		}
+		else {
+			float x = unaligned_load<float>(pos);
+			if (x <= std::numeric_limits<TargetBsonType>::min())
+				val = std::numeric_limits<TargetBsonType>::min();
+			else if (x >= std::numeric_limits<TargetBsonType>::max())
+				val = std::numeric_limits<TargetBsonType>::max();
+			else
+				val = static_cast<TargetBsonType>(x);
+		}
+		pos += 4;
+		break;
+	case ColumnType::Float64:
+		if (boost::is_floating_point<TargetBsonType>::value) {
+			BOOST_STATIC_ASSERT(sizeof(double) == 8);
+			val = unaligned_load<double>(pos);
+		}
+		else {
+			double x = unaligned_load<double>(pos);
+			if (x <= std::numeric_limits<TargetBsonType>::min())
+				val = std::numeric_limits<TargetBsonType>::min();
+			else if (x >= std::numeric_limits<TargetBsonType>::max())
+				val = std::numeric_limits<TargetBsonType>::max();
+			else
+				val = static_cast<TargetBsonType>(x);
+		}
+		pos += 8;
+		break;
+	case ColumnType::Float128:
+		abort(); // not implemented yet
+		break;
+	}
+	return val;
+}
 
 static void narkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const char* end, int type) {
 	switch (type) {
@@ -704,7 +805,6 @@ static void narkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const cha
 			massert(10320, msg.c_str(), false);
 		}
 	}
-
 }
 
 static void narkDecodeBsonObject(MyBsonBuilder& bb, const char*& pos, const char* end) {
@@ -725,7 +825,8 @@ static void narkDecodeBsonObject(MyBsonBuilder& bb, const char*& pos, const char
 	}
 	int objByteNum = int(bb.tell() - byteNumOffset);
 //	log() << "byteNumOffset" << byteNumOffset << ", objByteNum=" << objByteNum;
-	(int&)bb.buf()[byteNumOffset] = objByteNum;
+	DataView((char*)bb.buf() + byteNumOffset)
+			.write<LittleEndian<int>>(objByteNum);
 }
 
 static void narkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const char* end) {
@@ -784,37 +885,21 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			assert(0);
 			break;
 		case mongo::Bool:
-			bb << char(*pos ? 1 : 0);
-			pos++;
+			assert(colmeta.fixedLen == 1);
+			bb << char(decodeConvertTo<char>(colmeta.type, pos) ? 1 : 0);
 			break;
 		case NumberInt:
-		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
-			{
-				int x = ConstDataView(pos).read<BigEndian<int>>();
-				x ^= 1 << 31;
-				bb << x;
-				pos += 4;
-			}
-		#else
-			bb.ensureWrite(pos, 4);
-			pos += 4;
-		#endif
+			bb << decodeConvertTo<int>(colmeta.type, pos);
 			break;
 		case bsonTimestamp:
 		case mongo::Date:
+			bb << decodeConvertTo<int64_t>(colmeta.type, pos);
+			break;
 		case NumberDouble:
+			bb << decodeConvertTo<double>(colmeta.type, pos);
+			break;
 		case NumberLong:
-		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
-			{
-				long long x = ConstDataView(pos).read<BigEndian<long long>>();
-				x ^= (long long)1 << 63;
-				bb << x;
-				pos += 8;
-			}
-		#else
-			bb.ensureWrite(pos, 8);
-			pos += 8;
-		#endif
+			bb << decodeConvertTo<int64_t>(colmeta.type, pos);
 			break;
 		case jstOID:
 			bb.ensureWrite(pos, OID::kOIDSize);
@@ -899,10 +984,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		while (pos < end) {
 			const int type = (unsigned char)(*pos++);
 			bb << char(type);
-			if (type == EOO) {
-				invariant(pos == end);
-				break;
-			}
+			assert(EOO != type);
 			StringData fieldname = pos;
 			bb.ensureWrite(fieldname.begin(), fieldname.size()+1);
 			pos += fieldname.size() + 1;
@@ -912,15 +994,14 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	}
 	else {
 		invariant(pos == data + size);
-		bb << char(EOO); // End of object
 	}
+	bb << char(EOO); // End of object
 	bb.shrink_to_fit();
 	int bsonSize = int(bb.tell() - sizeof(SharedBuffer::Holder));
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
 			.write<LittleEndian<int>>(bsonSize);
 
 	return SharedBuffer::takeOwnership((char*)bb.release());
-//	return BSONObj::takeOwnership((char*)bb.release());
 }
 
 SharedBuffer
@@ -945,12 +1026,14 @@ SchemaRecordCoder::decode(const Schema* schema, nark::fstring encoded) {
 void encodeIndexKey(const Schema& indexSchema,
 					const BSONObj& bson,
 					nark::valvec<char>* encoded) {
-	typedef unsigned char byte;
 	encoded->erase_all();
 	using nark::db::ColumnType;
 	BSONObj::iterator iter = bson.begin();
 	for(size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
-	//	fstring     colname = indexSchema.m_columnsMeta.key(i);
+#if !defined(NDEBUG)
+		fstring     colname = indexSchema.m_columnsMeta.key(i);
+		assert(!colname.empty());
+#endif
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
 		BSONElement elem(iter.next());
 		const char* value = elem.value();
@@ -979,7 +1062,8 @@ void encodeIndexKey(const Schema& indexSchema,
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
 		case mongo::Date:
-			encoded->append(value, 8);
+			encodeConvertFrom<int64_t>(colmeta.type, value, encoded,
+				indexSchema.m_columnsMeta.end_i()-1 == i);
 			break;
 		case jstOID:
 		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
@@ -1003,15 +1087,19 @@ void encodeIndexKey(const Schema& indexSchema,
 			encoded->append(value + 4, elem.valuestrsize() + OID::kOIDSize);
 			break;
 		case mongo::Array:
+			abort(); // not supported
 			break;
 		case Object:
+			abort(); // not supported
 			assert(colmeta.type == ColumnType::CarBin);
 			break;
 		case CodeWScope:
 			assert(indexSchema.getColumnType(i) == ColumnType::CarBin);
+			abort(); // not supported
 			break;
 		case BinData:
 			assert(indexSchema.getColumnType(i) == ColumnType::CarBin);
+			abort(); // not supported
 			break;
 		case RegEx:
 			{
@@ -1064,37 +1152,20 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 		case MinKey:
 			break;
 		case mongo::Bool:
-			bb << char(*pos ? 1 : 0);
-			pos++;
+			bb << char(decodeConvertTo<char>(colmeta.type, pos) ? 1 : 0);
 			break;
 		case NumberInt:
-		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
-			{
-				int x = ConstDataView(pos).read<BigEndian<int>>();
-				x ^= 1 << 31;
-				bb << x;
-				pos += 4;
-			}
-		#else
-			bb.ensureWrite(pos, 4);
-			pos += 4;
-		#endif
+			bb << decodeConvertTo<int>(colmeta.type, pos);
 			break;
 		case bsonTimestamp:
 		case mongo::Date:
+			bb << decodeConvertTo<int64_t>(colmeta.type, pos);
+			break;
 		case NumberDouble:
+			bb << decodeConvertTo<double>(colmeta.type, pos);
+			break;
 		case NumberLong:
-		#ifdef MONGO_NARK_ENCODE_BYTE_LEX
-			{
-				long long x = ConstDataView(pos).read<BigEndian<long long>>();
-				x ^= (long long)1 << 63;
-				bb << x;
-				pos += 8;
-			}
-		#else
-			bb.ensureWrite(pos, 8);
-			pos += 8;
-		#endif
+			bb << decodeConvertTo<int64_t>(colmeta.type, pos);
 			break;
 		case jstOID:
 			bb.ensureWrite(pos, OID::kOIDSize);
