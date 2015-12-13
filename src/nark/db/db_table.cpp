@@ -67,6 +67,8 @@ CompositeTable::createTable(fstring dir,
 	AutoGrownMemIO buf;
 	m_wrSeg = this->myCreateWritableSegment(getSegPath("wr", 0, buf));
 	m_segments.push_back(m_wrSeg);
+	m_rowNumVec.erase_all();
+	m_rowNumVec.push_back(0);
 }
 
 void CompositeTable::load(fstring dir) {
@@ -111,6 +113,8 @@ void CompositeTable::load(fstring dir) {
 		}
 		m_segments[segIdx] = seg;
 	}
+	fprintf(stderr, "INFO: CompositeTable::load(%.*s): loaded %zd segs\n",
+		dir.ilen(), dir.c_str(), m_segments.size());
 	if (m_segments.size() == 0 || !m_segments.back()->getWritableStore()) {
 		// THROW_STD(invalid_argument, "no any segment found");
 		// allow user create an table dir which just contains json meta file
@@ -122,6 +126,7 @@ void CompositeTable::load(fstring dir) {
 	else {
 		auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
 		assert(NULL != seg);
+		seg->unmapIsDel();
 		m_wrSeg.reset(seg); // old wr seg at end
 	}
 	m_rowNumVec.resize_no_init(m_segments.size() + 1);
@@ -791,7 +796,6 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		m_wrSeg->m_isDel.set0(subId);
 		m_wrSeg->m_delcnt--;
 	}
-//	llong id = wrBaseId + subId;
 	return wrBaseId + subId;
 }
 
@@ -804,7 +808,7 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn) 
 		for(size_t i = 0; i < m_uniqIndices.size(); ++i) {
 			size_t indexId = m_uniqIndices[i];
 			const Schema& iSchema = getIndexSchema(indexId);
-			auto rIndex = seg->getReadableIndex(indexId);
+			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
 			if (rIndex->exists(txn->key1, txn)) {
@@ -829,7 +833,7 @@ bool CompositeTable::insertSyncIndex(llong subId, DbContext* txn) {
 		const Schema& iSchema = getIndexSchema(indexId);
 		assert(iSchema.m_isUnique);
 		iSchema.selectParent(txn->cols1, &txn->key1);
-		if (!wrIndex->insert(txn->key1, subId, txn)) {
+		if (!wrIndex->getWritableIndex()->insert(txn->key1, subId, txn)) {
 			txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
 						+ ", in writing seg: " + m_wrSeg->m_segDir;
 			goto Fail;
@@ -842,7 +846,7 @@ bool CompositeTable::insertSyncIndex(llong subId, DbContext* txn) {
 		const Schema& iSchema = getIndexSchema(indexId);
 		assert(!iSchema.m_isUnique);
 		iSchema.selectParent(txn->cols1, &txn->key1);
-		wrIndex->insert(txn->key1, subId, txn);
+		wrIndex->getWritableIndex()->insert(txn->key1, subId, txn);
 	}
 	return true;
 Fail:
@@ -852,7 +856,7 @@ Fail:
 		auto wrIndex = m_wrSeg->m_indices[indexId].get();
 		const Schema& iSchema = getIndexSchema(indexId);
 		iSchema.selectParent(txn->cols1, &txn->key1);
-		wrIndex->remove(txn->key1, subId, txn);
+		wrIndex->getWritableIndex()->remove(txn->key1, subId, txn);
 	}
 	return false;
 }
@@ -934,7 +938,7 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn)
 		const Schema& iSchema = getIndexSchema(indexId);
 		for (size_t segIdx = begSeg; segIdx < endSeg; ++segIdx) {
 			auto seg = &*m_segments[segIdx];
-			auto rIndex = seg->getReadableIndex(indexId);
+			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
 			if (rIndex->exists(txn->key1, txn)) {
@@ -959,7 +963,7 @@ CompositeTable::replaceSyncIndex(llong subId, DbContext* txn, MyRwLock& lock) {
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
-			auto wrIndex = m_wrSeg->m_indices[indexId].get();
+			auto wrIndex = m_wrSeg->m_indices[indexId]->getWritableIndex();
 			if (!wrIndex->insert(txn->key1, subId, txn)) {
 				goto Fail;
 			}
@@ -971,7 +975,7 @@ CompositeTable::replaceSyncIndex(llong subId, DbContext* txn, MyRwLock& lock) {
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
-			auto wrIndex = m_wrSeg->m_indices[indexId].get();
+			auto wrIndex = m_wrSeg->m_indices[indexId]->getWritableIndex();
 			if (!wrIndex->remove(txn->key2, subId, txn)) {
 				assert(0);
 				THROW_STD(invalid_argument, "should be a bug");
@@ -984,7 +988,7 @@ CompositeTable::replaceSyncIndex(llong subId, DbContext* txn, MyRwLock& lock) {
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
-			auto wrIndex = m_wrSeg->m_indices[indexId].get();
+			auto wrIndex = m_wrSeg->m_indices[indexId]->getWritableIndex();
 			if (!wrIndex->remove(txn->key2, subId, txn)) {
 				assert(0);
 				THROW_STD(invalid_argument, "should be a bug");
@@ -1004,7 +1008,7 @@ Fail:
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
-			auto wrIndex = &*m_wrSeg->m_indices[indexId];
+			auto wrIndex = m_wrSeg->m_indices[indexId]->getWritableIndex();
 			if (!wrIndex->remove(txn->key2, subId, txn)) {
 				assert(0);
 				THROW_STD(invalid_argument, "should be a bug");
@@ -1033,7 +1037,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 			m_wrSeg->getValue(subId, &row, txn);
 			m_rowSchema->parseRow(row, &columns);
 			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
-				auto wrIndex = m_wrSeg->m_indices[i].get();
+				auto wrIndex = m_wrSeg->m_indices[i]->getWritableIndex();
 				const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
 				iSchema.selectParent(columns, &key);
 				wrIndex->remove(key, subId, txn);
@@ -1060,7 +1064,7 @@ CompositeTable::indexKeyExists(size_t indexId, fstring key, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
 	for (size_t i = m_segments.size(); i > 0; ) {
-		auto index = m_segments[--i]->getReadableIndex(indexId);
+		auto index = m_segments[--i]->m_indices[indexId];
 		if (index->exists(key, ctx))
 			return true;
 	}
@@ -1072,7 +1076,7 @@ CompositeTable::indexSearchExact(size_t indexId, fstring key, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
 	for (size_t i = m_segments.size(); i > 0; ) {
-		auto index = m_segments[--i]->getReadableIndex(indexId);
+		auto index = m_segments[--i]->m_indices[indexId];
 		llong recId = index->searchExact(key, ctx);
 		if (recId >= 0)
 			return recId;
@@ -1092,14 +1096,22 @@ CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
 	MyRwLock lock(m_rwMutex, true);
-	llong wrBaseId = m_rowNumVec.ende(2);
-	if (id < wrBaseId) {
-		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, wrBaseId=%lld", id, wrBaseId);
+	size_t upp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
+	assert(upp <= m_segments.size());
+	auto seg = m_segments[upp-1].get();
+	auto wrIndex = seg->m_indices[indexId]->getWritableIndex();
+	if (!wrIndex) {
+		// readonly segment must have been indexed
+		AutoGrownMemIO buf;
+		fprintf(stderr, "indexInsert on readonly %s, ignored",
+			getSegPath("rd", upp-1, buf).c_str());
+		return true;
 	}
+	llong wrBaseId = m_rowNumVec[upp-1];
+	assert(id >= wrBaseId);
 	llong subId = id - wrBaseId;
-	m_wrSeg->m_isDirty = true;
-	return m_wrSeg->m_indices[indexId]->insert(indexKey, subId, txn);
+	seg->m_isDirty = true;
+	return wrIndex->insert(indexKey, subId, txn);
 }
 
 bool
@@ -1113,14 +1125,22 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
 	MyRwLock lock(m_rwMutex, true);
-	llong wrBaseId = m_rowNumVec.ende(2);
-	if (id < wrBaseId) {
-		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, wrBaseId=%lld", id, wrBaseId);
+	size_t upp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
+	assert(upp <= m_segments.size());
+	auto seg = m_segments[upp-1].get();
+	auto wrIndex = seg->m_indices[indexId]->getWritableIndex();
+	if (!wrIndex) {
+		// readonly segment must have been indexed
+		AutoGrownMemIO buf;
+		fprintf(stderr, "indexRemove on readonly %s, ignored",
+			getSegPath("rd", upp-1, buf).c_str());
+		return true;
 	}
+	llong wrBaseId = m_rowNumVec[upp-1];
+	assert(id >= wrBaseId);
 	llong subId = id - wrBaseId;
-	m_wrSeg->m_isDirty = true;
-	return m_wrSeg->m_indices[indexId]->remove(indexKey, subId, txn);
+	seg->m_isDirty = true;
+	return wrIndex->remove(indexKey, subId, txn);
 }
 
 bool
@@ -1138,20 +1158,42 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 	if (oldId == newId) {
 		return true;
 	}
-	MyRwLock lock(m_rwMutex, true);
-	llong wrBaseId = m_rowNumVec.ende(2);
-	if (oldId < wrBaseId) {
-		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, wrBaseId=%lld", oldId, wrBaseId);
+	MyRwLock lock(m_rwMutex, false);
+	size_t oldupp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), oldId);
+	size_t newupp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), newId);
+	assert(oldupp <= m_segments.size());
+	assert(newupp <= m_segments.size());
+	llong oldBaseId = m_rowNumVec[oldupp-1];
+	llong newBaseId = m_rowNumVec[newupp-1];
+	llong oldSubId = oldId - oldBaseId;
+	llong newSubId = newId - newBaseId;
+	if (oldupp == newupp) {
+		auto seg = m_segments[oldupp-1].get();
+		auto wrIndex = seg->m_indices[indexId]->getWritableIndex();
+		if (!wrIndex) {
+			return true;
+		}
+		lock.upgrade_to_writer();
+		seg->m_isDirty = true;
+		return wrIndex->replace(indexKey, oldSubId, newSubId, txn);
 	}
-	if (newId < wrBaseId) {
-		THROW_STD(invalid_argument,
-			"Invalid rowId=%lld, wrBaseId=%lld", newId, wrBaseId);
+	else {
+		auto oldseg = m_segments[oldupp-1].get();
+		auto newseg = m_segments[newupp-1].get();
+		auto oldIndex = oldseg->m_indices[indexId]->getWritableIndex();
+		auto newIndex = newseg->m_indices[indexId]->getWritableIndex();
+		bool ret = true;
+		lock.upgrade_to_writer();
+		if (oldIndex) {
+			ret = oldIndex->remove(indexKey, oldSubId, txn);
+			oldseg->m_isDirty = true;
+		}
+		if (newIndex) {
+			ret = oldIndex->insert(indexKey, newSubId, txn);
+			newseg->m_isDirty = true;
+		}
+		return ret;
 	}
-	llong oldSubId = oldId - wrBaseId;
-	llong newSubId = newId - wrBaseId;
-	m_wrSeg->m_isDirty = true;
-	return m_wrSeg->m_indices[indexId]->replace(indexKey, oldSubId, newSubId, txn);
 }
 
 llong CompositeTable::indexStorageSize(size_t indexId) const {
@@ -1160,9 +1202,10 @@ llong CompositeTable::indexStorageSize(size_t indexId) const {
 			"Invalid indexId=%lld, indexNum=%lld",
 			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
 	}
+	MyRwLock lock(m_rwMutex, false);
 	llong sum = 0;
 	for (size_t i = 0; i < m_segments.size(); ++i) {
-		sum += m_segments[i]->getReadableIndex(indexId)->indexStorageSize();
+		sum += m_segments[i]->m_indices[indexId]->indexStorageSize();
 	}
 	return sum;
 }
@@ -1219,7 +1262,7 @@ class TableIndexIter : public IndexIterator {
 	bool m_isHeapBuilt;
 
 	IndexIterator* createIter(const ReadableSegment& seg) {
-		auto index = seg.getReadableIndex(m_indexId);
+		auto index = seg.m_indices[m_indexId];
 		if (m_forward)
 			return index->createIndexIterForward(m_ctx.get());
 		else

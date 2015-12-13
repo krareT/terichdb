@@ -436,6 +436,10 @@ llong MockReadonlyIndex::indexStorageSize() const {
 	return m_ids.used_mem_size() + m_keys.offsets.used_mem_size();
 }
 
+const ReadableStore* MockReadonlyIndex::getReadableStore() const {
+	return this;
+}
+
 //////////////////////////////////////////////////////////////////
 template<class WrStore>
 class MockWritableStoreIterForward : public StoreIterator {
@@ -545,9 +549,6 @@ void MockWritableStore::remove(llong id, DbContext*) {
 }
 void MockWritableStore::clear() {
 	m_rows.clear();
-}
-void MockWritableStore::flush() const {
-	// do nothing...
 }
 
 //////////////////////////////////////////////////////////////////
@@ -757,11 +758,6 @@ void MockWritableIndex<Key>::clear() {
 	m_kv.clear();
 }
 
-template<class Key>
-void MockWritableIndex<Key>::flush() const {
-	// do nothing
-}
-
 ///////////////////////////////////////////////////////////////////////
 MockReadonlySegment::MockReadonlySegment() {
 }
@@ -779,14 +775,14 @@ MockReadonlySegment::openPart(fstring path) const {
 	return store.release();
 }
 
-ReadableIndexStore*
+ReadableIndex*
 MockReadonlySegment::openIndex(fstring path, const Schema& schema) const {
 	std::unique_ptr<MockReadonlyIndex> store(new MockReadonlyIndex(schema));
 	store->load(path);
 	return store.release();
 }
 
-ReadableIndexStore*
+ReadableIndex*
 MockReadonlySegment::buildIndex(const Schema& indexSchema,
 								SortableStrVec& indexData)
 const {
@@ -805,15 +801,14 @@ MockReadonlySegment::buildStore(SortableStrVec& storeData) const {
 ///////////////////////////////////////////////////////////////////////////
 MockWritableSegment::MockWritableSegment(fstring dir) {
 	m_segDir = dir.str();
+	m_dataSize = 0;
 }
 MockWritableSegment::~MockWritableSegment() {
 	if (!m_tobeDel)
 		this->save(m_segDir);
 }
 
-void MockWritableSegment::save(fstring dir) const {
-	saveIsDel(dir);
-	saveIndices(dir);
+void MockWritableSegment::saveRecordStore(fstring dir) const {
 	fs::path fpath = dir.c_str();
 	fpath /= "rows";
 	FileStream fp(fpath.string().c_str(), "wb");
@@ -822,9 +817,7 @@ void MockWritableSegment::save(fstring dir) const {
 	dio << m_rows;
 }
 
-void MockWritableSegment::load(fstring dir) {
-	loadIsDel(dir);
-	this->openIndices(dir);
+void MockWritableSegment::loadRecordStore(fstring dir) {
 	fs::path fpath = dir.c_str();
 	fpath /= "/rows";
 	FileStream fp(fpath.string().c_str(), "rb");
@@ -833,9 +826,9 @@ void MockWritableSegment::load(fstring dir) {
 	dio >> m_rows;
 }
 
-WritableIndex*
+ReadableIndex*
 MockWritableSegment::openIndex(fstring path, const Schema& schema) const {
-	std::unique_ptr<WritableIndex> index(createIndex(path, schema));
+	std::unique_ptr<ReadableIndex> index(createIndex(path, schema));
 	index->load(path);
 	return index.release();
 }
@@ -896,11 +889,7 @@ void MockWritableSegment::remove(llong id, DbContext*) {
 void MockWritableSegment::clear() {
 }
 
-void MockWritableSegment::flush() const {
-	// do nothing
-}
-
-WritableIndex*
+ReadableIndex*
 MockWritableSegment::createIndex(fstring, const Schema& schema) const {
 	if (schema.columnNum() == 1) {
 		ColumnMeta cm = schema.getColumnMeta(0);

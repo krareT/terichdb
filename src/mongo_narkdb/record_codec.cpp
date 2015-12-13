@@ -1026,6 +1026,7 @@ SchemaRecordCoder::decode(const Schema* schema, nark::fstring encoded) {
 void encodeIndexKey(const Schema& indexSchema,
 					const BSONObj& bson,
 					nark::valvec<char>* encoded) {
+	LOG(2) << "encodeIndexKey: bson=" << bson.toString();
 	encoded->erase_all();
 	using nark::db::ColumnType;
 	BSONObj::iterator iter = bson.begin();
@@ -1090,6 +1091,9 @@ void encodeIndexKey(const Schema& indexSchema,
 			abort(); // not supported
 			break;
 		case Object:
+			if (0 == i && elem.embeddedObject().isEmpty()) {
+				return; // done, empty object
+			}
 			abort(); // not supported
 			assert(colmeta.type == ColumnType::CarBin);
 			break;

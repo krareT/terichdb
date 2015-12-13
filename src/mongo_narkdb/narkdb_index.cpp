@@ -283,11 +283,17 @@ public:
     void setEndPosition(const BSONObj& key, bool inclusive) override {
         TRACE_CURSOR << "setEndPosition inclusive: " << inclusive << ' ' << key;
         if (key.isEmpty()) {
+		EmptyKey:
             // This means scan to end of index.
             _endPositionKey.erase_all();
 			_endPositionInclude = false;
         }
 		else {
+			BSONElement first(*key.begin());
+			if (first.isABSONObj() && first.embeddedObject().isEmpty()) {
+		        TRACE_CURSOR << "setEndPosition: first field is an empty object";
+				goto EmptyKey;
+			}
 			encodeIndexKey(*_idx.getIndexSchema(), key, &_endPositionKey);
 			_endPositionInclude = inclusive;
 	        TRACE_CURSOR << "setEndPosition: _endPositionKey="

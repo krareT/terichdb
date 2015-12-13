@@ -284,6 +284,7 @@ NarkDbRecordStore::NarkDbRecordStore(OperationContext* ctx,
 
 NarkDbRecordStore::~NarkDbRecordStore() {
     _shuttingDown = true;
+	m_table->flush();
     LOG(1) << "~NarkDbRecordStore for: " << ns();
 }
 

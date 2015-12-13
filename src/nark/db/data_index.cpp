@@ -55,6 +55,13 @@ bool ReadableIndex::exists(fstring key, DbContext* ctx) const {
 	return id >= 0;
 }
 
+const ReadableStore* ReadableIndex::getReadableStore() const {
+	return nullptr;
+}
+WritableIndex* ReadableIndex::getWritableIndex() {
+	return nullptr;
+}
+
 /////////////////////////////////////////////////////////////////////////////
 IndexIterator::~IndexIterator() {
 }

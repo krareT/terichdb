@@ -26,7 +26,7 @@ public:
 };
 typedef boost::intrusive_ptr<MockReadonlyStore> MockReadonlyStorePtr;
 
-class NARK_DB_DLL MockReadonlyIndex : public ReadableIndexStore {
+class NARK_DB_DLL MockReadonlyIndex : public ReadableIndex, public ReadableStore {
 	friend class MockReadonlyIndexIterator;
 	friend class MockReadonlyIndexIterBackward;
 	fstrvec          m_keys; // keys[recId] is the key
@@ -57,6 +57,8 @@ public:
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
 	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
+
+	const ReadableStore* getReadableStore() const override;
 };
 typedef boost::intrusive_ptr<MockReadonlyIndex> MockReadonlyIndexPtr;
 
@@ -79,12 +81,11 @@ public:
 	void  remove(llong id, DbContext*) override;
 
 	void clear() override;
-	void flush() const override;
 };
 typedef boost::intrusive_ptr<MockWritableStore> MockWritableStorePtr;
 
 template<class Key>
-class NARK_DB_DLL MockWritableIndex : public WritableIndex {
+class NARK_DB_DLL MockWritableIndex : public ReadableIndex, public WritableIndex {
 	class MyIndexIterForward;  friend class MyIndexIterForward;
 	class MyIndexIterBackward; friend class MyIndexIterBackward;
 	typedef std::pair<Key, llong> kv_t;
@@ -104,9 +105,9 @@ public:
 	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
 //	bool exists(fstring key, DbContext*) const override; // use default
 	void clear() override;
-	void flush() const override;
 
 	llong searchExact(fstring key, DbContext*) const override;
+	WritableIndex* getWritableIndex() override { return this; }
 };
 
 class NARK_DB_DLL MockReadonlySegment : public ReadonlySegment {
@@ -115,9 +116,9 @@ public:
 	~MockReadonlySegment();
 protected:
 	ReadableStore* openPart(fstring path) const override;
-	ReadableIndexStore* openIndex(fstring path, const Schema&) const override;
+	ReadableIndex* openIndex(fstring path, const Schema&) const override;
 
-	ReadableIndexStore* buildIndex(const Schema& indexSchema,
+	ReadableIndex* buildIndex(const Schema& indexSchema,
 								   SortableStrVec& indexData) const override;
 	ReadableStore* buildStore(SortableStrVec& storeData) const override;
 };
@@ -130,12 +131,10 @@ public:
 	MockWritableSegment(fstring dir);
 	~MockWritableSegment();
 
-	WritableIndex* createIndex(fstring path, const Schema&) const override;
+	ReadableIndex* createIndex(fstring path, const Schema&) const override;
 
 protected:
-	void save(fstring) const override;
-	void load(fstring) override;
-	WritableIndex* openIndex(fstring, const Schema&) const override;
+	ReadableIndex* openIndex(fstring, const Schema&) const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	StoreIterator* createStoreIterForward(DbContext*) const override;
@@ -145,7 +144,8 @@ protected:
 	void replace(llong id, fstring row, DbContext*) override;
 	void remove(llong id, DbContext*) override;
 	void clear() override;
-	void flush() const override;
+	void loadRecordStore(fstring segDir) override;
+	void saveRecordStore(fstring segDir) const override;
 };
 
 class NARK_DB_DLL MockDbContext : public DbContext {

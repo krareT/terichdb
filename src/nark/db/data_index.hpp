@@ -53,27 +53,23 @@ public:
 	virtual IndexIterator* createIndexIterForward(DbContext*) const = 0;
 	virtual IndexIterator* createIndexIterBackward(DbContext*) const = 0;
 	///@}
+
+	/// ReadableIndex can be a ReadableStore
+	virtual const class ReadableStore* getReadableStore() const;
+
+	/// ReadableIndex can be a WritableIndex
+	virtual class WritableIndex* getWritableIndex();
 };
 typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
 /// both ordered and unordered index can be writable
-class NARK_DB_DLL WritableIndex : public ReadableIndex {
+class NARK_DB_DLL WritableIndex {
 public:
 	virtual bool remove(fstring key, llong id, DbContext*) = 0;
 	virtual bool insert(fstring key, llong id, DbContext*) = 0;
 	virtual bool replace(fstring key, llong id, llong newId, DbContext*) = 0;
 	virtual void clear() = 0;
-	virtual void flush() const = 0;
 };
-typedef boost::intrusive_ptr<WritableIndex> WritableIndexPtr;
-
-class NARK_DB_DLL ReadableIndexStore :
-		   public ReadableIndex, public ReadableStore {};
-typedef boost::intrusive_ptr<ReadableIndexStore> ReadableIndexStorePtr;
-
-class NARK_DB_DLL WritableIndexStore :
-		   public WritableIndex, public ReadableStore {};
-typedef boost::intrusive_ptr<WritableIndexStore> WritableIndexStorePtr;
 
 } } // namespace nark::db
 

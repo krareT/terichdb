@@ -7,7 +7,9 @@ namespace nark { namespace db {
 
 // SeqNumIndex can be used as a primary key of Id
 template<class Int>
-class NARK_DB_DLL SeqNumIndex : public WritableIndexStore {
+class NARK_DB_DLL SeqNumIndex :
+	public ReadableIndex, public ReadableStore, public WritableIndex
+{
 	Int m_min;
 	Int m_cnt;
 	class MyIndexIterForward; friend class MyIndexIterForward;
@@ -25,12 +27,16 @@ public:
 	bool insert(fstring key, llong id, DbContext*) override;
 	bool replace(fstring key, llong id, llong newId, DbContext*) override;
 	void clear() override;
-	void flush() const override;
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+
 	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
+
+	WritableIndex* getWritableIndex() override;
+	const ReadableStore* getReadableStore() const override;
 };
 
 } } // namespace nark::db

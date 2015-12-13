@@ -46,15 +46,31 @@ class NARK_DB_DLL ReadableSegment : public ReadableStore, public SegmentSchema {
 public:
 	ReadableSegment();
 	~ReadableSegment();
-	virtual ReadableIndex* getReadableIndex(size_t indexId) const = 0;
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
+	// Index can use different implementation for different
+	// index schema and index content features
+	virtual ReadableIndex* openIndex(fstring path, const Schema&) const = 0;
+
+	///@ if segDir==m_segDir, it is a flush
+	virtual void loadRecordStore(fstring segDir) = 0;
+	virtual void saveRecordStore(fstring segDir) const = 0;
+
+	void openIndices(fstring dir);
+	void saveIndices(fstring dir) const;
+	llong totalIndexSize() const;
+
 	void saveIsDel(fstring segDir) const;
 	void loadIsDel(fstring segDir);
+	void unmapIsDel();
 
 	void deleteSegment();
 
+	void load(fstring segDir) override;
+	void save(fstring segDir) const override;
+
+	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
 	size_t      m_delcnt;
 	febitvec    m_isDel;
 	byte*       m_isDelMmap = nullptr;
@@ -81,18 +97,9 @@ public:
 	ReadonlySegment();
 	~ReadonlySegment();
 
-	void save(fstring) const override;
-	void load(fstring) override;
-
 	// Store can use different implementation for different data
 	// According to data content features
 	virtual ReadableStore* openPart(fstring path) const = 0;
-
-	// Index can use different implementation for different
-	// index schema and index content features
-	virtual ReadableIndexStore* openIndex(fstring path, const Schema&) const = 0;
-
-	ReadableIndex* getReadableIndex(size_t nth) const override;
 
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
@@ -109,18 +116,20 @@ public:
 					  valvec<byte>* val, DbContext*) const;
 
 protected:
-	virtual ReadableIndexStore*
+	virtual ReadableIndex*
 			buildIndex(const Schema& indexSchema, SortableStrVec& indexData)
 			const = 0;
 
 	virtual ReadableStore* buildStore(SortableStrVec& storeData) const = 0;
+
+	void loadRecordStore(fstring segDir) override;
+	void saveRecordStore(fstring segDir) const override;
 
 protected:
 	class MyStoreIterForward;  friend class MyStoreIterForward;
 	class MyStoreIterBackward; friend class MyStoreIterBackward;
 	valvec<llong> m_rowNumVec;  // parallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
-	valvec<ReadableIndexStorePtr> m_indices; // parallel with m_indexSchemaSet
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
 	size_t m_maxPartDataSize;
@@ -135,25 +144,14 @@ public:
 	~WritableSegment();
 
 	WritableStore* getWritableStore() override;
-	ReadableIndex* getReadableIndex(size_t nth) const override;
-
- 	const WritableIndex*
-	nthWritableIndex(size_t nth) const { return m_indices[nth].get(); }
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual WritableIndex* openIndex(fstring path, const Schema&) const = 0;
-	virtual WritableIndex* createIndex(fstring path, const Schema&) const = 0;
+	virtual ReadableIndex* createIndex(fstring path, const Schema&) const = 0;
 
 	void flushSegment();
 
-	valvec<WritableIndexPtr> m_indices;
 	valvec<uint32_t>  m_deletedWrIdSet;
-
-protected:
-	void openIndices(fstring dir);
-	void saveIndices(fstring dir) const;
-	llong totalIndexSize() const;
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
@@ -174,15 +172,17 @@ protected:
 	const override final;
 
 	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	void save(fstring) const override;
-	void load(fstring) override;
+	void loadRecordStore(fstring segDir) override;
+	void saveRecordStore(fstring segDir) const override;
 
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
 	ReadableStorePtr m_nonIndexStore;
-	class MyStoreIterator; friend class MyStoreIterator;
+	class MyStoreIterForward;  friend class MyStoreIterForward;
+	class MyStoreIterBackward; friend class MyStoreIterBackward;
 };
 typedef boost::intrusive_ptr<SmartWritableSegment> SmartWritableSegmentPtr;
 

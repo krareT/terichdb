@@ -5,6 +5,12 @@ nkEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
 nkEnv.InjectThirdPartyIncludePaths(libraries=['zlib'])
 nkEnv.InjectThirdPartyIncludePaths(libraries=['valgrind'])
 
+narkLib = ''
+if GetOption('dbg') == 'on':
+    narkLib = ['nark-NarkDB-d', 'nark-d']
+else:
+    narkLib = ['nark-NarkDB-r', 'nark-r']
+
 nkEnv.Library(
 	target='storage_narkdb',
 	source= [
@@ -44,6 +50,7 @@ nkEnv.Library(
 		'$BUILD_DIR/third_party/shim_zlib',
 		],
     LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/serveronly'],
-	SYSLIBDEPS= ['nark-d', 'nark-NarkDB-d']
+
+	SYSLIBDEPS= narkLib
 	)
 

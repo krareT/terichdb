@@ -182,9 +182,6 @@ template<class Int>
 void SeqNumIndex<Int>::clear() {}
 
 template<class Int>
-void SeqNumIndex<Int>::flush() const {}
-
-template<class Int>
 llong SeqNumIndex<Int>::dataStorageSize() const { return 2 * sizeof(llong); }
 template<class Int>
 llong SeqNumIndex<Int>::numDataRows() const { return m_cnt; }
@@ -199,6 +196,18 @@ template<class Int>
 StoreIterator* SeqNumIndex<Int>::createStoreIterForward(DbContext*) const {
 	return nullptr;
 }
+template<class Int>
+StoreIterator* SeqNumIndex<Int>::createStoreIterBackward(DbContext*) const {
+	return nullptr;
+}
+
+template<class Int>
+WritableIndex*
+SeqNumIndex<Int>::getWritableIndex() { return this; }
+
+template<class Int>
+const ReadableStore*
+SeqNumIndex<Int>::getReadableStore() const { return this; }
 
 template class SeqNumIndex<uint32_t>;
 template class SeqNumIndex<uint64_t>;

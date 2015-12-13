@@ -8,8 +8,10 @@ namespace nark { namespace db {
 
 class NARK_DB_DLL Permanentable : public RefCounter {
 public:
-	virtual void save(fstring dir) const = 0;
-	virtual void load(fstring dir) = 0;
+	///@ object can hold a m_path, when path==m_path, it is a flush
+	virtual void save(fstring path) const = 0;
+
+	virtual void load(fstring path) = 0;
 };
 typedef boost::intrusive_ptr<class Permanentable> PermanentablePtr;
 typedef boost::intrusive_ptr<class ReadableStore> ReadableStorePtr;
@@ -25,6 +27,7 @@ public:
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
+class NARK_DB_DLL WritableStore;
 class NARK_DB_DLL ReadableStore : virtual public Permanentable {
 public:
 	virtual llong dataStorageSize() const = 0;
@@ -32,7 +35,7 @@ public:
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
-	virtual class WritableStore* getWritableStore();
+	virtual WritableStore* getWritableStore();
 
 	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {
 		val->risk_set_size(0);
@@ -47,7 +50,6 @@ public:
 	virtual void  replace(llong id, fstring row, DbContext*) = 0;
 	virtual void  remove(llong id, DbContext*) = 0;
 	virtual void  clear() = 0;
-	virtual void  flush() const = 0;
 };
 //typedef boost::intrusive_ptr<WritableStore> WritableStorePtr;
 /*

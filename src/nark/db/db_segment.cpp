@@ -106,6 +106,64 @@ void ReadableSegment::loadIsDel(fstring dir) {
 	m_delcnt = m_isDel.popcnt();
 }
 
+void ReadableSegment::unmapIsDel() {
+	febitvec isDel(m_isDel);
+	size_t bitBytes = m_isDel.capacity()/8;
+	mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);
+	m_isDel.risk_release_ownership();
+	m_isDel.swap(isDel);
+	m_isDelMmap = nullptr;
+}
+
+void ReadableSegment::openIndices(fstring segDir) {
+	if (!m_indices.empty()) {
+		THROW_STD(invalid_argument, "m_indices must be empty");
+	}
+	m_indices.resize(this->getIndexNum());
+	fs::path segDirPath = segDir.str();
+	for (size_t i = 0; i < this->getIndexNum(); ++i) {
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema.joinColumnNames(',');
+		fs::path path = segDirPath / ("index-" + colnames);
+		m_indices[i] = this->openIndex(path.string(), schema);
+	}
+}
+
+void ReadableSegment::saveIndices(fstring segDir) const {
+	assert(m_indices.size() == this->getIndexNum());
+	fs::path segDirPath = segDir.str();
+	for (size_t i = 0; i < m_indices.size(); ++i) {
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		std::string colnames = schema.joinColumnNames(',');
+		fs::path path = segDirPath / ("index-" + colnames);
+		m_indices[i]->save(path.string());
+	}
+}
+
+llong ReadableSegment::totalIndexSize() const {
+	llong size = 0;
+	for (size_t i = 0; i < m_indices.size(); ++i) {
+		size += m_indices[i]->indexStorageSize();
+	}
+	return size;
+}
+
+void ReadableSegment::load(fstring segDir) {
+	assert(segDir.size() > 0);
+	this->loadIsDel(segDir);
+	this->openIndices(segDir);
+	this->loadRecordStore(segDir);
+}
+
+void ReadableSegment::save(fstring segDir) const {
+	assert(segDir.size() > 0);
+	if (!m_isDelMmap) { // mmap'ed file need not to flush
+		saveIsDel(segDir);
+	}
+	this->saveIndices(segDir);
+	this->saveRecordStore(segDir);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 ReadonlySegment::ReadonlySegment() {
@@ -116,10 +174,6 @@ ReadonlySegment::ReadonlySegment() {
 	m_rowNumVec.reserve(16);
 }
 ReadonlySegment::~ReadonlySegment() {
-}
-ReadableIndex*
-ReadonlySegment::getReadableIndex(size_t nth) const {
-	return m_indices[nth].get();
 }
 
 llong ReadonlySegment::dataStorageSize() const {
@@ -161,7 +215,8 @@ const {
 	for (size_t i = 0; i < m_indices.size(); ++i) {
 		const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
 		if (iSchema.m_keepCols.has_any1()) {
-			m_indices[i]->getValueAppend(id, &ctx->buf1, ctx);
+			m_indices[i]->getReadableStore()->
+				getValueAppend(id, &ctx->buf1, ctx);
 		}
 		ctx->offsets.push_back(ctx->buf1.size());
 	}
@@ -338,7 +393,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 		size_t fixedIndexRowLen = indexSchema.getFixedRowLen();
 		for (size_t j = 0; j < input.size(); ++j) {
 			auto seg = input[j];
-			const ReadableStore* indexStore = seg->m_indices[i].get();
+			auto indexStore = seg->m_indices[i]->getReadableStore();
 			llong num = indexStore->numDataRows();
 			for (llong id = 0; id < num; ++id) {
 				if (!seg->m_isDel[id]) {
@@ -540,35 +595,19 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	}
 }
 
-void ReadonlySegment::save(fstring dir) const {
+void ReadonlySegment::saveRecordStore(fstring dir) const {
 	fs::path dirp = dir.str();
-	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema.joinColumnNames(',');
-		fs::path p2 = dirp / ("index-" + colnames);
-		m_indices[i]->save(p2.string());
-	}
 	AutoGrownMemIO buf;
 	for (size_t i = 0; i < m_parts.size(); ++i) {
 		buf.rewind();
 		buf.printf("%s/store-%04ld", dir.c_str(), long(i));
 		m_parts[i]->save(buf.c_str());
 	}
-	saveIsDel(dir);
 }
 
-void ReadonlySegment::load(fstring dir) {
-	if (!m_indices.empty()) {
-		THROW_STD(invalid_argument, "m_indices must be empty");
-	}
+void ReadonlySegment::loadRecordStore(fstring dir) {
 	if (!m_parts.empty()) {
 		THROW_STD(invalid_argument, "m_parts must be empty");
-	}
-	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema.joinColumnNames(',');
-		std::string path = dir + "/index-" + colnames;
-		m_indices.push_back(this->openIndex(path, schema));
 	}
 	for (auto& x : fs::directory_iterator(fs::path(dir.c_str()))) {
 		std::string fname = x.path().filename().string();
@@ -596,7 +635,6 @@ void ReadonlySegment::load(fstring dir) {
 		id += m_parts[i]->numDataRows();
 	}
 	m_rowNumVec.back() = id;
-	loadIsDel(dir);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -604,58 +642,17 @@ void ReadonlySegment::load(fstring dir) {
 WritableSegment::WritableSegment() {
 }
 WritableSegment::~WritableSegment() {
+	flushSegment();
 }
 
 WritableStore* WritableSegment::getWritableStore() {
 	return this;
 }
-ReadableIndex*
-WritableSegment::getReadableIndex(size_t nth) const {
-	assert(nth < m_indices.size());
-	return m_indices[nth].get();
-}
-
-llong WritableSegment::totalIndexSize() const {
-	llong size = 0;
-	for (size_t i = 0; i < m_indices.size(); ++i) {
-		size += m_indices[i]->indexStorageSize();
-	}
-	return size;
-}
 
 void WritableSegment::flushSegment() {
-	for (size_t i = 0; i < m_indices.size(); ++i) {
-		m_indices[i]->flush();
-	}
-	this->flush();
-	assert(m_segDir.size() > 0);
-	if (!m_isDelMmap) {
-		saveIsDel(m_segDir);
-	}
-	m_isDirty = false;
-}
-
-void WritableSegment::openIndices(fstring dir) {
-	if (!m_indices.empty()) {
-		THROW_STD(invalid_argument, "m_indices must be empty");
-	}
-	m_indices.resize(this->getIndexNum());
-	for (size_t i = 0; i < this->getIndexNum(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema.joinColumnNames(',');
-		std::string path = dir + "/index-" + colnames;
-		m_indices[i] = this->openIndex(path, schema);
-	}
-}
-
-void WritableSegment::saveIndices(fstring dir) const {
-	assert(m_indices.size() == this->getIndexNum());
-	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
-		std::string colnames = schema.joinColumnNames(',');
-		boost::filesystem::path path = dir.str();
-		path /= "index-" + colnames;
-		m_indices[i]->save(path.string());
+	if (m_isDirty) {
+		save(m_segDir);
+		m_isDirty = false;
 	}
 }
 
@@ -674,11 +671,11 @@ const {
 	// should similar to ReadonlySegment::getValueAppend(...)
 }
 
-class SmartWritableSegment::MyStoreIterator : public StoreIterator {
+class SmartWritableSegment::MyStoreIterForward : public StoreIterator {
 	size_t m_id;
 	DbContextPtr m_ctx;
 public:
-	MyStoreIterator(const SmartWritableSegment* owner, DbContext* ctx) {
+	MyStoreIterForward(const SmartWritableSegment* owner, DbContext* ctx) {
 		m_store.reset(const_cast<SmartWritableSegment*>(owner));
 		m_id = 0;
 		m_ctx.reset(ctx);
@@ -687,38 +684,73 @@ public:
 		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
 		if (m_id < owner->m_isDel.size()) {
 			*id = m_id;
-			owner->getValue(m_id, val, &*m_ctx);
+			owner->getValue(m_id, val, m_ctx.get());
 			m_id++;
 			return true;
 		}
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
+		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
 		m_id = id;
-		llong id2 = -1;
-		return increment(&id2, val);
+		if (owner->m_isDel[id]) {
+			return false;
+		}
+		owner->getValue(id, val, m_ctx.get());
+		return true;
 	}
 	void reset() override {
 		m_id = 0;
 	}
 };
+class SmartWritableSegment::MyStoreIterBackward : public StoreIterator {
+	size_t m_id;
+	DbContextPtr m_ctx;
+public:
+	MyStoreIterBackward(const SmartWritableSegment* owner, DbContext* ctx) {
+		m_store.reset(const_cast<SmartWritableSegment*>(owner));
+		m_id = owner->m_isDel.size();
+		m_ctx.reset(ctx);
+	}
+	bool increment(llong* id, valvec<byte>* val) override {
+		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
+		if (m_id > 0) {
+			*id = --m_id;
+			owner->getValue(m_id, val, &*m_ctx);
+			return true;
+		}
+		return false;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
+		m_id = id;
+		if (owner->m_isDel[id]) {
+			return false;
+		}
+		owner->getValue(id, val, m_ctx.get());
+		return true;
+	}
+	void reset() override {
+		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
+		m_id = owner->m_isDel.size();
+	}
+};
 
 StoreIterator* SmartWritableSegment::createStoreIterForward(DbContext* ctx) const {
-	return new MyStoreIterator(this, ctx);
+	return new MyStoreIterForward(this, ctx);
+}
+StoreIterator* SmartWritableSegment::createStoreIterBackward(DbContext* ctx) const {
+	return new MyStoreIterBackward(this, ctx);
 }
 
-void SmartWritableSegment::save(fstring dir) const {
-	saveIndices(dir);
-	std::string storePath = dir + "/nonIndexStore";
-	m_nonIndexStore->save(storePath);
-	saveIsDel(dir);
+void SmartWritableSegment::saveRecordStore(fstring dir) const {
+	fs::path storePath = fs::path(dir.str()) / "nonIndexStore";
+	m_nonIndexStore->save(storePath.string());
 }
 
-void SmartWritableSegment::load(fstring dir) {
-	openIndices(dir);
-	std::string storePath = dir + "/nonIndexStore";
-	m_nonIndexStore->load(storePath);
-	loadIsDel(dir);
+void SmartWritableSegment::loadRecordStore(fstring dir) {
+	fs::path storePath = fs::path(dir.str()) / "nonIndexStore";
+	m_nonIndexStore->load(storePath.string());
 }
 
 llong SmartWritableSegment::dataStorageSize() const {
