@@ -269,7 +269,7 @@ const {
 
 #if !defined(NDEBUG)
 	for (size_t i = 0; i < ctx->cols2.size(); ++i) {
-		assert(!ctx->cols2[i].empty());
+//		assert(!ctx->cols2[i].empty()); // can be empty
 	}
 #endif
 
