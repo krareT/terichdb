@@ -15,6 +15,7 @@ typedef tbb::queuing_rw_mutex::scoped_lock MyRwLock;
 
 // is not a WritableStore
 class NARK_DB_DLL CompositeTable : public ReadableStore, public SegmentSchema {
+	class MyStoreIterBase;	    friend class MyStoreIterBase;
 	class MyStoreIterForward;	friend class MyStoreIterForward;
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 public:

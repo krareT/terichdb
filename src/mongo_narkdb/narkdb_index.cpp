@@ -385,7 +385,7 @@ protected:
 
         BSONObj bson;
         if (TRACING_ENABLED || (parts & kWantKey)) {
-            bson = BSONObj(m_coder.decode(_idx.getIndexSchema(), m_curKey));
+            bson = BSONObj(decodeIndexKey(*_idx.getIndexSchema(), m_curKey));
 
             TRACE_CURSOR << " returning " << bson << ' ' << _id;
         }
@@ -480,7 +480,7 @@ protected:
     nark::db::IndexIteratorPtr  _cursor;
 	nark::valvec<unsigned char> m_curKey;
 	nark::valvec<         char> m_qryKey;
-	mongo::narkdb::SchemaRecordCoder m_coder;
+//	mongo::narkdb::SchemaRecordCoder m_coder;
 
     // These are where this cursor instance is. They are not changed in the face of a failing
     // next().

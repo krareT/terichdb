@@ -577,9 +577,12 @@ void Schema::byteLexConvert(valvec<byte>& indexKey) const {
 }
 
 std::string Schema::toJsonStr(fstring row) const {
+	return toJsonStr(row.data(), row.size());
+}
+std::string Schema::toJsonStr(const char* row, size_t rowlen) const {
 	assert(size_t(-1) != m_fixedLen);
-	const byte* curr = row.udata();
-	const byte* last = row.size() + curr;
+	const byte* curr = (const byte*)(row);
+	const byte* last = (const byte*)(row) + rowlen;
 	nark::json js;
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {

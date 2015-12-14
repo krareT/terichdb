@@ -105,6 +105,7 @@ namespace nark { namespace db {
 		void byteLexConvert(valvec<byte>&) const;
 
 		std::string toJsonStr(fstring row) const;
+		std::string toJsonStr(const char* row, size_t rowlen) const;
 
 		ColumnType getColumnType(size_t columnId) const;
 		fstring getColumnName(size_t columnId) const;

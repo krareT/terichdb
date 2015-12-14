@@ -858,17 +858,20 @@ static void narkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const char*
 SharedBuffer
 SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	assert(nullptr != schema);
+	LOG(1) << "SchemaRecordCoder::decode: data=" << schema->toJsonStr(fstring(data, size));
 	MyBsonBuilder bb;
 	const char* pos = data;
 	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2 * size);
 	bb.skip(sizeof(SharedBuffer::Holder));
 	bb.skip(4); // object size
+	size_t colnum = schema->m_columnsMeta.end_i();
 	// last is $$ field, the schema-less fields
 	size_t schemaColumn
 		= schema->m_columnsMeta.end_key(1) == G_schemaLessFieldName
-		? schema->m_columnsMeta.end_i() - 1
-		: schema->m_columnsMeta.end_i()
+		? colnum - 1
+		: colnum
 		;
+	const char* end = data + size;
 	for (size_t i = 0; i < schemaColumn; ++i) {
 		fstring     colname = schema->m_columnsMeta.key(i);
 		const auto& colmeta = schema->m_columnsMeta.val(i);
@@ -902,17 +905,32 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			bb << decodeConvertTo<int64_t>(colmeta.type, pos);
 			break;
 		case jstOID:
+			invariant(colmeta.type == ColumnType::Fixed);
+			invariant(colmeta.fixedLen == OID::kOIDSize);
 			bb.ensureWrite(pos, OID::kOIDSize);
 			pos += OID::kOIDSize;
 			break;
 		case Symbol:
 		case Code:
 		case mongo::String:
-			{
+			invariant(colmeta.type == ColumnType::StrZero);
+			if (colnum-1 == i) {
+				size_t len = end - pos;
+				if ('\0' != end[-1]) {
+					bb << int(len + 1);
+					bb.ensureWrite(pos, len);
+					bb.writeByte('\0');
+				}
+				else {
+					bb << int(len);
+					bb.ensureWrite(pos, len);
+				}
+				pos = end;
+			}
+			else {
 				size_t len = strlen(pos);
 				bb << int(len + 1);
 				bb.ensureWrite(pos, len + 1);
-			//	log() << "decode: strlen=" << len << ", str=" << pos;
 				pos += len + 1;
 			}
 			break;
@@ -926,6 +944,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			break;
 		case mongo::Array:
 			{
+				invariant(colmeta.type == ColumnType::CarBin);
 				size_t len = ConstDataView(pos).read<LittleEndian<uint32_t> >();
 				auto   end = pos + len;
 				narkDecodeBsonArray(bb, pos, end);
@@ -933,6 +952,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			break;
 		case Object:
 			{
+				invariant(colmeta.type == ColumnType::CarBin);
 				size_t len = ConstDataView(pos).read<LittleEndian<uint32_t> >();
 				auto   end = pos + len;
 				narkDecodeBsonObject(bb, pos, end);
@@ -940,6 +960,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			break;
 		case CodeWScope:
 			{
+				invariant(colmeta.type == ColumnType::CarBin);
 				int binlen = ConstDataView(pos).read<LittleEndian<int>>();
 				size_t oldpos = bb.tell();
 				bb << uint32_t(0); // reserve for whole len
@@ -955,6 +976,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			break;
 		case BinData:
 			{
+				invariant(colmeta.type == ColumnType::CarBin);
 				int len = ConstDataView(pos).read<LittleEndian<int>>();
 				bb << len - 1; // pos[4] is binary data subtype
 				bb.ensureWrite(pos + 4, len);
@@ -962,7 +984,14 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			}
 			break;
 		case RegEx:
-			{
+			invariant(colmeta.type == ColumnType::TwoStrZero);
+			if (colnum-1 == i && '\0' != end[-1]) {
+				size_t len1 = strlen(pos); // regex len
+				size_t len2 = end - (pos + len1 + 1);
+				bb.ensureWrite(pos, len1 + 1 + len2);
+				bb.writeByte('\0');
+				pos = end;
+			} else {
 				size_t len1 = strlen(pos); // regex len
 				size_t len2 = strlen(pos + len1 + 1);
 				size_t len3 = len1 + len2 + 2;
@@ -979,7 +1008,6 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			}
 		}
 	}
-	const char* end = data + size;
 	if (pos < end) {
 		while (pos < end) {
 			const int type = (unsigned char)(*pos++);
@@ -990,10 +1018,10 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			pos += fieldname.size() + 1;
 			narkDecodeBsonElemVal(bb, pos, end, type);
 		}
-		invariant(pos == data + size);
+		invariant(pos == end);
 	}
 	else {
-		invariant(pos == data + size);
+		invariant(pos == end);
 	}
 	bb << char(EOO); // End of object
 	bb.shrink_to_fit();
@@ -1136,12 +1164,15 @@ void encodeIndexKey(const Schema& indexSchema,
 
 SharedBuffer
 decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
+	LOG(1)	<< "decodeIndexKey: size=" << size << ", data=" << indexSchema.toJsonStr(data, size);
 	MyBsonBuilder bb;
 	const char* pos = data;
 	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2*size);
 	bb.skip(sizeof(SharedBuffer::Holder));
 	bb.skip(4); // object size loc
-	for (size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
+	size_t colnum = indexSchema.m_columnsMeta.end_i();
+	const char* end = data + size;
+	for (size_t i = 0; i < colnum; ++i) {
 		fstring     colname = indexSchema.m_columnsMeta.key(i);
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
 		bb.writeByte(colmeta.uType);
@@ -1178,11 +1209,24 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 		case Symbol:
 		case Code:
 		case mongo::String:
-			{
+			invariant(colmeta.type == ColumnType::StrZero);
+			if (colnum-1 == i) {
+				size_t len = end - pos;
+				if ('\0' != end[-1]) {
+					bb << int(len + 1);
+					bb.ensureWrite(pos, len);
+					bb.writeByte('\0');
+				}
+				else {
+					bb << int(len);
+					bb.ensureWrite(pos, len);
+				}
+				pos = end;
+			}
+			else {
 				size_t len = strlen(pos);
 				bb << int(len + 1);
 				bb.ensureWrite(pos, len + 1);
-			//	log() << "decode: strlen=" << len << ", str=" << pos;
 				pos += len + 1;
 			}
 			break;
@@ -1207,7 +1251,14 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 			THROW_STD(invalid_argument, "mongo::BinData could'nt not be a index key field");
 			break;
 		case RegEx:
-			{
+			invariant(colmeta.type == ColumnType::TwoStrZero);
+			if (colnum-1 == i && '\0' != end[-1]) {
+				size_t len1 = strlen(pos); // regex len
+				size_t len2 = end - (pos + len1 + 1);
+				bb.ensureWrite(pos, len1 + 1 + len2);
+				bb.writeByte('\0');
+				pos = end;
+			} else {
 				size_t len1 = strlen(pos); // regex len
 				size_t len2 = strlen(pos + len1 + 1);
 				size_t len3 = len1 + len2 + 2;
@@ -1224,11 +1275,12 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 			}
 		}
 	}
-	invariant(data + size == pos);
+	invariant(pos == end);
 	bb << char(EOO); // end of object
 	bb.shrink_to_fit();
+	int bsonSize = int(bb.tell() - sizeof(SharedBuffer::Holder));
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
-			.write<LittleEndian<int>>(int(bb.tell() - sizeof(SharedBuffer::Holder)));
+			.write<LittleEndian<int>>(bsonSize);
 
 	return SharedBuffer::takeOwnership((char*)bb.release());
 }

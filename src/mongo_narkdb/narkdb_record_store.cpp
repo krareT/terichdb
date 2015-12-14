@@ -93,7 +93,7 @@ public:
     Cursor(OperationContext* txn, const NarkDbRecordStore& rs, bool forward = true)
         : _rs(rs),
           _txn(txn) {
-    	m_ctx = dynamic_cast<MongoNarkDbContext*>(rs.m_table->createDbContext());
+    	m_ctx = rs.m_table->createDbContext();
     	if (forward)
     		_cursor = rs.m_table->createStoreIterForward(m_ctx.get());
     	else
@@ -110,7 +110,11 @@ public:
                 _eof = true;
                 return {};
             }
+			assert(!m_recBuf.empty());
         }
+		else {
+			assert(!m_recBuf.empty());
+		}
         SharedBuffer sbuf = m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
@@ -126,8 +130,8 @@ public:
             _eof = true;
             return {};
         }
+		assert(!m_recBuf.empty());
         SharedBuffer sbuf = m_coder.decode(&*_rs.m_table->m_rowSchema, m_recBuf);
-        _skipNextAdvance = false;
         _lastReturnedId = id;
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
         return {{id, {sbuf, len}}};
