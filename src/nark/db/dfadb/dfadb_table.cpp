@@ -34,9 +34,7 @@ DfaDbTable::createWritableSegment(fstring dir) const {
 WritableSegment*
 DfaDbTable::openWritableSegment(fstring dir) const {
 	std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
-	seg->m_rowSchema = m_rowSchema;
-	seg->m_indexSchemaSet = m_indexSchemaSet;
-	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
+	seg->copySchema(*this);
 	seg->load(dir);
 	return seg.release();
 }

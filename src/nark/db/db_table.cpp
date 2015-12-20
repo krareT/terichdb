@@ -741,9 +741,7 @@ ReadonlySegment*
 CompositeTable::myCreateReadonlySegment(fstring segDir) const {
 	std::unique_ptr<ReadonlySegment> seg(createReadonlySegment(segDir));
 	seg->m_segDir = segDir.str();
-	seg->m_rowSchema = m_rowSchema;
-	seg->m_indexSchemaSet = m_indexSchemaSet;
-	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
+	seg->copySchema(*this);
 	return seg.release();
 }
 
@@ -752,9 +750,7 @@ CompositeTable::myCreateWritableSegment(fstring segDir) const {
 	fs::create_directories(segDir.c_str());
 	std::unique_ptr<WritableSegment> seg(createWritableSegment(segDir));
 	seg->m_segDir = segDir.str();
-	seg->m_rowSchema = m_rowSchema;
-	seg->m_indexSchemaSet = m_indexSchemaSet;
-	seg->m_nonIndexRowSchema = m_nonIndexRowSchema;
+	seg->copySchema(*this);
 	if (seg->m_indices.empty()) {
 		seg->m_indices.resize(m_indexSchemaSet->m_nested.end_i());
 		for (size_t i = 0; i < seg->m_indices.size(); ++i) {
