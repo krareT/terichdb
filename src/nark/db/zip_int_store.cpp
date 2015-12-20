@@ -90,8 +90,8 @@ void ZipIntStore::zipValues(const void* data, size_t size) {
 	dedup.trim(std::unique(dedup.begin(), dedup.end()));
 
 	size_t indexBits = nark_bsr_u32(dedup.size()-1) + 1;
-	size_t indexSize = (indexBits      * rows + 7) / 8;
-	size_t dedupSize = (dup.uintbits() * rows + 7) / 8;
+	size_t indexSize = (indexBits      * rows         + 7) / 8;
+	size_t dedupSize = (dup.uintbits() * dedup.size() + 7) / 8;
 	if (dedupSize + indexSize < dup.mem_size()) {
 		valvec<uint32_t> index(rows, valvec_no_init());
 		for(size_t i = 0; i < rows; ++i) {
@@ -101,6 +101,9 @@ void ZipIntStore::zipValues(const void* data, size_t size) {
 		}
 		m_index.build_from(index);
 		m_dedup.build_from(dedup);
+	}
+	else {
+		m_dedup.swap(dup);
 	}
 }
 
