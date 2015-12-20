@@ -1,4 +1,8 @@
 #include "db_table.hpp"
+#include "intkey_index.hpp"
+#include "zip_int_store.hpp"
+#include "fixed_len_key_index.hpp"
+#include "fixed_len_store.hpp"
 #include <nark/util/autoclose.hpp>
 #include <nark/io/FileStream.hpp>
 #include <nark/io/StreamBuffer.hpp>
@@ -151,7 +155,7 @@ void ReadableSegment::openIndices(fstring segDir) {
 		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
 		std::string colnames = schema.joinColumnNames(',');
 		fs::path path = segDirPath / ("index-" + colnames);
-		m_indices[i] = this->openIndex(path.string(), schema);
+		m_indices[i] = this->openIndex(schema, path.string());
 	}
 }
 
@@ -249,6 +253,10 @@ const {
 		}
 		ctx->offsets.push_back(ctx->buf1.size());
 	}
+	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+		m_colgroups[i]->getValueAppend(id, &ctx->buf1, ctx);
+		ctx->offsets.push_back(ctx->buf1.size());
+	}
 	if (!m_parts.empty()) { // get nonIndex store
 		llong subId = id - m_rowNumVec[partIdx];
 		m_parts[partIdx]->getValueAppend(subId, &ctx->buf1, ctx);
@@ -270,6 +278,12 @@ const {
 		}
 	}
 	assert(ctx->cols1.size() == m_indexSchemaSet->m_flattenColumnNum);
+	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+		size_t off0 = ctx->offsets[i], off1 = ctx->offsets[i+1];
+		fstring colgroupData(ctx->buf1.data() + off0, off1 - off0);
+		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		schema.parseRowAppend(colgroupData, &ctx->cols1);
+	}
 	if (!m_parts.empty()) { // get nonIndex store
 		size_t off0 = ctx->offsets.ende(2), off1 = ctx->offsets.ende(1);
 		fstring indexRow(ctx->buf1.data() + off0, off1 - off0);
@@ -286,6 +300,14 @@ const {
 				size_t parentColId = iSchema.parentColumnId(j);
 				ctx->cols2[parentColId] = ctx->cols1[baseColumnId + j];
 			}
+		}
+		baseColumnId += iSchema.columnNum();
+	}
+	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+		const Schema& iSchema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		for(size_t j = 0; j < iSchema.columnNum(); ++j) {
+			size_t parentColId = iSchema.parentColumnId(j);
+			ctx->cols2[parentColId] = ctx->cols1[baseColumnId + j];
 		}
 		baseColumnId += iSchema.columnNum();
 	}
@@ -446,7 +468,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 			llong numRows = dataStore->numDataRows();
 			for (llong subId = 0; subId < numRows; ++subId) {
 				if (strVec.mem_size() >= this->m_maxPartDataSize) {
-					m_parts.push_back(buildStore(strVec));
+					m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
 					strVec.clear();
 				}
 				llong id = baseId + subId;
@@ -459,7 +481,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 		}
 	}
 	if (strVec.size()) {
-		m_parts.push_back(buildStore(strVec));
+		m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
 		strVec.clear();
 	}
 	m_rowNumVec.resize(0);
@@ -501,6 +523,52 @@ namespace {
 		}
 		FileStream& fp() { return m_fp; }
 		size_t fixedLen() const { return m_fixedLen; }
+
+		void collectData(size_t newRowNum, SortableStrVec& strVec) {
+			if (m_fixedLen == 0) {
+				NativeDataInput<InputBuffer> dio;
+				m_fp.disbuf();
+				dio.attach(&m_fp);
+				valvec<byte> buf;
+				for (size_t id = 0; id < newRowNum; id++) {
+					dio >> buf;
+					assert(buf.size() > 0);
+					strVec.push_back(buf);
+				}
+			}
+			else {
+				assert(strVec.m_index.size() == 0);
+				size_t size = m_fixedLen * newRowNum;
+				strVec.m_strpool.resize_no_init(size);
+				m_fp.ensureRead(strVec.m_strpool.data(), size);
+			}
+		}
+	};
+
+	class TempFileList : public valvec<FileDataIO> {
+		const SchemaSet& m_schemaSet;
+	public:
+		TempFileList(const SchemaSet& schemaSet) : m_schemaSet(schemaSet) {
+			this->reserve(schemaSet.m_nested.end_i());
+			for (size_t i = 0; i < schemaSet.m_nested.end_i(); ++i) {
+				SchemaPtr schema = schemaSet.m_nested.elem_at(i);
+				this->unchecked_emplace_back(schema->getFixedRowLen());
+			}
+		}
+		void writeColgroups(const valvec<fstring>& columns, valvec<byte>& workBuf) {
+			size_t colgroupNum = this->size();
+			for (size_t i = 0; i < colgroupNum; ++i) {
+				const Schema& schema = *m_schemaSet.m_nested.elem_at(i);
+				schema.selectParent(columns, &workBuf);
+				this->p[i].dioWrite(workBuf);
+			}
+		}
+		void completeWrite() {
+			size_t colgroupNum = this->size();
+			for (size_t i = 0; i < colgroupNum; ++i) {
+				this->p[i].completeWrite();
+			}
+		}
 	};
 }
 
@@ -510,11 +578,10 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	assert(input.numDataRows() > 0);
 	assert(m_parts.size() == 0);
 	size_t indexNum = m_indexSchemaSet->m_nested.end_i();
-	valvec<FileDataIO> indexTempFiles(indexNum, valvec_reserve());
-	for (size_t i = 0; i < indexNum; ++i) {
-		SchemaPtr indexSchema = m_indexSchemaSet->m_nested.elem_at(i);
-		indexTempFiles.unchecked_emplace_back(indexSchema->getFixedRowLen());
-	}
+	TempFileList indexTempFiles(*m_indexSchemaSet);
+	TempFileList colgroupTempFiles(*m_colgroupSchemaSet);
+	size_t colgroupNum = m_colgroupSchemaSet->m_nested.end_i();
+
 	valvec<fstring> columns(m_rowSchema->columnNum(), valvec_reserve());
 	valvec<byte> buf, projRowBuf;
 	size_t nonIndexColNum = m_nonIndexRowSchema->columnNum();
@@ -532,12 +599,8 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		if (m_isDel[id]) continue;
 
 		m_rowSchema->parseRow(buf, &columns);
-		const Schema* indexSchema = nullptr;
-		for (size_t i = 0; i < indexNum; ++i) {
-			indexSchema = &*m_indexSchemaSet->m_nested.elem_at(i);
-			indexSchema->selectParent(columns, &projRowBuf);
-			indexTempFiles[i].dioWrite(projRowBuf);
-		}
+		indexTempFiles.writeColgroups(columns, projRowBuf);
+		colgroupTempFiles.writeColgroups(columns, projRowBuf);
 		// if all columns are indexed, then nonIndexColNum is 0
 		if (nonIndexColNum) {
 			m_nonIndexRowSchema->selectParent(columns, &projRowBuf);
@@ -549,43 +612,34 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		}
 		if (strVec.mem_size() >= this->m_maxPartDataSize) {
 			assert(0 != nonIndexColNum);
-			m_parts.push_back(buildStore(strVec));
+			m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
 			strVec.clear();
 		}
 		newRowNum++;
 	}
 	if (strVec.m_strpool.size() > 0) {
 		assert(0 != nonIndexColNum);
-		m_parts.push_back(buildStore(strVec));
+		m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
 		strVec.clear();
 	}
 	assert(strVec.m_index.size() == 0);
 	assert(strVec.m_strpool.size() == 0);
 
 	// build index from temporary index files
-	for (size_t i = 0; i < indexTempFiles.size(); ++i) {
-		indexTempFiles[i].completeWrite();
-	}
+	indexTempFiles.completeWrite();
 	m_indices.resize(indexNum);
 	for (size_t i = 0; i < indexTempFiles.size(); ++i) {
-		const Schema& indexSchema = *m_indexSchemaSet->m_nested.elem_at(i);
-		if (indexTempFiles[i].fixedLen() == 0) {
-			NativeDataInput<InputBuffer> dio;
-			indexTempFiles[i].fp().disbuf();
-			dio.attach(&indexTempFiles[i].fp());
-			for (llong id = 0; id < newRowNum; id++) {
-				dio >> buf;
-				assert(buf.size() > 0);
-				strVec.push_back(buf);
-			}
-		}
-		else {
-			assert(strVec.m_index.size() == 0);
-			size_t size = indexTempFiles[i].fixedLen() * newRowNum;
-			strVec.m_strpool.resize_no_init(size);
-			indexTempFiles[i].fp().ensureRead(strVec.m_strpool.data(), size);
-		}
-		m_indices[i] = this->buildIndex(indexSchema, strVec);
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		indexTempFiles[i].collectData(newRowNum, strVec);
+		m_indices[i] = this->buildIndex(schema, strVec);
+		strVec.clear();
+	}
+	colgroupTempFiles.completeWrite();
+	m_colgroups.resize(m_colgroupSchemaSet->m_nested.end_i());
+	for (size_t i = 0; i < colgroupTempFiles.size(); ++i) {
+		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		colgroupTempFiles[i].collectData(newRowNum, strVec);
+		m_colgroups[i] = this->buildStore(schema, strVec);
 		strVec.clear();
 	}
 	fs::create_directories(m_segDir);
@@ -636,13 +690,30 @@ void ReadonlySegment::saveRecordStore(fstring dir) const {
 		buf.printf("%s/store-%04ld", dir.c_str(), long(i));
 		m_parts[i]->save(buf.c_str());
 	}
+	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		std::string colsList = schema.joinColumnNames();
+		fs::path fpath = dirp / ("colgroup-" + colsList);
+		m_colgroups[i]->save(fpath.string());
+	}
 }
 
 void ReadonlySegment::loadRecordStore(fstring dir) {
 	if (!m_parts.empty()) {
 		THROW_STD(invalid_argument, "m_parts must be empty");
 	}
-	for (auto& x : fs::directory_iterator(fs::path(dir.c_str()))) {
+	if (!m_colgroups.empty()) {
+		THROW_STD(invalid_argument, "m_colgroups must be empty");
+	}
+	fs::path segDir = dir.str();
+	m_colgroups.resize(m_colgroupSchemaSet->m_nested.end_i());
+	for (size_t i = 0; i < m_colgroupSchemaSet->m_nested.end_i(); ++i) {
+		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		std::string colsList = schema.joinColumnNames();
+		fs::path fpath = segDir / ("colgroup-" + colsList);
+		m_colgroups[i] = openStore(schema, fpath.string());
+	}
+	for (auto& x : fs::directory_iterator(segDir)) {
 		std::string fname = x.path().filename().string();
 		long partIdx = -1;
 		if (!fstring(fname).startsWith("store")) {
@@ -659,7 +730,7 @@ void ReadonlySegment::loadRecordStore(fstring dir) {
 		if (m_parts.size() <= size_t(partIdx)) {
 			m_parts.resize(partIdx+1);
 		}
-		m_parts[partIdx] = this->openPart(x.path().string());
+		m_parts[partIdx] = openStore(*m_nonIndexRowSchema, x.path().string());
 	}
 	m_rowNumVec.resize_no_init(m_parts.size() + 1);
 	llong id = 0;
@@ -668,6 +739,76 @@ void ReadonlySegment::loadRecordStore(fstring dir) {
 		id += m_parts[i]->numDataRows();
 	}
 	m_rowNumVec.back() = id;
+}
+
+ReadableStore*
+ReadonlySegment::openStore(const Schema& schema, fstring path) const {
+	if (boost::filesystem::exists(path + ".zint")) {
+		std::unique_ptr<ZipIntStore> store(new ZipIntStore());
+		store->load(path);
+		return store.release();
+	}
+	return nullptr;
+}
+
+ReadableIndex*
+ReadonlySegment::openIndex(const Schema& schema, fstring path) const {
+	if (boost::filesystem::exists(path + ".zint")) {
+		std::unique_ptr<ZipIntKeyIndex> store(new ZipIntKeyIndex());
+		store->load(path);
+		return store.release();
+	}
+	if (boost::filesystem::exists(path + ".fixlen")) {
+		std::unique_ptr<FixedLenKeyIndex> store(new FixedLenKeyIndex());
+		store->load(path);
+		return store.release();
+	}
+	return nullptr;
+}
+
+ReadableIndex*
+ReadonlySegment::buildIndex(const Schema& schema, SortableStrVec& indexData)
+const {
+	const size_t fixlen = schema.getFixedRowLen();
+	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
+		try {
+			std::unique_ptr<ZipIntKeyIndex> index(new ZipIntKeyIndex());
+			index->build(schema.getColumnMeta(0).type, indexData);
+			return index.release();
+		}
+		catch (const std::exception&) {
+			// ignore and fall through
+		}
+	}
+	if (fixlen && fixlen <= 16) {
+		std::unique_ptr<FixedLenKeyIndex> index(new FixedLenKeyIndex());
+		index->build(schema, indexData);
+		return index.release();
+	}
+	return nullptr; // derived class should override
+}
+
+ReadableStore*
+ReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
+const {
+	const size_t fixlen = schema.getFixedRowLen();
+	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
+		assert(fixlen > 0);
+		try {
+			std::unique_ptr<ZipIntStore> store(new ZipIntStore());
+			store->build(schema.getColumnMeta(0).type, storeData);
+			return store.release();
+		}
+		catch (const std::exception&) {
+			// ignore and fall through
+		}
+	}
+	if (fixlen && fixlen <= 16) {
+		std::unique_ptr<FixedLenStore> store(new FixedLenStore());
+		store->build(schema, storeData);
+		return store.release();
+	}
+	return nullptr;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

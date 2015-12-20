@@ -17,12 +17,11 @@ public:
 	DfaDbReadonlySegment();
 	~DfaDbReadonlySegment();
 protected:
-	ReadableStore* openPart(fstring path) const override;
-	ReadableIndex* openIndex(fstring path, const Schema&) const override;
+	ReadableStore* openStore(const Schema&, fstring path) const override;
+	ReadableIndex* openIndex(const Schema&, fstring path) const override;
 
-	ReadableIndex* buildIndex(const Schema& indexSchema,
-								   SortableStrVec& indexData) const override;
-	ReadableStore* buildStore(SortableStrVec& storeData) const override;
+	ReadableIndex* buildIndex(const Schema&, SortableStrVec& indexData) const override;
+	ReadableStore* buildStore(const Schema&, SortableStrVec& storeData) const override;
 };
 
 }}} // namespace nark::db::dfadb

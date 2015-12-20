@@ -222,6 +222,15 @@
     <ClInclude Include="..\..\..\src\nlohmann\json.hpp">
       <Filter>Header Files\nlohmann</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\zip_int_store.hpp">
+      <Filter>Header Files\nark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\fixed_len_key_index.hpp">
+      <Filter>Header Files\nark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\fixed_len_store.hpp">
+      <Filter>Header Files\nark\db</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -565,6 +574,15 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_store.cpp">
       <Filter>Source Files\nark\db\wiredtiger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\zip_int_store.cpp">
+      <Filter>Source Files\nark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\fixed_len_key_index.cpp">
+      <Filter>Source Files\nark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\fixed_len_store.cpp">
+      <Filter>Source Files\nark\db</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

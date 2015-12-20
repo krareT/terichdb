@@ -597,9 +597,10 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 	}
 }
 
-bool Schema::parseDelimText(char delim, fstring text, valvec<byte>* row) const {
+size_t Schema::parseDelimText(char delim, fstring text, valvec<byte>* row) const {
+	const char* beg = text.begin();
 	const char* end = text.end();
-	const char* pos = text.begin();
+	const char* pos = beg;
 	size_t nCol = m_columnsMeta.end_i();
 	size_t iCol = 0;
 	row->erase_all();
@@ -671,10 +672,7 @@ bool Schema::parseDelimText(char delim, fstring text, valvec<byte>* row) const {
 		}
 		pos = next + 1;
 	}
-	if (iCol == nCol) {
-		return true;
-	}
-	return false;
+	return iCol;
 }
 
 std::string Schema::toJsonStr(fstring row) const {

@@ -199,9 +199,12 @@
     <ClInclude Include="..\..\..\src\nark\db\dfadb\dfadb_table.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\dfadb\nlt_index.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\dfadb\nlt_store.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\fixed_len_key_index.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\fixed_len_store.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\intkey_index.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\json.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\mock_db_engine.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\zip_int_store.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\record_data.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\seg_db.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\seq_num_index.hpp" />
@@ -319,8 +322,11 @@
     <ClCompile Include="..\..\..\src\nark\db\dfadb\dfadb_table.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\dfadb\nlt_index.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\dfadb\nlt_store.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\fixed_len_key_index.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\fixed_len_store.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\intkey_index.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\zip_int_store.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\seq_num_index.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_index.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_store.cpp" />

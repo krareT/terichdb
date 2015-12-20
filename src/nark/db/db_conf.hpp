@@ -108,7 +108,7 @@ namespace nark { namespace db {
 		void byteLexConvert(valvec<byte>&) const;
 		void byteLexConvert(byte* data, size_t size) const;
 
-		bool parseDelimText(char delim, fstring text, valvec<byte>* row) const;
+		size_t parseDelimText(char delim, fstring text, valvec<byte>* row) const;
 
 		std::string toJsonStr(fstring row) const;
 		std::string toJsonStr(const char* row, size_t rowlen) const;

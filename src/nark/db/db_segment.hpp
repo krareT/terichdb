@@ -52,7 +52,7 @@ public:
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableIndex* openIndex(fstring path, const Schema&) const = 0;
+	virtual ReadableIndex* openIndex(const Schema&, fstring path) const = 0;
 
 	///@ if segDir==m_segDir, it is a flush
 	virtual void loadRecordStore(fstring segDir) = 0;
@@ -99,10 +99,6 @@ public:
 	ReadonlySegment();
 	~ReadonlySegment();
 
-	// Store can use different implementation for different data
-	// According to data content features
-	virtual ReadableStore* openPart(fstring path) const = 0;
-
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
@@ -118,11 +114,22 @@ public:
 					  valvec<byte>* val, DbContext*) const;
 
 protected:
+	// Index can use different implementation for different
+	// index schema and index content features
+	virtual ReadableIndex* openIndex(const Schema&, fstring path) const = 0;
+
+	// Store can use different implementation for different data
+	// According to data content features
+	// store could be a column store
+	virtual ReadableStore* openStore(const Schema&, fstring path) const = 0;
+
 	virtual ReadableIndex*
-			buildIndex(const Schema& indexSchema, SortableStrVec& indexData)
+			buildIndex(const Schema&, SortableStrVec& indexData)
 			const = 0;
 
-	virtual ReadableStore* buildStore(SortableStrVec& storeData) const = 0;
+	virtual ReadableStore*
+			buildStore(const Schema&, SortableStrVec& storeData)
+			const = 0;
 
 	void loadRecordStore(fstring segDir) override;
 	void saveRecordStore(fstring segDir) const override;
@@ -149,7 +156,7 @@ public:
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableIndex* createIndex(fstring path, const Schema&) const = 0;
+	virtual ReadableIndex* createIndex(const Schema&, fstring path) const = 0;
 
 	void flushSegment();
 

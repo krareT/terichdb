@@ -1,5 +1,8 @@
 #include "dfadb_segment.hpp"
 #include <nark/db/intkey_index.hpp>
+#include <nark/db/zip_int_store.hpp>
+#include <nark/db/fixed_len_key_index.hpp>
+//#include <nark/db/fixed_len_key_index.hpp>
 #include "nlt_index.hpp"
 #include "nlt_store.hpp"
 #include <nark/fsa/nest_trie_dawg.hpp>
@@ -16,24 +19,23 @@ DfaDbReadonlySegment::~DfaDbReadonlySegment() {
 }
 
 ReadableStore*
-DfaDbReadonlySegment::openPart(fstring path) const {
-	std::unique_ptr<NestLoudsTrieStore> store(new NestLoudsTrieStore());
-	store->load(path);
-	return store.release();
+DfaDbReadonlySegment::openStore(const Schema& schema, fstring path) const {
+	if (boost::filesystem::exists(path + ".nlt")) {
+		std::unique_ptr<NestLoudsTrieStore> store(new NestLoudsTrieStore());
+		store->load(path);
+		return store.release();
+	}
+	return ReadonlySegment::openStore(schema, path);
 }
 
 ReadableIndex*
-DfaDbReadonlySegment::openIndex(fstring path, const Schema& schema) const {
+DfaDbReadonlySegment::openIndex(const Schema& schema, fstring path) const {
 	if (boost::filesystem::exists(path + ".nlt")) {
 		std::unique_ptr<NestLoudsTrieIndex> store(new NestLoudsTrieIndex());
 		store->load(path);
 		return store.release();
 	}
-	else {
-		std::unique_ptr<ZipIntKeyIndex> store(new ZipIntKeyIndex());
-		store->load(path);
-		return store.release();
-	}
+	return ReadonlySegment::openIndex(schema, path);
 }
 
 static void patchStrVec(SortableStrVec& strVec, size_t fixlen) {
@@ -48,17 +50,13 @@ static void patchStrVec(SortableStrVec& strVec, size_t fixlen) {
 }
 
 ReadableIndex*
-DfaDbReadonlySegment::buildIndex(const Schema& indexSchema,
-								 SortableStrVec& indexData)
+DfaDbReadonlySegment::buildIndex(const Schema& schema, SortableStrVec& indexData)
 const {
-	if (indexSchema.columnNum() == 1 && indexSchema.getColumnMeta(0).isInteger()) {
-		std::unique_ptr<ZipIntKeyIndex> index(new ZipIntKeyIndex());
-		index->build(indexSchema.getColumnMeta(0).type, indexData);
-		return index.release();
-	}
-	else {
+	std::unique_ptr<ReadableIndex>
+		index0(ReadonlySegment::buildIndex(schema, indexData));
+	if (!index0) {
 		if (indexData.m_index.size() == 0) {
-			const size_t fixlen = indexSchema.getFixedRowLen();
+			const size_t fixlen = schema.getFixedRowLen();
 			assert(fixlen > 0);
 			patchStrVec(indexData, fixlen);
 		}
@@ -66,17 +64,24 @@ const {
 		index->build(indexData);
 		return index.release();
 	}
+	return index0.release();
 }
 
 ReadableStore*
-DfaDbReadonlySegment::buildStore(SortableStrVec& storeData) const {
-	std::unique_ptr<NestLoudsTrieStore> store(new NestLoudsTrieStore());
-	if (storeData.m_index.size() == 0) {
-		const size_t fixlen = m_rowSchema->getFixedRowLen();
-		assert(fixlen > 0);
-		patchStrVec(storeData, fixlen);
+DfaDbReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
+const {
+	std::unique_ptr<ReadableStore>
+		store(ReadonlySegment::buildStore(schema, storeData));
+	if (!store) {
+		std::unique_ptr<NestLoudsTrieStore> nltStore(new NestLoudsTrieStore());
+		if (storeData.m_index.size() == 0) {
+			const size_t fixlen = m_nonIndexRowSchema->getFixedRowLen();
+			assert(fixlen > 0);
+			patchStrVec(storeData, fixlen);
+		}
+		nltStore->build(storeData);
+		return nltStore.release();
 	}
-	store->build(storeData);
 	return store.release();
 }
 

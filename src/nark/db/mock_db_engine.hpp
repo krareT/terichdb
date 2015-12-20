@@ -13,7 +13,7 @@ class NARK_DB_DLL MockReadonlyStore : public ReadableStore {
 public:
 	fstrvec m_rows;
 
-	void build(SchemaPtr schema, SortableStrVec& storeData);
+	void build(const Schema&, SortableStrVec& storeData);
 
 	void save(fstring) const override;
 	void load(fstring) override;
@@ -115,12 +115,11 @@ public:
 	MockReadonlySegment();
 	~MockReadonlySegment();
 protected:
-	ReadableStore* openPart(fstring path) const override;
-	ReadableIndex* openIndex(fstring path, const Schema&) const override;
+	ReadableStore* openStore(const Schema&, fstring path) const override;
+	ReadableIndex* openIndex(const Schema&, fstring path) const override;
 
-	ReadableIndex* buildIndex(const Schema& indexSchema,
-								   SortableStrVec& indexData) const override;
-	ReadableStore* buildStore(SortableStrVec& storeData) const override;
+	ReadableIndex* buildIndex(const Schema&, SortableStrVec& indexData) const override;
+	ReadableStore* buildStore(const Schema&, SortableStrVec& storeData) const override;
 };
 
 class NARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
@@ -131,10 +130,10 @@ public:
 	MockWritableSegment(fstring dir);
 	~MockWritableSegment();
 
-	ReadableIndex* createIndex(fstring path, const Schema&) const override;
+	ReadableIndex* createIndex(const Schema&, fstring path) const override;
 
 protected:
-	ReadableIndex* openIndex(fstring, const Schema&) const override;
+	ReadableIndex* openIndex(const Schema&, fstring) const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	StoreIterator* createStoreIterForward(DbContext*) const override;

@@ -8,7 +8,7 @@ int main(int argc, char* argv[])
 {
 	using namespace nark;
 	hash_strmap<int> baseIndex;
-	nark::db::dfadb::NestLoudsIndexBase dfaIndex;
+//	nark::db::dfadb::NestLoudsIndexBase dfaIndex;
 
     return 0;
 }

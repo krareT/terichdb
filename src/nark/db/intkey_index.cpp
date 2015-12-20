@@ -7,6 +7,7 @@
 namespace nark { namespace db {
 
 ZipIntKeyIndex::ZipIntKeyIndex() {
+	m_isOrdered = true;
 	m_mmapBase = nullptr;
 	m_mmapSize = 0;
 }
@@ -224,7 +225,8 @@ void ZipIntKeyIndex::build(ColumnType keyType, SortableStrVec& strVec) {
 }
 
 void ZipIntKeyIndex::load(fstring path) {
-	m_mmapBase = (byte_t*)mmap_load(path.c_str(), &m_mmapSize);
+	std::string fpath = path + ".zint";
+	m_mmapBase = (byte_t*)mmap_load(fpath.c_str(), &m_mmapSize);
 	size_t rows  = ((uint32_t*)m_mmapBase)[0];
 	size_t kbits = ((uint8_t *)m_mmapBase)[4];
 	m_isUnique   = ((uint8_t *)m_mmapBase)[5] ? true : false;
@@ -236,8 +238,9 @@ void ZipIntKeyIndex::load(fstring path) {
 }
 
 void ZipIntKeyIndex::save(fstring path) const {
+	std::string fpath = path + ".zint";
 	NativeDataOutput<FileStream> dio;
-	dio.open(path.c_str(), "wb");
+	dio.open(fpath.c_str(), "wb");
 	dio << uint32_t(numDataRows());
 	dio << byte(m_keys.uintbits());
 	dio << byte(m_isUnique);

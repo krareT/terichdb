@@ -308,9 +308,9 @@ void CompositeTable::loadMetaJson(fstring jsonFile) {
 			bool colstore = found.value();
 			if (colstore) {
 				// this colstore has the only-one 'name' field
-				std::unique_ptr<Schema> schema(new Schema());
+				SchemaPtr schema(new Schema());
 				schema->m_columnsMeta.insert_i(name, colmeta);
-				m_colgroupSchemaSet->m_nested.insert_i(schema.release());
+				m_colgroupSchemaSet->m_nested.insert_i(schema);
 			}
 		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
@@ -757,7 +757,7 @@ CompositeTable::myCreateWritableSegment(fstring segDir) const {
 			const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
 			std::string colnames = schema.joinColumnNames(',');
 			std::string indexPath = segDir + "/index-" + colnames;
-			seg->m_indices[i] = seg->createIndex(indexPath, schema);
+			seg->m_indices[i] = seg->createIndex(schema, indexPath);
 		}
 	}
 	return seg.release();

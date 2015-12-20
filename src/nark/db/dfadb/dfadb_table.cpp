@@ -4,8 +4,8 @@
 #include <nark/io/FileStream.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/util/mmap.hpp>
-
 #include <nark/db/mock_db_engine.hpp>
+#include <boost/filesystem.hpp>
 
 namespace nark { namespace db { namespace dfadb {
 
@@ -35,7 +35,10 @@ WritableSegment*
 DfaDbTable::openWritableSegment(fstring dir) const {
 	std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 	seg->copySchema(*this);
-	seg->load(dir);
+	auto isDelPath = boost::filesystem::path(dir.str()) / "isDel";
+	if (boost::filesystem::exists(isDelPath)) {
+		seg->load(dir);
+	}
 	return seg.release();
 }
 
