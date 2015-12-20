@@ -50,6 +50,9 @@ public:
 	virtual void encodeIndexKey(const Schema&, valvec<byte>& key) const;
 	virtual void decodeIndexKey(const Schema&, valvec<byte>& key) const;
 
+	virtual void encodeIndexKey(const Schema&, byte* key, size_t keyLen) const;
+	virtual void decodeIndexKey(const Schema&, byte* key, size_t keyLen) const;
+
 	virtual IndexIterator* createIndexIterForward(DbContext*) const = 0;
 	virtual IndexIterator* createIndexIterBackward(DbContext*) const = 0;
 	///@}

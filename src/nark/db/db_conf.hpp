@@ -106,6 +106,7 @@ namespace nark { namespace db {
 		}
 
 		void byteLexConvert(valvec<byte>&) const;
+		void byteLexConvert(byte* data, size_t size) const;
 
 		bool parseDelimText(char delim, fstring text, valvec<byte>* row) const;
 

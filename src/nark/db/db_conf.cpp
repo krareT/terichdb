@@ -467,10 +467,13 @@ void Schema::selectParent(const valvec<fstring>& parentCols, valvec<fstring>* my
 }
 
 void Schema::byteLexConvert(valvec<byte>& indexKey) const {
+	byteLexConvert(indexKey.data(), indexKey.size());
+}
+void Schema::byteLexConvert(byte* data, size_t size) const {
 	assert(size_t(-1) != m_fixedLen);
 	assert(m_canEncodeToLexByteComparable);
-	byte* curr = indexKey.begin();
-	byte* last = indexKey.end();
+	byte* curr = data;
+	byte* last = data + size;
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
