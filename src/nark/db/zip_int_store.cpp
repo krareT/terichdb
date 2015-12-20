@@ -12,49 +12,57 @@ ZipIntStore::ZipIntStore() {
 }
 ZipIntStore::~ZipIntStore() {
 	if (m_mmapBase) {
-		m_ints.risk_release_ownership();
+		m_dedup.risk_release_ownership();
+		m_index.risk_release_ownership();
 		mmap_close(m_mmapBase, m_mmapSize);
 	}
 }
 
-
 llong ZipIntStore::dataStorageSize() const {
-	return m_ints.mem_size();
+	return m_dedup.mem_size() + m_index.mem_size();
 }
 
 llong ZipIntStore::numDataRows() const {
-	return m_ints.size();
+	return m_index.size() ? m_index.size() : m_dedup.size();
 }
 
 template<class Int>
-void ZipIntStore::keyAppend(size_t recIdx, valvec<byte>* key) const {
-	Int iKey = Int(m_minKey + m_ints.get(recIdx));
-	unaligned_save<Int>(key->grow_no_init(sizeof(Int)), iKey);
+void ZipIntStore::valueAppend(size_t recIdx, valvec<byte>* key) const {
+	if (m_index.size()) {
+		size_t idx = m_index.get(recIdx);
+		assert(idx < m_dedup.size());
+		Int iValue = Int(m_minValue + m_dedup.get(idx));
+		unaligned_save<Int>(key->grow_no_init(sizeof(Int)), iValue);
+	}
+	else {
+		Int iValue = Int(m_minValue + m_dedup.get(recIdx));
+		unaligned_save<Int>(key->grow_no_init(sizeof(Int)), iValue);
+	}
 }
 
 void ZipIntStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
 	assert(id >= 0);
 	size_t idx = size_t(id);
-	assert(idx < m_ints.size());
+	assert(idx < m_dedup.size());
 	switch (m_intType) {
 	default:
 		THROW_STD(invalid_argument, "Bad m_intType=%s", Schema::columnTypeStr(m_intType));
-	case ColumnType::Sint08: keyAppend< int8_t >(idx, val); break;
-	case ColumnType::Uint08: keyAppend<uint8_t >(idx, val); break;
-	case ColumnType::Sint16: keyAppend< int16_t>(idx, val); break;
-	case ColumnType::Uint16: keyAppend<uint16_t>(idx, val); break;
-	case ColumnType::Sint32: keyAppend< int32_t>(idx, val); break;
-	case ColumnType::Uint32: keyAppend<uint32_t>(idx, val); break;
-	case ColumnType::Sint64: keyAppend< int64_t>(idx, val); break;
-	case ColumnType::Uint64: keyAppend<uint64_t>(idx, val); break;
+	case ColumnType::Sint08: valueAppend< int8_t >(idx, val); break;
+	case ColumnType::Uint08: valueAppend<uint8_t >(idx, val); break;
+	case ColumnType::Sint16: valueAppend< int16_t>(idx, val); break;
+	case ColumnType::Uint16: valueAppend<uint16_t>(idx, val); break;
+	case ColumnType::Sint32: valueAppend< int32_t>(idx, val); break;
+	case ColumnType::Uint32: valueAppend<uint32_t>(idx, val); break;
+	case ColumnType::Sint64: valueAppend< int64_t>(idx, val); break;
+	case ColumnType::Uint64: valueAppend<uint64_t>(idx, val); break;
 	case ColumnType::VarSint: {
 		byte  buf[16];
-		byte* end = save_var_int64(buf, int64_t(m_minKey + m_ints.get(idx)));
+		byte* end = save_var_int64(buf, int64_t(m_minValue + m_dedup.get(idx)));
 		val->append(buf, end - buf);
 		break; }
 	case ColumnType::VarUint: {
 		byte  buf[16];
-		byte* end = save_var_uint64(buf, uint64_t(m_minKey + m_ints.get(idx)));
+		byte* end = save_var_uint64(buf, uint64_t(m_minValue + m_dedup.get(idx)));
 		val->append(buf, end - buf);
 		break; }
 	}
@@ -69,17 +77,31 @@ StoreIterator* ZipIntStore::createStoreIterBackward(DbContext*) const {
 }
 
 template<class Int>
-void ZipIntStore::zipKeys(const void* data, size_t size) {
+void ZipIntStore::zipValues(const void* data, size_t size) {
 	size_t rows = size / sizeof(Int);
 	assert(size % sizeof(Int) == 0);
-	const Int* keys = (Int*)data;
-	m_minKey = m_ints.build_from(keys, rows);
-#if !defined(NDEBUG)
-	assert(m_ints.size() == rows);
-	for (size_t i = 0; i < rows; ++i) {
-		assert(Int(m_minKey + m_ints[i]) == keys[i]);
+	const Int* values = (Int*)data;
+
+	UintVecMin0 dup;
+	m_minValue = dup.build_from(values, rows);
+
+	valvec<Int> dedup(values, rows);
+	std::sort(dedup.begin(), dedup.end());
+	dedup.trim(std::unique(dedup.begin(), dedup.end()));
+
+	size_t indexBits = nark_bsr_u32(dedup.size()-1) + 1;
+	size_t indexSize = (indexBits      * rows + 7) / 8;
+	size_t dedupSize = (dup.uintbits() * rows + 7) / 8;
+	if (dedupSize + indexSize < dup.mem_size()) {
+		valvec<uint32_t> index(rows, valvec_no_init());
+		for(size_t i = 0; i < rows; ++i) {
+			size_t j = lower_bound_a(dedup, values[i]);
+			assert(values[i] == dedup[j]);
+			index[i] = j;
+		}
+		m_index.build_from(index);
+		m_dedup.build_from(dedup);
 	}
-#endif
 }
 
 void ZipIntStore::build(ColumnType keyType, SortableStrVec& strVec) {
@@ -90,14 +112,14 @@ void ZipIntStore::build(ColumnType keyType, SortableStrVec& strVec) {
 	switch (keyType) {
 	default:
 		THROW_STD(invalid_argument, "Bad keyType=%s", Schema::columnTypeStr(keyType));
-	case ColumnType::Sint08: zipKeys< int8_t >(data, size); break;
-	case ColumnType::Uint08: zipKeys<uint8_t >(data, size); break;
-	case ColumnType::Sint16: zipKeys< int16_t>(data, size); break;
-	case ColumnType::Uint16: zipKeys<uint16_t>(data, size); break;
-	case ColumnType::Sint32: zipKeys< int32_t>(data, size); break;
-	case ColumnType::Uint32: zipKeys<uint32_t>(data, size); break;
-	case ColumnType::Sint64: zipKeys< int64_t>(data, size); break;
-	case ColumnType::Uint64: zipKeys<uint64_t>(data, size); break;
+	case ColumnType::Sint08: zipValues< int8_t >(data, size); break;
+	case ColumnType::Uint08: zipValues<uint8_t >(data, size); break;
+	case ColumnType::Sint16: zipValues< int16_t>(data, size); break;
+	case ColumnType::Uint16: zipValues<uint16_t>(data, size); break;
+	case ColumnType::Sint32: zipValues< int32_t>(data, size); break;
+	case ColumnType::Uint32: zipValues<uint32_t>(data, size); break;
+	case ColumnType::Sint64: zipValues< int64_t>(data, size); break;
+	case ColumnType::Uint64: zipValues<uint64_t>(data, size); break;
 	case ColumnType::VarSint: {
 		valvec<llong> tmp;
 		const byte* pos = strVec.m_strpool.data();
@@ -108,7 +130,7 @@ void ZipIntStore::build(ColumnType keyType, SortableStrVec& strVec) {
 			tmp.push_back(key);
 			pos = next;
 		}
-		zipKeys<int64_t>(tmp.data(), tmp.used_mem_size());
+		zipValues<int64_t>(tmp.data(), tmp.used_mem_size());
 		break; }
 	case ColumnType::VarUint: {
 		valvec<ullong> tmp;
@@ -120,38 +142,39 @@ void ZipIntStore::build(ColumnType keyType, SortableStrVec& strVec) {
 			tmp.push_back(key);
 			pos = next;
 		}
-		zipKeys<uint64_t>(tmp.data(), tmp.used_mem_size());
+		zipValues<uint64_t>(tmp.data(), tmp.used_mem_size());
 		break; }
 	}
-	valvec<uint32_t> index(m_ints.size(), valvec_no_init());
-	for (size_t i = 0; i < index.size(); ++i) index[i] = i;
-	std::sort(index.begin(), index.end(), [&](size_t x, size_t y) {
-		size_t xkey = m_ints.get(x);
-		size_t ykey = m_ints.get(y);
-		if (xkey < ykey) return true;
-		if (xkey > ykey) return false;
-		return x < y;
-	});
 }
 
 namespace {
 	struct ZipIntStoreHeader {
 		uint32_t rows;
+		uint32_t uniqNum;
 		uint8_t  intBits;
 		uint8_t  intType;
-		uint16_t padding;
+		uint16_t padding1;
+		uint32_t padding2;
+		uint32_t padding3;
 		 int64_t minValue;
 	};
-	BOOST_STATIC_ASSERT(sizeof(ZipIntStoreHeader) == 16);
+	BOOST_STATIC_ASSERT(sizeof(ZipIntStoreHeader) == 32);
 }
 
 void ZipIntStore::load(fstring path) {
 	std::string fpath = path + ".zint";
 	m_mmapBase = (byte_t*)mmap_load(fpath.c_str(), &m_mmapSize);
-	auto header = (ZipIntStoreHeader*)m_mmapBase;
+	auto header = (const ZipIntStoreHeader*)m_mmapBase;
+	size_t rows = header->rows;
 	m_intType = ColumnType(header->intType);
-	m_minKey  = header->minValue;
-	m_ints.risk_set_data((byte*)(header+1), header->rows, header->intBits);
+	m_minValue  = header->minValue;
+	m_dedup.risk_set_data((byte*)(header+1), header->uniqNum, header->intBits);
+	if (header->uniqNum != rows) {
+		assert(header->uniqNum < rows);
+		size_t indexBits = nark_bsr_u32(rows - 1) + 1;
+		auto   indexData = (byte*)(header+1) + m_dedup.mem_size();
+		m_index.risk_set_data(indexData, rows, indexBits);
+	}
 }
 
 void ZipIntStore::save(fstring path) const {
@@ -160,12 +183,16 @@ void ZipIntStore::save(fstring path) const {
 	dio.open(fpath.c_str(), "wb");
 	ZipIntStoreHeader header;
 	header.rows = uint32_t(numDataRows());
-	header.intBits = byte(m_ints.uintbits());
+	header.uniqNum = m_dedup.size();
+	header.intBits = byte(m_dedup.uintbits());
 	header.intType = byte(m_intType);
-	header.padding = 0;
-	header.minValue = int64_t(m_minKey);
+	header.padding1 = 0;
+	header.padding2 = 0;
+	header.padding3 = 0;
+	header.minValue = int64_t(m_minValue);
 	dio.ensureWrite(&header, sizeof(header));
-	dio.ensureWrite(m_ints .data(), m_ints .mem_size());
+	dio.ensureWrite(m_dedup.data(), m_dedup.mem_size());
+	dio.ensureWrite(m_index.data(), m_index.mem_size());
 }
 
 }} // namespace nark::db

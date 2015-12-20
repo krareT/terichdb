@@ -24,17 +24,18 @@ public:
 	void save(fstring path) const override;
 
 protected:
-	UintVecMin0 m_ints;
+	UintVecMin0 m_dedup;
+	UintVecMin0 m_index;
 	byte_t*     m_mmapBase;
 	size_t      m_mmapSize;
-	llong       m_minKey; // may be unsigned
+	llong       m_minValue; // may be unsigned
 	ColumnType  m_intType;
 
 	template<class Int>
-	void keyAppend(size_t recIdx, valvec<byte>* res) const;
+	void valueAppend(size_t recIdx, valvec<byte>* res) const;
 
 	template<class Int>
-	void zipKeys(const void* data, size_t size);
+	void zipValues(const void* data, size_t size);
 };
 
 }} // namespace nark::db

@@ -801,6 +801,8 @@ const {
 		}
 		catch (const std::exception&) {
 			// ignore and fall through
+			fprintf(stderr, "try to build ZipIntStore: on %s failed, fallback to FixedLenStore\n",
+				schema.joinColumnNames().c_str());
 		}
 	}
 	if (fixlen && fixlen <= 16) {

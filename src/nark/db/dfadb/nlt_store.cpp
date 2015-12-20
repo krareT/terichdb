@@ -3,6 +3,7 @@
 #include <nark/io/FileStream.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/util/mmap.hpp>
+#include <boost/filesystem.hpp>
 
 namespace nark { namespace db { namespace dfadb {
 
@@ -40,7 +41,8 @@ void NestLoudsTrieStore::build(SortableStrVec& strVec) {
 }
 
 void NestLoudsTrieStore::load(fstring path) {
-	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(path.c_str()));
+	std::string fpath = path + ".nlt";
+	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(fpath.c_str()));
 	m_store.reset(dynamic_cast<NestLoudsTrieDataStore_SE_512*>(dfa.get()));
 	if (m_store) {
 		dfa.release();
@@ -48,7 +50,8 @@ void NestLoudsTrieStore::load(fstring path) {
 }
 
 void NestLoudsTrieStore::save(fstring path) const {
-	m_store->save_mmap(path.c_str());
+	std::string fpath = path + ".nlt";
+	m_store->save_mmap(fpath.c_str());
 }
 
 }}} // namespace nark::db::dfadb

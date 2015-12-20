@@ -66,6 +66,7 @@ public:
 	std::string toJsonStr(fstring row) const;
 
 	size_t getSegNum () const { return m_segments.size(); }
+	size_t getWritableSegNum() const;
 
 	void loadMetaJson(fstring jsonFile);
 	void saveMetaJson(fstring jsonFile) const;

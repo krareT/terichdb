@@ -272,6 +272,16 @@ void CompositeTable::saveMetaDFA(fstring dir) const {
 }
 #endif
 
+size_t CompositeTable::getWritableSegNum() const {
+	MyRwLock lock(m_rwMutex, false);
+	size_t wrNum = 0;
+	for (size_t i = 0; i < m_segments.size(); ++i) {
+		if (m_segments[i]->getWritableStore())
+			wrNum++;
+	}
+	return wrNum;
+}
+
 void CompositeTable::loadMetaJson(fstring jsonFile) {
 	LineBuf alljson;
 	alljson.read_all(jsonFile.c_str());
