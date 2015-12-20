@@ -29,9 +29,35 @@ void SegmentSchema::compileSchema() {
 	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
 		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
 		const size_t colnum = schema.columnNum();
-		for (size_t j = 0; j < colnum; ++j)
+		for (size_t j = 0; j < colnum; ++j) {
 			hasIndex.set1(schema.parentColumnId(j));
+		}
 	}
+
+	// remove columns in colgroups which is also in indices
+	valvec<SchemaPtr> colgroups(m_colgroupSchemaSet->m_nested.end_i());
+	for (size_t i = 0; i < m_colgroupSchemaSet->m_nested.end_i(); ++i) {
+		colgroups[i] = m_colgroupSchemaSet->m_nested.elem_at(i);
+	}
+	m_colgroupSchemaSet->m_nested.erase_all();
+	for (size_t i = 0; i < colgroups.size(); ++i) {
+		SchemaPtr& schema = colgroups[i];
+		schema->m_columnsMeta.shrink_after_erase_if_kv(
+			[&](fstring colname, const ColumnMeta&) {
+			size_t pos = m_rowSchema->m_columnsMeta.find_i(colname);
+			assert(pos < m_rowSchema->m_columnsMeta.end_i());
+			bool ret = hasIndex[pos];
+			hasIndex.set1(pos); // now it is column stored
+			return ret;
+		});
+	}
+	for (size_t i = 0; i < colgroups.size(); ++i) {
+		SchemaPtr& schema = colgroups[i];
+		if (!schema->m_columnsMeta.empty())
+			m_colgroupSchemaSet->m_nested.insert_i(schema);
+	}
+	m_colgroupSchemaSet->compileSchemaSet(m_rowSchema.get());
+
 	for (size_t i = 0; i < hasIndex.size(); ++i) {
 		if (!hasIndex[i]) {
 			fstring    colname = m_rowSchema->getColumnName(i);
@@ -157,6 +183,9 @@ void ReadableSegment::load(fstring segDir) {
 
 void ReadableSegment::save(fstring segDir) const {
 	assert(segDir.size() > 0);
+	if (m_tobeDel) {
+		return; // not needed
+	}
 	if (!m_isDelMmap) { // mmap'ed file need not to flush
 		saveIsDel(segDir);
 	}
@@ -577,6 +606,10 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 			m_isDel.resize(size_t(newRowNum));
 		}
 		m_delcnt = input.m_delcnt - old_delcnt;
+		fprintf(stderr,
+			"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd]",
+			old_delcnt, input.m_delcnt, m_delcnt);
+		assert(m_isDel.popcnt() == m_delcnt);
 	}
 	if (nonIndexColNum) {
 		m_rowNumVec.erase_all();
@@ -642,7 +675,8 @@ void ReadonlySegment::loadRecordStore(fstring dir) {
 WritableSegment::WritableSegment() {
 }
 WritableSegment::~WritableSegment() {
-	flushSegment();
+	if (!m_tobeDel)
+		flushSegment();
 }
 
 WritableStore* WritableSegment::getWritableStore() {

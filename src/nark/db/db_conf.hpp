@@ -49,6 +49,7 @@ namespace nark { namespace db {
 	enum class ColumnType : unsigned char {
 		// all number types are LittleEndian
 		Any, // real type is stored as first byte of the data
+		Nested,
 		Uint08,
 		Sint08,
 		Uint16,
@@ -62,6 +63,7 @@ namespace nark { namespace db {
 		Float32,
 		Float64,
 		Float128,
+		Decimal128,
 		Uuid,    // 16 bytes(128 bits) binary
 		Fixed,   // Fixed length binary
 		VarSint,
@@ -78,6 +80,7 @@ namespace nark { namespace db {
 		ColumnType type;
 		unsigned char uType; // user column type, such as mongodb type
 		ColumnMeta();
+		bool isInteger() const;
 		explicit ColumnMeta(ColumnType);
 	};
 
@@ -103,6 +106,8 @@ namespace nark { namespace db {
 		}
 
 		void byteLexConvert(valvec<byte>&) const;
+
+		bool parseDelimText(char delim, fstring text, valvec<byte>* row) const;
 
 		std::string toJsonStr(fstring row) const;
 		std::string toJsonStr(const char* row, size_t rowlen) const;

@@ -52,6 +52,24 @@ ColumnMeta::ColumnMeta(ColumnType t) {
 	}
 }
 
+bool ColumnMeta::isInteger() const {
+	switch (type) {
+	default:
+		return false;
+	case ColumnType::Uint08:
+	case ColumnType::Sint08:
+	case ColumnType::Uint16:
+	case ColumnType::Sint16:
+	case ColumnType::Uint32:
+	case ColumnType::Sint32:
+	case ColumnType::Uint64:
+	case ColumnType::Sint64:
+	case ColumnType::VarSint:
+	case ColumnType::VarUint:
+		return true;
+	}
+}
+
 /////////////////////////////////////////////////////////////////////////////
 
 Schema::Schema() {
@@ -576,11 +594,94 @@ void Schema::byteLexConvert(valvec<byte>& indexKey) const {
 	}
 }
 
+bool Schema::parseDelimText(char delim, fstring text, valvec<byte>* row) const {
+	const char* end = text.end();
+	const char* pos = text.begin();
+	size_t nCol = m_columnsMeta.end_i();
+	size_t iCol = 0;
+	row->erase_all();
+	for (; pos < end && iCol < nCol; ++iCol) {
+		const char* next = std::find(pos, end, delim);
+		char* next2 = nullptr;
+		const ColumnMeta& colmeta = m_columnsMeta.val(iCol);
+		switch (colmeta.type) {
+		default:
+			THROW_STD(invalid_argument,
+				"type=%s is not supported", columnTypeStr(colmeta.type));
+			break;
+		case ColumnType::Sint08:
+		case ColumnType::Uint08:
+			{
+				long val = strtol(pos, &next2, 0);
+				row->push_back((char)(val));
+			}
+			break;
+		case ColumnType::Sint16:
+		case ColumnType::Uint16:
+			{
+				long val = strtol(pos, &next2, 0);
+				unaligned_save<int16_t>(row->grow_no_init(2), int16_t(val));
+			}
+			break;
+		case ColumnType::Sint32:
+			{
+				long val = strtol(pos, &next2, 0);
+				unaligned_save<int32_t>(row->grow_no_init(4), int32_t(val));
+			}
+			break;
+		case ColumnType::Uint32:
+			{
+				ulong val = strtoul(pos, &next2, 0);
+				unaligned_save<uint32_t>(row->grow_no_init(4), uint32_t(val));
+			}
+			break;
+		case ColumnType::Sint64:
+			{
+				llong val = strtoll(pos, &next2, 0);
+				unaligned_save<int64_t>(row->grow_no_init(8), int64_t(val));
+			}
+			break;
+		case ColumnType::Uint64:
+			{
+				llong val = strtoull(pos, &next2, 0);
+				unaligned_save<uint64_t>(row->grow_no_init(8), uint64_t(val));
+			}
+			break;
+		case ColumnType::Float32:
+			{
+				float val = strtof(pos, &next2);
+				unaligned_save<float>(row->grow_no_init(8), val);
+			}
+			break;
+		case ColumnType::Float64:
+			{
+				double val = strtod(pos, &next2);
+				unaligned_save<double>(row->grow_no_init(8), val);
+			}
+			break;
+		case ColumnType::StrZero:
+			row->append(pos, next);
+			if (iCol < nCol-1) {
+				row->push_back('\0');
+			}
+			break;
+		}
+		pos = next + 1;
+	}
+	if (iCol == nCol) {
+		return true;
+	}
+	return false;
+}
+
 std::string Schema::toJsonStr(fstring row) const {
 	return toJsonStr(row.data(), row.size());
 }
 std::string Schema::toJsonStr(const char* row, size_t rowlen) const {
 	assert(size_t(-1) != m_fixedLen);
+	if (0 == rowlen) {
+		return "emptyJson{}";
+	}
 	const byte* curr = (const byte*)(row);
 	const byte* last = (const byte*)(row) + rowlen;
 	nark::json js;

@@ -72,7 +72,7 @@ public:
 
 protected:
 
-	void maybeCreateNewSegment(MyRwLock&);
+	bool maybeCreateNewSegment(MyRwLock&);
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
 	bool insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
 	bool insertSyncIndex(llong subId, DbContext*);

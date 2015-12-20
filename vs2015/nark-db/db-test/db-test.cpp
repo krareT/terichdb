@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include <nark/db/db_table.hpp>
 #include <nark/db/mock_db_engine.hpp>
+#include <nark/db/dfadb/dfadb_table.hpp>
 #include <nark/io/MemStream.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/io/RangeStream.hpp>
@@ -27,15 +28,11 @@ struct TestRow {
 		)
 };
 
-int main(int argc, char* argv[]) {
-	if (argc < 3) {
-		fprintf(stderr, "usage: %s indexCol keys ...\n", argv[0]);
-		return 1;
-	}
-	using namespace nark::db;
+using namespace nark::db;
+
+void doTest(CompositeTablePtr tab, nark::fstring dbDir) {
 	using namespace nark;
-	CompositeTablePtr tab(new MockCompositeTable());
-	tab->load("db1");
+	tab->load(dbDir);
 	DbContextPtr ctx(tab->createDbContext());
 
 	NativeDataOutput<AutoGrownMemIO> rowBuilder;
@@ -58,6 +55,8 @@ int main(int argc, char* argv[]) {
 		if (bits[recRow.id]) {
 			printf("dupkey: %s\n", tab->m_rowSchema->toJsonStr(binRow).c_str());
 		}
+		if (0x5f == i || 0x3d == i)
+			i = i;
 		if (ctx->insertRow(binRow) < 0) {
 		//	assert(bits.is1(recRow.id));
 			printf("Insert failed: %s\n", ctx->errMsg.c_str());
@@ -126,6 +125,8 @@ int main(int argc, char* argv[]) {
 				printf("find index key = %s", keyJson.c_str());
 				fflush(stdout);
 				llong recId;
+				if (i == 0x002d && indexId == 1)
+					i = i;
 				int ret = indexIter->seekLowerBound(keyData, &recId, &keyHit);
 				if (ret > 0) {
 					printf(", found upper_bound key=%s, recId=%lld\n",
@@ -171,6 +172,15 @@ int main(int argc, char* argv[]) {
 		printf("test iterate table passed, iterRows=%lld, insertedRows=%lld\n",
 			iterRows, insertedRows);
 	}
+}
+
+int main(int argc, char* argv[]) {
+	if (argc < 3) {
+		fprintf(stderr, "usage: %s indexCol keys ...\n", argv[0]);
+		return 1;
+	}
+//	doTest(new MockCompositeTable(), "db1");
+	doTest(new nark::db::dfadb::DfaDbTable(), "dfadb");
     return 0;
 }
 

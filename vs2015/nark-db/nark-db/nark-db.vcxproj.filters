@@ -61,6 +61,21 @@
     <Filter Include="Source Files\mongo\util\concurrency">
       <UniqueIdentifier>{8711c5b4-84de-49a5-bf1c-240d079deb43}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\nark\db\dfadb">
+      <UniqueIdentifier>{1d57f46c-a5d8-4e33-bcbd-0e7672f538d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\nark\db\dfadb">
+      <UniqueIdentifier>{b3e152ed-9c13-4179-a49d-def608127e08}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\nark\db\wiredtiger">
+      <UniqueIdentifier>{049bcc4e-ec4b-4eda-8574-9254215d2fc2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\nark\db\wiredtiger">
+      <UniqueIdentifier>{9ccc3533-34cb-4a28-ac27-33b20ca154f4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\nlohmann">
+      <UniqueIdentifier>{63c92b33-47f6-4eef-a698-02c8ec25e05a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -182,6 +197,30 @@
     </ClInclude>
     <ClInclude Include="..\..\..\src\mongo_narkdb\narkdb_record_store_capped.h">
       <Filter>Header Files\mongo_narkdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\dfadb\nlt_index.hpp">
+      <Filter>Header Files\nark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\dfadb\nlt_store.hpp">
+      <Filter>Header Files\nark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\dfadb\dfadb_segment.hpp">
+      <Filter>Header Files\nark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\intkey_index.hpp">
+      <Filter>Header Files\nark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\dfadb\dfadb_table.hpp">
+      <Filter>Header Files\nark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\wiredtiger\wt_db_index.hpp">
+      <Filter>Header Files\nark\db\wiredtiger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nark\db\wiredtiger\wt_db_store.hpp">
+      <Filter>Header Files\nark\db\wiredtiger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nlohmann\json.hpp">
+      <Filter>Header Files\nlohmann</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -505,6 +544,27 @@
     </ClCompile>
     <ClCompile Include="..\..\..\..\mongo\src\mongo\platform\random.cpp">
       <Filter>Source Files\mongo\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\dfadb\nlt_index.cpp">
+      <Filter>Source Files\nark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\dfadb\nlt_store.cpp">
+      <Filter>Source Files\nark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\dfadb\dfadb_segment.cpp">
+      <Filter>Source Files\nark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\intkey_index.cpp">
+      <Filter>Source Files\nark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\dfadb\dfadb_table.cpp">
+      <Filter>Source Files\nark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_index.cpp">
+      <Filter>Source Files\nark\db\wiredtiger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_store.cpp">
+      <Filter>Source Files\nark\db\wiredtiger</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

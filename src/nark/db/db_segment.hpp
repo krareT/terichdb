@@ -16,6 +16,7 @@ public:
 	SchemaPtr     m_rowSchema;
 	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
 	SchemaSetPtr  m_indexSchemaSet;
+	SchemaSetPtr  m_colgroupSchemaSet;
 
 	SegmentSchema();
 	~SegmentSchema();
@@ -71,6 +72,7 @@ public:
 	void save(fstring segDir) const override;
 
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
+	valvec<ReadableStorePtr> m_colgroups;
 	size_t      m_delcnt;
 	febitvec    m_isDel;
 	byte*       m_isDelMmap = nullptr;

@@ -283,11 +283,16 @@ void CompositeTable::loadMetaJson(fstring jsonFile) {
 	const json& rowSchema = meta["RowSchema"];
 	const json& cols = rowSchema["columns"];
 	m_rowSchema.reset(new Schema());
+	m_colgroupSchemaSet.reset(new SchemaSet());
 	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
 		const auto& col = iter.value();
 		std::string name = iter.key();
 		std::string type = col["type"];
 		std::transform(type.begin(), type.end(), type.begin(), &::tolower);
+		if ("nested" == type) {
+			fprintf(stderr, "TODO: nested column: %s is not supported now, save it to $$\n", name.c_str());
+			continue;
+		}
 		ColumnMeta colmeta;
 		colmeta.type = Schema::parseColumnType(type);
 		if (ColumnType::Fixed == colmeta.type) {
@@ -297,6 +302,16 @@ void CompositeTable::loadMetaJson(fstring jsonFile) {
 		if (col.end() != found) {
 			int uType = found.value();
 			colmeta.uType = byte(uType);
+		}
+		found = col.find("colstore");
+		if (col.end() != found) {
+			bool colstore = found.value();
+			if (colstore) {
+				// this colstore has the only-one 'name' field
+				std::unique_ptr<Schema> schema(new Schema());
+				schema->m_columnsMeta.insert_i(name, colmeta);
+				m_colgroupSchemaSet->m_nested.insert_i(schema.release());
+			}
 		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
 		if (!ib.second) {
@@ -610,7 +625,7 @@ public:
 		return false;
 	}
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
+	//	auto tab = static_cast<const CompositeTable*>(m_store.get());
 		auto cur = &m_segs[m_segIdx-1];
 		if (nark_unlikely(!cur->iter))
 			 cur->iter = cur->seg->createStoreIterBackward(m_ctx.get());
@@ -690,7 +705,7 @@ const {
 	seg->getValueAppend(subId, val, txn);
 }
 
-void
+bool
 CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 	if (m_wrSeg->dataStorageSize() >= m_maxWrSegSize) {
 		if (lock.upgrade_to_writer() ||
@@ -716,8 +731,10 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 			// oldwrseg->saveIsDel(oldwrseg->m_segDir);
 			// oldwrseg->loadIsDel(oldwrseg->m_segDir); // mmap
 		}
-		lock.downgrade_to_reader();
+	//	lock.downgrade_to_reader(); // TBB bug, sometimes didn't downgrade
+		return true;
 	}
+	return false;
 }
 
 ReadonlySegment*
@@ -762,14 +779,14 @@ CompositeTable::insertRow(fstring row, DbContext* txn) {
 
 llong
 CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
-	maybeCreateNewSegment(lock);
+	bool isWriteLocked = maybeCreateNewSegment(lock);
 	if (txn->syncIndex) {
 		size_t oldSegNum = m_segments.size();
 	//	lock.release(); // seg[0, oldSegNum-1) need read lock?
 		if (!insertCheckSegDup(0, oldSegNum-1, txn))
 			return -1;
 	//	lock.acquire(m_rwMutex, true); // write lock
-		if (!lock.upgrade_to_writer()) {
+		if (!isWriteLocked && !lock.upgrade_to_writer()) {
 			// check for new added segment(should be very rare)
 			if (oldSegNum != m_segments.size()) {
 				if (!insertCheckSegDup(oldSegNum-1, m_segments.size()-1, txn))
@@ -778,7 +795,8 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		}
 	}
 	else {
-		lock.upgrade_to_writer();
+		if (!isWriteLocked)
+			lock.upgrade_to_writer();
 	}
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
@@ -1433,8 +1451,14 @@ public:
 					assert(subId < m_segs[segIdx].seg->numDataRows());
 					llong baseId = m_segs[segIdx].baseId;
 					*id = baseId + subId;
+				#if !defined(NDEBUG)
 					assert(*id < m_tab->numDataRows());
-					assert(schema.compareData(key, m_keyBuf) <= 0);
+					if (m_forward) {
+						assert(schema.compareData(key, m_keyBuf) <= 0);
+					} else {
+						assert(schema.compareData(key, m_keyBuf) >= 0);
+					}
+				#endif
 					int ret = (key == m_keyBuf) ? 0 : 1;
 					if (retKey)
 						retKey->swap(m_keyBuf);

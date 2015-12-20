@@ -1054,7 +1054,7 @@ SchemaRecordCoder::decode(const Schema* schema, nark::fstring encoded) {
 void encodeIndexKey(const Schema& indexSchema,
 					const BSONObj& bson,
 					nark::valvec<char>* encoded) {
-	LOG(2) << "encodeIndexKey: bson=" << bson.toString();
+//	LOG(2) << "encodeIndexKey: bson=" << bson.toString();
 	encoded->erase_all();
 	using nark::db::ColumnType;
 	BSONObj::iterator iter = bson.begin();
@@ -1164,7 +1164,7 @@ void encodeIndexKey(const Schema& indexSchema,
 
 SharedBuffer
 decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
-	LOG(1)	<< "decodeIndexKey: size=" << size << ", data=" << indexSchema.toJsonStr(data, size);
+//	LOG(2)	<< "decodeIndexKey: size=" << size << ", data=" << indexSchema.toJsonStr(data, size);
 	MyBsonBuilder bb;
 	const char* pos = data;
 	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2*size);
