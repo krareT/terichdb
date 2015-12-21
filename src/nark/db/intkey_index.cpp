@@ -202,7 +202,7 @@ void ZipIntKeyIndex::build(ColumnType keyType, SortableStrVec& strVec) {
 		break; }
 	}
 	valvec<uint32_t> index(m_keys.size(), valvec_no_init());
-	for (size_t i = 0; i < index.size(); ++i) index[i] = i;
+	for (size_t i = 0; i < index.size(); ++i) index[i] = uint32_t(i);
 	std::sort(index.begin(), index.end(), [&](size_t x, size_t y) {
 		size_t xkey = m_keys.get(x);
 		size_t ykey = m_keys.get(y);
@@ -224,29 +224,42 @@ void ZipIntKeyIndex::build(ColumnType keyType, SortableStrVec& strVec) {
 #endif
 }
 
+namespace {
+	struct Header {
+		uint32_t rows;
+		uint8_t  keyBits;
+		uint8_t  keyType;
+		uint8_t  isUnique;
+		uint8_t  padding;
+		 int64_t minKey;
+	};
+	BOOST_STATIC_ASSERT(sizeof(Header) == 16);
+}
+
 void ZipIntKeyIndex::load(fstring path) {
 	std::string fpath = path + ".zint";
 	m_mmapBase = (byte_t*)mmap_load(fpath.c_str(), &m_mmapSize);
-	size_t rows  = ((uint32_t*)m_mmapBase)[0];
-	size_t kbits = ((uint8_t *)m_mmapBase)[4];
-	m_isUnique   = ((uint8_t *)m_mmapBase)[5] ? true : false;
-	m_keyType    = ColumnType(((uint8_t *)m_mmapBase)[6]);
-	m_minKey     = (( int64_t*)m_mmapBase)[1];
-	size_t rbits = nark_bsr_u64(rows) + 1;
-	m_keys .risk_set_data(m_mmapBase + 16                    , rows, kbits);
-	m_index.risk_set_data(m_mmapBase + 16 + m_keys.mem_size(), rows, rbits);
+	auto h = (const Header*)m_mmapBase;
+	m_isUnique   = h->isUnique ? true : false;
+	m_keyType    = ColumnType(h->keyType);
+	m_minKey     = h->minKey;
+	size_t indexBits = nark_bsr_u64(h->rows - 1) + 1;
+	m_keys .risk_set_data((byte*)(h+1)                    , h->rows, h->keyBits);
+	m_index.risk_set_data((byte*)(h+1) + m_keys.mem_size(), h->rows,  indexBits);
 }
 
 void ZipIntKeyIndex::save(fstring path) const {
 	std::string fpath = path + ".zint";
 	NativeDataOutput<FileStream> dio;
 	dio.open(fpath.c_str(), "wb");
-	dio << uint32_t(numDataRows());
-	dio << byte(m_keys.uintbits());
-	dio << byte(m_isUnique);
-	dio << byte(m_keyType);
-	dio << byte(0);
-	dio << int64_t(m_minKey);
+	Header h;
+	h.rows     = m_index.size();
+	h.keyBits  = m_keys.uintbits();
+	h.keyType  = uint8_t(m_keyType);
+	h.isUnique = m_isUnique;
+	h.padding  = 0;
+	h.minKey   = m_minKey;
+	dio.ensureWrite(&h, sizeof(h));
 	dio.ensureWrite(m_keys .data(), m_keys .mem_size());
 	dio.ensureWrite(m_index.data(), m_index.mem_size());
 }

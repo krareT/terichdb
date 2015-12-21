@@ -41,7 +41,7 @@ void NestLoudsTrieStore::build(SortableStrVec& strVec) {
 }
 
 void NestLoudsTrieStore::load(fstring path) {
-	std::string fpath = path + ".nlt";
+	std::string fpath = path.endsWith(".nlt") ? path.str() : path + ".nlt";
 	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(fpath.c_str()));
 	m_store.reset(dynamic_cast<NestLoudsTrieDataStore_SE_512*>(dfa.get()));
 	if (m_store) {
@@ -50,7 +50,7 @@ void NestLoudsTrieStore::load(fstring path) {
 }
 
 void NestLoudsTrieStore::save(fstring path) const {
-	std::string fpath = path + ".nlt";
+	std::string fpath = path.endsWith(".nlt") ? path.str() : path + ".nlt";
 	m_store->save_mmap(fpath.c_str());
 }
 

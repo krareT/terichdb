@@ -190,9 +190,7 @@ void ReadableSegment::save(fstring segDir) const {
 	if (m_tobeDel) {
 		return; // not needed
 	}
-	if (!m_isDelMmap) { // mmap'ed file need not to flush
-		saveIsDel(segDir);
-	}
+	this->saveIsDel(segDir);
 	this->saveIndices(segDir);
 	this->saveRecordStore(segDir);
 }
@@ -506,7 +504,7 @@ namespace {
 			m_fixedLen = fixedLen;
 		}
 		void dioWrite(const valvec<byte>& rowData) {
-			assert(rowData.size() > 0);
+		//	assert(rowData.size() > 0); // can be empty
 			if (0 == m_fixedLen) {
 				m_obuf << var_size_t(rowData.size());
 			} else {
@@ -532,7 +530,7 @@ namespace {
 				valvec<byte> buf;
 				for (size_t id = 0; id < newRowNum; id++) {
 					dio >> buf;
-					assert(buf.size() > 0);
+				//	assert(buf.size() > 0); // can be empty
 					strVec.push_back(buf);
 				}
 			}
@@ -580,7 +578,6 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	size_t indexNum = m_indexSchemaSet->m_nested.end_i();
 	TempFileList indexTempFiles(*m_indexSchemaSet);
 	TempFileList colgroupTempFiles(*m_colgroupSchemaSet);
-	size_t colgroupNum = m_colgroupSchemaSet->m_nested.end_i();
 
 	valvec<fstring> columns(m_rowSchema->columnNum(), valvec_reserve());
 	valvec<byte> buf, projRowBuf;
@@ -644,8 +641,15 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	}
 	fs::create_directories(m_segDir);
 	this->save(m_segDir);
+
+// reload as mmap
 	m_isDel.clear();
-	ReadableSegment::loadIsDel(m_segDir);
+	m_indices.erase_all();
+	m_colgroups.erase_all();
+	m_parts.erase_all();
+	m_rowNumVec.erase_all();
+	this->load(m_segDir);
+
 	{
 		assert(newRowNum <= inputRowNum);
 		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
@@ -730,15 +734,18 @@ void ReadonlySegment::loadRecordStore(fstring dir) {
 		if (m_parts.size() <= size_t(partIdx)) {
 			m_parts.resize(partIdx+1);
 		}
-		m_parts[partIdx] = openStore(*m_nonIndexRowSchema, x.path().string());
+		fs::path stemPath = segDir / x.path().stem();
+		m_parts[partIdx] = openStore(*m_nonIndexRowSchema, stemPath.string());
 	}
-	m_rowNumVec.resize_no_init(m_parts.size() + 1);
-	llong id = 0;
-	for (size_t i = 0; i < m_parts.size(); ++i) {
-		m_rowNumVec[i] = id;
-		id += m_parts[i]->numDataRows();
+	if (m_parts.size()) {
+		m_rowNumVec.resize_no_init(m_parts.size() + 1);
+		llong id = 0;
+		for (size_t i = 0; i < m_parts.size(); ++i) {
+			m_rowNumVec[i] = id;
+			id += m_parts[i]->numDataRows();
+		}
+		m_rowNumVec.back() = id;
 	}
-	m_rowNumVec.back() = id;
 }
 
 ReadableStore*

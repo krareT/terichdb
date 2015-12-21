@@ -89,6 +89,10 @@ void ZipIntStore::zipValues(const void* data, size_t size) {
 	std::sort(dedup.begin(), dedup.end());
 	dedup.trim(std::unique(dedup.begin(), dedup.end()));
 
+	if (dedup.size() == 1) {
+		m_minValue = m_dedup.build_from(dedup);
+	}
+
 	size_t indexBits = nark_bsr_u32(dedup.size()-1) + 1;
 	size_t indexSize = (indexBits      * rows         + 7) / 8;
 	size_t dedupSize = (dup.uintbits() * dedup.size() + 7) / 8;
@@ -158,7 +162,7 @@ namespace {
 		uint8_t  intType;
 		uint16_t padding1;
 		uint32_t padding2;
-		uint32_t padding3;
+		uint64_t padding3;
 		 int64_t minValue;
 	};
 	BOOST_STATIC_ASSERT(sizeof(ZipIntStoreHeader) == 32);

@@ -4,10 +4,15 @@
 #include "stdafx.h"
 #include <nark/db/json.hpp>
 #include <nark/lcast.hpp>
+#include <boost/filesystem.hpp>
 
 
 int main()
 {
+	boost::filesystem::path path("a/b/c/test.txt");
+	printf("path.parent: %s\n", path.parent_path().string().c_str());
+	printf("path.stem: %s\n", path.stem().string().c_str());
+
 //	using nlohmann::json;
 //	using nlohmann::_json;
 //	using namespace nlohmann;

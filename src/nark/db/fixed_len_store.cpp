@@ -46,7 +46,6 @@ StoreIterator* FixedLenStore::createStoreIterBackward(DbContext*) const {
 
 void FixedLenStore::build(const Schema& schema, SortableStrVec& strVec) {
 	size_t fixlen = schema.getFixedRowLen();
-	byte*  data = strVec.m_strpool.data();
 	size_t rows = strVec.m_strpool.size() / fixlen;
 	assert(strVec.m_index.size() == 0);
 	assert(strVec.m_strpool.size() % fixlen == 0);
@@ -68,7 +67,6 @@ void FixedLenStore::load(fstring path) {
 	auto h = (const Header*)m_mmapBase;
 	m_fixedLen = h->fixlen;
 	m_rows     = h->rows;
-	size_t rbits = nark_bsr_u32(h->rows) + 1;
 	size_t keyMemSize = h->fixlen * h->rows;
 	m_keys.risk_set_data((byte*)(h+1) , keyMemSize);
 }
