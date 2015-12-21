@@ -281,7 +281,7 @@ public:
     }
 
     void setEndPosition(const BSONObj& key, bool inclusive) override {
-        TRACE_CURSOR << "setEndPosition inclusive: " << inclusive << ' ' << key;
+        TRACE_CURSOR << "NarkDbIndexCursor::setEndPosition inclusive: " << inclusive << ' ' << key;
         if (key.isEmpty()) {
 		EmptyKey:
             // This means scan to end of index.
@@ -291,12 +291,12 @@ public:
 		else {
 			BSONElement first(*key.begin());
 			if (first.isABSONObj() && first.embeddedObject().isEmpty()) {
-		        TRACE_CURSOR << "setEndPosition: first field is an empty object";
+		        TRACE_CURSOR << "NarkDbIndexCursor::setEndPosition: first field is an empty object";
 				goto EmptyKey;
 			}
 			encodeIndexKey(*_idx.getIndexSchema(), key, &_endPositionKey);
 			_endPositionInclude = inclusive;
-	        TRACE_CURSOR << "setEndPosition: _endPositionKey="
+	        TRACE_CURSOR << "NarkDbIndexCursor::setEndPosition: _endPositionKey="
 						 << _idx.getIndexSchema()->toJsonStr(_endPositionKey);
 		}
     }
@@ -339,7 +339,6 @@ public:
             // Ignore since this is only called when we are about to kill our transaction
             // anyway.
         }
-
         // Our saved position is wherever we were when we last called updatePosition().
         // Any partially completed repositions should not effect our saved position.
     }
@@ -379,17 +378,14 @@ protected:
     boost::optional<IndexKeyEntry> curr(RequestedInfo parts) {
         if (_eof)
             return {};
-
-        dassert(!atOrPastEndPointAfterSeeking());
+        if (atOrPastEndPointAfterSeeking())
+            return {};
         dassert(!_id.isNull());
-
         BSONObj bson;
         if (TRACING_ENABLED || (parts & kWantKey)) {
             bson = BSONObj(decodeIndexKey(*_idx.getIndexSchema(), m_curKey));
-
             TRACE_CURSOR << " returning " << bson << ' ' << _id;
         }
-
         return {{std::move(bson), _id}};
     }
 
@@ -398,16 +394,19 @@ protected:
             return true;
         if (_endPositionKey.empty())
             return false;
-
         const int cmp = _idx.getIndexSchema()->compareData(m_curKey, _endPositionKey);
-
+		bool ret;
         if (_forward) {
-            // We may have landed after the end point.
-            return cmp > 0 || (cmp == 0 && !_endPositionInclude);
+            ret = cmp > 0 || (cmp == 0 && !_endPositionInclude);
         } else {
-            // We may have landed before the end point.
-            return cmp < 0 || (cmp == 0 && !_endPositionInclude);
+            ret = cmp < 0 || (cmp == 0 && !_endPositionInclude);
         }
+		if (ret) {
+			TRACE_CURSOR << "curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey)
+					  << ", endKey=" << _idx.getIndexSchema()->toJsonStr(_endPositionKey)
+					  << ", cmp=" << cmp << ", endInclude=" << _endPositionInclude;
+		}
+		return ret;
     }
 
     void advanceWTCursor() {

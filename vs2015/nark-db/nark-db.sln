@@ -23,6 +23,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestStrIndex", "TestStrInde
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "narkdb_import", "narkdb_import\narkdb_import.vcxproj", "{D9184125-5CB3-4569-94A0-A24BB806C38C}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "narkdb_dump", "narkdb_dump\narkdb_dump.vcxproj", "{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -95,6 +97,14 @@ Global
 		{D9184125-5CB3-4569-94A0-A24BB806C38C}.Release|x64.Build.0 = Release|x64
 		{D9184125-5CB3-4569-94A0-A24BB806C38C}.Release|x86.ActiveCfg = Release|Win32
 		{D9184125-5CB3-4569-94A0-A24BB806C38C}.Release|x86.Build.0 = Release|Win32
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Debug|x64.ActiveCfg = Debug|x64
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Debug|x64.Build.0 = Debug|x64
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Debug|x86.ActiveCfg = Debug|Win32
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Debug|x86.Build.0 = Debug|Win32
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Release|x64.ActiveCfg = Release|x64
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Release|x64.Build.0 = Release|x64
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Release|x86.ActiveCfg = Release|Win32
+		{79C9EF20-4BDF-4CD4-996A-3D99F6E0F165}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

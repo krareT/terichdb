@@ -506,8 +506,26 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			encodeConvertFrom<int64_t>(colmeta.type, value, encoded, isLastField);
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
+			invariant(colmeta.type == ColumnType::Sint64 ||
+					  colmeta.type == ColumnType::Uint64);
+			encoded->append(value, 8);
+			break;
 		case mongo::Date:
 			encodeConvertFrom<int64_t>(colmeta.type, value, encoded, isLastField);
+			if (colmeta.type == ColumnType::Uint32 ||
+				colmeta.type == ColumnType::Sint32)
+			{
+				int64_t millisec = ConstDataView(value).read<LittleEndian<int64_t>>();
+				int64_t sec = millisec / 1000;
+				DataView(encoded->grow_no_init(4)).write<LittleEndian<int>>(sec);
+			}
+			else if (colmeta.type == ColumnType::Uint64 ||
+					 colmeta.type == ColumnType::Sint64) {
+				encoded->append(value, 8);
+			}
+			else {
+				invariant(!"mongo::Date must map to one of nark sint32, uint32, sint64, uint64");
+			}
 			break;
 		case jstOID:
 		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
@@ -895,8 +913,31 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			bb << decodeConvertTo<int>(colmeta.type, pos);
 			break;
 		case bsonTimestamp:
+			invariant(colmeta.type == ColumnType::Sint64 ||
+					  colmeta.type == ColumnType::Uint64);
+			bb.ensureWrite(pos, 8);
+			pos += 8;
+			break;
 		case mongo::Date:
-			bb << decodeConvertTo<int64_t>(colmeta.type, pos);
+			switch (colmeta.type) {
+			default:
+				invariant(!"SchemaRecordCoder::decode: mongo::Date must map to one of nark sint32, uint32, sint64, uint64");
+				break;
+			case ColumnType::Sint32:
+			case ColumnType::Uint32:
+				{
+					int64_t ival = ConstDataView(pos).read<LittleEndian<int>>();
+					int64_t millisec = 1000 * ival;
+					bb << millisec;
+					pos += 4;
+				}
+				break;
+			case ColumnType::Sint64:
+			case ColumnType::Uint64:
+				bb.ensureWrite(pos, 8);
+				pos += 8;
+				break;
+			}
 			break;
 		case NumberDouble:
 			bb << decodeConvertTo<double>(colmeta.type, pos);
@@ -916,7 +957,11 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			invariant(colmeta.type == ColumnType::StrZero);
 			if (colnum-1 == i) {
 				size_t len = end - pos;
-				if ('\0' != end[-1]) {
+				if (nark_unlikely(0 == len)) {
+					bb << int(1);
+					bb.writeByte('\0');
+				}
+				else if ('\0' != end[-1]) {
 					bb << int(len + 1);
 					bb.ensureWrite(pos, len);
 					bb.writeByte('\0');
