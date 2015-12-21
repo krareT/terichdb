@@ -276,8 +276,10 @@ const {
 		}
 	}
 	assert(ctx->cols1.size() == m_indexSchemaSet->m_flattenColumnNum);
+	size_t indexNum = m_indices.size();
 	for (size_t i = 0; i < m_colgroups.size(); ++i) {
-		size_t off0 = ctx->offsets[i], off1 = ctx->offsets[i+1];
+		size_t off0 = ctx->offsets[indexNum + i + 0];
+		size_t off1 = ctx->offsets[indexNum + i + 1];
 		fstring colgroupData(ctx->buf1.data() + off0, off1 - off0);
 		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
 		schema.parseRowAppend(colgroupData, &ctx->cols1);

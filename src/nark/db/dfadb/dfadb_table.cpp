@@ -33,13 +33,16 @@ DfaDbTable::createWritableSegment(fstring dir) const {
 
 WritableSegment*
 DfaDbTable::openWritableSegment(fstring dir) const {
-	std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
-	seg->copySchema(*this);
 	auto isDelPath = boost::filesystem::path(dir.str()) / "isDel";
 	if (boost::filesystem::exists(isDelPath)) {
+		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
+		seg->copySchema(*this);
 		seg->load(dir);
+		return seg.release();
 	}
-	return seg.release();
+	else {
+		return myCreateWritableSegment(dir);
+	}
 }
 
 

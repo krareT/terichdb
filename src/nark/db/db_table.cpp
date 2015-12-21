@@ -86,6 +86,7 @@ void CompositeTable::load(fstring dir) {
 		loadMetaJson(jsonFile.string());
 	}
 	for (auto& x : fs::directory_iterator(fs::path(m_dir))) {
+		std::string segDir = x.path().string();
 		std::string fname = x.path().filename().string();
 		long segIdx = -1;
 		ReadableSegmentPtr seg;
@@ -103,8 +104,11 @@ void CompositeTable::load(fstring dir) {
 				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
 			}
 			seg = myCreateReadonlySegment(x.path().string());
-			seg->load(seg->m_segDir);
 			assert(seg);
+			fprintf(stdout, "INFO: loading segment: %s ... ", segDir.c_str());
+			fflush(stdout);
+			seg->load(seg->m_segDir);
+			fprintf(stdout, "done!\n");
 		}
 		else {
 			continue;

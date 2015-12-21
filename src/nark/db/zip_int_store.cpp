@@ -41,9 +41,9 @@ void ZipIntStore::valueAppend(size_t recIdx, valvec<byte>* key) const {
 }
 
 void ZipIntStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
+	assert(id < numDataRows());
 	assert(id >= 0);
 	size_t idx = size_t(id);
-	assert(idx < m_dedup.size());
 	switch (m_intType) {
 	default:
 		THROW_STD(invalid_argument, "Bad m_intType=%s", Schema::columnTypeStr(m_intType));
@@ -178,7 +178,7 @@ void ZipIntStore::load(fstring path) {
 	m_dedup.risk_set_data((byte*)(header+1), header->uniqNum, header->intBits);
 	if (header->uniqNum != rows) {
 		assert(header->uniqNum < rows);
-		size_t indexBits = nark_bsr_u32(rows - 1) + 1;
+		size_t indexBits = nark_bsr_u32(header->uniqNum - 1) + 1;
 		auto   indexData = (byte*)(header+1) + m_dedup.mem_size();
 		m_index.risk_set_data(indexData, rows, indexBits);
 	}

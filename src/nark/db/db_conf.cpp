@@ -203,6 +203,7 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 				curr += coldata.n + 1;
 			}
 			else { // the last column
+				assert(coldata.n == last - curr);
 				if (coldata.n + 1 < last - curr) {
 					// '\0' is optional, if '\0' exists, it must at string end
 					THROW_STD(invalid_argument,
