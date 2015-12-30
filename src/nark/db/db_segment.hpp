@@ -63,6 +63,25 @@ protected:
 };
 typedef boost::intrusive_ptr<SegmentSchema> SegmentSchemaPtr;
 
+class NARK_DB_DLL MultiPartStore : public ReadableStore {
+	class MyStoreIterForward;	friend class MyStoreIterForward;
+	class MyStoreIterBackward;	friend class MyStoreIterBackward;
+
+public:
+	MultiPartStore();
+	~MultiPartStore();
+
+	llong dataStorageSize() const override;
+	llong numDataRows() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
+
+//	SchemaPtr     m_schema;
+	valvec<llong> m_rowNumVec;  // parallel with m_parts
+	valvec<ReadableStorePtr> m_parts; // partition of row set
+};
+
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
 class NARK_DB_DLL ReadableSegment : public ReadableStore {
@@ -82,6 +101,13 @@ public:
 
 	virtual void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext*) const = 0;
+
+	virtual StoreIterator*
+			createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
+			const = 0;
+	virtual StoreIterator*
+			createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
+			const = 0;
 
 	void openIndices(fstring dir);
 	void saveIndices(fstring dir) const;
@@ -142,6 +168,14 @@ public:
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
 
+	StoreIterator*
+	createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
+	const override;
+
+	StoreIterator*
+	createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
+	const override;
+
 protected:
 	// Index can use different implementation for different
 	// index schema and index content features
@@ -189,6 +223,14 @@ public:
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
+
+	StoreIterator*
+	createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
+	const override;
+
+	StoreIterator*
+	createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
+	const override;
 
 	void flushSegment();
 

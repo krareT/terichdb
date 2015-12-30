@@ -138,6 +138,7 @@ namespace nark { namespace db {
 		static int QsortCompareByIndex(const void* x, const void* y, const void* ctx);
 
 		hash_strmap<ColumnMeta> m_columnsMeta;
+		std::string m_name;
 		bool m_isOrdered; // just for index schema
 		bool m_isUnique;
 		bool m_canEncodeToLexByteComparable;

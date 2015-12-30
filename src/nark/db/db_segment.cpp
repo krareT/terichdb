@@ -125,6 +125,7 @@ void SegmentSchema::loadJsonString(fstring jstr) {
 				// this colstore has the only-one 'name' field
 				SchemaPtr schema(new Schema());
 				schema->m_columnsMeta.insert_i(name, colmeta);
+				schema->m_name = name;
 				m_colgroupSchemaSet->m_nested.insert_i(schema);
 			}
 		}
@@ -317,6 +318,143 @@ void SegmentSchema::saveMetaDFA(fstring fname) const {
 	NestLoudsTrieDAWG_SE_512 trie;
 }
 #endif
+
+/////////////////////////////////////////////////////////////////////////////
+
+MultiPartStore::MultiPartStore() {
+}
+
+MultiPartStore::~MultiPartStore() {
+}
+
+llong MultiPartStore::dataStorageSize() const {
+	size_t size = 0;
+	for (auto& part : m_parts)
+		size += part->dataStorageSize();
+	return size;
+}
+
+llong MultiPartStore::numDataRows() const {
+	return m_rowNumVec.back();
+}
+
+void
+MultiPartStore::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx)
+const {
+	assert(m_parts.size() + 1 == m_rowNumVec.size());
+	llong maxId = m_rowNumVec.back();
+	if (id >= maxId) {
+		THROW_STD(out_of_range, "id %lld, maxId = %lld", id, maxId);
+	}
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	assert(upp < m_rowNumVec.size());
+	llong baseId = m_rowNumVec[upp-1];
+	m_parts[upp-1]->getValueAppend(id - baseId, val, ctx);
+}
+
+class MultiPartStore::MyStoreIterForward : public StoreIterator {
+	size_t m_partIdx = 0;
+	llong  m_id = 0;
+	DbContextPtr m_ctx;
+public:
+	MyStoreIterForward(const MultiPartStore* owner, DbContext* ctx)
+	  : m_ctx(ctx) {
+		m_store.reset(const_cast<MultiPartStore*>(owner));
+	}
+	bool increment(llong* id, valvec<byte>* val) override {
+		auto owner = static_cast<const MultiPartStore*>(m_store.get());
+		assert(m_partIdx < owner->m_parts.size());
+		if (nark_likely(m_id < owner->m_rowNumVec[m_partIdx + 1])) {
+			// do nothing
+		}
+		else if (m_partIdx + 1 < owner->m_parts.size()) {
+			m_partIdx++;
+		}
+		else {
+			return false;
+		}
+		*id = m_id++;
+		llong baseId = owner->m_rowNumVec[m_partIdx-1];
+		llong subId = *id - baseId;
+		owner->m_parts[m_partIdx]->getValueAppend(subId, val, m_ctx.get());
+		return true;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		auto owner = static_cast<const MultiPartStore*>(m_store.get());
+		if (id < 0 || id >= owner->m_rowNumVec.back()) {
+			return false;
+		}
+		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
+		llong  baseId = owner->m_rowNumVec[upp-1];
+		llong  subId = id - baseId;
+		owner->m_parts[upp-1]->getValueAppend(subId, val, m_ctx.get());
+		m_id = id+1;
+		m_partIdx = upp-1;
+		return true;
+	}
+	void reset() override {
+		m_partIdx = 0;
+		m_id = 0;
+	}
+};
+
+class MultiPartStore::MyStoreIterBackward : public StoreIterator {
+	size_t m_partIdx;
+	llong  m_id;
+	DbContextPtr m_ctx;
+public:
+	MyStoreIterBackward(const MultiPartStore* owner, DbContext* ctx)
+	  : m_ctx(ctx) {
+		m_store.reset(const_cast<MultiPartStore*>(owner));
+		m_partIdx = owner->m_parts.size();
+		m_id = owner->m_rowNumVec.back();
+	}
+	bool increment(llong* id, valvec<byte>* val) override {
+		auto owner = static_cast<const MultiPartStore*>(m_store.get());
+		if (owner->m_parts.empty()) {
+			return false;
+		}
+		assert(m_partIdx > 0);
+		if (nark_likely(m_id > owner->m_rowNumVec[m_partIdx-1])) {
+			// do nothing
+		}
+		else if (m_partIdx > 1) {
+			--m_partIdx;
+		}
+		else {
+			return false;
+		}
+		*id = --m_id;
+		llong baseId = owner->m_rowNumVec[m_partIdx-1];
+		llong subId = *id - baseId;
+		owner->m_parts[m_partIdx-1]->getValueAppend(subId, val, m_ctx.get());
+		return true;
+	}
+	bool seekExact(llong id, valvec<byte>* val) override {
+		auto owner = static_cast<const MultiPartStore*>(m_store.get());
+		if (id < 0 || id >= owner->m_rowNumVec.back()) {
+			return false;
+		}
+		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
+		llong  baseId = owner->m_rowNumVec[upp-1];
+		llong  subId = id - baseId;
+		owner->m_parts[upp-1]->getValueAppend(subId, val, m_ctx.get());
+		m_partIdx = upp;
+		m_id = id;
+		return true;
+	}
+	void reset() override {
+		auto owner = static_cast<const MultiPartStore*>(m_store.get());
+		m_partIdx = owner->m_parts.size();
+		m_id = owner->m_rowNumVec.back();
+	}
+};
+StoreIterator* MultiPartStore::createStoreIterForward(DbContext* ctx) const {
+	return new MyStoreIterForward(this, ctx);
+}
+StoreIterator* MultiPartStore::createStoreIterBackward(DbContext* ctx) const {
+	return new MyStoreIterBackward(this, ctx);
+}
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -581,6 +719,20 @@ ReadonlySegment::selectColumns(llong recId,
 							   valvec<byte>* colsData, DbContext* ctx)
 const {
 
+}
+
+StoreIterator*
+ReadonlySegment::
+createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext* ctx)
+const {
+	return NULL;
+}
+
+StoreIterator*
+ReadonlySegment::
+createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext* ctx)
+const {
+	return NULL;
 }
 
 class ReadonlySegment::MyStoreIterForward : public StoreIterator {
@@ -1095,6 +1247,20 @@ void WritableSegment::selectColumns(llong recId,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
 	abort();
+}
+
+StoreIterator*
+WritableSegment::
+createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext* ctx)
+const {
+	return NULL;
+}
+
+StoreIterator*
+WritableSegment::
+createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext* ctx)
+const {
+	return NULL;
 }
 
 void WritableSegment::flushSegment() {
