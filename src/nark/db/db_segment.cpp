@@ -11,19 +11,29 @@
 #include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
 #include <nark/util/mmap.hpp>
+#include <nark/util/linebuf.hpp>
 #include <nark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
+
+#define NARK_DB_ENABLE_DFA_META
+#if defined(NARK_DB_ENABLE_DFA_META)
+#include <nark/fsa/nest_trie_dawg.hpp>
+#endif
+
+#include "json.hpp"
 
 namespace nark { namespace db {
 
 namespace fs = boost::filesystem;
 
+const llong DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
+const llong DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
+
 SegmentSchema::SegmentSchema() {
+	m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
+	m_maxWrSegSize = DEFAULT_maxWrSegSize;
 }
 SegmentSchema::~SegmentSchema() {
-}
-void SegmentSchema::copySchema(const SegmentSchema& y) {
-	*this = y;
 }
 
 void SegmentSchema::compileSchema() {
@@ -72,6 +82,243 @@ void SegmentSchema::compileSchema() {
 	if (m_nonIndexRowSchema->columnNum() > 0)
 		m_nonIndexRowSchema->compile(m_rowSchema.get());
 }
+
+void SegmentSchema::loadJsonFile(fstring fname) {
+	LineBuf alljson;
+	alljson.read_all(fname.c_str());
+	loadJsonString(alljson);
+}
+
+void SegmentSchema::loadJsonString(fstring jstr) {
+	using nark::json;
+	const json meta = json::parse(jstr.p
+					// UTF8 BOM Check, fixed in nlohmann::json
+					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
+					);
+	const json& rowSchema = meta["RowSchema"];
+	const json& cols = rowSchema["columns"];
+	m_rowSchema.reset(new Schema());
+	m_colgroupSchemaSet.reset(new SchemaSet());
+	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
+		const auto& col = iter.value();
+		std::string name = iter.key();
+		std::string type = col["type"];
+		std::transform(type.begin(), type.end(), type.begin(), &::tolower);
+		if ("nested" == type) {
+			fprintf(stderr, "TODO: nested column: %s is not supported now, save it to $$\n", name.c_str());
+			continue;
+		}
+		ColumnMeta colmeta;
+		colmeta.type = Schema::parseColumnType(type);
+		if (ColumnType::Fixed == colmeta.type) {
+			colmeta.fixedLen = col["length"];
+		}
+		auto found = col.find("uType");
+		if (col.end() != found) {
+			int uType = found.value();
+			colmeta.uType = byte(uType);
+		}
+		found = col.find("colstore");
+		if (col.end() != found) {
+			bool colstore = found.value();
+			if (colstore) {
+				// this colstore has the only-one 'name' field
+				SchemaPtr schema(new Schema());
+				schema->m_columnsMeta.insert_i(name, colmeta);
+				m_colgroupSchemaSet->m_nested.insert_i(schema);
+			}
+		}
+		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
+		if (!ib.second) {
+			THROW_STD(invalid_argument, "duplicate RowName=%s", name.c_str());
+		}
+	}
+	m_rowSchema->compile();
+	auto iter = meta.find("ReadonlyDataMemSize");
+	if (meta.end() == iter) {
+		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
+	} else {
+		m_readonlyDataMemSize = *iter;
+	}
+	iter = meta.find("MaxWrSegSize");
+	if (meta.end() == iter) {
+		m_maxWrSegSize = DEFAULT_maxWrSegSize;
+	} else {
+		m_maxWrSegSize = *iter;
+	}
+	const json& tableIndex = meta["TableIndex"];
+	if (!tableIndex.is_array()) {
+		THROW_STD(invalid_argument, "json TableIndex must be an array");
+	}
+	m_indexSchemaSet.reset(new SchemaSet());
+	for (const auto& index : tableIndex) {
+		SchemaPtr indexSchema(new Schema());
+		const std::string& strFields = index["fields"];
+		std::vector<std::string> fields;
+		fstring(strFields).split(',', &fields);
+		if (fields.size() > Schema::MaxProjColumns) {
+			THROW_STD(invalid_argument, "Index Columns=%zd exceeds Max=%zd",
+				fields.size(), Schema::MaxProjColumns);
+		}
+		for (const std::string& colname : fields) {
+			const size_t k = m_rowSchema->getColumnId(colname);
+			if (k == m_rowSchema->columnNum()) {
+				THROW_STD(invalid_argument,
+					"colname=%s is not in RowSchema", colname.c_str());
+			}
+			indexSchema->m_columnsMeta.
+				insert_i(colname, m_rowSchema->getColumnMeta(k));
+		}
+		auto ib = m_indexSchemaSet->m_nested.insert_i(indexSchema);
+		if (!ib.second) {
+			THROW_STD(invalid_argument,
+				"duplicate index: %s", strFields.c_str());
+		}
+		auto found = index.find("ordered");
+		if (index.end() == found)
+			indexSchema->m_isOrdered = true; // default
+		else
+			indexSchema->m_isOrdered = found.value();
+
+		found = index.find("unique");
+		if (index.end() == found)
+			indexSchema->m_isUnique = false; // default
+		else
+			indexSchema->m_isUnique = found.value();
+	}
+	compileSchema();
+}
+
+void SegmentSchema::saveJsonFile(fstring jsonFile) const {
+	using nark::json;
+	json meta;
+	json& rowSchema = meta["RowSchema"];
+	json& cols = rowSchema["columns"];
+	cols = json::array();
+	for (size_t i = 0; i < m_rowSchema->columnNum(); ++i) {
+		ColumnType coltype = m_rowSchema->getColumnType(i);
+		std::string colname = m_rowSchema->getColumnName(i).str();
+		std::string strtype = Schema::columnTypeStr(coltype);
+		json col;
+		col["name"] = colname;
+		col["type"] = strtype;
+		if (ColumnType::Fixed == coltype) {
+			col["length"] = m_rowSchema->getColumnMeta(i).fixedLen;
+		}
+		cols.push_back(col);
+	}
+	json& indexSet = meta["TableIndex"];
+	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
+		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		json indexCols;
+		for (size_t j = 0; j < schema.columnNum(); ++j) {
+			indexCols.push_back(schema.getColumnName(j).str());
+		}
+		indexSet.push_back(indexCols);
+	}
+	std::string jsonStr = meta.dump(2);
+	FileStream fp(jsonFile.c_str(), "w");
+	fp.ensureWrite(jsonStr.data(), jsonStr.size());
+}
+
+#if defined(NARK_DB_ENABLE_DFA_META)
+void SegmentSchema::loadMetaDFA(fstring metaFile) {
+	std::unique_ptr<MatchingDFA> metaConf(MatchingDFA::load_from(metaFile));
+	std::string val;
+	size_t segNum = 0, minWrSeg = 0;
+	if (metaConf->find_key_uniq_val("TotalSegNum", &val)) {
+		segNum = lcast(val);
+	} else {
+		THROW_STD(invalid_argument, "metaconf dfa: TotalSegNum is missing");
+	}
+	if (metaConf->find_key_uniq_val("MinWrSeg", &val)) {
+		minWrSeg = lcast(val);
+	} else {
+		THROW_STD(invalid_argument, "metaconf dfa: MinWrSeg is missing");
+	}
+	if (metaConf->find_key_uniq_val("MaxWrSegSize", &val)) {
+		m_maxWrSegSize = lcast(val);
+	} else {
+		m_maxWrSegSize = DEFAULT_maxWrSegSize;
+	}
+	if (metaConf->find_key_uniq_val("ReadonlyDataMemSize", &val)) {
+		m_readonlyDataMemSize = lcast(val);
+	} else {
+		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
+	}
+
+	valvec<fstring> F;
+	MatchContext ctx;
+	m_rowSchema.reset(new Schema());
+	if (!metaConf->step_key_l(ctx, "RowSchema")) {
+		THROW_STD(invalid_argument, "metaconf dfa: RowSchema is missing");
+	}
+	metaConf->for_each_value(ctx, [&](size_t klen, size_t, fstring val) {
+		val.split('\t', &F);
+		if (F.size() < 3) {
+			THROW_STD(invalid_argument, "RowSchema Column definition error");
+		}
+		size_t     columnId = lcast(F[0]);
+		fstring    colname = F[1];
+		ColumnMeta colmeta;
+		colmeta.type = Schema::parseColumnType(F[2]);
+		if (ColumnType::Fixed == colmeta.type) {
+			colmeta.fixedLen = lcast(F[3]);
+		}
+		auto ib = m_rowSchema->m_columnsMeta.insert_i(colname, colmeta);
+		if (!ib.second) {
+			THROW_STD(invalid_argument, "duplicate column name: %.*s",
+				colname.ilen(), colname.data());
+		}
+		if (ib.first != columnId) {
+			THROW_STD(invalid_argument, "bad columnId: %lld", llong(columnId));
+		}
+	});
+	ctx.reset();
+	if (!metaConf->step_key_l(ctx, "TableIndex")) {
+		THROW_STD(invalid_argument, "metaconf dfa: TableIndex is missing");
+	}
+	metaConf->for_each_value(ctx, [&](size_t klen, size_t, fstring val) {
+		val.split(',', &F);
+		if (F.size() < 1) {
+			THROW_STD(invalid_argument, "TableIndex definition error");
+		}
+		SchemaPtr schema(new Schema());
+		for (size_t i = 0; i < F.size(); ++i) {
+			fstring colname = F[i];
+			size_t colId = m_rowSchema->getColumnId(colname);
+			if (colId >= m_rowSchema->columnNum()) {
+				THROW_STD(invalid_argument,
+					"index column name=%.*s is not found in RowSchema",
+					colname.ilen(), colname.c_str());
+			}
+			ColumnMeta colmeta = m_rowSchema->getColumnMeta(colId);
+			schema->m_columnsMeta.insert_i(colname, colmeta);
+		}
+		auto ib = m_indexSchemaSet->m_nested.insert_i(schema);
+		if (!ib.second) {
+			THROW_STD(invalid_argument, "invalid index schema");
+		}
+	});
+	compileSchema();
+}
+
+void SegmentSchema::saveMetaDFA(fstring fname) const {
+	SortableStrVec meta;
+	AutoGrownMemIO buf;
+	size_t pos;
+//	pos = buf.printf("TotalSegNum\t%ld", long(m_segments.s));
+	pos = buf.printf("RowSchema\t");
+	for (size_t i = 0; i < m_rowSchema->columnNum(); ++i) {
+		buf.printf("%04ld", long(i));
+		meta.push_back(fstring(buf.begin(), buf.tell()));
+		buf.seek(pos);
+	}
+	NestLoudsTrieDAWG_SE_512 trie;
+}
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
 
 ReadableSegment::ReadableSegment() {
 	m_delcnt = 0;
@@ -149,10 +396,10 @@ void ReadableSegment::openIndices(fstring segDir) {
 	if (!m_indices.empty()) {
 		THROW_STD(invalid_argument, "m_indices must be empty");
 	}
-	m_indices.resize(this->getIndexNum());
+	m_indices.resize(m_schema->getIndexNum());
 	fs::path segDirPath = segDir.str();
-	for (size_t i = 0; i < this->getIndexNum(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+	for (size_t i = 0; i < m_schema->getIndexNum(); ++i) {
+		const Schema& schema = m_schema->getIndexSchema(i);
 		std::string colnames = schema.joinColumnNames(',');
 		fs::path path = segDirPath / ("index-" + colnames);
 		m_indices[i] = this->openIndex(schema, path.string());
@@ -160,10 +407,10 @@ void ReadableSegment::openIndices(fstring segDir) {
 }
 
 void ReadableSegment::saveIndices(fstring segDir) const {
-	assert(m_indices.size() == this->getIndexNum());
+	assert(m_indices.size() == m_schema->getIndexNum());
 	fs::path segDirPath = segDir.str();
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		const Schema& schema = m_schema->getIndexSchema(i);
 		std::string colnames = schema.joinColumnNames(',');
 		fs::path path = segDirPath / ("index-" + colnames);
 		m_indices[i]->save(path.string());
@@ -244,7 +491,7 @@ const {
 	ctx->offsets.risk_set_size(0);
 	ctx->offsets.push_back(0);
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
+		const Schema& iSchema = m_schema->getIndexSchema(i);
 		if (iSchema.m_keepCols.has_any1()) {
 			m_indices[i]->getReadableStore()->
 				getValueAppend(id, &ctx->buf1, ctx);
@@ -264,7 +511,7 @@ const {
 	// parseRowAppend to ctx->cols1
 	ctx->cols1.risk_set_size(0);
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
+		const Schema& iSchema = m_schema->getIndexSchema(i);
 		size_t off0 = ctx->offsets[i], off1 = ctx->offsets[i+1];
 		if (iSchema.m_keepCols.has_any1()) {
 			fstring indexRow(ctx->buf1.data() + off0, off1 - off0);
@@ -275,26 +522,26 @@ const {
 			ctx->cols1.resize(ctx->cols1.size() + iSchema.columnNum());
 		}
 	}
-	assert(ctx->cols1.size() == m_indexSchemaSet->m_flattenColumnNum);
+	assert(ctx->cols1.size() == m_schema->m_indexSchemaSet->m_flattenColumnNum);
 	size_t indexNum = m_indices.size();
 	for (size_t i = 0; i < m_colgroups.size(); ++i) {
 		size_t off0 = ctx->offsets[indexNum + i + 0];
 		size_t off1 = ctx->offsets[indexNum + i + 1];
 		fstring colgroupData(ctx->buf1.data() + off0, off1 - off0);
-		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		const Schema& schema = m_schema->getColgroupSchema(i);
 		schema.parseRowAppend(colgroupData, &ctx->cols1);
 	}
 	if (!m_parts.empty()) { // get nonIndex store
 		size_t off0 = ctx->offsets.ende(2), off1 = ctx->offsets.ende(1);
 		fstring indexRow(ctx->buf1.data() + off0, off1 - off0);
-		m_nonIndexRowSchema->parseRowAppend(indexRow, &ctx->cols1);
+		m_schema->m_nonIndexRowSchema->parseRowAppend(indexRow, &ctx->cols1);
 	}
 
 	// combine columns to ctx->cols2
 	size_t baseColumnId = 0;
-	ctx->cols2.resize_fill(m_rowSchema->columnNum());
+	ctx->cols2.resize_fill(m_schema->columnNum());
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
+		const Schema& iSchema = m_schema->getIndexSchema(i);
 		for (size_t j = 0; j < iSchema.columnNum(); ++j) {
 			if (iSchema.m_keepCols[j]) {
 				size_t parentColId = iSchema.parentColumnId(j);
@@ -304,7 +551,7 @@ const {
 		baseColumnId += iSchema.columnNum();
 	}
 	for (size_t i = 0; i < m_colgroups.size(); ++i) {
-		const Schema& iSchema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		const Schema& iSchema = m_schema->getColgroupSchema(i);
 		for(size_t j = 0; j < iSchema.columnNum(); ++j) {
 			size_t parentColId = iSchema.parentColumnId(j);
 			ctx->cols2[parentColId] = ctx->cols1[baseColumnId + j];
@@ -312,8 +559,8 @@ const {
 		baseColumnId += iSchema.columnNum();
 	}
 	if (!m_parts.empty()) { // get nonIndex store
-		for(size_t j = 0; j < m_nonIndexRowSchema->columnNum(); ++j) {
-			size_t parentColId = m_nonIndexRowSchema->parentColumnId(j);
+		for(size_t j = 0; j < m_schema->m_nonIndexRowSchema->columnNum(); ++j) {
+			size_t parentColId = m_schema->m_nonIndexRowSchema->parentColumnId(j);
 			ctx->cols2[parentColId] = ctx->cols1[baseColumnId + j];
 		}
 	}
@@ -325,7 +572,15 @@ const {
 #endif
 
 	// combine to val
-	m_rowSchema->combineRow(ctx->cols2, val);
+	m_schema->m_rowSchema->combineRow(ctx->cols2, val);
+}
+
+void
+ReadonlySegment::selectColumns(llong recId,
+							   const size_t* colsId, size_t colsNum,
+							   valvec<byte>* colsData, DbContext* ctx)
+const {
+
 }
 
 class ReadonlySegment::MyStoreIterForward : public StoreIterator {
@@ -440,7 +695,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 	valvec<byte> buf;
 	SortableStrVec strVec;
 	for (size_t i = 0; i < m_indices.size(); ++i) {
-		const Schema& indexSchema = *m_indexSchemaSet->m_nested.elem_at(i);
+		const Schema& indexSchema = m_schema->getIndexSchema(i);
 		size_t fixedIndexRowLen = indexSchema.getFixedRowLen();
 		for (size_t j = 0; j < input.size(); ++j) {
 			auto seg = input[j];
@@ -468,7 +723,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 			llong numRows = dataStore->numDataRows();
 			for (llong subId = 0; subId < numRows; ++subId) {
 				if (strVec.mem_size() >= this->m_maxPartDataSize) {
-					m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
+					m_parts.push_back(buildStore(*m_schema->m_nonIndexRowSchema, strVec));
 					strVec.clear();
 				}
 				llong id = baseId + subId;
@@ -481,7 +736,7 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 		}
 	}
 	if (strVec.size()) {
-		m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
+		m_parts.push_back(buildStore(*m_schema->m_nonIndexRowSchema, strVec));
 		strVec.clear();
 	}
 	m_rowNumVec.resize(0);
@@ -577,14 +832,14 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 {
 	assert(input.numDataRows() > 0);
 	assert(m_parts.size() == 0);
-	size_t indexNum = m_indexSchemaSet->m_nested.end_i();
-	TempFileList indexTempFiles(*m_indexSchemaSet);
-	TempFileList colgroupTempFiles(*m_colgroupSchemaSet);
+	size_t indexNum = m_schema->getIndexNum();
+	TempFileList indexTempFiles(*m_schema->m_indexSchemaSet);
+	TempFileList colgroupTempFiles(*m_schema->m_colgroupSchemaSet);
 
-	valvec<fstring> columns(m_rowSchema->columnNum(), valvec_reserve());
+	valvec<fstring> columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf, projRowBuf;
-	size_t nonIndexColNum = m_nonIndexRowSchema->columnNum();
-	size_t nonIndexFixLen = m_nonIndexRowSchema->getFixedRowLen();
+	size_t nonIndexColNum = m_schema->m_nonIndexRowSchema->columnNum();
+	size_t nonIndexFixLen = m_schema->m_nonIndexRowSchema->getFixedRowLen();
 	SortableStrVec strVec;
 	llong inputRowNum = input.numDataRows();
 	assert(size_t(inputRowNum) == input.m_isDel.size());
@@ -597,12 +852,12 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		assert(id < inputRowNum);
 		if (m_isDel[id]) continue;
 
-		m_rowSchema->parseRow(buf, &columns);
+		m_schema->m_rowSchema->parseRow(buf, &columns);
 		indexTempFiles.writeColgroups(columns, projRowBuf);
 		colgroupTempFiles.writeColgroups(columns, projRowBuf);
 		// if all columns are indexed, then nonIndexColNum is 0
 		if (nonIndexColNum) {
-			m_nonIndexRowSchema->selectParent(columns, &projRowBuf);
+			m_schema->m_nonIndexRowSchema->selectParent(columns, &projRowBuf);
 			if (nonIndexFixLen) {
 				strVec.m_strpool.append(projRowBuf);
 			} else {
@@ -611,14 +866,14 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		}
 		if (strVec.mem_size() >= this->m_maxPartDataSize) {
 			assert(0 != nonIndexColNum);
-			m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
+			m_parts.push_back(buildStore(*m_schema->m_nonIndexRowSchema, strVec));
 			strVec.clear();
 		}
 		newRowNum++;
 	}
 	if (strVec.m_strpool.size() > 0) {
 		assert(0 != nonIndexColNum);
-		m_parts.push_back(buildStore(*m_nonIndexRowSchema, strVec));
+		m_parts.push_back(buildStore(*m_schema->m_nonIndexRowSchema, strVec));
 		strVec.clear();
 	}
 	assert(strVec.m_index.size() == 0);
@@ -628,15 +883,15 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	indexTempFiles.completeWrite();
 	m_indices.resize(indexNum);
 	for (size_t i = 0; i < indexTempFiles.size(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+		const Schema& schema = m_schema->getIndexSchema(i);
 		indexTempFiles[i].collectData(newRowNum, strVec);
 		m_indices[i] = this->buildIndex(schema, strVec);
 		strVec.clear();
 	}
 	colgroupTempFiles.completeWrite();
-	m_colgroups.resize(m_colgroupSchemaSet->m_nested.end_i());
+	m_colgroups.resize(m_schema->getColgroupNum());
 	for (size_t i = 0; i < colgroupTempFiles.size(); ++i) {
-		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		const Schema& schema = m_schema->getColgroupSchema(i);
 		colgroupTempFiles[i].collectData(newRowNum, strVec);
 		m_colgroups[i] = this->buildStore(schema, strVec);
 		strVec.clear();
@@ -697,7 +952,7 @@ void ReadonlySegment::saveRecordStore(fstring dir) const {
 		m_parts[i]->save(buf.c_str());
 	}
 	for (size_t i = 0; i < m_colgroups.size(); ++i) {
-		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		const Schema& schema = m_schema->getColgroupSchema(i);
 		std::string colsList = schema.joinColumnNames();
 		fs::path fpath = dirp / ("colgroup-" + colsList);
 		m_colgroups[i]->save(fpath.string());
@@ -712,9 +967,9 @@ void ReadonlySegment::loadRecordStore(fstring dir) {
 		THROW_STD(invalid_argument, "m_colgroups must be empty");
 	}
 	fs::path segDir = dir.str();
-	m_colgroups.resize(m_colgroupSchemaSet->m_nested.end_i());
-	for (size_t i = 0; i < m_colgroupSchemaSet->m_nested.end_i(); ++i) {
-		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+	m_colgroups.resize(m_schema->getColgroupNum());
+	for (size_t i = 0; i < m_schema->getColgroupNum(); ++i) {
+		const Schema& schema = m_schema->getColgroupSchema(i);
 		std::string colsList = schema.joinColumnNames();
 		fs::path fpath = segDir / ("colgroup-" + colsList);
 		m_colgroups[i] = openStore(schema, fpath.string());
@@ -737,7 +992,7 @@ void ReadonlySegment::loadRecordStore(fstring dir) {
 			m_parts.resize(partIdx+1);
 		}
 		fs::path stemPath = segDir / x.path().stem();
-		m_parts[partIdx] = openStore(*m_nonIndexRowSchema, stemPath.string());
+		m_parts[partIdx] = openStore(*m_schema->m_nonIndexRowSchema, stemPath.string());
 	}
 	if (m_parts.size()) {
 		m_rowNumVec.resize_no_init(m_parts.size() + 1);
@@ -833,6 +1088,13 @@ WritableSegment::~WritableSegment() {
 
 WritableStore* WritableSegment::getWritableStore() {
 	return this;
+}
+
+void WritableSegment::selectColumns(llong recId,
+									const size_t* colsId, size_t colsNum,
+									valvec<byte>* colsData, DbContext* ctx)
+const {
+	abort();
 }
 
 void WritableSegment::flushSegment() {

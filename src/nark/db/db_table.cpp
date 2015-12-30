@@ -1,7 +1,3 @@
-#define NARK_DB_ENABLE_DFA_META
-#if defined(NARK_DB_ENABLE_DFA_META)
-#include <nark/fsa/nest_trie_dawg.hpp>
-#endif
 #include "db_table.hpp"
 #include <nark/util/autoclose.hpp>
 #include <nark/util/linebuf.hpp>
@@ -17,26 +13,16 @@
 #include <boost/scope_exit.hpp>
 #include <thread>
 
-#include "json.hpp"
-
 namespace nark { namespace db {
 
 namespace fs = boost::filesystem;
 
-///////////////////////////////////////////////////////////////////////////////
-
-const llong DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
-const llong DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
 const size_t DEFAULT_maxSegNum = 4095;
 
-CompositeTable::CompositeTable() {
-	m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
-	m_maxWrSegSize = DEFAULT_maxWrSegSize;
-	m_tableScanningRefCount = 0;
+///////////////////////////////////////////////////////////////////////////////
 
-	m_segments.reserve(DEFAULT_maxSegNum);
-	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
-	m_rowNumVec.push_back(0);
+CompositeTable::CompositeTable() {
+	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
 }
 
@@ -48,24 +34,21 @@ CompositeTable::~CompositeTable() {
 }
 
 void
-CompositeTable::createTable(fstring dir,
-							SchemaPtr rowSchema,
-							SchemaSetPtr indexSchemaSet)
-{
+CompositeTable::createTable(fstring dir, SegmentSchemaPtr schema) {
 	assert(!dir.empty());
-	assert(rowSchema->columnNum() > 0);
-	assert(indexSchemaSet->m_nested.end_i() > 0);
+	assert(schema->columnNum() > 0);
+	assert(schema->getIndexNum() > 0);
 	if (!m_segments.empty()) {
 		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
 			long(m_segments.size()));
 	}
-	m_rowSchema = rowSchema;
-	m_indexSchemaSet = indexSchemaSet;
+	m_schema = schema;
 	m_dir = dir.str();
-	compileSchema();
 
 	AutoGrownMemIO buf;
 	m_wrSeg = this->myCreateWritableSegment(getSegPath("wr", 0, buf));
+	m_segments.reserve(DEFAULT_maxSegNum);
+	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
 	m_segments.push_back(m_wrSeg);
 	m_rowNumVec.erase_all();
 	m_rowNumVec.push_back(0);
@@ -76,14 +59,23 @@ void CompositeTable::load(fstring dir) {
 		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
 			long(m_segments.size()));
 	}
-	if (m_rowSchema && m_rowSchema->columnNum()) {
-		THROW_STD(invalid_argument, "Invalid: rowSchemaColumns=%ld is not empty",
-			long(m_rowSchema->columnNum()));
+	if (m_schema) {
+		THROW_STD(invalid_argument, "Invalid: schema.columnNum=%ld is not empty",
+			long(m_schema->columnNum()));
 	}
 	m_dir = dir.str();
 	{
 		fs::path jsonFile = fs::path(m_dir) / "dbmeta.json";
-		loadMetaJson(jsonFile.string());
+		m_schema.reset(new SegmentSchema());
+		m_schema->loadJsonFile(jsonFile.string());
+		size_t indexNum = m_schema->getIndexNum();
+		for (size_t i = 0; i < indexNum; ++i) {
+			auto& iSchema = m_schema->getIndexSchema(i);
+			if (iSchema.m_isUnique)
+				m_uniqIndices.push_back(i);
+			else
+				m_multIndices.push_back(i);
+		}
 	}
 	for (auto& x : fs::directory_iterator(fs::path(m_dir))) {
 		std::string segDir = x.path().string();
@@ -151,131 +143,6 @@ void CompositeTable::load(fstring dir) {
 	m_rowNumVec.back() = baseId; // the end guard
 }
 
-#if defined(NARK_DB_ENABLE_DFA_META)
-void CompositeTable::loadMetaDFA(fstring dir) {
-	std::string metaFile = dir + "/dbmeta.dfa";
-	std::unique_ptr<MatchingDFA> metaConf(MatchingDFA::load_from(metaFile));
-	std::string val;
-	size_t segNum = 0, minWrSeg = 0;
-	if (metaConf->find_key_uniq_val("TotalSegNum", &val)) {
-		segNum = lcast(val);
-	} else {
-		THROW_STD(invalid_argument, "metaconf dfa: TotalSegNum is missing");
-	}
-	if (metaConf->find_key_uniq_val("MinWrSeg", &val)) {
-		minWrSeg = lcast(val);
-	} else {
-		THROW_STD(invalid_argument, "metaconf dfa: MinWrSeg is missing");
-	}
-	if (metaConf->find_key_uniq_val("MaxWrSegSize", &val)) {
-		m_maxWrSegSize = lcast(val);
-	} else {
-		m_maxWrSegSize = DEFAULT_maxWrSegSize;
-	}
-	if (metaConf->find_key_uniq_val("ReadonlyDataMemSize", &val)) {
-		m_readonlyDataMemSize = lcast(val);
-	} else {
-		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
-	}
-	m_segments.reserve(std::max(DEFAULT_maxSegNum, segNum*2));
-	m_rowNumVec.reserve(std::max(DEFAULT_maxSegNum+1, segNum*2 + 1));
-
-	valvec<fstring> F;
-	MatchContext ctx;
-	m_rowSchema.reset(new Schema());
-	if (!metaConf->step_key_l(ctx, "RowSchema")) {
-		THROW_STD(invalid_argument, "metaconf dfa: RowSchema is missing");
-	}
-	metaConf->for_each_value(ctx, [&](size_t klen, size_t, fstring val) {
-		val.split('\t', &F);
-		if (F.size() < 3) {
-			THROW_STD(invalid_argument, "RowSchema Column definition error");
-		}
-		size_t     columnId = lcast(F[0]);
-		fstring    colname = F[1];
-		ColumnMeta colmeta;
-		colmeta.type = Schema::parseColumnType(F[2]);
-		if (ColumnType::Fixed == colmeta.type) {
-			colmeta.fixedLen = lcast(F[3]);
-		}
-		auto ib = m_rowSchema->m_columnsMeta.insert_i(colname, colmeta);
-		if (!ib.second) {
-			THROW_STD(invalid_argument, "duplicate column name: %.*s",
-				colname.ilen(), colname.data());
-		}
-		if (ib.first != columnId) {
-			THROW_STD(invalid_argument, "bad columnId: %lld", llong(columnId));
-		}
-	});
-	ctx.reset();
-	if (!metaConf->step_key_l(ctx, "TableIndex")) {
-		THROW_STD(invalid_argument, "metaconf dfa: TableIndex is missing");
-	}
-	metaConf->for_each_value(ctx, [&](size_t klen, size_t, fstring val) {
-		val.split(',', &F);
-		if (F.size() < 1) {
-			THROW_STD(invalid_argument, "TableIndex definition error");
-		}
-		SchemaPtr schema(new Schema());
-		for (size_t i = 0; i < F.size(); ++i) {
-			fstring colname = F[i];
-			size_t colId = m_rowSchema->getColumnId(colname);
-			if (colId >= m_rowSchema->columnNum()) {
-				THROW_STD(invalid_argument,
-					"index column name=%.*s is not found in RowSchema",
-					colname.ilen(), colname.c_str());
-			}
-			ColumnMeta colmeta = m_rowSchema->getColumnMeta(colId);
-			schema->m_columnsMeta.insert_i(colname, colmeta);
-		}
-		auto ib = m_indexSchemaSet->m_nested.insert_i(schema);
-		if (!ib.second) {
-			THROW_STD(invalid_argument, "invalid index schema");
-		}
-	});
-	compileSchema();
-	llong rowNum = 0;
-	AutoGrownMemIO buf(1024);
-	for (size_t i = 0; i < minWrSeg; ++i) { // load readonly segments
-		ReadableSegmentPtr seg(myCreateReadonlySegment(getSegPath("rd", i, buf)));
-		seg->load(seg->m_segDir);
-		rowNum += seg->numDataRows();
-		m_segments.push_back(seg);
-		m_rowNumVec.push_back(rowNum);
-	}
-	for (size_t i = minWrSeg; i < segNum ; ++i) { // load writable segments
-		ReadableSegmentPtr seg(openWritableSegment(getSegPath("wr", i, buf)));
-		rowNum += seg->numDataRows();
-		m_segments.push_back(seg);
-		m_rowNumVec.push_back(rowNum);
-	}
-	if (minWrSeg < segNum && m_segments.back()->totalStorageSize() < m_maxWrSegSize) {
-		auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
-		assert(NULL != seg);
-		m_wrSeg.reset(seg); // old wr seg at end
-	}
-	else {
-		m_wrSeg = myCreateWritableSegment(getSegPath("wr", segNum, buf));
-		m_segments.push_back(m_wrSeg); // new empty wr seg at end
-		m_rowNumVec.push_back(rowNum); // m_rowNumVec[-2] == m_rowNumVec[-1]
-	}
-}
-
-void CompositeTable::saveMetaDFA(fstring dir) const {
-	SortableStrVec meta;
-	AutoGrownMemIO buf;
-	size_t pos;
-//	pos = buf.printf("TotalSegNum\t%ld", long(m_segments.s));
-	pos = buf.printf("RowSchema\t");
-	for (size_t i = 0; i < m_rowSchema->columnNum(); ++i) {
-		buf.printf("%04ld", long(i));
-		meta.push_back(fstring(buf.begin(), buf.tell()));
-		buf.seek(pos);
-	}
-	NestLoudsTrieDAWG_SE_512 trie;
-}
-#endif
-
 size_t CompositeTable::getWritableSegNum() const {
 	MyRwLock lock(m_rwMutex, false);
 	size_t wrNum = 0;
@@ -284,145 +151,6 @@ size_t CompositeTable::getWritableSegNum() const {
 			wrNum++;
 	}
 	return wrNum;
-}
-
-void CompositeTable::loadMetaJson(fstring jsonFile) {
-	LineBuf alljson;
-	alljson.read_all(jsonFile.c_str());
-	using nark::json;
-	const json meta = json::parse(alljson.p
-					// UTF8 BOM Check, fixed in nlohmann::json
-					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
-					);
-	const json& rowSchema = meta["RowSchema"];
-	const json& cols = rowSchema["columns"];
-	m_rowSchema.reset(new Schema());
-	m_colgroupSchemaSet.reset(new SchemaSet());
-	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
-		const auto& col = iter.value();
-		std::string name = iter.key();
-		std::string type = col["type"];
-		std::transform(type.begin(), type.end(), type.begin(), &::tolower);
-		if ("nested" == type) {
-			fprintf(stderr, "TODO: nested column: %s is not supported now, save it to $$\n", name.c_str());
-			continue;
-		}
-		ColumnMeta colmeta;
-		colmeta.type = Schema::parseColumnType(type);
-		if (ColumnType::Fixed == colmeta.type) {
-			colmeta.fixedLen = col["length"];
-		}
-		auto found = col.find("uType");
-		if (col.end() != found) {
-			int uType = found.value();
-			colmeta.uType = byte(uType);
-		}
-		found = col.find("colstore");
-		if (col.end() != found) {
-			bool colstore = found.value();
-			if (colstore) {
-				// this colstore has the only-one 'name' field
-				SchemaPtr schema(new Schema());
-				schema->m_columnsMeta.insert_i(name, colmeta);
-				m_colgroupSchemaSet->m_nested.insert_i(schema);
-			}
-		}
-		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
-		if (!ib.second) {
-			THROW_STD(invalid_argument, "duplicate RowName=%s", name.c_str());
-		}
-	}
-	m_rowSchema->compile();
-	auto iter = meta.find("ReadonlyDataMemSize");
-	if (meta.end() == iter) {
-		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
-	} else {
-		m_readonlyDataMemSize = *iter;
-	}
-	iter = meta.find("MaxWrSegSize");
-	if (meta.end() == iter) {
-		m_maxWrSegSize = DEFAULT_maxWrSegSize;
-	} else {
-		m_maxWrSegSize = *iter;
-	}
-	const json& tableIndex = meta["TableIndex"];
-	if (!tableIndex.is_array()) {
-		THROW_STD(invalid_argument, "json TableIndex must be an array");
-	}
-	m_indexSchemaSet.reset(new SchemaSet());
-	for (const auto& index : tableIndex) {
-		SchemaPtr indexSchema(new Schema());
-		const std::string& strFields = index["fields"];
-		std::vector<std::string> fields;
-		fstring(strFields).split(',', &fields);
-		if (fields.size() > Schema::MaxProjColumns) {
-			THROW_STD(invalid_argument, "Index Columns=%zd exceeds Max=%zd",
-				fields.size(), Schema::MaxProjColumns);
-		}
-		for (const std::string& colname : fields) {
-			const size_t k = m_rowSchema->getColumnId(colname);
-			if (k == m_rowSchema->columnNum()) {
-				THROW_STD(invalid_argument,
-					"colname=%s is not in RowSchema", colname.c_str());
-			}
-			indexSchema->m_columnsMeta.
-				insert_i(colname, m_rowSchema->getColumnMeta(k));
-		}
-		auto ib = m_indexSchemaSet->m_nested.insert_i(indexSchema);
-		if (!ib.second) {
-			THROW_STD(invalid_argument,
-				"duplicate index: %s", strFields.c_str());
-		}
-		auto found = index.find("ordered");
-		if (index.end() == found)
-			indexSchema->m_isOrdered = true; // default
-		else
-			indexSchema->m_isOrdered = found.value();
-
-		found = index.find("unique");
-		if (index.end() == found)
-			indexSchema->m_isUnique = false; // default
-		else
-			indexSchema->m_isUnique = found.value();
-
-		if (indexSchema->m_isUnique)
-			m_uniqIndices.push_back(ib.first);
-		else
-			m_multIndices.push_back(ib.first);
-	}
-	compileSchema();
-}
-
-void CompositeTable::saveMetaJson(fstring jsonFile) const {
-	using nark::json;
-	json meta;
-	json& rowSchema = meta["RowSchema"];
-	json& cols = rowSchema["columns"];
-	cols = json::array();
-	for (size_t i = 0; i < m_rowSchema->columnNum(); ++i) {
-		ColumnType coltype = m_rowSchema->getColumnType(i);
-		std::string colname = m_rowSchema->getColumnName(i).str();
-		std::string strtype = Schema::columnTypeStr(coltype);
-		json col;
-		col["name"] = colname;
-		col["type"] = strtype;
-		if (ColumnType::Fixed == coltype) {
-			col["length"] = m_rowSchema->getColumnMeta(i).fixedLen;
-		}
-		cols.push_back(col);
-	}
-	json& indexSet = meta["TableIndex"];
-	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
-		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
-		json indexCols;
-		for (size_t j = 0; j < schema.columnNum(); ++j) {
-			indexCols.push_back(schema.getColumnName(j).str());
-		}
-		indexSet.push_back(indexCols);
-	}
-	std::string jsonStr = meta.dump(2);
-	FileStream fp(jsonFile.c_str(), "w");
-	fp.ensureWrite(jsonStr.data(), jsonStr.size());
 }
 
 struct CompareBy_baseId {
@@ -674,21 +402,19 @@ public:
 };
 
 StoreIterator* CompositeTable::createStoreIterForward(DbContext* ctx) const {
-	assert(m_rowSchema);
-	assert(m_indexSchemaSet);
+	assert(m_schema);
 	return new MyStoreIterForward(this, ctx);
 }
 
 StoreIterator* CompositeTable::createStoreIterBackward(DbContext* ctx) const {
-	assert(m_rowSchema);
-	assert(m_indexSchemaSet);
+	assert(m_schema);
 	return new MyStoreIterBackward(this, ctx);
 }
 
 llong CompositeTable::totalStorageSize() const {
 	MyRwLock lock(m_rwMutex, false);
-	llong size = m_readonlyDataMemSize + m_wrSeg->dataStorageSize();
-	for (size_t i = 0; i < getIndexNum(); ++i) {
+	llong size = m_wrSeg->dataStorageSize();
+	for (size_t i = 0; i < m_schema->getIndexNum(); ++i) {
 		for (size_t i = 0; i < m_segments.size(); ++i) {
 			size += m_segments[i]->totalStorageSize();
 		}
@@ -703,7 +429,7 @@ llong CompositeTable::numDataRows() const {
 
 llong CompositeTable::dataStorageSize() const {
 	MyRwLock lock(m_rwMutex, false);
-	return m_readonlyDataMemSize + m_wrSeg->dataStorageSize();
+	return m_wrSeg->dataStorageSize();
 }
 
 void
@@ -721,12 +447,12 @@ const {
 
 bool
 CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
-	if (m_wrSeg->dataStorageSize() >= m_maxWrSegSize) {
+	if (m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
 		if (lock.upgrade_to_writer() ||
 			// if upgrade_to_writer fails, it means the lock has been
 			// temporary released and re-acquired, so we need check
 			// the condition again
-			m_wrSeg->dataStorageSize() >= m_maxWrSegSize)
+			m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize)
 		{
 			if (m_segments.size() == m_segments.capacity()) {
 				THROW_STD(invalid_argument,
@@ -755,7 +481,7 @@ ReadonlySegment*
 CompositeTable::myCreateReadonlySegment(fstring segDir) const {
 	std::unique_ptr<ReadonlySegment> seg(createReadonlySegment(segDir));
 	seg->m_segDir = segDir.str();
-	seg->copySchema(*this);
+	seg->m_schema = this->m_schema;
 	return seg.release();
 }
 
@@ -764,11 +490,10 @@ CompositeTable::myCreateWritableSegment(fstring segDir) const {
 	fs::create_directories(segDir.c_str());
 	std::unique_ptr<WritableSegment> seg(createWritableSegment(segDir));
 	seg->m_segDir = segDir.str();
-	seg->copySchema(*this);
 	if (seg->m_indices.empty()) {
-		seg->m_indices.resize(m_indexSchemaSet->m_nested.end_i());
+		seg->m_indices.resize(m_schema->getIndexNum());
 		for (size_t i = 0; i < seg->m_indices.size(); ++i) {
-			const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
+			const Schema& schema = m_schema->getIndexSchema(i);
 			std::string colnames = schema.joinColumnNames(',');
 			std::string indexPath = segDir + "/index-" + colnames;
 			seg->m_indices[i] = seg->createIndex(schema, indexPath);
@@ -780,7 +505,7 @@ CompositeTable::myCreateWritableSegment(fstring segDir) const {
 llong
 CompositeTable::insertRow(fstring row, DbContext* txn) {
 	if (txn->syncIndex) { // parseRow doesn't need lock
-		m_rowSchema->parseRow(row, &txn->cols1);
+		m_schema->m_rowSchema->parseRow(row, &txn->cols1);
 	}
 	MyRwLock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
@@ -845,7 +570,7 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn) 
 		auto seg = &*m_segments[segIdx];
 		for(size_t i = 0; i < m_uniqIndices.size(); ++i) {
 			size_t indexId = m_uniqIndices[i];
-			const Schema& iSchema = getIndexSchema(indexId);
+			const Schema& iSchema = m_schema->getIndexSchema(indexId);
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
@@ -854,7 +579,7 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn) 
 				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
 							+ ", in freezen seg: " + seg->m_segDir;
 			//	txn->errMsg += ", rowData=";
-			//	txn->errMsg += m_rowSchema->toJsonStr(row);
+			//	txn->errMsg += m_schema->m_rowSchema->toJsonStr(row);
 				return false;
 			}
 		}
@@ -868,7 +593,7 @@ bool CompositeTable::insertSyncIndex(llong subId, DbContext* txn) {
 	for (; i < m_uniqIndices.size(); ++i) {
 		size_t indexId = m_uniqIndices[i];
 		auto wrIndex = m_wrSeg->m_indices[indexId].get();
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		assert(iSchema.m_isUnique);
 		iSchema.selectParent(txn->cols1, &txn->key1);
 		if (!wrIndex->getWritableIndex()->insert(txn->key1, subId, txn)) {
@@ -881,7 +606,7 @@ bool CompositeTable::insertSyncIndex(llong subId, DbContext* txn) {
 	for (i = 0; i < m_multIndices.size(); ++i) {
 		size_t indexId = m_multIndices[i];
 		auto wrIndex = m_wrSeg->m_indices[indexId].get();
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		assert(!iSchema.m_isUnique);
 		iSchema.selectParent(txn->cols1, &txn->key1);
 		wrIndex->getWritableIndex()->insert(txn->key1, subId, txn);
@@ -892,7 +617,7 @@ Fail:
 		--j;
 		size_t indexId = m_uniqIndices[i];
 		auto wrIndex = m_wrSeg->m_indices[indexId].get();
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		iSchema.selectParent(txn->cols1, &txn->key1);
 		wrIndex->getWritableIndex()->remove(txn->key1, subId, txn);
 	}
@@ -901,7 +626,7 @@ Fail:
 
 llong
 CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
-	m_rowSchema->parseRow(row, &txn->cols1); // new row
+	m_schema->m_rowSchema->parseRow(row, &txn->cols1); // new row
 	MyRwLock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	assert(id < m_rowNumVec.back());
@@ -928,7 +653,7 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 		}
 		else {
 			seg->getValue(subId, &txn->row2, txn);
-			m_rowSchema->parseRow(txn->row2, &txn->cols2); // old row
+			m_schema->m_rowSchema->parseRow(txn->row2, &txn->cols2); // old row
 
 			if (!replaceCheckSegDup(0, oldSegNum-1, txn))
 				return -1;
@@ -973,7 +698,7 @@ bool
 CompositeTable::replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn) {
 	for(size_t i = 0; i < m_uniqIndices.size(); ++i) {
 		size_t indexId = m_uniqIndices[i];
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		for (size_t segIdx = begSeg; segIdx < endSeg; ++segIdx) {
 			auto seg = &*m_segments[segIdx];
 			auto rIndex = seg->m_indices[indexId];
@@ -997,7 +722,7 @@ CompositeTable::replaceSyncIndex(llong subId, DbContext* txn, MyRwLock& lock) {
 	size_t i = 0;
 	for (; i < m_uniqIndices.size(); ++i) {
 		size_t indexId = m_uniqIndices[i];
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
@@ -1009,7 +734,7 @@ CompositeTable::replaceSyncIndex(llong subId, DbContext* txn, MyRwLock& lock) {
 	}
 	for (i = 0; i < m_uniqIndices.size(); ++i) {
 		size_t indexId = m_uniqIndices[i];
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
@@ -1022,7 +747,7 @@ CompositeTable::replaceSyncIndex(llong subId, DbContext* txn, MyRwLock& lock) {
 	}
 	for (i = 0; i < m_multIndices.size(); ++i) {
 		size_t indexId = m_multIndices[i];
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
@@ -1042,7 +767,7 @@ Fail:
 	for (size_t j = i; j > 0; ) {
 		--j;
 		size_t indexId = m_uniqIndices[j];
-		const Schema& iSchema = getIndexSchema(indexId);
+		const Schema& iSchema = m_schema->getIndexSchema(indexId);
 		iSchema.selectParent(txn->cols2, &txn->key2); // old
 		iSchema.selectParent(txn->cols1, &txn->key1); // new
 		if (!valvec_equalTo(txn->key1, txn->key2)) {
@@ -1073,10 +798,10 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 			valvec<byte> &row = txn->row1, &key = txn->key1;
 			valvec<fstring>& columns = txn->cols1;
 			m_wrSeg->getValue(subId, &row, txn);
-			m_rowSchema->parseRow(row, &columns);
+			m_schema->m_rowSchema->parseRow(row, &columns);
 			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
 				auto wrIndex = m_wrSeg->m_indices[i]->getWritableIndex();
-				const Schema& iSchema = *m_indexSchemaSet->m_nested.elem_at(i);
+				const Schema& iSchema = m_schema->getIndexSchema(i);
 				iSchema.selectParent(columns, &key);
 				wrIndex->remove(key, subId, txn);
 			}
@@ -1128,10 +853,10 @@ CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 {
 	assert(txn != nullptr);
 	assert(id >= 0);
-	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
+	if (indexId >= m_schema->getIndexNum()) {
 		THROW_STD(invalid_argument,
 			"Invalid indexId=%lld, indexNum=%lld",
-			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
+			llong(indexId), llong(m_schema->getIndexNum()));
 	}
 	MyRwLock lock(m_rwMutex, true);
 	size_t upp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
@@ -1157,10 +882,10 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 							DbContext* txn)
 {
 	assert(txn != nullptr);
-	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
+	if (indexId >= m_schema->getIndexNum()) {
 		THROW_STD(invalid_argument,
 			"Invalid indexId=%lld, indexNum=%lld",
-			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
+			llong(indexId), llong(m_schema->getIndexNum()));
 	}
 	MyRwLock lock(m_rwMutex, true);
 	size_t upp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
@@ -1187,10 +912,10 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 							 DbContext* txn)
 {
 	assert(txn != nullptr);
-	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
+	if (indexId >= m_schema->getIndexNum()) {
 		THROW_STD(invalid_argument,
 			"Invalid indexId=%lld, indexNum=%lld",
-			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
+			llong(indexId), llong(m_schema->getIndexNum()));
 	}
 	assert(oldId != newId);
 	if (oldId == newId) {
@@ -1235,10 +960,10 @@ CompositeTable::indexReplace(size_t indexId, fstring indexKey,
 }
 
 llong CompositeTable::indexStorageSize(size_t indexId) const {
-	if (indexId >= m_indexSchemaSet->m_nested.end_i()) {
+	if (indexId >= m_schema->getIndexNum()) {
 		THROW_STD(invalid_argument,
 			"Invalid indexId=%lld, indexNum=%lld",
-			llong(indexId), llong(m_indexSchemaSet->m_nested.end_i()));
+			llong(indexId), llong(m_schema->getIndexNum()));
 	}
 	MyRwLock lock(m_rwMutex, false);
 	llong sum = 0;
@@ -1291,7 +1016,7 @@ class TableIndexIter : public IndexIterator {
 		}
 		HeapKeyCompare(TableIndexIter* o)
 			: owner(o)
-			, schema(o->m_tab->m_indexSchemaSet->getSchema(o->m_indexId)) {}
+			, schema(&o->m_tab->m_schema->getIndexSchema(o->m_indexId)) {}
 	};
 	friend class HeapKeyCompare;
 	valvec<byte> m_keyBuf;
@@ -1335,7 +1060,7 @@ public:
 	  , m_indexId(indexId)
 	  , m_forward(forward)
 	{
-		assert(tab->m_indexSchemaSet->getSchema(indexId)->m_isOrdered);
+		assert(tab->m_schema->getIndexSchema(indexId).m_isOrdered);
 		{
 			MyRwLock lock(tab->m_rwMutex);
 			tab->m_tableScanningRefCount++;
@@ -1414,7 +1139,7 @@ public:
 		}
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
-		const Schema& schema = *m_tab->m_indexSchemaSet->m_nested.elem_at(m_indexId);
+		const Schema& schema = m_tab->m_schema->getIndexSchema(m_indexId);
 #if 0
 		if (key.size() == 0)
 			fprintf(stderr, "TableIndexIter::seekLowerBound: segs=%zd key.len=0\n",
@@ -1481,28 +1206,28 @@ public:
 };
 
 IndexIteratorPtr CompositeTable::createIndexIterForward(size_t indexId) const {
-	assert(indexId < m_indexSchemaSet->m_nested.end_i());
-	assert(getIndexSchema(indexId).m_isOrdered);
+	assert(indexId < m_schema->getIndexNum());
+	assert(m_schema->getIndexSchema(indexId).m_isOrdered);
 	return new TableIndexIter(this, indexId, true);
 }
 
 IndexIteratorPtr CompositeTable::createIndexIterForward(fstring indexCols) const {
-	size_t indexId = m_indexSchemaSet->m_nested.find_i(indexCols);
-	if (m_indexSchemaSet->m_nested.end_i() == indexId) {
+	size_t indexId = m_schema->getIndexId(indexCols);
+	if (m_schema->getIndexNum() == indexId) {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
 	}
 	return createIndexIterForward(indexId);
 }
 
 IndexIteratorPtr CompositeTable::createIndexIterBackward(size_t indexId) const {
-	assert(indexId < m_indexSchemaSet->m_nested.end_i());
-	assert(getIndexSchema(indexId).m_isOrdered);
+	assert(indexId < m_schema->getIndexNum());
+	assert(m_schema->getIndexSchema(indexId).m_isOrdered);
 	return new TableIndexIter(this, indexId, false);
 }
 
 IndexIteratorPtr CompositeTable::createIndexIterBackward(fstring indexCols) const {
-	size_t indexId = m_indexSchemaSet->m_nested.find_i(indexCols);
-	if (m_indexSchemaSet->m_nested.end_i() == indexId) {
+	size_t indexId = m_schema->getIndexId(indexCols);
+	if (m_schema->getIndexNum() == indexId) {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
 	}
 	return createIndexIterBackward(indexId);
@@ -1593,7 +1318,7 @@ void CompositeTable::dropTable() {
 }
 
 std::string CompositeTable::toJsonStr(fstring row) const {
-	return m_rowSchema->toJsonStr(row);
+	return m_schema->m_rowSchema->toJsonStr(row);
 }
 
 fstring
@@ -1648,7 +1373,7 @@ void CompositeTable::save(fstring dir) const {
 	}
 	lock.upgrade_to_writer();
 	fs::path jsonFile = fs::path(dir.str()) / "dbmeta.json";
-	saveMetaJson(jsonFile.string());
+	m_schema->saveJsonFile(jsonFile.string());
 }
 
 } } // namespace nark::db

@@ -75,7 +75,7 @@ const {
 	if (!store) {
 		std::unique_ptr<NestLoudsTrieStore> nltStore(new NestLoudsTrieStore());
 		if (storeData.m_index.size() == 0) {
-			const size_t fixlen = m_nonIndexRowSchema->getFixedRowLen();
+			const size_t fixlen = m_schema->m_nonIndexRowSchema->getFixedRowLen();
 			assert(fixlen > 0);
 			patchStrVec(storeData, fixlen);
 		}

@@ -36,7 +36,7 @@ DfaDbTable::openWritableSegment(fstring dir) const {
 	auto isDelPath = boost::filesystem::path(dir.str()) / "isDel";
 	if (boost::filesystem::exists(isDelPath)) {
 		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
-		seg->copySchema(*this);
+		seg->m_schema = this->m_schema;
 		seg->load(dir);
 		return seg.release();
 	}
@@ -44,6 +44,5 @@ DfaDbTable::openWritableSegment(fstring dir) const {
 		return myCreateWritableSegment(dir);
 	}
 }
-
 
 }}} // namespace nark::db::dfadb

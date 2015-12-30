@@ -14,7 +14,7 @@ typedef tbb::queuing_rw_mutex              MyRwMutex;
 typedef tbb::queuing_rw_mutex::scoped_lock MyRwLock;
 
 // is not a WritableStore
-class NARK_DB_DLL CompositeTable : public ReadableStore, public SegmentSchema {
+class NARK_DB_DLL CompositeTable : public ReadableStore {
 	class MyStoreIterBase;	    friend class MyStoreIterBase;
 	class MyStoreIterForward;	friend class MyStoreIterForward;
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
@@ -22,10 +22,7 @@ public:
 	CompositeTable();
 	~CompositeTable();
 
-	void setMaxWritableSegSize(llong size) { m_maxWrSegSize = size; }
-	void setReadonlySegBufSize(llong size) { m_readonlyDataMemSize = size; }
-
-	void createTable(fstring dir, SchemaPtr rowSchema, SchemaSetPtr indexSchemaSet);
+	void createTable(fstring dir, SegmentSchemaPtr schema);
 	void load(fstring dir) override;
 	void save(fstring dir) const override;
 
@@ -68,9 +65,6 @@ public:
 	size_t getSegNum () const { return m_segments.size(); }
 	size_t getWritableSegNum() const;
 
-	void loadMetaJson(fstring jsonFile);
-	void saveMetaJson(fstring jsonFile) const;
-
 protected:
 
 	bool maybeCreateNewSegment(MyRwLock&);
@@ -97,15 +91,15 @@ protected:
 public:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
+	SegmentSchemaPtr m_schema;
 protected:
 	valvec<llong>  m_rowNumVec;
 	valvec<ReadableSegmentPtr> m_segments;
 	WritableSegmentPtr m_wrSeg;
+	llong m_readonlyDataMemSize;
 
 	// constant once constructed
 	std::string m_dir;
-	llong m_readonlyDataMemSize;
-	llong m_maxWrSegSize;
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
 	bool m_tobeDrop;

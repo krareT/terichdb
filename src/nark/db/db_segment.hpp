@@ -11,12 +11,19 @@ namespace nark {
 
 namespace nark { namespace db {
 
-class NARK_DB_DLL SegmentSchema {
+class NARK_DB_DLL SegmentSchema : public RefCounter {
 public:
+	struct Colproject {
+		uint32_t isIndexCol :  1;
+		uint32_t colgroupId : 31;
+	};
 	SchemaPtr     m_rowSchema;
 	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
 	SchemaSetPtr  m_indexSchemaSet;
 	SchemaSetPtr  m_colgroupSchemaSet;
+	valvec<Colproject> m_colproject; // parallel with m_rowSchema
+	llong m_readonlyDataMemSize;
+	llong m_maxWrSegSize;
 
 	SegmentSchema();
 	~SegmentSchema();
@@ -26,24 +33,39 @@ public:
 		return *m_indexSchemaSet->m_nested.elem_at(indexId);
 	}
 	const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
-	const Schema& getTableSchema() const { return *m_rowSchema; }
 	size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
-	size_t columnNum() const { return m_rowSchema->columnNum(); }
-
 	size_t getIndexId(fstring indexColumnNames) const {
 		return m_indexSchemaSet->m_nested.find_i(indexColumnNames);
 	}
 
-	void copySchema(const SegmentSchema& y);
-	const SegmentSchema& segSchema() const { return *this; }
+	const Schema& getColgroupSchema(size_t colgroupId) const {
+		assert(colgroupId < getColgroupNum());
+		return *m_colgroupSchemaSet->m_nested.elem_at(colgroupId);
+	}
+	const SchemaSet& getColgroupSchemaSet() const { return *m_colgroupSchemaSet; }
+	size_t getColgroupNum() const { return m_colgroupSchemaSet->m_nested.end_i(); }
+	size_t getColgroupId(fstring colgroupColumnNames) const {
+		return m_colgroupSchemaSet->m_nested.find_i(colgroupColumnNames);
+	}
+
+	const Schema& getTableSchema() const { return *m_rowSchema; }
+	size_t columnNum() const { return m_rowSchema->columnNum(); }
+
+	void loadJsonString(fstring jstr);
+	void loadJsonFile(fstring fname);
+	void saveJsonFile(fstring fname) const;
+
+	void loadMetaDFA(fstring fname);
+	void saveMetaDFA(fstring fname) const;
 
 protected:
 	void compileSchema();
 };
+typedef boost::intrusive_ptr<SegmentSchema> SegmentSchemaPtr;
 
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
-class NARK_DB_DLL ReadableSegment : public ReadableStore, public SegmentSchema {
+class NARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
 	ReadableSegment();
 	~ReadableSegment();
@@ -58,6 +80,9 @@ public:
 	virtual void loadRecordStore(fstring segDir) = 0;
 	virtual void saveRecordStore(fstring segDir) const = 0;
 
+	virtual void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
+							   valvec<byte>* colsData, DbContext*) const = 0;
+
 	void openIndices(fstring dir);
 	void saveIndices(fstring dir) const;
 	llong totalIndexSize() const;
@@ -71,6 +96,7 @@ public:
 	void load(fstring segDir) override;
 	void save(fstring segDir) const override;
 
+	SegmentSchemaPtr         m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
 	valvec<ReadableStorePtr> m_colgroups;
 	size_t      m_delcnt;
@@ -112,6 +138,9 @@ public:
 
 	void getValueImpl(size_t partIdx, size_t id,
 					  valvec<byte>* val, DbContext*) const;
+
+	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
+					   valvec<byte>* colsData, DbContext*) const override;
 
 protected:
 	// Index can use different implementation for different
@@ -157,6 +186,9 @@ public:
 	// Index can use different implementation for different
 	// index schema and index content features
 	virtual ReadableIndex* createIndex(const Schema&, fstring path) const = 0;
+
+	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
+					   valvec<byte>* colsData, DbContext*) const override;
 
 	void flushSegment();
 

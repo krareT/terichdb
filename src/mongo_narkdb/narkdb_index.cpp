@@ -57,7 +57,7 @@
 #define TRACING_ENABLED 1
 
 #if TRACING_ENABLED
-#define TRACE_CURSOR log() << "NarkDb index (" << (const void*)&_idx << ") "
+#define TRACE_CURSOR log() << "NarkDb index (" << (const void*)&_idx << "), " << (_forward?"Forward":"Backward") << "Cursor."
 #define TRACE_INDEX log() << "NarkDb index (" << (const void*) this << ") "
 #else
 #define TRACE_CURSOR \
@@ -138,8 +138,8 @@ NarkDbIndex::NarkDbIndex(CompositeTable* table, OperationContext* ctx, const Ind
 	}
 	indexColumnNames.pop_back();
 	LOG(2) << "NarkDbIndex::NarkDbIndex(): indexColumnNames=" << indexColumnNames;
-	const size_t indexId = table->getIndexId(indexColumnNames);
-	if (indexId == table->getIndexNum()) {
+	const size_t indexId = table->m_schema->getIndexId(indexColumnNames);
+	if (indexId == table->m_schema->getIndexNum()) {
 		// no such index
 		THROW_STD(invalid_argument,
 			"index(%s) on collection(%s) is not defined",
@@ -268,12 +268,16 @@ public:
 			if (_cursor->increment(&recIdx, &m_curKey)) {
 				_cursorAtEof = false;
 				_id = RecordId(recIdx + 1);
-		        TRACE_CURSOR << "next(): curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
+		        TRACE_CURSOR << "next(): increment() ret true, curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
 		        return curr(parts);
 			}
-			_cursorAtEof = true;
-			return {};
-		} else {
+			else {
+		        TRACE_CURSOR << "next(): increment() ret false, reached eof";
+				_cursorAtEof = true;
+				return {};
+			}
+		}
+		else {
 			TRACE_CURSOR << "next(): curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
 			_lastMoveWasRestore = false;
 	        return curr(parts);
@@ -281,7 +285,7 @@ public:
     }
 
     void setEndPosition(const BSONObj& key, bool inclusive) override {
-        TRACE_CURSOR << "NarkDbIndexCursor::setEndPosition inclusive: " << inclusive << ' ' << key;
+        TRACE_CURSOR << "setEndPosition: inclusive = " << inclusive << ", bsonKey = " << key;
         if (key.isEmpty()) {
 		EmptyKey:
             // This means scan to end of index.
@@ -291,12 +295,12 @@ public:
 		else {
 			BSONElement first(*key.begin());
 			if (first.isABSONObj() && first.embeddedObject().isEmpty()) {
-		        TRACE_CURSOR << "NarkDbIndexCursor::setEndPosition: first field is an empty object";
+		        TRACE_CURSOR << "setEndPosition: first field is an empty object";
 				goto EmptyKey;
 			}
 			encodeIndexKey(*_idx.getIndexSchema(), key, &_endPositionKey);
 			_endPositionInclude = inclusive;
-	        TRACE_CURSOR << "NarkDbIndexCursor::setEndPosition: _endPositionKey="
+	        TRACE_CURSOR << "setEndPosition: _endPositionKey="
 						 << _idx.getIndexSchema()->toJsonStr(_endPositionKey);
 		}
     }
@@ -333,6 +337,7 @@ public:
     }
 
     void save() override {
+        TRACE_CURSOR << "save()";
         try {
             _cursor->reset();
         } catch (const WriteConflictException&) {
@@ -344,6 +349,7 @@ public:
     }
 
     void saveUnpositioned() override {
+        TRACE_CURSOR << "saveUnpositioned()";
         save();
         _eof = true;
     }
@@ -384,7 +390,7 @@ protected:
         BSONObj bson;
         if (TRACING_ENABLED || (parts & kWantKey)) {
             bson = BSONObj(decodeIndexKey(*_idx.getIndexSchema(), m_curKey));
-            TRACE_CURSOR << " returning " << bson << ' ' << _id;
+            TRACE_CURSOR << "curr() returning " << bson << ' ' << _id;
         }
         return {{std::move(bson), _id}};
     }
@@ -401,11 +407,10 @@ protected:
         } else {
             ret = cmp < 0 || (cmp == 0 && !_endPositionInclude);
         }
-		if (ret) {
-			TRACE_CURSOR << "curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey)
-					  << ", endKey=" << _idx.getIndexSchema()->toJsonStr(_endPositionKey)
-					  << ", cmp=" << cmp << ", endInclude=" << _endPositionInclude;
-		}
+		TRACE_CURSOR << "atOrPastEndPointAfterSeeking(): returning " << ret
+			<< "\\\n\tcurKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey)
+			<< ", endKey=" << _idx.getIndexSchema()->toJsonStr(_endPositionKey)
+			<< ", cmp=" << cmp << ", endInclude=" << _endPositionInclude;
 		return ret;
     }
 
@@ -414,7 +419,9 @@ protected:
 		if (_cursor->increment(&recIdx, &m_curKey)) {
 	        _cursorAtEof = false;
 			_id = RecordId(recIdx + 1);
+			TRACE_CURSOR << "seekWTCursor(): increment() = true, _id = " << _id;
 		} else {
+			TRACE_CURSOR << "seekWTCursor(): increment() = false, reach eof";
 	        _cursorAtEof = true;
 		}
     }
@@ -427,20 +434,30 @@ protected:
 	}
     bool seekWTCursor(bool inclusive) {
 		llong recIdx = -1;
+		_eof = false;
         int ret = _cursor->seekLowerBound(m_qryKey, &recIdx, &m_curKey);
         if (ret < 0) {
             _cursorAtEof = true;
-            TRACE_CURSOR << "\t not found, queryKey is greater than all keys";
+            TRACE_CURSOR << "seekWTCursor(): not found, queryKey is greater than all keys";
             return false;
         }
-        TRACE_CURSOR << "\t lowerBound ret: " << ret
-			<< ", recIdx=" << recIdx
-			<< ", curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
-		if (!inclusive && fstring(m_qryKey) == m_curKey) {
+		bool isEqual = fstring(m_qryKey) == m_curKey;
+		TRACE_CURSOR << "seekWTCursor(): lowerBound ret: " << ret
+			<< ", _id = " << (recIdx + 1)
+			<< ", qryKey = " << _idx.getIndexSchema()->toJsonStr(m_qryKey)
+			<< ", curKey = " << _idx.getIndexSchema()->toJsonStr(m_curKey)
+			<< ", inclusive = " << inclusive
+			<< ", isEqual = " << isEqual
+			;
+
+		if (!inclusive && isEqual) {
 			if (_cursor->increment(&recIdx, &m_curKey)) {
 				_cursorAtEof = false;
 				_id = RecordId(recIdx + 1);
+				TRACE_CURSOR << "seekWTCursor(): increment() = true, _id = " << _id;
+				return true;
 			} else {
+				TRACE_CURSOR << "seekWTCursor(): increment() = false";
 				_cursorAtEof = true;
 				return false;
 			}
@@ -448,14 +465,9 @@ protected:
 		else {
 			_id = RecordId(recIdx + 1);
 	        _cursorAtEof = false;
+			TRACE_CURSOR << "seekWTCursor(): returning true, _id = " << _id;
+	        return true;
 		}
-
-        if (ret == 0) {
-            // Found it!
-            return true;
-        }
-
-        return false;
     }
 
     /**
