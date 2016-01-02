@@ -36,6 +36,7 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	WritableIndex* getWritableIndex() override;
+	const ReadableIndex* getReadableIndex() const override;
 	const ReadableStore* getReadableStore() const override;
 };
 

@@ -19,6 +19,10 @@ ZipIntKeyIndex::~ZipIntKeyIndex() {
 	}
 }
 
+const ReadableIndex* ZipIntKeyIndex::getReadableIndex() const {
+	return this;
+}
+
 const ReadableStore* ZipIntKeyIndex::getReadableStore() const {
 	return this;
 }
@@ -236,9 +240,9 @@ namespace {
 	BOOST_STATIC_ASSERT(sizeof(Header) == 16);
 }
 
-void ZipIntKeyIndex::load(fstring path) {
-	std::string fpath = path + ".zint";
-	m_mmapBase = (byte_t*)mmap_load(fpath.c_str(), &m_mmapSize);
+void ZipIntKeyIndex::load(PathRef path) {
+	auto fpath = path + ".zint";
+	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize);
 	auto h = (const Header*)m_mmapBase;
 	m_isUnique   = h->isUnique ? true : false;
 	m_keyType    = ColumnType(h->keyType);
@@ -248,10 +252,10 @@ void ZipIntKeyIndex::load(fstring path) {
 	m_index.risk_set_data((byte*)(h+1) + m_keys.mem_size(), h->rows,  indexBits);
 }
 
-void ZipIntKeyIndex::save(fstring path) const {
-	std::string fpath = path + ".zint";
+void ZipIntKeyIndex::save(PathRef path) const {
+	auto fpath = path + ".zint";
 	NativeDataOutput<FileStream> dio;
-	dio.open(fpath.c_str(), "wb");
+	dio.open(fpath.string().c_str(), "wb");
 	Header h;
 	h.rows     = m_index.size();
 	h.keyBits  = m_keys.uintbits();

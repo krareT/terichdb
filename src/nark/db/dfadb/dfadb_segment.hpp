@@ -17,8 +17,7 @@ public:
 	DfaDbReadonlySegment();
 	~DfaDbReadonlySegment();
 protected:
-	ReadableStore* openStore(const Schema&, fstring path) const override;
-	ReadableIndex* openIndex(const Schema&, fstring path) const override;
+	ReadableIndex* openIndex(const Schema&, PathRef path) const override;
 
 	ReadableIndex* buildIndex(const Schema&, SortableStrVec& indexData) const override;
 	ReadableStore* buildStore(const Schema&, SortableStrVec& storeData) const override;

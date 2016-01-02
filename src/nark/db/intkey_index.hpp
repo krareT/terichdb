@@ -24,6 +24,7 @@ public:
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
 
+	const ReadableIndex* getReadableIndex() const override;
 	const ReadableStore* getReadableStore() const override;
 
 	llong dataStorageSize() const override;
@@ -33,8 +34,8 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	void build(ColumnType keyType, SortableStrVec& strVec);
-	void load(fstring path) override;
-	void save(fstring path) const override;
+	void load(PathRef path) override;
+	void save(PathRef path) const override;
 
 protected:
 	UintVecMin0 m_keys;   // key   = m_keys[recId]

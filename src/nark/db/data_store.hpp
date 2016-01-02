@@ -3,15 +3,32 @@
 
 #include "db_conf.hpp"
 #include "db_context.hpp"
+#include <boost/filesystem.hpp>
+
+namespace boost { namespace filesystem {
+	inline path operator+(const path& x, nark::fstring y) {
+		path z = x;
+		z.concat(y.begin(), y.end());
+		return z;
+	}
+	inline path operator+(const path& x, const char* y) {
+		path z = x;
+		z.concat(y);
+		return z;
+	}
+//	class path;
+}}
 
 namespace nark { namespace db {
+
+typedef const boost::filesystem::path& PathRef;
 
 class NARK_DB_DLL Permanentable : public RefCounter {
 public:
 	///@ object can hold a m_path, when path==m_path, it is a flush
-	virtual void save(fstring path) const = 0;
+	virtual void save(PathRef path) const = 0;
 
-	virtual void load(fstring path) = 0;
+	virtual void load(PathRef path) = 0;
 };
 typedef boost::intrusive_ptr<class Permanentable> PermanentablePtr;
 typedef boost::intrusive_ptr<class ReadableStore> ReadableStorePtr;
@@ -28,19 +45,38 @@ public:
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
 class NARK_DB_DLL WritableStore;
+class NARK_DB_DLL ReadableIndex;
 class NARK_DB_DLL ReadableStore : virtual public Permanentable {
 public:
+	struct RegisterStoreFactory {
+		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*()>& f);
+	};
+#define NARK_DB_REGISTER_STORE(suffix, StoreClass) \
+	static ReadableStore::RegisterStoreFactory \
+		regStore_##StoreClass(suffix, [](){ return new StoreClass(); });
+
+	static ReadableStore* openStore(PathRef segDir, fstring fname);
+
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
+	virtual const ReadableIndex* getReadableIndex() const;
 
 	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {
 		val->risk_set_size(0);
 		getValueAppend(id, val, ctx);
 	}
+protected:
+	typedef hash_strmap< std::function<ReadableStore*()>
+					   , fstring_func::hash_align
+					   , fstring_func::equal_align
+					   , ValueInline, SafeCopy
+					   >
+			StoreFactory;
+	static	StoreFactory s_storeFactory;
 };
 
 class NARK_DB_DLL WritableStore {

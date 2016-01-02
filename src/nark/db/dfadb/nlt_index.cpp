@@ -19,6 +19,10 @@ NestLoudsTrieIndex::~NestLoudsTrieIndex() {
 	}
 }
 
+const ReadableIndex* NestLoudsTrieIndex::getReadableIndex() const {
+	return this;
+}
+
 const ReadableStore* NestLoudsTrieIndex::getReadableStore() const {
 	return this;
 }
@@ -183,16 +187,16 @@ void NestLoudsTrieIndex::build(SortableStrVec& strVec) {
 #endif
 }
 
-void NestLoudsTrieIndex::load(fstring path) {
-	std::string pathNLT = path + ".nlt";
-	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(pathNLT.c_str()));
+void NestLoudsTrieIndex::load(PathRef path) {
+	auto pathNLT = path + ".nlt";
+	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(pathNLT.string().c_str()));
 	m_dfa.reset(dynamic_cast<NestLoudsTrieDAWG_SE_512*>(dfa.get()));
 	if (m_dfa) {
 		dfa.release();
 	}
 
-	std::string pathIdMap = path + ".idmap";
-	m_idmapBase = (byte_t*)mmap_load(pathIdMap.c_str(), &m_idmapSize);
+	auto pathIdMap = path + ".idmap";
+	m_idmapBase = (byte_t*)mmap_load(pathIdMap.string(), &m_idmapSize);
 
 	size_t rows  = ((uint32_t*)m_idmapBase)[0];
 	size_t keys  = ((uint32_t*)m_idmapBase)[1];
@@ -203,7 +207,7 @@ void NestLoudsTrieIndex::load(fstring path) {
 	if (m_dfa->num_words() != keys) {
 		THROW_STD(invalid_argument,
 			"path=%s, broken data: keys[dfa=%zd map=%zd]",
-			path.c_str(), m_dfa->num_words(), keys);
+			path.string().c_str(), m_dfa->num_words(), keys);
 	}
 	m_idToKey.risk_set_data(m_idmapBase+16        , rows, ubits);
 	m_keyToId.risk_set_data(m_idmapBase+16 + bytes, rows, ubits);
@@ -216,7 +220,7 @@ void NestLoudsTrieIndex::load(fstring path) {
 	}
 }
 
-void NestLoudsTrieIndex::save(fstring path) const {
+void NestLoudsTrieIndex::save(PathRef path) const {
 	assert(m_idToKey.size() == m_dfa->num_words());
 	assert(m_idToKey.size() == m_keyToId.size());
 	assert(m_idToKey.mem_size() == m_keyToId.mem_size());
@@ -227,12 +231,12 @@ void NestLoudsTrieIndex::save(fstring path) const {
 			  m_idToKey.mem_size(), m_idToKey.mem_size() % 16);
 	}
 
-	std::string pathNLT = path + ".nlt";
-	m_dfa->save_mmap(pathNLT.c_str());
+	auto pathNLT = path + ".nlt";
+	m_dfa->save_mmap(pathNLT.string().c_str());
 
-	std::string pathIdMap = path + ".idmap";
+	auto pathIdMap = path + ".idmap";
 	NativeDataOutput<FileStream> dio;
-	dio.open(pathIdMap.c_str(), "wb");
+	dio.open(pathIdMap.string().c_str(), "wb");
 	dio << uint32_t(numDataRows());
 	dio << uint32_t(m_dfa->num_words());
 	dio << uint32_t(m_idToKey.mem_size()/16); // mem_size may overflow uint32

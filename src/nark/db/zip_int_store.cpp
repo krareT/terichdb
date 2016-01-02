@@ -168,9 +168,11 @@ namespace {
 	BOOST_STATIC_ASSERT(sizeof(ZipIntStoreHeader) == 32);
 }
 
-void ZipIntStore::load(fstring path) {
-	std::string fpath = path + ".zint";
-	m_mmapBase = (byte_t*)mmap_load(fpath.c_str(), &m_mmapSize);
+NARK_DB_REGISTER_STORE("zint", ZipIntStore);
+
+void ZipIntStore::load(PathRef fpath) {
+	assert(fstring(fpath.string()).endsWith(".zint"));
+	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize);
 	auto header = (const ZipIntStoreHeader*)m_mmapBase;
 	size_t rows = header->rows;
 	m_intType = ColumnType(header->intType);
@@ -184,10 +186,10 @@ void ZipIntStore::load(fstring path) {
 	}
 }
 
-void ZipIntStore::save(fstring path) const {
-	std::string fpath = path + ".zint";
+void ZipIntStore::save(PathRef path) const {
+	auto fpath = path + ".zint";
 	NativeDataOutput<FileStream> dio;
-	dio.open(fpath.c_str(), "wb");
+	dio.open(fpath.string().c_str(), "wb");
 	ZipIntStoreHeader header;
 	header.rows = uint32_t(numDataRows());
 	header.uniqNum = m_dedup.size();

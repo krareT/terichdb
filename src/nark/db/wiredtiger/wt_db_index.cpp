@@ -130,14 +130,14 @@ IndexIterator* WtWritableIndex::createIndexIterBackward(DbContext*) const {
 }
 
 
-void WtWritableIndex::save(fstring path1) const {
+void WtWritableIndex::save(PathRef path1) const {
 	int err = m_wtSession->checkpoint(m_wtSession, nullptr);
 	if (err != 0) {
 		THROW_STD(logic_error, "wt_checkpoint failed: %s", wiredtiger_strerror(err));
 	}
 }
 
-void WtWritableIndex::load(fstring path1) {
+void WtWritableIndex::load(PathRef path1) {
 }
 
 llong WtWritableIndex::numIndexRows() const {

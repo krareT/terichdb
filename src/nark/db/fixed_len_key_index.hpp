@@ -33,8 +33,8 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	void build(const Schema& schema, SortableStrVec& strVec);
-	void load(fstring path) override;
-	void save(fstring path) const override;
+	void load(PathRef path) override;
+	void save(PathRef path) const override;
 
 protected:
 	valvec<byte> m_keys;   // key   = m_keys[recId]

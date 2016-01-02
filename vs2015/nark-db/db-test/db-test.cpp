@@ -30,7 +30,7 @@ struct TestRow {
 
 using namespace nark::db;
 
-void doTest(CompositeTablePtr tab, nark::fstring dbDir) {
+void doTest(CompositeTablePtr tab, PathRef dbDir) {
 	using namespace nark;
 	tab->load(dbDir);
 	DbContextPtr ctx(tab->createDbContext());
@@ -82,7 +82,6 @@ void doTest(CompositeTablePtr tab, nark::fstring dbDir) {
 		for (size_t indexId = 0; indexId < tab->m_schema->getIndexNum(); ++indexId) {
 			IndexIteratorPtr indexIter = tab->createIndexIterForward(indexId);
 			const Schema& indexSchema = tab->m_schema->getIndexSchema(indexId);
-			std::string indexName = indexSchema.joinColumnNames();
 			std::string keyData;
 			for (size_t i = 0; i < maxRowNum/5; ++i) {
 				llong keyInt = rand() % (maxRowNum * 11 / 10);

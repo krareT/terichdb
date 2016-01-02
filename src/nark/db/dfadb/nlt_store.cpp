@@ -7,6 +7,8 @@
 
 namespace nark { namespace db { namespace dfadb {
 
+NARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
+
 NestLoudsTrieStore::NestLoudsTrieStore() {
 }
 NestLoudsTrieStore::~NestLoudsTrieStore() {
@@ -40,8 +42,10 @@ void NestLoudsTrieStore::build(SortableStrVec& strVec) {
 	m_store->build_from(strVec, conf);
 }
 
-void NestLoudsTrieStore::load(fstring path) {
-	std::string fpath = path.endsWith(".nlt") ? path.str() : path + ".nlt";
+void NestLoudsTrieStore::load(PathRef path) {
+	std::string fpath = fstring(path.string()).endsWith(".nlt")
+					  ? path.string()
+					  : path.string() + ".nlt";
 	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(fpath.c_str()));
 	m_store.reset(dynamic_cast<NestLoudsTrieDataStore_SE_512*>(dfa.get()));
 	if (m_store) {
@@ -49,8 +53,10 @@ void NestLoudsTrieStore::load(fstring path) {
 	}
 }
 
-void NestLoudsTrieStore::save(fstring path) const {
-	std::string fpath = path.endsWith(".nlt") ? path.str() : path + ".nlt";
+void NestLoudsTrieStore::save(PathRef path) const {
+	std::string fpath = fstring(path.string()).endsWith(".nlt")
+					  ? path.string()
+					  : path.string() + ".nlt";
 	m_store->save_mmap(fpath.c_str());
 }
 

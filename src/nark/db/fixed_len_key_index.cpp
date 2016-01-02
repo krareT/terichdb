@@ -149,9 +149,9 @@ namespace {
 	};
 }
 
-void FixedLenKeyIndex::load(fstring path) {
-	std::string fpath = path + ".fixlen";
-	m_mmapBase = (byte_t*)mmap_load(fpath.c_str(), &m_mmapSize);
+void FixedLenKeyIndex::load(PathRef path) {
+	auto fpath = path + ".fixlen";
+	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize);
 	auto h = (const Header*)m_mmapBase;
 	m_isUnique = h->uniqKeys == h->rows;
 	m_uniqKeys = h->uniqKeys;
@@ -163,10 +163,10 @@ void FixedLenKeyIndex::load(fstring path) {
 	m_index.risk_set_data((byte*)(h+1) + keyMemSize, h->rows, rbits);
 }
 
-void FixedLenKeyIndex::save(fstring path) const {
-	std::string fpath = path + ".fixlen";
+void FixedLenKeyIndex::save(PathRef path) const {
+	auto fpath = path + ".fixlen";
 	NativeDataOutput<FileStream> dio;
-	dio.open(fpath.c_str(), "wb");
+	dio.open(fpath.string().c_str(), "wb");
 	Header h;
 	h.rows     = uint32_t(m_index.size());
 	h.uniqKeys = m_uniqKeys;

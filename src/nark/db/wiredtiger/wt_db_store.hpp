@@ -10,8 +10,8 @@ class NARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore {
 public:
 	llong m_dataSize;
 
-	void save(fstring) const override;
-	void load(fstring) override;
+	void save(PathRef) const override;
+	void load(PathRef) override;
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;

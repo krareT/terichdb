@@ -18,18 +18,8 @@ DfaDbReadonlySegment::DfaDbReadonlySegment() {
 DfaDbReadonlySegment::~DfaDbReadonlySegment() {
 }
 
-ReadableStore*
-DfaDbReadonlySegment::openStore(const Schema& schema, fstring path) const {
-	if (boost::filesystem::exists(path + ".nlt")) {
-		std::unique_ptr<NestLoudsTrieStore> store(new NestLoudsTrieStore());
-		store->load(path);
-		return store.release();
-	}
-	return ReadonlySegment::openStore(schema, path);
-}
-
 ReadableIndex*
-DfaDbReadonlySegment::openIndex(const Schema& schema, fstring path) const {
+DfaDbReadonlySegment::openIndex(const Schema& schema, PathRef path) const {
 	if (boost::filesystem::exists(path + ".nlt")) {
 		std::unique_ptr<NestLoudsTrieIndex> store(new NestLoudsTrieIndex());
 		store->load(path);
@@ -75,7 +65,7 @@ const {
 	if (!store) {
 		std::unique_ptr<NestLoudsTrieStore> nltStore(new NestLoudsTrieStore());
 		if (storeData.m_index.size() == 0) {
-			const size_t fixlen = m_schema->m_nonIndexRowSchema->getFixedRowLen();
+			const size_t fixlen = schema.getFixedRowLen();
 			assert(fixlen > 0);
 			patchStrVec(storeData, fixlen);
 		}

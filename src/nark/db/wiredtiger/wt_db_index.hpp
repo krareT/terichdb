@@ -23,8 +23,8 @@ class NARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
 	WT_CURSOR* getCursor(DbContext*, bool writable) const;
 public:
 	explicit WtWritableIndex(bool isUnique);
-	void save(fstring) const override;
-	void load(fstring) override;
+	void save(PathRef) const override;
+	void load(PathRef) override;
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;

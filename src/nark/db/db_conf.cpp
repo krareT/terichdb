@@ -98,6 +98,9 @@ void Schema::compile(const Schema* parent) {
 			break;
 		}
 	}
+	if (m_name.empty()) {
+		m_name = joinColumnNames();
+	}
 }
 
 void Schema::parseRow(fstring row, valvec<fstring>* columns) const {
@@ -268,7 +271,9 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 	}
 }
 
-void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const {
+void
+Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData)
+const {
 	assert(size_t(-1) != m_fixedLen);
 	assert(myCols.size() == m_columnsMeta.end_i());
 	myRowData->erase_all();
@@ -360,7 +365,9 @@ void Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) 
 	}
 }
 
-void Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const {
+void
+Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData)
+const {
 	assert(nullptr != m_parent);
 	assert(m_proj.size() == m_columnsMeta.end_i());
 	assert(m_parent->columnNum() == parentCols.size());
@@ -598,7 +605,9 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 	}
 }
 
-size_t Schema::parseDelimText(char delim, fstring text, valvec<byte>* row) const {
+size_t
+Schema::parseDelimText(char delim, fstring text, valvec<byte>* row)
+const {
 	const char* beg = text.begin();
 	const char* end = text.end();
 	const char* pos = beg;

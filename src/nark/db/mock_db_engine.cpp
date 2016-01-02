@@ -3,11 +3,12 @@
 #include <nark/io/StreamBuffer.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/util/sortable_strvec.hpp>
-#include <boost/filesystem.hpp>
 
 namespace nark { namespace db {
 
 namespace fs = boost::filesystem;
+
+NARK_DB_REGISTER_STORE("mock", MockReadonlyStore);
 
 llong MockReadonlyStore::dataStorageSize() const {
 	return m_rows.used_mem_size();
@@ -69,9 +70,9 @@ void MockReadonlyStore::build(const Schema& schema, SortableStrVec& data) {
 	m_fixedLen = fixlen;
 }
 
-void MockReadonlyStore::save(fstring path1) const {
-	fs::path fpath = path1.c_str();
-	FileStream fp(fpath.string().c_str(), "wb");
+void MockReadonlyStore::save(PathRef path) const {
+	std::string fpath = path.string() + ".mock";
+	FileStream fp(fpath.c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
 	size_t rows = m_fixedLen ? m_rows.strpool.size() / m_fixedLen : m_rows.size();
@@ -91,8 +92,7 @@ void MockReadonlyStore::save(fstring path1) const {
 	}
 	dio.ensureWrite(m_rows.strpool.data(), m_rows.strpool.used_mem_size());
 }
-void MockReadonlyStore::load(fstring path1) {
-	fs::path fpath = path1.c_str();
+void MockReadonlyStore::load(PathRef fpath) {
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
@@ -342,8 +342,7 @@ MockReadonlyIndex::build(SortableStrVec& keys) {
 	m_fixedLen = fixlen;
 }
 
-void MockReadonlyIndex::save(fstring path1) const {
-	fs::path fpath = path1.c_str();
+void MockReadonlyIndex::save(PathRef fpath) const {
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
@@ -362,8 +361,7 @@ void MockReadonlyIndex::save(fstring path1) const {
 	dio.ensureWrite(m_keys.strpool.data(), m_keys.strpool.used_mem_size());
 }
 
-void MockReadonlyIndex::load(fstring path1) {
-	fs::path fpath = path1.c_str();
+void MockReadonlyIndex::load(PathRef fpath) {
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
@@ -436,6 +434,10 @@ llong MockReadonlyIndex::indexStorageSize() const {
 	return m_ids.used_mem_size() + m_keys.offsets.used_mem_size();
 }
 
+const ReadableIndex* MockReadonlyIndex::getReadableIndex() const {
+	return this;
+}
+
 const ReadableStore* MockReadonlyIndex::getReadableStore() const {
 	return this;
 }
@@ -495,15 +497,13 @@ public:
 	}
 };
 
-void MockWritableStore::save(fstring path1) const {
-	fs::path fpath = path1.c_str();
+void MockWritableStore::save(PathRef fpath) const {
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
 	dio << m_rows;
 }
-void MockWritableStore::load(fstring path1) {
-	fs::path fpath = path1.c_str();
+void MockWritableStore::load(PathRef fpath) {
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
@@ -678,16 +678,14 @@ IndexIterator* MockWritableIndex<Key>::createIndexIterBackward(DbContext*) const
 }
 
 template<class Key>
-void MockWritableIndex<Key>::save(fstring path1) const {
-	fs::path fpath = path1.c_str();
+void MockWritableIndex<Key>::save(PathRef fpath) const {
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
 	dio << m_kv;
 }
 template<class Key>
-void MockWritableIndex<Key>::load(fstring path1) {
-	fs::path fpath = path1.c_str();
+void MockWritableIndex<Key>::load(PathRef fpath) {
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
@@ -764,22 +762,8 @@ MockReadonlySegment::MockReadonlySegment() {
 MockReadonlySegment::~MockReadonlySegment() {
 }
 
-ReadableStore*
-MockReadonlySegment::openStore(const Schema& schema, fstring path) const {
-	// Mock just use one kind of data store
-//	FileStream fp(path.c_str(), "rb");
-//	fp.disbuf();
-//	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
-	std::unique_ptr<ReadableStore> store(ReadonlySegment::openStore(schema, path));
-	if (!store) {
-		store.reset(new MockReadonlyStore());
-		store->load(path);
-	}
-	return store.release();
-}
-
 ReadableIndex*
-MockReadonlySegment::openIndex(const Schema& schema, fstring path) const {
+MockReadonlySegment::openIndex(const Schema& schema, PathRef path) const {
 	std::unique_ptr<ReadableIndex> store(ReadonlySegment::openIndex(schema, path));
 	if (!store) {
 		store.reset(new MockReadonlyIndex(schema));
@@ -809,8 +793,8 @@ const {
 }
 
 ///////////////////////////////////////////////////////////////////////////
-MockWritableSegment::MockWritableSegment(fstring dir) {
-	m_segDir = dir.str();
+MockWritableSegment::MockWritableSegment(PathRef dir) {
+	m_segDir = dir;
 	m_dataSize = 0;
 }
 MockWritableSegment::~MockWritableSegment() {
@@ -818,18 +802,16 @@ MockWritableSegment::~MockWritableSegment() {
 		this->save(m_segDir);
 }
 
-void MockWritableSegment::saveRecordStore(fstring dir) const {
-	fs::path fpath = dir.c_str();
-	fpath /= "rows";
+void MockWritableSegment::saveRecordStore(PathRef dir) const {
+	fs::path fpath = dir / "rows";
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
 	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
 	dio << m_rows;
 }
 
-void MockWritableSegment::loadRecordStore(fstring dir) {
-	fs::path fpath = dir.c_str();
-	fpath /= "/rows";
+void MockWritableSegment::loadRecordStore(PathRef dir) {
+	fs::path fpath = dir / "rows";
 	FileStream fp(fpath.string().c_str(), "rb");
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
@@ -837,7 +819,7 @@ void MockWritableSegment::loadRecordStore(fstring dir) {
 }
 
 ReadableIndex*
-MockWritableSegment::openIndex(const Schema& schema, fstring path) const {
+MockWritableSegment::openIndex(const Schema& schema, PathRef path) const {
 	std::unique_ptr<ReadableIndex> index(createIndex(schema, path));
 	index->load(path);
 	return index.release();
@@ -902,7 +884,7 @@ void MockWritableSegment::clear() {
 }
 
 ReadableIndex*
-MockWritableSegment::createIndex(const Schema& schema, fstring) const {
+MockWritableSegment::createIndex(const Schema& schema, PathRef) const {
 	if (schema.columnNum() == 1) {
 		ColumnMeta cm = schema.getColumnMeta(0);
 #define CASE_COL_TYPE(Enum, Type) \
@@ -938,20 +920,20 @@ DbContext* MockCompositeTable::createDbContext() const {
 }
 
 ReadonlySegment*
-MockCompositeTable::createReadonlySegment(fstring dir) const {
+MockCompositeTable::createReadonlySegment(PathRef dir) const {
 	std::unique_ptr<MockReadonlySegment> seg(new MockReadonlySegment());
 	return seg.release();
 }
 
 WritableSegment*
-MockCompositeTable::createWritableSegment(fstring dir) const {
+MockCompositeTable::createWritableSegment(PathRef dir) const {
 	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment(dir));
 	return seg.release();
 }
 
 WritableSegment*
-MockCompositeTable::openWritableSegment(fstring dir) const {
-	auto isDelPath = boost::filesystem::path(dir.str()) / "isDel";
+MockCompositeTable::openWritableSegment(PathRef dir) const {
+	auto isDelPath = dir / "isDel";
 	if (boost::filesystem::exists(isDelPath)) {
 		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 		seg->m_schema = this->m_schema;

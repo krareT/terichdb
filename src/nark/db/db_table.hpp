@@ -22,9 +22,9 @@ public:
 	CompositeTable();
 	~CompositeTable();
 
-	void createTable(fstring dir, SegmentSchemaPtr schema);
-	void load(fstring dir) override;
-	void save(fstring dir) const override;
+	void createTable(PathRef dir, SegmentSchemaPtr schema);
+	void load(PathRef dir) override;
+	void save(PathRef dir) const override;
 
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
@@ -74,19 +74,15 @@ protected:
 	bool replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
 	bool replaceSyncIndex(llong newSubId, DbContext*, MyRwLock&);
 
-	fstring getSegPath(fstring type, size_t segIdx, AutoGrownMemIO& buf) const;
-	fstring getSegPath2(fstring dir, fstring type, size_t segIdx, AutoGrownMemIO& buf) const;
+	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
+	boost::filesystem::path getSegPath2(PathRef dir, const char* type, size_t segIdx) const;
 
-#if defined(NARK_DB_ENABLE_DFA_META)
-	void saveMetaDFA(fstring dir) const;
-	void loadMetaDFA(fstring dir);
-#endif
-	virtual ReadonlySegment* createReadonlySegment(fstring segDir) const = 0;
-	virtual WritableSegment* createWritableSegment(fstring segDir) const = 0;
-	virtual WritableSegment* openWritableSegment(fstring segDir) const = 0;
+	virtual ReadonlySegment* createReadonlySegment(PathRef segDir) const = 0;
+	virtual WritableSegment* createWritableSegment(PathRef segDir) const = 0;
+	virtual WritableSegment* openWritableSegment(PathRef segDir) const = 0;
 
-	ReadonlySegment* myCreateReadonlySegment(fstring segDir) const;
-	WritableSegment* myCreateWritableSegment(fstring segDir) const;
+	ReadonlySegment* myCreateReadonlySegment(PathRef segDir) const;
+	WritableSegment* myCreateWritableSegment(PathRef segDir) const;
 
 public:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
@@ -99,7 +95,7 @@ protected:
 	llong m_readonlyDataMemSize;
 
 	// constant once constructed
-	std::string m_dir;
+	boost::filesystem::path m_dir;
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
 	bool m_tobeDrop;

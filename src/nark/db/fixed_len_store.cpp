@@ -6,6 +6,8 @@
 
 namespace nark { namespace db {
 
+NARK_DB_REGISTER_STORE("fixlen", FixedLenStore);
+
 FixedLenStore::FixedLenStore() {
 	m_mmapBase = nullptr;
 	m_mmapSize = 0;
@@ -61,9 +63,9 @@ namespace {
 	};
 }
 
-void FixedLenStore::load(fstring path) {
-	std::string fpath = path + ".fixlen";
-	m_mmapBase = (byte_t*)mmap_load(fpath.c_str(), &m_mmapSize);
+void FixedLenStore::load(PathRef fpath) {
+	assert(fstring(fpath.string()).endsWith(".zint"));
+	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize);
 	auto h = (const Header*)m_mmapBase;
 	m_fixedLen = h->fixlen;
 	m_rows     = h->rows;
@@ -71,10 +73,10 @@ void FixedLenStore::load(fstring path) {
 	m_keys.risk_set_data((byte*)(h+1) , keyMemSize);
 }
 
-void FixedLenStore::save(fstring path) const {
-	std::string fpath = path + ".fixlen";
+void FixedLenStore::save(PathRef path) const {
+	auto fpath = path + ".fixlen";
 	NativeDataOutput<FileStream> dio;
-	dio.open(fpath.c_str(), "wb");
+	dio.open(fpath.string().c_str(), "wb");
 	Header h;
 	h.rows     = uint32_t(m_rows);
 	h.fixlen   = m_fixedLen;

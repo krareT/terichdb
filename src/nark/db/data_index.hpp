@@ -58,7 +58,7 @@ public:
 	///@}
 
 	/// ReadableIndex can be a ReadableStore
-	virtual const class ReadableStore* getReadableStore() const;
+	virtual const ReadableStore* getReadableStore() const;
 
 	/// ReadableIndex can be a WritableIndex
 	virtual class WritableIndex* getWritableIndex();

@@ -35,7 +35,7 @@ public:
 	valvec<byte> row2;
 	valvec<byte> key1;
 	valvec<byte> key2;
-	valvec<size_t> offsets;
+	valvec<uint32_t> offsets;
 	valvec<fstring> cols1;
 	valvec<fstring> cols2;
 	bool syncIndex;

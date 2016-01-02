@@ -4,6 +4,7 @@
 #include "data_index.hpp"
 #include "data_store.hpp"
 #include <nark/bitmap.hpp>
+//#include <boost/filesystem.hpp>
 
 namespace nark {
 	class SortableStrVec;
@@ -16,9 +17,9 @@ public:
 	struct Colproject {
 		uint32_t isIndexCol :  1;
 		uint32_t colgroupId : 31;
+		uint32_t subColumnId;
 	};
 	SchemaPtr     m_rowSchema;
-	SchemaPtr     m_nonIndexRowSchema; // full-row schema except columns in indices
 	SchemaSetPtr  m_indexSchemaSet;
 	SchemaSetPtr  m_colgroupSchemaSet;
 	valvec<Colproject> m_colproject; // parallel with m_rowSchema
@@ -77,6 +78,11 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
+	void load(PathRef segDir) override;
+	void save(PathRef segDir) const override;
+
+	void syncRowNumVec();
+
 //	SchemaPtr     m_schema;
 	valvec<llong> m_rowNumVec;  // parallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
@@ -93,11 +99,11 @@ public:
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableIndex* openIndex(const Schema&, fstring path) const = 0;
+	virtual ReadableIndex* openIndex(const Schema&, PathRef path) const = 0;
 
 	///@ if segDir==m_segDir, it is a flush
-	virtual void loadRecordStore(fstring segDir) = 0;
-	virtual void saveRecordStore(fstring segDir) const = 0;
+	virtual void loadRecordStore(PathRef segDir) = 0;
+	virtual void saveRecordStore(PathRef segDir) const = 0;
 
 	virtual void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext*) const = 0;
@@ -109,26 +115,25 @@ public:
 			createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
 			const = 0;
 
-	void openIndices(fstring dir);
-	void saveIndices(fstring dir) const;
+	void openIndices(PathRef dir);
+	void saveIndices(PathRef dir) const;
 	llong totalIndexSize() const;
 
-	void saveIsDel(fstring segDir) const;
-	void loadIsDel(fstring segDir);
+	void saveIsDel(PathRef segDir) const;
+	void loadIsDel(PathRef segDir);
 	void unmapIsDel();
 
 	void deleteSegment();
 
-	void load(fstring segDir) override;
-	void save(fstring segDir) const override;
+	void load(PathRef segDir) override;
+	void save(PathRef segDir) const override;
 
 	SegmentSchemaPtr         m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
-	valvec<ReadableStorePtr> m_colgroups;
 	size_t      m_delcnt;
 	febitvec    m_isDel;
 	byte*       m_isDelMmap = nullptr;
-	std::string m_segDir;
+	boost::filesystem::path m_segDir;
 	bool        m_tobeDel;
 	bool        m_isDirty;
 };
@@ -162,8 +167,7 @@ public:
 	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
 	void convFrom(const ReadableSegment& input, DbContext* ctx);
 
-	void getValueImpl(size_t partIdx, size_t id,
-					  valvec<byte>* val, DbContext*) const;
+	void getValueImpl(size_t id, valvec<byte>* val, DbContext*) const;
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
@@ -179,12 +183,7 @@ public:
 protected:
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableIndex* openIndex(const Schema&, fstring path) const = 0;
-
-	// Store can use different implementation for different data
-	// According to data content features
-	// store could be a column store
-	virtual ReadableStore* openStore(const Schema&, fstring path) const = 0;
+	virtual ReadableIndex* openIndex(const Schema&, PathRef path) const = 0;
 
 	virtual ReadableIndex*
 			buildIndex(const Schema&, SortableStrVec& indexData)
@@ -194,17 +193,16 @@ protected:
 			buildStore(const Schema&, SortableStrVec& storeData)
 			const = 0;
 
-	void loadRecordStore(fstring segDir) override;
-	void saveRecordStore(fstring segDir) const override;
+	void loadRecordStore(PathRef segDir) override;
+	void saveRecordStore(PathRef segDir) const override;
 
 protected:
 	class MyStoreIterForward;  friend class MyStoreIterForward;
 	class MyStoreIterBackward; friend class MyStoreIterBackward;
-	valvec<llong> m_rowNumVec;  // parallel with m_parts
-	valvec<ReadableStorePtr> m_parts; // partition of row set
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
 	size_t m_maxPartDataSize;
+	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
@@ -219,7 +217,7 @@ public:
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableIndex* createIndex(const Schema&, fstring path) const = 0;
+	virtual ReadableIndex* createIndex(const Schema&, PathRef path) const = 0;
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
@@ -257,13 +255,12 @@ protected:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	void loadRecordStore(fstring segDir) override;
-	void saveRecordStore(fstring segDir) const override;
+	void loadRecordStore(PathRef segDir) override;
+	void saveRecordStore(PathRef segDir) const override;
 
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
-	ReadableStorePtr m_nonIndexStore;
 	class MyStoreIterForward;  friend class MyStoreIterForward;
 	class MyStoreIterBackward; friend class MyStoreIterBackward;
 };

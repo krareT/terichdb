@@ -9,7 +9,6 @@
 #include <nark/lcast.hpp>
 #include <nark/util/fstrvec.hpp>
 #include <nark/util/sortable_strvec.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/scope_exit.hpp>
 #include <thread>
 
@@ -24,6 +23,8 @@ const size_t DEFAULT_maxSegNum = 4095;
 CompositeTable::CompositeTable() {
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
+	m_segments.reserve(DEFAULT_maxSegNum);
+	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
 }
 
 CompositeTable::~CompositeTable() {
@@ -34,7 +35,7 @@ CompositeTable::~CompositeTable() {
 }
 
 void
-CompositeTable::createTable(fstring dir, SegmentSchemaPtr schema) {
+CompositeTable::createTable(PathRef dir, SegmentSchemaPtr schema) {
 	assert(!dir.empty());
 	assert(schema->columnNum() > 0);
 	assert(schema->getIndexNum() > 0);
@@ -43,18 +44,15 @@ CompositeTable::createTable(fstring dir, SegmentSchemaPtr schema) {
 			long(m_segments.size()));
 	}
 	m_schema = schema;
-	m_dir = dir.str();
+	m_dir = dir;
 
-	AutoGrownMemIO buf;
-	m_wrSeg = this->myCreateWritableSegment(getSegPath("wr", 0, buf));
-	m_segments.reserve(DEFAULT_maxSegNum);
-	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
+	m_wrSeg = this->myCreateWritableSegment(getSegPath("wr", 0));
 	m_segments.push_back(m_wrSeg);
 	m_rowNumVec.erase_all();
 	m_rowNumVec.push_back(0);
 }
 
-void CompositeTable::load(fstring dir) {
+void CompositeTable::load(PathRef dir) {
 	if (!m_segments.empty()) {
 		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
 			long(m_segments.size()));
@@ -63,7 +61,7 @@ void CompositeTable::load(fstring dir) {
 		THROW_STD(invalid_argument, "Invalid: schema.columnNum=%ld is not empty",
 			long(m_schema->columnNum()));
 	}
-	m_dir = dir.str();
+	m_dir = dir;
 	{
 		fs::path jsonFile = fs::path(m_dir) / "dbmeta.json";
 		m_schema.reset(new SegmentSchema());
@@ -113,19 +111,18 @@ void CompositeTable::load(fstring dir) {
 	}
 	for (size_t i = 0; i < m_segments.size(); ++i) {
 		if (m_segments[i] == nullptr) {
-			AutoGrownMemIO buf;
 			THROW_STD(invalid_argument, "ERROR: missing segment: %s\n",
-				getSegPath("xx", i, buf).c_str());
+				getSegPath("xx", i).string().c_str());
 		}
 	}
-	fprintf(stderr, "INFO: CompositeTable::load(%.*s): loaded %zd segs\n",
-		dir.ilen(), dir.c_str(), m_segments.size());
+	fprintf(stderr, "INFO: CompositeTable::load(%s): loaded %zd segs\n",
+		dir.string().c_str(), m_segments.size());
 	if (m_segments.size() == 0 || !m_segments.back()->getWritableStore()) {
 		// THROW_STD(invalid_argument, "no any segment found");
 		// allow user create an table dir which just contains json meta file
 		AutoGrownMemIO buf;
 		size_t segIdx = m_segments.size();
-		m_wrSeg = myCreateWritableSegment(getSegPath("wr", segIdx, buf));
+		m_wrSeg = myCreateWritableSegment(getSegPath("wr", segIdx));
 		m_segments.push_back(m_wrSeg);
 	}
 	else {
@@ -460,9 +457,8 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 			}
 			// createWritableSegment should be fast, other wise the lock time
 			// may be too long
-			AutoGrownMemIO buf(512);
 			size_t newSegIdx = m_segments.size();
-			m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx, buf));
+			m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
 			m_segments.push_back(m_wrSeg);
 			llong newMaxRowNum = m_rowNumVec.back();
 			m_rowNumVec.push_back(newMaxRowNum);
@@ -478,24 +474,24 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 }
 
 ReadonlySegment*
-CompositeTable::myCreateReadonlySegment(fstring segDir) const {
+CompositeTable::myCreateReadonlySegment(PathRef segDir) const {
 	std::unique_ptr<ReadonlySegment> seg(createReadonlySegment(segDir));
-	seg->m_segDir = segDir.str();
+	seg->m_segDir = segDir;
 	seg->m_schema = this->m_schema;
 	return seg.release();
 }
 
 WritableSegment*
-CompositeTable::myCreateWritableSegment(fstring segDir) const {
+CompositeTable::myCreateWritableSegment(PathRef segDir) const {
 	fs::create_directories(segDir.c_str());
 	std::unique_ptr<WritableSegment> seg(createWritableSegment(segDir));
-	seg->m_segDir = segDir.str();
+	seg->m_segDir = segDir;
+	seg->m_schema = this->m_schema;
 	if (seg->m_indices.empty()) {
 		seg->m_indices.resize(m_schema->getIndexNum());
 		for (size_t i = 0; i < seg->m_indices.size(); ++i) {
 			const Schema& schema = m_schema->getIndexSchema(i);
-			std::string colnames = schema.joinColumnNames(',');
-			std::string indexPath = segDir + "/index-" + colnames;
+			auto indexPath = segDir + "/index-" + schema.m_name;
 			seg->m_indices[i] = seg->createIndex(schema, indexPath);
 		}
 	}
@@ -577,7 +573,7 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn) 
 			if (rIndex->exists(txn->key1, txn)) {
 				// std::move makes it no temps
 				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
-							+ ", in freezen seg: " + seg->m_segDir;
+							+ ", in freezen seg: " + seg->m_segDir.string();
 			//	txn->errMsg += ", rowData=";
 			//	txn->errMsg += m_schema->m_rowSchema->toJsonStr(row);
 				return false;
@@ -598,7 +594,7 @@ bool CompositeTable::insertSyncIndex(llong subId, DbContext* txn) {
 		iSchema.selectParent(txn->cols1, &txn->key1);
 		if (!wrIndex->getWritableIndex()->insert(txn->key1, subId, txn)) {
 			txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
-						+ ", in writing seg: " + m_wrSeg->m_segDir;
+						+ ", in writing seg: " + m_wrSeg->m_segDir.string();
 			goto Fail;
 		}
 	}
@@ -707,7 +703,7 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn)
 			if (rIndex->exists(txn->key1, txn)) {
 				// std::move makes it no temps
 				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
-							+ ", in freezen seg: " + seg->m_segDir;
+							+ ", in freezen seg: " + seg->m_segDir.string();
 			//	txn->errMsg += ", rowData=";
 			//	txn->errMsg += m_rowSchema->toJsonStr(row);
 				return false;
@@ -865,9 +861,8 @@ CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 	auto wrIndex = seg->m_indices[indexId]->getWritableIndex();
 	if (!wrIndex) {
 		// readonly segment must have been indexed
-		AutoGrownMemIO buf;
 		fprintf(stderr, "indexInsert on readonly %s, ignored",
-			getSegPath("rd", upp-1, buf).c_str());
+			getSegPath("rd", upp-1).string().c_str());
 		return true;
 	}
 	llong wrBaseId = m_rowNumVec[upp-1];
@@ -894,9 +889,8 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 	auto wrIndex = seg->m_indices[indexId]->getWritableIndex();
 	if (!wrIndex) {
 		// readonly segment must have been indexed
-		AutoGrownMemIO buf;
 		fprintf(stderr, "indexRemove on readonly %s, ignored",
-			getSegPath("rd", upp-1, buf).c_str());
+			getSegPath("rd", upp-1).string().c_str());
 		return true;
 	}
 	llong wrBaseId = m_rowNumVec[upp-1];
@@ -1234,7 +1228,6 @@ IndexIteratorPtr CompositeTable::createIndexIterBackward(fstring indexCols) cons
 }
 
 bool CompositeTable::compact() {
-	AutoGrownMemIO buf(1024);
 	size_t firstWrSegIdx, lastWrSegIdx;
 	fstring dirBaseName;
 	DbContextPtr ctx(createDbContext());
@@ -1267,7 +1260,7 @@ bool CompositeTable::compact() {
 			MyRwLock lock(m_rwMutex, false);
 			srcSeg = m_segments[segIdx];
 		}
-		fstring segDir = getSegPath("rd", segIdx, buf);
+		auto segDir = getSegPath("rd", segIdx);
 		ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
 		newSeg->convFrom(*srcSeg, &*ctx);
 		{
@@ -1321,25 +1314,26 @@ std::string CompositeTable::toJsonStr(fstring row) const {
 	return m_schema->m_rowSchema->toJsonStr(row);
 }
 
-fstring
-CompositeTable::getSegPath(fstring type, size_t segIdx, AutoGrownMemIO& buf)
+boost::filesystem::path
+CompositeTable::getSegPath(const char* type, size_t segIdx)
 const {
-	return getSegPath2(m_dir, type, segIdx, buf);
+	return getSegPath2(m_dir, type, segIdx);
 }
 
-fstring
-CompositeTable::getSegPath2(fstring dir, fstring type, size_t segIdx,
-							AutoGrownMemIO& buf)
+boost::filesystem::path
+CompositeTable::getSegPath2(PathRef dir, const char* type, size_t segIdx)
 const {
-	buf.rewind();
-	size_t len = buf.printf("%s/%s-%04ld",
-			dir.c_str(), type.c_str(), long(segIdx));
-	return fstring(buf.c_str(), len);
+	auto res = dir;
+	char szNum[32];
+	int len = snprintf(szNum, sizeof(szNum), "-%04ld", long(segIdx));
+	res /= type;
+	res += szNum;
+	return res;
 }
 
-void CompositeTable::save(fstring dir) const {
+void CompositeTable::save(PathRef dir) const {
 	if (dir == m_dir) {
-		fprintf(stderr, "WARN: save self(%s), skipped\n", dir.c_str());
+		fprintf(stderr, "WARN: save self(%s), skipped\n", dir.string().c_str());
 		return;
 	}
 	MyRwLock lock(m_rwMutex, true);
@@ -1357,9 +1351,9 @@ void CompositeTable::save(fstring dir) const {
 	for (size_t segIdx = 0; segIdx < segNum-1; ++segIdx) {
 		auto seg = m_segments[segIdx];
 		if (seg->getWritableStore())
-			seg->save(getSegPath2(dir, "wr", segIdx, buf));
+			seg->save(getSegPath2(dir, "wr", segIdx));
 		else
-			seg->save(getSegPath2(dir, "rd", segIdx, buf));
+			seg->save(getSegPath2(dir, "rd", segIdx));
 	}
 
 	// save the remained segments, new segment may created during
@@ -1369,10 +1363,10 @@ void CompositeTable::save(fstring dir) const {
 	for (size_t segIdx = segNum-1; segIdx < segNum2; ++segIdx) {
 		auto seg = m_segments[segIdx];
 		assert(seg->getWritableStore());
-		seg->save(getSegPath2(dir, "wr", segIdx, buf));
+		seg->save(getSegPath2(dir, "wr", segIdx));
 	}
 	lock.upgrade_to_writer();
-	fs::path jsonFile = fs::path(dir.str()) / "dbmeta.json";
+	fs::path jsonFile = dir / "dbmeta.json";
 	m_schema->saveJsonFile(jsonFile.string());
 }
 

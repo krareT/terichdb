@@ -206,6 +206,10 @@ WritableIndex*
 SeqNumIndex<Int>::getWritableIndex() { return this; }
 
 template<class Int>
+const ReadableIndex*
+SeqNumIndex<Int>::getReadableIndex() const { return this; }
+
+template<class Int>
 const ReadableStore*
 SeqNumIndex<Int>::getReadableStore() const { return this; }
 

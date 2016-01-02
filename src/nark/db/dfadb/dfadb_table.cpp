@@ -20,20 +20,20 @@ DbContext* DfaDbTable::createDbContext() const {
 }
 
 ReadonlySegment*
-DfaDbTable::createReadonlySegment(fstring dir) const {
+DfaDbTable::createReadonlySegment(PathRef dir) const {
 	std::unique_ptr<DfaDbReadonlySegment> seg(new DfaDbReadonlySegment());
 	return seg.release();
 }
 
 WritableSegment*
-DfaDbTable::createWritableSegment(fstring dir) const {
+DfaDbTable::createWritableSegment(PathRef dir) const {
 	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment(dir));
 	return seg.release();
 }
 
 WritableSegment*
-DfaDbTable::openWritableSegment(fstring dir) const {
-	auto isDelPath = boost::filesystem::path(dir.str()) / "isDel";
+DfaDbTable::openWritableSegment(PathRef dir) const {
+	auto isDelPath = dir / "isDel";
 	if (boost::filesystem::exists(isDelPath)) {
 		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 		seg->m_schema = this->m_schema;

@@ -51,9 +51,9 @@ public:
 	}
 };
 
-void WtWritableStore::save(fstring path1) const {
+void WtWritableStore::save(PathRef path1) const {
 }
-void WtWritableStore::load(fstring path1) {
+void WtWritableStore::load(PathRef path1) {
 }
 
 llong WtWritableStore::dataStorageSize() const {

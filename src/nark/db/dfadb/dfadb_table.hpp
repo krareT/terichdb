@@ -20,9 +20,9 @@ public:
 class NARK_DB_DLL DfaDbTable : public CompositeTable {
 public:
 	DbContext* createDbContext() const override;
-	ReadonlySegment* createReadonlySegment(fstring dir) const override;
-	WritableSegment* createWritableSegment(fstring dir) const override;
-	WritableSegment* openWritableSegment(fstring dir) const override;
+	ReadonlySegment* createReadonlySegment(PathRef dir) const override;
+	WritableSegment* createWritableSegment(PathRef dir) const override;
+	WritableSegment* openWritableSegment(PathRef dir) const override;
 };
 
 }}} // namespace nark::db::dfadb
