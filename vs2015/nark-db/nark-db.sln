@@ -27,6 +27,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "narkdb_dump", "narkdb_dump\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "divsufsort", "..\..\..\nark\3rdparty\libdivsufsort\vs2015\lib\divsufsort.vcxproj", "{B8337ACA-FFDC-4AB3-A36E-2571BED388E6}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mongo-narkdb", "mongo-narkdb\mongo-narkdb.vcxproj", "{DD4CC6F3-7D80-4531-86AA-88A4C710522B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -199,6 +201,22 @@ Global
 		{B8337ACA-FFDC-4AB3-A36E-2571BED388E6}.RelWithDebInfo|x64.Build.0 = RelWithDebInfo|x64
 		{B8337ACA-FFDC-4AB3-A36E-2571BED388E6}.RelWithDebInfo|x86.ActiveCfg = RelWithDebInfo|Win32
 		{B8337ACA-FFDC-4AB3-A36E-2571BED388E6}.RelWithDebInfo|x86.Build.0 = RelWithDebInfo|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Debug|x64.ActiveCfg = Debug|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Debug|x64.Build.0 = Debug|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Debug|x86.ActiveCfg = Debug|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Debug|x86.Build.0 = Debug|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.MinSizeRel|x64.ActiveCfg = Release|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.MinSizeRel|x64.Build.0 = Release|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.MinSizeRel|x86.ActiveCfg = Release|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.MinSizeRel|x86.Build.0 = Release|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Release|x64.ActiveCfg = Release|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Release|x64.Build.0 = Release|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Release|x86.ActiveCfg = Release|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.Release|x86.Build.0 = Release|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.RelWithDebInfo|x64.ActiveCfg = Release|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.RelWithDebInfo|x64.Build.0 = Release|x64
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.RelWithDebInfo|x86.ActiveCfg = Release|Win32
+		{DD4CC6F3-7D80-4531-86AA-88A4C710522B}.RelWithDebInfo|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
