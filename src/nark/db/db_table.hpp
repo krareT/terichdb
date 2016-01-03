@@ -4,10 +4,6 @@
 #include "db_segment.hpp"
 #include <tbb/queuing_rw_mutex.h>
 
-namespace nark {
-	class AutoGrownMemIO;
-}
-
 namespace nark { namespace db {
 
 typedef tbb::queuing_rw_mutex              MyRwMutex;
@@ -22,7 +18,17 @@ public:
 	CompositeTable();
 	~CompositeTable();
 
-	void createTable(PathRef dir, SegmentSchemaPtr schema);
+	struct RegisterTableClass {
+		RegisterTableClass(fstring clazz, const std::function<CompositeTable*()>& f);
+	};
+#define NARK_DB_REGISTER_TABLE_CLASS(TableClass) \
+	static CompositeTable::RegisterTableClass \
+		regTable_##TableClass(#TableClass, [](){ return new TableClass(); });
+
+	static CompositeTable* createTable(fstring tableClass);
+
+	virtual void init(PathRef dir, SegmentSchemaPtr);
+
 	void load(PathRef dir) override;
 	void save(PathRef dir) const override;
 
@@ -66,6 +72,7 @@ public:
 	size_t getWritableSegNum() const;
 
 protected:
+	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);
 
 	bool maybeCreateNewSegment(MyRwLock&);
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);

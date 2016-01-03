@@ -83,10 +83,7 @@ namespace mongo { namespace narkdb {
 using std::set;
 using std::string;
 
-static CompositeTable* newNarkDbTable() {
-//	return new MockCompositeTable();
-	return new nark::db::dfadb::DfaDbTable();
-}
+const char* g_narkTableClass = "DfaDbTable";
 
 NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 							   const std::string& extraOpenOptions,
@@ -117,7 +114,7 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
     log() << "narkdb_open : " << path;
     for (auto& tabDir : fs::directory_iterator(m_pathNark / "tables")) {
     //	std::string strTabDir = tabDir.path().string();
-    	// CompositeTablePtr tab = newNarkDbTable();
+    	// CompositeTablePtr tab = CompositeTable::createTable(g_narkTableClass);
     	// tab->load(strTabDir);
     //	std::string tabIdent = tabDir.path().filename().string();
     //	auto ib = m_tables.insert_i(tabIdent, nullptr);
@@ -292,7 +289,7 @@ NarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 	std::lock_guard<std::mutex> lock(m_mutex);
 	CompositeTablePtr& tab = m_tables[ident];
 	if (tab == nullptr) {
-		tab = newNarkDbTable();
+		tab = CompositeTable::createTable(g_narkTableClass);
 		tab->load(tabDir.string());
 	}
     return new NarkDbRecordStore(opCtx, ns, ident, &*tab, NULL);
@@ -371,7 +368,7 @@ NarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
 	std::lock_guard<std::mutex> lock(m_mutex);
 	auto& tab = m_tables[tableIdent];
 	if (tab == nullptr) {
-		tab = newNarkDbTable();
+		tab = CompositeTable::createTable(g_narkTableClass);
 		tab->load(tabDir.string());
 	}
     if (desc->unique())

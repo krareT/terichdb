@@ -13,7 +13,13 @@ StoreIterator::~StoreIterator() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-ReadableStore::StoreFactory ReadableStore::s_storeFactory;
+typedef hash_strmap< std::function<ReadableStore*()>
+					, fstring_func::hash_align
+					, fstring_func::equal_align
+					, ValueInline, SafeCopy
+					>
+		StoreFactory;
+static	StoreFactory s_storeFactory;
 
 ReadableStore::RegisterStoreFactory::RegisterStoreFactory
 (const char* fnameSuffix, const std::function<ReadableStore*()>& f)
@@ -30,7 +36,7 @@ ReadableStore* ReadableStore::openStore(PathRef segDir, fstring fname) {
 	auto suffix = fname.substr(sufpos);
 	size_t idx = s_storeFactory.find_i(suffix);
 	if (idx < s_storeFactory.end_i()) {
-		const auto& factory = ReadableStore::s_storeFactory.val(idx);
+		const auto& factory = s_storeFactory.val(idx);
 		ReadableStore* store = factory();
 		assert(NULL != store);
 		if (NULL == store) {

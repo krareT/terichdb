@@ -34,8 +34,39 @@ CompositeTable::~CompositeTable() {
 	}
 }
 
+// msvc std::function is not memmovable, use SafeCopy
+static
+hash_strmap < std::function<CompositeTable*()>
+			, fstring_func::hash_align
+			, fstring_func::equal_align
+			, ValueInline, SafeCopy
+			>
+s_tableFactory;
+CompositeTable::RegisterTableClass::RegisterTableClass
+(fstring tableClass, const std::function<CompositeTable*()>& f)
+{
+	auto ib = s_tableFactory.insert_i(tableClass, f);
+	assert(ib.second);
+	if (!ib.second) {
+		THROW_STD(invalid_argument, "duplicate suffix: %.*s",
+			tableClass.ilen(), tableClass.data());
+	}
+}
+
+CompositeTable* CompositeTable::createTable(fstring tableClass) {
+	size_t idx = s_tableFactory.find_i(tableClass);
+	if (idx >= s_tableFactory.end_i()) {
+		THROW_STD(invalid_argument, "tableClass = '%.*s' is not registered",
+			tableClass.ilen(), tableClass.data());
+	}
+	const auto& factory = s_tableFactory.val(idx);
+	CompositeTable* table = factory();
+	assert(table);
+	return table;
+}
+
 void
-CompositeTable::createTable(PathRef dir, SegmentSchemaPtr schema) {
+CompositeTable::init(PathRef dir, SegmentSchemaPtr schema) {
 	assert(!dir.empty());
 	assert(schema->columnNum() > 0);
 	assert(schema->getIndexNum() > 0);

@@ -945,4 +945,6 @@ MockCompositeTable::openWritableSegment(PathRef dir) const {
 	}
 }
 
+NARK_DB_REGISTER_TABLE_CLASS(MockCompositeTable);
+
 } } // namespace nark::db

@@ -69,14 +69,6 @@ public:
 		val->risk_set_size(0);
 		getValueAppend(id, val, ctx);
 	}
-protected:
-	typedef hash_strmap< std::function<ReadableStore*()>
-					   , fstring_func::hash_align
-					   , fstring_func::equal_align
-					   , ValueInline, SafeCopy
-					   >
-			StoreFactory;
-	static	StoreFactory s_storeFactory;
 };
 
 class NARK_DB_DLL WritableStore {

@@ -45,4 +45,6 @@ DfaDbTable::openWritableSegment(PathRef dir) const {
 	}
 }
 
+NARK_DB_REGISTER_TABLE_CLASS(DfaDbTable);
+
 }}} // namespace nark::db::dfadb
