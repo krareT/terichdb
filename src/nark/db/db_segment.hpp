@@ -15,8 +15,7 @@ namespace nark { namespace db {
 class NARK_DB_DLL SegmentSchema : public RefCounter {
 public:
 	struct Colproject {
-		uint32_t isIndexCol :  1;
-		uint32_t colgroupId : 31;
+		uint32_t colgroupId;
 		uint32_t subColumnId;
 	};
 	SchemaPtr     m_rowSchema;
@@ -107,13 +106,8 @@ public:
 
 	virtual void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext*) const = 0;
-
-	virtual StoreIterator*
-			createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
-			const = 0;
-	virtual StoreIterator*
-			createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
-			const = 0;
+	virtual void selectOneColumn(llong recId, size_t columnId,
+								 valvec<byte>* colsData, DbContext*) const = 0;
 
 	void openIndices(PathRef dir);
 	void saveIndices(PathRef dir) const;
@@ -121,6 +115,7 @@ public:
 
 	void saveIsDel(PathRef segDir) const;
 	void loadIsDel(PathRef segDir);
+	byte*loadIsDel_aux(PathRef segDir, febitvec& isDel) const;
 	void unmapIsDel();
 
 	void deleteSegment();
@@ -171,14 +166,8 @@ public:
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
-
-	StoreIterator*
-	createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
-	const override;
-
-	StoreIterator*
-	createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
-	const override;
+	void selectOneColumn(llong recId, size_t columnId,
+						 valvec<byte>* colsData, DbContext*) const override;
 
 protected:
 	// Index can use different implementation for different
@@ -221,14 +210,8 @@ public:
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
-
-	StoreIterator*
-	createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
-	const override;
-
-	StoreIterator*
-	createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
-	const override;
+	void selectOneColumn(llong recId, size_t columnId,
+						 valvec<byte>* colsData, DbContext*) const override;
 
 	void flushSegment();
 

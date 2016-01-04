@@ -96,6 +96,9 @@ namespace nark { namespace db {
 		void parseRowAppend(fstring row, valvec<fstring>* columns) const;
 		void combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const;
 
+		void projectToNorm(fstring col, size_t columnId, valvec<byte>* rowData) const;
+		void projectToLast(fstring col, size_t columnId, valvec<byte>* rowData) const;
+
 		void selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const;
 		void selectParent(const valvec<fstring>& parentCols, valvec<fstring>* myCols) const;
 

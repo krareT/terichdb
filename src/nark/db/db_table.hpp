@@ -3,6 +3,7 @@
 
 #include "db_segment.hpp"
 #include <tbb/queuing_rw_mutex.h>
+#include <tbb/task.h>
 
 namespace nark { namespace db {
 
@@ -60,6 +61,32 @@ public:
 	IndexIteratorPtr createIndexIterBackward(size_t indexId) const;
 	IndexIteratorPtr createIndexIterBackward(fstring indexCols) const;
 
+	valvec<size_t> getProjectColumns(const hash_strmap<>& colnames) const;
+//	valvec<size_t> getProjectColumns(const Schema&) const;
+
+	void selectColumns(llong id, const valvec<size_t>& cols,
+					   valvec<byte>* colsData, DbContext*) const;
+	void selectColumns(llong id, const size_t* colsId, size_t colsNum,
+					   valvec<byte>* colsData, DbContext*) const;
+	void selectOneColumn(llong id, size_t columnId,
+						 valvec<byte>* colsData, DbContext*) const;
+
+#if 0
+	StoreIteratorPtr
+	createProjectIterForward(const valvec<size_t>& cols, DbContext*)
+	const;
+	StoreIteratorPtr
+	createProjectIterBackward(const valvec<size_t>& cols, DbContext*)
+	const;
+
+	StoreIteratorPtr
+	createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
+	const;
+	StoreIteratorPtr
+	createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
+	const;
+#endif
+
 	bool compact();
 	void clear();
 	void flush();
@@ -70,6 +97,14 @@ public:
 
 	size_t getSegNum () const { return m_segments.size(); }
 	size_t getWritableSegNum() const;
+	ReadableSegmentPtr getSegment(size_t segIdx) const {
+		assert(segIdx < m_segments.size());
+		return m_segments[segIdx];
+	}
+
+	void convWritableSegmentToReadonly(size_t segIdx);
+	void freezeFlushWritableSegment(size_t segIdx);
+	void putToCompressionQueue(size_t segIdx);
 
 protected:
 	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);
@@ -106,7 +141,6 @@ protected:
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
 	bool m_tobeDrop;
-	friend class TableIndexIterUnOrdered;
 	friend class TableIndexIter;
 	friend class TableIndexIterBackward;
 };

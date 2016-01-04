@@ -537,16 +537,21 @@ void ReadableSegment::loadIsDel(PathRef dir) {
 		m_isDel.clear(); // free memory
 	}
 	m_delcnt = 0;
-	fs::path isDelFpath = dir / "isDel";
+	m_isDelMmap = loadIsDel_aux(dir, m_isDel);
+	m_delcnt = m_isDel.popcnt();
+}
+
+byte* ReadableSegment::loadIsDel_aux(PathRef segDir, febitvec& isDel) const {
+	fs::path isDelFpath = segDir / "isDel";
 	size_t bytes = 0;
 	bool writable = true;
 	std::string fpath = isDelFpath.string();
-	m_isDelMmap = (byte*)mmap_load(fpath, &bytes, writable);
-	uint64_t rowNum = ((uint64_t*)m_isDelMmap)[0];
-	m_isDel.risk_mmap_from(m_isDelMmap + 8, bytes - 8);
+	byte* isDelMmap = (byte*)mmap_load(fpath, &bytes, writable);
+	uint64_t rowNum = ((uint64_t*)isDelMmap)[0];
+	isDel.risk_mmap_from(isDelMmap + 8, bytes - 8);
 	assert(m_isDel.size() >= rowNum);
-	m_isDel.risk_set_size(size_t(rowNum));
-	m_delcnt = m_isDel.popcnt();
+	isDel.risk_set_size(size_t(rowNum));
+	return isDelMmap;
 }
 
 void ReadableSegment::unmapIsDel() {
@@ -693,10 +698,11 @@ ReadonlySegment::selectColumns(llong recId,
 							   valvec<byte>* colsData, DbContext* ctx)
 const {
 	colsData->erase_all();
-	ctx->offsets.resize_fill(2 * (m_indices.size() + m_colgroups.size()), uint32_t(-1));
+	ctx->offsets.resize_fill(2 * m_colgroups.size(), uint32_t(-1));
 	ctx->buf1.erase_all();
-	size_t indexNum = m_indices.size();
+	size_t rowColnum = m_schema->m_rowSchema->columnNum();
 	for(size_t i = 0; i < colsNum; ++i) {
+		assert(colsId[i] < rowColnum);
 		auto cp = m_schema->m_colproject[colsId[i]];
 		size_t colgroupId = cp.colgroupId;
 		size_t oldsize = ctx->buf1.size();
@@ -728,26 +734,31 @@ const {
 		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 		const size_t offset = ctx->offsets[2*colgroupId];
 		const size_t length = ctx->offsets[2*colgroupId + 1];
-		if (offset != uint32_t(-1)) {
-			fstring d(ctx->buf1.data() + offset, length);
-			colsData->append(ctx->cols1[colseq + cp.subColumnId]);
+		if (i < colsNum-1) {
+			fstring d = ctx->cols1[colseq + cp.subColumnId];
+			schema.projectToNorm(d, cp.subColumnId, colsData);
 		}
 		colseq += schema.columnNum();
 	}
 }
 
-StoreIterator*
-ReadonlySegment::
-createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext* ctx)
+void
+ReadonlySegment::selectOneColumn(llong recId, size_t columnId,
+								 valvec<byte>* colsData, DbContext* ctx)
 const {
-	return NULL;
-}
-
-StoreIterator*
-ReadonlySegment::
-createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext* ctx)
-const {
-	return NULL;
+	assert(columnId < m_schema->m_rowSchema->columnNum());
+	auto cp = m_schema->m_colproject[columnId];
+	size_t colgroupId = cp.colgroupId;
+	const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+	if (schema.columnNum() == 1) {
+		m_colgroups[colgroupId]->getValue(recId, colsData, ctx);
+	}
+	else {
+		m_colgroups[colgroupId]->getValue(recId, &ctx->buf1, ctx);
+		schema.parseRow(ctx->buf1, &ctx->cols1);
+		colsData->erase_all();
+		colsData->append(ctx->cols1[cp.subColumnId]);
+	}
 }
 
 class ReadonlySegment::MyStoreIterForward : public StoreIterator {
@@ -1165,21 +1176,32 @@ void WritableSegment::selectColumns(llong recId,
 									const size_t* colsId, size_t colsNum,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
-	abort();
+	colsData->erase_all();
+	this->getValue(recId, &ctx->buf1, ctx);
+	const Schema& schema = *m_schema->m_rowSchema;
+	schema.parseRow(ctx->buf1, &ctx->cols1);
+	assert(ctx->cols1.size() == schema.columnNum());
+	auto cols = ctx->cols1.data();
+	for(size_t i = 0; i < colsNum; ++i) {
+		size_t columnId = colsId[i];
+		assert(columnId < schema.columnNum());
+		if (i < colsNum)
+			schema.projectToNorm(cols[columnId], columnId, colsData);
+		else
+			schema.projectToLast(cols[columnId], columnId, colsData);
+	}
 }
 
-StoreIterator*
-WritableSegment::
-createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext* ctx)
+void WritableSegment::selectOneColumn(llong recId, size_t columnId,
+									  valvec<byte>* colsData, DbContext* ctx)
 const {
-	return NULL;
-}
-
-StoreIterator*
-WritableSegment::
-createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext* ctx)
-const {
-	return NULL;
+	colsData->erase_all();
+	this->getValue(recId, &ctx->buf1, ctx);
+	const Schema& schema = *m_schema->m_rowSchema;
+	assert(columnId < schema.columnNum());
+	schema.parseRow(ctx->buf1, &ctx->cols1);
+	assert(ctx->cols1.size() == schema.columnNum());
+	schema.projectToLast(ctx->cols1[columnId], columnId, colsData);
 }
 
 void WritableSegment::flushSegment() {

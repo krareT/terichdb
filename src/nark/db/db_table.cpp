@@ -488,6 +488,7 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 			}
 			// createWritableSegment should be fast, other wise the lock time
 			// may be too long
+			putToCompressionQueue(m_segments.size() - 1);
 			size_t newSegIdx = m_segments.size();
 			m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
 			m_segments.push_back(m_wrSeg);
@@ -1258,6 +1259,93 @@ IndexIteratorPtr CompositeTable::createIndexIterBackward(fstring indexCols) cons
 	return createIndexIterBackward(indexId);
 }
 
+template<class T>
+static
+valvec<size_t>
+doGetProjectColumns(const hash_strmap<T>& colnames, const Schema& rowSchema) {
+	valvec<size_t> colIdVec(colnames.end_i(), valvec_no_init());
+	for(size_t i = 0; i < colIdVec.size(); ++i) {
+		fstring colname = colnames.key(i);
+		size_t f = rowSchema.m_columnsMeta.find_i(colname);
+		if (f >= rowSchema.m_columnsMeta.end_i()) {
+			THROW_STD(invalid_argument,
+				"colname=%s is not in RowSchema", colname.c_str());
+		}
+		colIdVec[i] = f;
+	}
+	return colIdVec;
+}
+valvec<size_t>
+CompositeTable::getProjectColumns(const hash_strmap<>& colnames) const {
+	assert(colnames.delcnt() == 0);
+	return doGetProjectColumns(colnames, *m_schema->m_rowSchema);
+}
+
+void
+CompositeTable::selectColumns(llong id, const valvec<size_t>& cols,
+							  valvec<byte>* colsData, DbContext* ctx)
+const {
+	MyRwLock lock(m_rwMutex, false);
+	llong rows = m_rowNumVec.back();
+	if (id < 0 || id >= rows) {
+		THROW_STD(out_of_range, "id = %lld, rows=%lld", id, rows);
+	}
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	llong baseId = m_rowNumVec[upp-1];
+	m_segments[upp-1]->selectColumns(id - baseId, cols.data(), cols.size(), colsData, ctx);
+}
+
+void
+CompositeTable::selectColumns(llong id, const size_t* colsId, size_t colsNum,
+							  valvec<byte>* colsData, DbContext* ctx)
+const {
+	MyRwLock lock(m_rwMutex, false);
+	llong rows = m_rowNumVec.back();
+	if (id < 0 || id >= rows) {
+		THROW_STD(out_of_range, "id = %lld, rows=%lld", id, rows);
+	}
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	llong baseId = m_rowNumVec[upp-1];
+	m_segments[upp-1]->selectColumns(id - baseId, colsId, colsNum, colsData, ctx);
+}
+
+void
+CompositeTable::selectOneColumn(llong id, size_t columnId,
+								valvec<byte>* colsData, DbContext* ctx)
+const {
+	MyRwLock lock(m_rwMutex, false);
+	llong rows = m_rowNumVec.back();
+	if (id < 0 || id >= rows) {
+		THROW_STD(out_of_range, "id = %lld, rows=%lld", id, rows);
+	}
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	llong baseId = m_rowNumVec[upp-1];
+	m_segments[upp-1]->selectOneColumn(id - baseId, columnId, colsData, ctx);
+}
+
+#if 0
+StoreIteratorPtr
+CompositeTable::createProjectIterForward(const valvec<size_t>& cols, DbContext* ctx)
+const {
+	return createProjectIterForward(cols.data(), cols.size(), ctx);
+}
+StoreIteratorPtr
+CompositeTable::createProjectIterBackward(const valvec<size_t>& cols, DbContext* ctx)
+const {
+	return createProjectIterBackward(cols.data(), cols.size(), ctx);
+}
+
+StoreIteratorPtr
+CompositeTable::createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
+const {
+}
+
+StoreIteratorPtr
+CompositeTable::createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
+const {
+}
+#endif
+
 bool CompositeTable::compact() {
 	size_t firstWrSegIdx, lastWrSegIdx;
 	fstring dirBaseName;
@@ -1399,6 +1487,90 @@ void CompositeTable::save(PathRef dir) const {
 	lock.upgrade_to_writer();
 	fs::path jsonFile = dir / "dbmeta.json";
 	m_schema->saveJsonFile(jsonFile.string());
+}
+
+void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
+	DbContextPtr ctx(this->createDbContext());
+	ReadableSegmentPtr srcSeg;
+	{
+		MyRwLock lock(m_rwMutex, false);
+		srcSeg = m_segments[segIdx];
+	}
+	auto segDir = getSegPath("rd", segIdx);
+	fprintf(stderr, "convWritableSegmentToReadonly: %s\n", srcSeg->m_segDir.string().c_str());
+	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
+	newSeg->convFrom(*srcSeg, &*ctx);
+	{
+		MyRwLock lock(m_rwMutex, true);
+		m_segments[segIdx] = newSeg;
+	}
+	srcSeg->deleteSegment();
+	fprintf(stderr, "convWritableSegmentToReadonly: %s done!\n", srcSeg->m_segDir.string().c_str());
+}
+
+void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
+	ReadableSegmentPtr seg;
+	{
+		MyRwLock lock(m_rwMutex, false);
+		seg = m_segments[segIdx];
+	}
+	if (seg->m_isDelMmap) {
+		return;
+	}
+	fprintf(stderr, "freezeFlushWritableSegment: %s\n", seg->m_segDir.string().c_str());
+	seg->saveIndices(seg->m_segDir);
+	seg->saveRecordStore(seg->m_segDir);
+	seg->saveIsDel(seg->m_segDir);
+	febitvec isDel;
+	byte*  isDelMmap = seg->loadIsDel_aux(seg->m_segDir, isDel);
+	assert(isDel.size() == seg->m_isDel.size());
+	size_t old_delcnt = isDel.popcnt();
+	{
+		MyRwLock lock(m_rwMutex, false);
+		assert(old_delcnt <= seg->m_delcnt);
+		if (seg->m_delcnt > old_delcnt) { // should be very rare
+			memcpy(isDel.data(), seg->m_isDel.data(), isDel.mem_size());
+		}
+		seg->m_isDel.swap(isDel);
+		seg->m_isDelMmap = isDelMmap;
+	}
+	fprintf(stderr, "freezeFlushWritableSegment: %s done!\n", seg->m_segDir.string().c_str());
+}
+
+/////////////////////////////////////////////////////////////////////
+
+class SegWrToRdConvTask : public tbb::task {
+	CompositeTablePtr m_tab;
+	size_t m_segIdx;
+
+public:
+	SegWrToRdConvTask(CompositeTablePtr tab, size_t segIdx)
+		: m_tab(tab), m_segIdx(segIdx) {}
+
+	tbb::task* execute() override {
+		m_tab->convWritableSegmentToReadonly(m_segIdx);
+		return NULL;
+	}
+};
+
+class WrSegFreezeFlushTask : public tbb::task {
+	CompositeTablePtr m_tab;
+	size_t m_segIdx;
+public:
+	WrSegFreezeFlushTask(CompositeTablePtr tab, size_t segIdx)
+		: m_tab(tab), m_segIdx(segIdx) {}
+
+	tbb::task* execute() override {
+		m_tab->freezeFlushWritableSegment(m_segIdx);
+		auto t = new(tbb::task::allocate_root())SegWrToRdConvTask(m_tab, m_segIdx);
+		enqueue(*t, tbb::priority_low);
+		return NULL;
+	}
+};
+
+void CompositeTable::putToCompressionQueue(size_t segIdx) {
+	tbb::task* t = new(tbb::task::allocate_root())WrSegFreezeFlushTask(this, segIdx);
+	tbb::task::enqueue(*t, tbb::priority_normal);
 }
 
 } } // namespace nark::db

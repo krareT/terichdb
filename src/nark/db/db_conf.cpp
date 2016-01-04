@@ -365,6 +365,107 @@ const {
 	}
 }
 
+template<bool isLast>
+static void
+doProject(fstring col, const ColumnMeta& colmeta, valvec<byte>* rowData) {
+	switch (colmeta.type) {
+	default:
+		THROW_STD(runtime_error, "Invalid data row");
+		break;
+	case ColumnType::Any:
+		abort(); // Any is not implemented yet
+		break;
+	case ColumnType::Uint08:
+	case ColumnType::Sint08:
+		assert(1 == col.size());
+		rowData->push_back(col[0]);
+		break;
+	case ColumnType::Uint16:
+	case ColumnType::Sint16:
+		assert(2 == col.size());
+		rowData->append(col.udata(), 2);
+		break;
+	case ColumnType::Uint32:
+	case ColumnType::Sint32:
+		assert(4 == col.size());
+		rowData->append(col.udata(), 4);
+		break;
+	case ColumnType::Uint64:
+	case ColumnType::Sint64:
+		assert(8 == col.size());
+		rowData->append(col.udata(), 8);
+		break;
+	case ColumnType::Uint128:
+	case ColumnType::Sint128:
+		assert(16 == col.size());
+		rowData->append(col.udata(), 16);
+		break;
+	case ColumnType::Float32:
+		assert(4 == col.size());
+		rowData->append(col.udata(), 4);
+		break;
+	case ColumnType::Float64:
+		assert(8 == col.size());
+		rowData->append(col.udata(), 8);
+		break;
+	case ColumnType::Float128:
+	case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+		assert(16 == col.size());
+		rowData->append(col.udata(), 16);
+		break;
+	case ColumnType::Fixed:   // Fixed length binary
+		assert(colmeta.fixedLen == col.size());
+		rowData->append(col.udata(), colmeta.fixedLen);
+		break;
+	case ColumnType::VarSint:
+	case ColumnType::VarUint:
+		rowData->append(col.udata(), col.size());
+		break;
+	case ColumnType::StrZero: // Zero ended string
+	case ColumnType::TwoStrZero: // Two Zero ended strings
+		rowData->append(col.udata(), col.size());
+		if (!isLast) {
+			rowData->push_back('\0');
+		}
+		break;
+	case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+		if (!isLast) {
+			size_t oldsize = rowData->size();
+			rowData->resize_no_init(oldsize + 10);
+			byte* p1 = rowData->data() + oldsize;
+			byte* p2 = save_var_uint32(p1, uint32_t(col.size()));
+			rowData->risk_set_size(oldsize + (p2 - p1));
+		}
+		rowData->append(col.data(), col.size());
+		break;
+	case ColumnType::CarBin:  // Prefixed by uint32 length
+		if (!isLast) {
+			uint32_t binlen = (uint32_t)col.size();
+		#if defined(BOOST_BIG_ENDIAN)
+			binlen = byte_swap(binlen);
+		#endif
+			rowData->append((byte*)&binlen, 4);
+		}
+		rowData->append(col.data(), col.size());
+		break;
+	}
+}
+
+void
+Schema::projectToNorm(fstring col, size_t columnId, valvec<byte>* rowData)
+const {
+	assert(columnId < m_columnsMeta.end_i());
+	const ColumnMeta& colmeta = m_columnsMeta.val(columnId);
+	doProject<false>(col, colmeta, rowData);
+}
+void
+Schema::projectToLast(fstring col, size_t columnId, valvec<byte>* rowData)
+const {
+	assert(columnId < m_columnsMeta.end_i());
+	const ColumnMeta& colmeta = m_columnsMeta.val(columnId);
+	doProject<true>(col, colmeta, rowData);
+}
+
 void
 Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData)
 const {

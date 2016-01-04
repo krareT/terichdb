@@ -171,7 +171,10 @@ endif
 #LIBS += -liconv
 
 NarkDB_src := $(wildcard src/nark/db/*.cpp)
+
+ifeq (1,${WITH_DFA_DB})
 NarkDB_src += $(wildcard src/nark/db/dfadb/*.cpp)
+endif
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core
