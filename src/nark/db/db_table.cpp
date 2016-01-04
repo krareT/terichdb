@@ -10,7 +10,10 @@
 #include <nark/util/fstrvec.hpp>
 #include <nark/util/sortable_strvec.hpp>
 #include <boost/scope_exit.hpp>
-#include <thread>
+#include <thread> // for std::this_thread::sleep_for
+#include <tbb/task.h>
+#include <tbb/tbb_thread.h>
+#include <tbb/concurrent_queue.h>
 
 namespace nark { namespace db {
 
@@ -1539,7 +1542,69 @@ void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
 
 /////////////////////////////////////////////////////////////////////
 
-class SegWrToRdConvTask : public tbb::task {
+namespace {
+
+#define PRIORITY_COMPRESS  tbb::priority_normal
+#define PRIORITY_FLUSH     tbb::priority_high
+
+#if defined(NARK_DB_USE_TBB_TASK_MANAGER)
+	typedef tbb::task MyTask;
+	typedef MyTask* MyTaskPtr;
+	#define TASK_NEW(alloc) new(alloc)
+#else
+	#define TASK_NEW(alloc) new
+	class MyTask : public RefCounter {
+	public:
+		virtual MyTask* execute() = 0;
+		static void enqueue(MyTask& t, tbb::priority_t pr);
+	};
+	typedef boost::intrusive_ptr<MyTask> MyTaskPtr;
+	tbb::concurrent_queue<MyTaskPtr> g_flushQueue;
+	tbb::concurrent_queue<MyTaskPtr> g_compressQueue;
+
+//	tbb::queuing_rw_mutex g_threadMutex;
+	volatile bool g_stop = false;
+
+	inline void MyTask::enqueue(MyTask& t, tbb::priority_t pr) {
+		if (PRIORITY_FLUSH == pr)
+			g_flushQueue.push(&t);
+		else
+			g_compressQueue.push(&t);
+	}
+
+	void FlushThreadFunc() {
+		for (;;) {
+			MyTaskPtr t;
+			while (g_flushQueue.try_pop(t)) {
+				t->execute();
+			}
+			if (g_stop) {
+				break;
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
+	}
+
+	void CompressThreadFunc() {
+		for (;;) {
+			MyTaskPtr t;
+			while (!g_stop && g_compressQueue.try_pop(t)) {
+				t->execute();
+			}
+			if (g_stop) {
+				break;
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
+	}
+
+	tbb::tbb_thread g_flushThread(&CompressThreadFunc);
+	std::vector<std::shared_ptr<tbb::tbb_thread> >
+		g_convThreads(1, std::shared_ptr<tbb::tbb_thread>(new tbb::tbb_thread(&CompressThreadFunc)));
+
+#endif
+
+class SegWrToRdConvTask : public MyTask {
 	CompositeTablePtr m_tab;
 	size_t m_segIdx;
 
@@ -1547,30 +1612,55 @@ public:
 	SegWrToRdConvTask(CompositeTablePtr tab, size_t segIdx)
 		: m_tab(tab), m_segIdx(segIdx) {}
 
-	tbb::task* execute() override {
+	MyTask* execute() override {
 		m_tab->convWritableSegmentToReadonly(m_segIdx);
 		return NULL;
 	}
 };
 
-class WrSegFreezeFlushTask : public tbb::task {
+class WrSegFreezeFlushTask : public MyTask {
 	CompositeTablePtr m_tab;
 	size_t m_segIdx;
 public:
 	WrSegFreezeFlushTask(CompositeTablePtr tab, size_t segIdx)
 		: m_tab(tab), m_segIdx(segIdx) {}
 
-	tbb::task* execute() override {
+	MyTask* execute() override {
 		m_tab->freezeFlushWritableSegment(m_segIdx);
-		auto t = new(tbb::task::allocate_root())SegWrToRdConvTask(m_tab, m_segIdx);
-		enqueue(*t, tbb::priority_low);
+		auto t = TASK_NEW(MyTask::allocate_root()) SegWrToRdConvTask(m_tab, m_segIdx);
+		MyTask::enqueue(*t, tbb::priority_low);
 		return NULL;
 	}
 };
 
+} // namespace
+
 void CompositeTable::putToCompressionQueue(size_t segIdx) {
-	tbb::task* t = new(tbb::task::allocate_root())WrSegFreezeFlushTask(this, segIdx);
-	tbb::task::enqueue(*t, tbb::priority_normal);
+	MyTask* t = TASK_NEW(tbb::task::allocate_root()) WrSegFreezeFlushTask(this, segIdx);
+	MyTask::enqueue(*t, tbb::priority_normal);
+}
+
+void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {
+	if (g_convThreads.size() < threadsNum) {
+		g_convThreads.reserve(threadsNum);
+		for (size_t i = g_convThreads.size(); i < threadsNum; ++i) {
+			g_convThreads.emplace_back(new tbb::tbb_thread(&CompressThreadFunc));
+		}
+	}
+	else {
+		fprintf(stderr
+			, "WARN: CompositeTable::setCompressionThreadsNum: ignored newSize=%zd oldSize=%zd\n"
+			, threadsNum, g_convThreads.size()
+			);
+	}
+}
+
+void CompositeTable::stopAndWaitForBackgroundThreads() {
+	g_stop = true;
+	g_flushThread.join();
+	for (auto& th : g_convThreads) {
+		th->join();
+	}
 }
 
 } } // namespace nark::db

@@ -3,7 +3,6 @@
 
 #include "db_segment.hpp"
 #include <tbb/queuing_rw_mutex.h>
-#include <tbb/task.h>
 
 namespace nark { namespace db {
 
@@ -105,6 +104,8 @@ public:
 	void convWritableSegmentToReadonly(size_t segIdx);
 	void freezeFlushWritableSegment(size_t segIdx);
 	void putToCompressionQueue(size_t segIdx);
+	static void setCompressionThreadsNum(size_t threadsNum);
+	static void stopAndWaitForBackgroundThreads();
 
 protected:
 	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);
