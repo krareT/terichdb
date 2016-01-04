@@ -1598,7 +1598,7 @@ namespace {
 		}
 	}
 
-	tbb::tbb_thread g_flushThread(&CompressThreadFunc);
+	tbb::tbb_thread g_flushThread(&FlushThreadFunc);
 	std::vector<std::shared_ptr<tbb::tbb_thread> >
 		g_convThreads(1, std::shared_ptr<tbb::tbb_thread>(new tbb::tbb_thread(&CompressThreadFunc)));
 
