@@ -105,7 +105,7 @@ public:
 	void freezeFlushWritableSegment(size_t segIdx);
 	void putToCompressionQueue(size_t segIdx);
 	static void setCompressionThreadsNum(size_t threadsNum);
-	static void stopAndWaitForBackgroundThreads();
+	static void safeStopAndWait();
 
 protected:
 	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);

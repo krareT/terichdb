@@ -24,7 +24,10 @@ namespace nark { namespace db {
 typedef const boost::filesystem::path& PathRef;
 
 class NARK_DB_DLL Permanentable : public RefCounter {
+	NARK_DB_NON_COPYABLE_CLASS(Permanentable);
 public:
+	Permanentable();
+	~Permanentable();
 	///@ object can hold a m_path, when path==m_path, it is a flush
 	virtual void save(PathRef path) const = 0;
 
@@ -47,6 +50,7 @@ typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 class NARK_DB_DLL WritableStore;
 class NARK_DB_DLL ReadableIndex;
 class NARK_DB_DLL ReadableStore : virtual public Permanentable {
+	NARK_DB_NON_COPYABLE_CLASS(ReadableStore);
 public:
 	struct RegisterStoreFactory {
 		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*()>& f);
@@ -57,6 +61,8 @@ public:
 
 	static ReadableStore* openStore(PathRef segDir, fstring fname);
 
+	ReadableStore();
+	~ReadableStore();
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;

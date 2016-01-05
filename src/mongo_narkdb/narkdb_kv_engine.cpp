@@ -128,6 +128,7 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 			_sizeStorer.fillCache();
         }
     }
+	CompositeTable::setCompressionThreadsNum(4);
 }
 
 NarkDbKVEngine::~NarkDbKVEngine() {
@@ -139,6 +140,7 @@ void NarkDbKVEngine::cleanShutdown() {
 //  syncSizeInfo(true);
 	std::lock_guard<std::mutex> lock(m_mutex);
     m_tables.clear();
+	CompositeTable::safeStopAndWait();
 }
 
 Status

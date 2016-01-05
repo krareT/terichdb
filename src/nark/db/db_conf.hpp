@@ -36,6 +36,11 @@
 
 #endif /* _MSC_VER */
 
+#define NARK_DB_NON_COPYABLE_CLASS(Class) \
+	Class(const Class&) = delete; \
+	Class(Class&&) = delete; \
+	Class& operator=(const Class&) = delete; \
+	Class& operator=(Class&&) = delete
 
 namespace nark { namespace db {
 

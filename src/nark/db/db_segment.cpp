@@ -1024,7 +1024,7 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		}
 		m_delcnt = input.m_delcnt - old_delcnt;
 		fprintf(stderr,
-			"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd]",
+			"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd]\n",
 			old_delcnt, input.m_delcnt, m_delcnt);
 		assert(m_isDel.popcnt() == m_delcnt);
 	}

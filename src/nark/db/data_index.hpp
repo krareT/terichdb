@@ -28,6 +28,7 @@ public:
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
 class NARK_DB_DLL ReadableIndex : virtual public Permanentable {
+	NARK_DB_NON_COPYABLE_CLASS(ReadableIndex);
 protected:
 	bool m_isOrdered;
 	bool m_isUnique;

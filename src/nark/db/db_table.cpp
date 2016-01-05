@@ -119,9 +119,11 @@ void CompositeTable::load(PathRef dir) {
 				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
 			}
 			std::string segDir = x.path().string();
+			fprintf(stdout, "INFO: loading segment: %s ... ", segDir.c_str());
 			auto wseg = openWritableSegment(segDir);
 			wseg->m_segDir = segDir;
 			seg = wseg;
+			fprintf(stdout, "done!\n");
 		}
 		else if (sscanf(fname.c_str(), "rd-%ld", &segIdx) > 0) {
 			if (segIdx < 0) {
@@ -147,6 +149,9 @@ void CompositeTable::load(PathRef dir) {
 		if (m_segments[i] == nullptr) {
 			THROW_STD(invalid_argument, "ERROR: missing segment: %s\n",
 				getSegPath("xx", i).string().c_str());
+		}
+		if (i < m_segments.size()-1 && m_segments[i]->getWritableStore()) {
+			this->putToCompressionQueue(i);
 		}
 	}
 	fprintf(stderr, "INFO: CompositeTable::load(%s): loaded %zd segs\n",
@@ -1550,9 +1555,9 @@ namespace {
 #if defined(NARK_DB_USE_TBB_TASK_MANAGER)
 	typedef tbb::task MyTask;
 	typedef MyTask* MyTaskPtr;
-	#define TASK_NEW(alloc) new(alloc)
+	#define TASK_NEW new(MyTask::allocate_root())
 #else
-	#define TASK_NEW(alloc) new
+	#define TASK_NEW new
 	class MyTask : public RefCounter {
 	public:
 		virtual MyTask* execute() = 0;
@@ -1578,6 +1583,7 @@ namespace {
 			while (g_flushQueue.try_pop(t)) {
 				t->execute();
 			}
+			t = NULL;
 			if (g_stop) {
 				break;
 			}
@@ -1627,8 +1633,8 @@ public:
 
 	MyTask* execute() override {
 		m_tab->freezeFlushWritableSegment(m_segIdx);
-		auto t = TASK_NEW(MyTask::allocate_root()) SegWrToRdConvTask(m_tab, m_segIdx);
-		MyTask::enqueue(*t, tbb::priority_low);
+		auto t = TASK_NEW SegWrToRdConvTask(m_tab, m_segIdx);
+		MyTask::enqueue(*t, PRIORITY_COMPRESS);
 		return NULL;
 	}
 };
@@ -1636,8 +1642,8 @@ public:
 } // namespace
 
 void CompositeTable::putToCompressionQueue(size_t segIdx) {
-	MyTask* t = TASK_NEW(tbb::task::allocate_root()) WrSegFreezeFlushTask(this, segIdx);
-	MyTask::enqueue(*t, tbb::priority_normal);
+	MyTask* t = TASK_NEW WrSegFreezeFlushTask(this, segIdx);
+	MyTask::enqueue(*t, PRIORITY_FLUSH);
 }
 
 void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {
@@ -1655,7 +1661,7 @@ void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {
 	}
 }
 
-void CompositeTable::stopAndWaitForBackgroundThreads() {
+void CompositeTable::safeStopAndWait() {
 	g_stop = true;
 	g_flushThread.join();
 	for (auto& th : g_convThreads) {

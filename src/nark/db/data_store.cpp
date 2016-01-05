@@ -2,6 +2,10 @@
 
 namespace nark { namespace db {
 
+Permanentable::Permanentable() {
+}
+Permanentable::~Permanentable() {
+}
 void Permanentable::save(PathRef) const {
 	THROW_STD(invalid_argument, "This method should not be called");
 }
@@ -28,6 +32,11 @@ ReadableStore::RegisterStoreFactory::RegisterStoreFactory
 	assert(ib.second);
 	if (!ib.second)
 		THROW_STD(invalid_argument, "duplicate suffix: %s", fnameSuffix);
+}
+
+ReadableStore::ReadableStore() {
+}
+ReadableStore::~ReadableStore() {
 }
 
 ReadableStore* ReadableStore::openStore(PathRef segDir, fstring fname) {
