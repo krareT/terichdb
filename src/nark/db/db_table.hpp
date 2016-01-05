@@ -45,6 +45,8 @@ public:
 	llong replaceRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
 
+	size_t indexNum() const { return m_schema->getIndexNum(); }
+
 	llong indexSearchExact(size_t indexId, fstring key, DbContext*) const;
 	bool indexKeyExists(size_t indexId, fstring key, DbContext*) const;
 

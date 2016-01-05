@@ -1604,9 +1604,40 @@ namespace {
 		}
 	}
 
+	class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
+	public:
+		CompressionThreadsList() {
+			size_t n = tbb::tbb_thread::hardware_concurrency();
+			this->resize(n);
+			for (size_t i = 0; i < n; ++i) {
+				(*this)[i] = new tbb::tbb_thread(&CompressThreadFunc);
+			}
+		}
+		~CompressionThreadsList() {
+			for (auto th : *this) {
+				th->join();
+				delete th;
+			}
+		}
+		void resize(size_t newSize) {
+			if (size() < newSize) {
+				reserve(newSize);
+				for (size_t i = size(); i < newSize; ++i) {
+					push_back(new tbb::tbb_thread(&CompressThreadFunc));
+				}
+			} else {
+				fprintf(stderr
+					, "WARN: CompressionThreadsList::resize: ignored newSize=%zd oldSize=%zd\n"
+					, newSize, size()
+					);
+			}
+		}
+		void join() {
+			for (auto th : *this) th->join();
+		}
+	};
 	tbb::tbb_thread g_flushThread(&FlushThreadFunc);
-	std::vector<std::shared_ptr<tbb::tbb_thread> >
-		g_convThreads(1, std::shared_ptr<tbb::tbb_thread>(new tbb::tbb_thread(&CompressThreadFunc)));
+	CompressionThreadsList g_convThreads;
 
 #endif
 
@@ -1647,26 +1678,13 @@ void CompositeTable::putToCompressionQueue(size_t segIdx) {
 }
 
 void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {
-	if (g_convThreads.size() < threadsNum) {
-		g_convThreads.reserve(threadsNum);
-		for (size_t i = g_convThreads.size(); i < threadsNum; ++i) {
-			g_convThreads.emplace_back(new tbb::tbb_thread(&CompressThreadFunc));
-		}
-	}
-	else {
-		fprintf(stderr
-			, "WARN: CompositeTable::setCompressionThreadsNum: ignored newSize=%zd oldSize=%zd\n"
-			, threadsNum, g_convThreads.size()
-			);
-	}
+	g_convThreads.resize(threadsNum);
 }
 
 void CompositeTable::safeStopAndWait() {
 	g_stop = true;
 	g_flushThread.join();
-	for (auto& th : g_convThreads) {
-		th->join();
-	}
+	g_convThreads.join();
 }
 
 } } // namespace nark::db
