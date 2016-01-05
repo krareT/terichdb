@@ -1,9 +1,4 @@
 #include "nlt_store.hpp"
-#include <nark/fsa/nest_trie_dawg.hpp>
-#include <nark/io/FileStream.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/mmap.hpp>
-#include <boost/filesystem.hpp>
 
 namespace nark { namespace db { namespace dfadb {
 

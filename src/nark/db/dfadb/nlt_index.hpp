@@ -1,7 +1,6 @@
 #pragma once
 
 #include <nark/db/data_index.hpp>
-#include <nark/fsa/fsa.hpp>
 #include <nark/int_vector.hpp>
 #include <nark/rank_select.hpp>
 #include <nark/fsa/nest_trie_dawg.hpp>
@@ -42,7 +41,6 @@ public:
 	void save(PathRef path) const override;
 
 protected:
-//	std::unique_ptr<MatchingDFA> m_dfa;
 	std::unique_ptr<NestLoudsTrieDAWG_SE_512> m_dfa;
 	byte_t*     m_idmapBase;
 	size_t      m_idmapSize;

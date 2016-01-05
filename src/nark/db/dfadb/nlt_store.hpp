@@ -1,10 +1,7 @@
 #pragma once
 
 #include <nark/db/data_index.hpp>
-#include <nark/fsa/fsa.hpp>
-#include <nark/int_vector.hpp>
-#include <nark/rank_select.hpp>
-#include <nark/fsa/nest_trie_dawg.hpp>
+#include <nark/fsa/nest_louds_trie.hpp>
 
 namespace nark {
 //	class Nest

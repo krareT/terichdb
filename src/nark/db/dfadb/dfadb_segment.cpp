@@ -1,15 +1,6 @@
 #include "dfadb_segment.hpp"
-#include <nark/db/intkey_index.hpp>
-#include <nark/db/zip_int_store.hpp>
-#include <nark/db/fixed_len_key_index.hpp>
-//#include <nark/db/fixed_len_key_index.hpp>
 #include "nlt_index.hpp"
 #include "nlt_store.hpp"
-#include <nark/fsa/nest_trie_dawg.hpp>
-#include <nark/io/FileStream.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/mmap.hpp>
-#include <boost/filesystem.hpp>
 
 namespace nark { namespace db { namespace dfadb {
 
@@ -42,37 +33,35 @@ static void patchStrVec(SortableStrVec& strVec, size_t fixlen) {
 ReadableIndex*
 DfaDbReadonlySegment::buildIndex(const Schema& schema, SortableStrVec& indexData)
 const {
-	std::unique_ptr<ReadableIndex>
-		index0(ReadonlySegment::buildIndex(schema, indexData));
-	if (!index0) {
-		if (indexData.m_index.size() == 0) {
-			const size_t fixlen = schema.getFixedRowLen();
-			assert(fixlen > 0);
-			patchStrVec(indexData, fixlen);
-		}
-		std::unique_ptr<NestLoudsTrieIndex> index(new NestLoudsTrieIndex());
-		index->build(indexData);
-		return index.release();
+	ReadableIndex* index0 = ReadonlySegment::buildIndex(schema, indexData);
+	if (index0) {
+		return index0;
 	}
-	return index0.release();
+	if (indexData.m_index.size() == 0) {
+		const size_t fixlen = schema.getFixedRowLen();
+		assert(fixlen > 0);
+		patchStrVec(indexData, fixlen);
+	}
+	std::unique_ptr<NestLoudsTrieIndex> index(new NestLoudsTrieIndex());
+	index->build(indexData);
+	return index.release();
 }
 
 ReadableStore*
 DfaDbReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
 const {
-	std::unique_ptr<ReadableStore>
-		store(ReadonlySegment::buildStore(schema, storeData));
-	if (!store) {
-		std::unique_ptr<NestLoudsTrieStore> nltStore(new NestLoudsTrieStore());
-		if (storeData.m_index.size() == 0) {
-			const size_t fixlen = schema.getFixedRowLen();
-			assert(fixlen > 0);
-			patchStrVec(storeData, fixlen);
-		}
-		nltStore->build(storeData);
-		return nltStore.release();
+	ReadableStore* store = ReadonlySegment::buildStore(schema, storeData);
+	if (store) {
+		return store;
 	}
-	return store.release();
+	std::unique_ptr<NestLoudsTrieStore> nlt(new NestLoudsTrieStore());
+	if (storeData.m_index.size() == 0) {
+		const size_t fixlen = schema.getFixedRowLen();
+		assert(fixlen > 0);
+		patchStrVec(storeData, fixlen);
+	}
+	nlt->build(storeData);
+	return nlt.release();
 }
 
 }}} // namespace nark::db::dfadb
