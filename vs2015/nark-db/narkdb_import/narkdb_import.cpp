@@ -4,12 +4,12 @@
 #include <nark/util/profiling.hpp>
 #include <nark/db/db_table.hpp>
 #include <getopt.h>
-#include <tbb/task_scheduler_init.h>
 
 void usage(const char* prog) {
 	fprintf(stderr, "usage: %s options db-dir input-data-files...\n", prog);
 }
 
+/*
 static bool g_run = true;
 void compactThreadProc(nark::db::CompositeTable* tab) {
 	size_t oldsegs = tab->getSegNum();
@@ -29,6 +29,7 @@ void compactThreadProc(nark::db::CompositeTable* tab) {
 		}
 	}
 }
+*/
 
 int main(int argc, char* argv[]) {
 	int inputFormat = 't';

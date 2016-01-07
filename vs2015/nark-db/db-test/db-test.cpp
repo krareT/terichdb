@@ -3,8 +3,6 @@
 
 #include "stdafx.h"
 #include <nark/db/db_table.hpp>
-#include <nark/db/mock_db_engine.hpp>
-#include <nark/db/dfadb/dfadb_table.hpp>
 #include <nark/io/MemStream.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/io/RangeStream.hpp>
@@ -30,9 +28,10 @@ struct TestRow {
 
 using namespace nark::db;
 
-void doTest(CompositeTablePtr tab, PathRef dbDir) {
+void doTest(nark::fstring tableClass, PathRef tableDir) {
 	using namespace nark;
-	tab->load(dbDir);
+	CompositeTablePtr tab = CompositeTable::createTable(tableClass);
+	tab->load(tableDir);
 	DbContextPtr ctx(tab->createDbContext());
 
 	NativeDataOutput<AutoGrownMemIO> rowBuilder;
@@ -178,8 +177,8 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "usage: %s indexCol keys ...\n", argv[0]);
 		return 1;
 	}
-//	doTest(new MockCompositeTable(), "db1");
-	doTest(new nark::db::dfadb::DfaDbTable(), "dfadb");
+//	doTest("MockCompositeTable", "db1");
+	doTest("DfaDbTable", "dfadb");
     return 0;
 }
 
