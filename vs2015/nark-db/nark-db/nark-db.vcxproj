@@ -78,7 +78,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
     <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -90,7 +90,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
     <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -121,7 +121,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>wiredtiger.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>tbb_debug.lib;wiredtiger.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -160,7 +160,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>wiredtiger.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>tbb.lib;wiredtiger.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

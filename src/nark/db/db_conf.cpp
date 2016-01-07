@@ -4,6 +4,7 @@
 //#include <nark/io/MemStream.hpp>
 //#include <nark/io/StreamBuffer.hpp>
 #include <nark/io/var_int.hpp>
+#include <nark/num_to_str.hpp>
 //#include <nark/util/sortable_strvec.hpp>
 #include <string.h>
 #include "json.hpp"
