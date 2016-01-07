@@ -22,6 +22,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WtWritableStore*>(m_store.get());
+		abort();
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
@@ -42,6 +43,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WtWritableStore*>(m_store.get());
+		abort();
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {

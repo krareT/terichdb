@@ -171,6 +171,7 @@ endif
 #LIBS += -liconv
 
 NarkDB_src := $(wildcard src/nark/db/*.cpp)
+NarkDB_src += $(wildcard src/nark/db/wiredtiger/*.cpp)
 
 ifeq (1,${WITH_DFA_DB})
 NarkDB_src += $(wildcard src/nark/db/dfadb/*.cpp)

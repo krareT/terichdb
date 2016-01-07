@@ -43,7 +43,6 @@ public:
 		return false;
 	}
 	void reset() override {
-		auto owner = static_cast<const WtWritableIndex*>(m_index.get());
 		m_iter->reset(m_iter);
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
@@ -95,7 +94,6 @@ public:
 		return false;
 	}
 	void reset() override {
-		auto owner = static_cast<const WtWritableIndex*>(m_index.get());
 		m_iter->reset(m_iter);
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
