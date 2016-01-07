@@ -233,6 +233,8 @@ void SegmentSchema::loadMetaDFA(fstring metaFile) {
 	std::unique_ptr<MatchingDFA> metaConf(MatchingDFA::load_from(metaFile));
 	std::string val;
 	size_t segNum = 0, minWrSeg = 0;
+	(void)segNum;
+	(void)minWrSeg;
 	if (metaConf->find_key_uniq_val("TotalSegNum", &val)) {
 		segNum = lcast(val);
 	} else {
@@ -700,9 +702,8 @@ const {
 	colsData->erase_all();
 	ctx->offsets.resize_fill(2 * m_colgroups.size(), uint32_t(-1));
 	ctx->buf1.erase_all();
-	size_t rowColnum = m_schema->m_rowSchema->columnNum();
 	for(size_t i = 0; i < colsNum; ++i) {
-		assert(colsId[i] < rowColnum);
+		assert(colsId[i] < m_schema->m_rowSchema->columnNum());
 		auto cp = m_schema->m_colproject[colsId[i]];
 		size_t colgroupId = cp.colgroupId;
 		size_t oldsize = ctx->buf1.size();
@@ -732,8 +733,6 @@ const {
 		size_t colgroupId = cp.colgroupId;
 		assert(ctx->offsets[2*colgroupId] != uint32_t(-1));
 		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
-		const size_t offset = ctx->offsets[2*colgroupId];
-		const size_t length = ctx->offsets[2*colgroupId + 1];
 		if (i < colsNum-1) {
 			fstring d = ctx->cols1[colseq + cp.subColumnId];
 			schema.projectToNorm(d, cp.subColumnId, colsData);
@@ -1055,7 +1054,6 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 	size_t colgroupNum = m_schema->getColgroupNum();
 	m_colgroups.resize(colgroupNum);
 	for (size_t i = 0; i < indexNum; ++i) {
-		const Schema& schema = m_schema->getColgroupSchema(i);
 		assert(m_indices[i]); // index must have be loaded
 		auto store = m_indices[i]->getReadableStore();
 		assert(nullptr != store);

@@ -340,7 +340,6 @@ public:
 		return false;
 	}
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
 		auto cur = &m_segs[m_segIdx];
 		if (nark_unlikely(!cur->iter))
 			 cur->iter = cur->seg->createStoreIterForward(m_ctx.get());
@@ -1466,7 +1465,7 @@ const {
 	char szNum[32];
 	int len = snprintf(szNum, sizeof(szNum), "-%04ld", long(segIdx));
 	res /= type;
-	res += szNum;
+	res.append(szNum, szNum + len);
 	return res;
 }
 
