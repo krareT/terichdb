@@ -138,8 +138,8 @@ NarkDbIndex::NarkDbIndex(CompositeTable* table, OperationContext* ctx, const Ind
 	}
 	indexColumnNames.pop_back();
 	LOG(2) << "NarkDbIndex::NarkDbIndex(): indexColumnNames=" << indexColumnNames;
-	const size_t indexId = table->m_schema->getIndexId(indexColumnNames);
-	if (indexId == table->m_schema->getIndexNum()) {
+	const size_t indexId = table->getIndexId(indexColumnNames);
+	if (indexId == table->getIndexNum()) {
 		// no such index
 		THROW_STD(invalid_argument,
 			"index(%s) on collection(%s) is not defined",

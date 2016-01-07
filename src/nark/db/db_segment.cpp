@@ -765,7 +765,7 @@ class ReadonlySegment::MyStoreIterForward : public StoreIterator {
 	llong  m_id = 0;
 	DbContextPtr m_ctx;
 public:
-	MyStoreIterForward(const ReadonlySegment* owner, const DbContextPtr& ctx)
+	MyStoreIterForward(const ReadonlySegment* owner, DbContext* ctx)
 	  : m_ctx(ctx) {
 		m_store.reset(const_cast<ReadonlySegment*>(owner));
 	}

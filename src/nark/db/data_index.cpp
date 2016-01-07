@@ -74,12 +74,6 @@ void ReadableIndex::decodeIndexKey(const Schema& schema, byte* key, size_t keyLe
 	}
 }
 
-bool ReadableIndex::exists(fstring key, DbContext* ctx) const {
-	// default implementation
-	llong id = this->searchExact(key, ctx);
-	return id >= 0;
-}
-
 const ReadableStore* ReadableIndex::getReadableStore() const {
 	return nullptr;
 }

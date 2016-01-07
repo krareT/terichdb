@@ -14,11 +14,9 @@ public:
 	~ZipIntKeyIndex();
 
 	///@{ ordered and unordered index
-	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 
 	llong searchExact(fstring key, DbContext*) const override;
-	bool  exists(fstring key, DbContext*) const;
 	///@}
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;

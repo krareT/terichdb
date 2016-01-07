@@ -81,11 +81,14 @@ namespace nark { namespace db {
 
 	struct NARK_DB_DLL ColumnMeta {
 		uint32_t fixedLen = 0;
-		static_bitmap<16, uint16_t> flags;
+	//	static_bitmap<16, uint16_t> flags;
+		unsigned char reserved1;
+		unsigned char reserved2;
 		ColumnType type;
 		unsigned char uType; // user column type, such as mongodb type
 		ColumnMeta();
 		bool isInteger() const;
+		bool isNumber() const;
 		explicit ColumnMeta(ColumnType);
 	};
 
@@ -147,8 +150,14 @@ namespace nark { namespace db {
 
 		hash_strmap<ColumnMeta> m_columnsMeta;
 		std::string m_name;
+
+		// if not zero, len of (m_lastVarLenCol-1) is omitted
+		size_t m_lastVarLenCol;
+		size_t m_restFixLenSum; // len sum of [m_lastVarLenCol, colnum)
+
 		bool m_isOrdered; // just for index schema
 		bool m_isUnique;
+		bool m_needEncodeToLexByteComparable;
 		bool m_canEncodeToLexByteComparable;
 		static_bitmap<MaxProjColumns> m_keepCols;
 

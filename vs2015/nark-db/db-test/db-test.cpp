@@ -53,7 +53,7 @@ void doTest(CompositeTablePtr tab, PathRef dbDir) {
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
 		size_t oldsegments = tab->getSegNum();
 		if (bits[recRow.id]) {
-			printf("dupkey: %s\n", tab->m_schema->m_rowSchema->toJsonStr(binRow).c_str());
+			printf("dupkey: %s\n", tab->rowSchema().toJsonStr(binRow).c_str());
 		}
 		if (0x5f == i || 0x3d == i)
 			i = i;
@@ -79,9 +79,9 @@ void doTest(CompositeTablePtr tab, PathRef dbDir) {
 	{
 		valvec<byte> keyHit, val;
 		valvec<llong> idvec;
-		for (size_t indexId = 0; indexId < tab->m_schema->getIndexNum(); ++indexId) {
+		for (size_t indexId = 0; indexId < tab->getIndexNum(); ++indexId) {
 			IndexIteratorPtr indexIter = tab->createIndexIterForward(indexId);
-			const Schema& indexSchema = tab->m_schema->getIndexSchema(indexId);
+			const Schema& indexSchema = tab->getIndexSchema(indexId);
 			std::string keyData;
 			for (size_t i = 0; i < maxRowNum/5; ++i) {
 				llong keyInt = rand() % (maxRowNum * 11 / 10);

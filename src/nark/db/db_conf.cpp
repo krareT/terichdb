@@ -70,6 +70,29 @@ bool ColumnMeta::isInteger() const {
 	}
 }
 
+bool ColumnMeta::isNumber() const {
+	switch (type) {
+	default:
+		return false;
+	case ColumnType::Uint08:
+	case ColumnType::Sint08:
+	case ColumnType::Uint16:
+	case ColumnType::Sint16:
+	case ColumnType::Uint32:
+	case ColumnType::Sint32:
+	case ColumnType::Uint64:
+	case ColumnType::Sint64:
+	case ColumnType::VarSint:
+	case ColumnType::VarUint:
+		return true;
+	case ColumnType::Float32:
+	case ColumnType::Float64:
+	case ColumnType::Float128:
+	case ColumnType::Decimal128:
+		return true;
+	}
+}
+
 /////////////////////////////////////////////////////////////////////////////
 
 Schema::Schema() {
@@ -77,6 +100,7 @@ Schema::Schema() {
 	m_parent = nullptr;
 	m_isOrdered = false;
 	m_canEncodeToLexByteComparable = false;
+	m_needEncodeToLexByteComparable = false;
 	m_keepCols.fill(true);
 }
 Schema::~Schema() {
@@ -88,14 +112,41 @@ void Schema::compile(const Schema* parent) {
 	if (parent) {
 		compileProject(parent);
 	}
-	m_canEncodeToLexByteComparable = true;
 	size_t colnum = m_columnsMeta.end_i();
-	for (size_t i = 0; i < colnum - 1; ++i) {
+	for (size_t i = 0; i < colnum; ++i) {
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
+		if (ColumnType::Fixed == colmeta.type) {
+			FEBIRD_RT_assert(colmeta.fixedLen > 0, std::invalid_argument);
+		}
+	}
+#if 0 // TODO:
+	// theoretically, m_lastVarLenCol can be "last non-binary col",
+	// StrZero and TwoStrZero are non-binary col, it need reverse scan to
+	// compute sum of rest column len, this is slow, complex and error prone
+	m_lastVarLenCol = 0;
+	m_restFixLenSum = 0;
+	for (size_t i = colnum; i > 0; --i) {
+		const ColumnMeta& colmeta = m_columnsMeta.val(i-1);
+		if (0 == colmeta.fixedLen) {
+			m_lastVarLenCol = i;
+			break;
+		}
+		m_restFixLenSum += colmeta.fixedLen;
+	}
+#else
+	m_lastVarLenCol = colnum;
+#endif
+	m_canEncodeToLexByteComparable = true;
+	m_needEncodeToLexByteComparable = false;
+	for (size_t i = 0; i + 1 < m_lastVarLenCol; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		if (ColumnType::Binary == colmeta.type ||
 			ColumnType::CarBin == colmeta.type) {
 			m_canEncodeToLexByteComparable = false;
 			break;
+		}
+		if (colmeta.isNumber()) {
+			m_needEncodeToLexByteComparable = true;
 		}
 	}
 	if (m_name.empty()) {

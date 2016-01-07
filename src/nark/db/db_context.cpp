@@ -9,13 +9,28 @@
 
 namespace nark { namespace db {
 
+DbContextLink::DbContextLink() {
+//	m_prev = m_next = this;
+}
+
+DbContextLink::~DbContextLink() {
+}
+
 DbContext::DbContext(const CompositeTable* tab)
   : m_tab(const_cast<CompositeTable*>(tab))
 {
-	syncIndex = true;
+//	tab->registerDbContext(this);
+//	syncIndex = true;
 }
 
 DbContext::~DbContext() {
+//	m_tab->unregisterDbContext(this);
 }
+
+/*
+void
+DbContext::onSegCompressed(size_t segIdx, WritableSegment*, ReadonlySegment*) {
+}
+*/
 
 } } // namespace nark::db

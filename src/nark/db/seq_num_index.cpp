@@ -126,9 +126,9 @@ SeqNumIndex<Int>::~SeqNumIndex() { }
 template<class Int>
 IndexIterator*
 SeqNumIndex<Int>::createIndexIterForward(DbContext*) const { return nullptr; }
-
 template<class Int>
-llong SeqNumIndex<Int>::numIndexRows() const { return m_cnt; }
+IndexIterator*
+SeqNumIndex<Int>::createIndexIterBackward(DbContext*) const { return nullptr; }
 
 template<class Int>
 llong SeqNumIndex<Int>::indexStorageSize() const { return 2 * sizeof(llong); }

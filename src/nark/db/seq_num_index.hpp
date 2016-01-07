@@ -20,7 +20,7 @@ public:
 	~SeqNumIndex();
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
-	llong numIndexRows() const override;
+	IndexIterator* createIndexIterBackward(DbContext*) const override;
 	llong indexStorageSize() const override;
 
 	bool remove(fstring key, llong id, DbContext*) override;

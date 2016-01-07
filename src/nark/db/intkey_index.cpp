@@ -28,9 +28,6 @@ const ReadableStore* ZipIntKeyIndex::getReadableStore() const {
 }
 
 ///@{ ordered and unordered index
-llong ZipIntKeyIndex::numIndexRows() const {
-	return m_keys.size();
-}
 llong ZipIntKeyIndex::indexStorageSize() const {
 	return m_keys.mem_size() + m_index.mem_size();
 }
@@ -95,9 +92,6 @@ ZipIntKeyIndex::searchLowerBound(fstring key) const {
 	return {};
 }
 
-bool ZipIntKeyIndex::exists(fstring key, DbContext*) const{
-	return searchLowerBound(key).second;
-}
 ///@}
 
 llong ZipIntKeyIndex::dataStorageSize() const {

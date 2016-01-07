@@ -426,10 +426,6 @@ IndexIterator* MockReadonlyIndex::createIndexIterBackward(DbContext*) const {
 	return new MockReadonlyIndexIterator(this);
 }
 
-llong MockReadonlyIndex::numIndexRows() const {
-	return m_ids.size();
-}
-
 llong MockReadonlyIndex::indexStorageSize() const {
 	return m_ids.used_mem_size() + m_keys.offsets.used_mem_size();
 }
@@ -690,11 +686,6 @@ void MockWritableIndex<Key>::load(PathRef fpath) {
 	fp.disbuf();
 	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
 	dio >> m_kv;
-}
-
-template<class Key>
-llong MockWritableIndex<Key>::numIndexRows() const {
-	return m_kv.size();
 }
 
 template<class Key>

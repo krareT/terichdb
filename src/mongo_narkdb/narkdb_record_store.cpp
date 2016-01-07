@@ -115,7 +115,7 @@ public:
 		else {
 			assert(!m_recBuf.empty());
 		}
-        SharedBuffer sbuf = m_coder.decode(&*_rs.m_table->m_schema->m_rowSchema, m_recBuf);
+        SharedBuffer sbuf = m_coder.decode(&_rs.m_table->rowSchema(), m_recBuf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
         _lastReturnedId = id;
@@ -131,7 +131,7 @@ public:
             return {};
         }
 		assert(!m_recBuf.empty());
-        SharedBuffer sbuf = m_coder.decode(&*_rs.m_table->m_schema->m_rowSchema, m_recBuf);
+        SharedBuffer sbuf = m_coder.decode(&_rs.m_table->rowSchema(), m_recBuf);
         _lastReturnedId = id;
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
         return {{id, {sbuf, len}}};
@@ -343,7 +343,7 @@ bool NarkDbRecordStore::findRecord(OperationContext* txn,
     llong recIdx = id.repr() - 1;
     auto& td = getMyThreadData();
     m_table->getValue(recIdx, &td.m_recData, &*td.m_dbCtx);
-    SharedBuffer bson = td.m_coder.decode(&*m_table->m_schema->m_rowSchema, td.m_recData);
+    SharedBuffer bson = td.m_coder.decode(&m_table->rowSchema(), td.m_recData);
 
 //  size_t bufsize = sizeof(SharedBuffer::Holder) + bson.objsize();
     int bufsize = ConstDataView(bson.get()).read<LittleEndian<int>>();
@@ -362,7 +362,7 @@ Status NarkDbRecordStore::insertRecords(OperationContext* txn,
     auto& td = getMyThreadData();
     for (Record& rec : *records) {
     	BSONObj bson(rec.data.data());
-    	td.m_coder.encode(&*m_table->m_schema->m_rowSchema, nullptr, bson, &td.m_recData);
+    	td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
     	rec.id = RecordId(1 + m_table->insertRow(td.m_recData, &*td.m_dbCtx));
     }
     return Status::OK();
@@ -375,7 +375,7 @@ StatusWith<RecordId> NarkDbRecordStore::insertRecord(OperationContext* txn,
     auto& td = getMyThreadData();
     BSONObj bson(data);
 	invariant(bson.objsize() == len);
-    td.m_coder.encode(&*m_table->m_schema->m_rowSchema, nullptr, bson, &td.m_recData);
+    td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
     llong recIdx = m_table->insertRow(td.m_recData, &*td.m_dbCtx);
 	return {RecordId(recIdx + 1)};
 }
@@ -400,7 +400,7 @@ NarkDbRecordStore::updateRecord(OperationContext* txn,
 								UpdateNotifier* notifier) {
     auto& td = getMyThreadData();
     BSONObj bson(data);
-    td.m_coder.encode(&*m_table->m_schema->m_rowSchema, nullptr, bson, &td.m_recData);
+    td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
 	llong newIdx = m_table->replaceRow(id.repr()-1, td.m_recData, &*td.m_dbCtx);
 	return StatusWith<RecordId>(RecordId(newIdx + 1));
 }

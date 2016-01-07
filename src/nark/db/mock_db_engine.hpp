@@ -51,11 +51,9 @@ public:
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
 
 	llong searchExact(fstring key, DbContext*) const override;
-//	bool exists(fstring key, DbContext*) const override; // use default
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
-	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 
 	const ReadableIndex* getReadableIndex() const override;
@@ -99,12 +97,10 @@ public:
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
-	llong numIndexRows() const override;
 	llong indexStorageSize() const override;
 	bool remove(fstring key, llong id, DbContext*) override;
 	bool insert(fstring key, llong id, DbContext*) override;
 	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
-//	bool exists(fstring key, DbContext*) const override; // use default
 	void clear() override;
 
 	llong searchExact(fstring key, DbContext*) const override;

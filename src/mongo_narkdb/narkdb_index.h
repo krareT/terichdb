@@ -91,7 +91,7 @@ public:
     nark::db::CompositeTablePtr m_table;
 
 	const nark::db::Schema* getIndexSchema() const {
-		return &m_table->m_schema->getIndexSchema(m_indexId);
+		return &m_table->getIndexSchema(m_indexId);
 	}
 
 	class MyThreadData {

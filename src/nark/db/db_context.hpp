@@ -8,10 +8,20 @@ namespace nark { namespace db {
 typedef boost::intrusive_ptr<class CompositeTable> CompositeTablePtr;
 typedef boost::intrusive_ptr<class StoreIterator> StoreIteratorPtr;
 
-class NARK_DB_DLL DbContext : public RefCounter {
+class NARK_DB_DLL DbContextLink : public RefCounter {
+	friend class CompositeTable;
+protected:
+	DbContextLink();
+	~DbContextLink();
+//	DbContextLink *m_prev, *m_next;
+};
+class NARK_DB_DLL DbContext : public DbContextLink {
+	friend class CompositeTable;
 public:
 	explicit DbContext(const CompositeTable* tab);
 	~DbContext();
+
+//	virtual void onSegCompressed(size_t segIdx, class WritableSegment*, class ReadonlySegment*);
 
 	StoreIteratorPtr createTableIter();
 

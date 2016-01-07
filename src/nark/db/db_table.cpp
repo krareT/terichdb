@@ -28,6 +28,7 @@ CompositeTable::CompositeTable() {
 	m_tobeDrop = false;
 	m_segments.reserve(DEFAULT_maxSegNum);
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
+//	m_ctxListHead = new DbContextLink();
 }
 
 CompositeTable::~CompositeTable() {
@@ -35,6 +36,12 @@ CompositeTable::~CompositeTable() {
 		// should delete m_dir?
 		fs::remove_all(m_dir);
 	}
+/*
+	// list must be empty: has only the dummy head
+	FEBIRD_RT_assert(m_ctxListHead->m_next == m_ctxListHead, std::logic_error);
+	FEBIRD_RT_assert(m_ctxListHead->m_prev == m_ctxListHead, std::logic_error);
+	delete m_ctxListHead;
+*/
 }
 
 // msvc std::function is not memmovable, use SafeCopy
@@ -610,7 +617,8 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn) 
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			if (rIndex->exists(txn->key1, txn)) {
+			llong exRecId = rIndex->searchExact(txn->key1, txn);
+			if (exRecId >= 0 && !seg->m_isDel[exRecId]) {
 				// std::move makes it no temps
 				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
 							+ ", in freezen seg: " + seg->m_segDir.string();
@@ -740,7 +748,8 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext* txn)
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			if (rIndex->exists(txn->key1, txn)) {
+			llong exRecId = rIndex->searchExact(txn->key1, txn);
+			if (exRecId >= 0 && !seg->m_isDel[exRecId]) {
 				// std::move makes it no temps
 				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
 							+ ", in freezen seg: " + seg->m_segDir.string();
@@ -863,9 +872,12 @@ CompositeTable::indexKeyExists(size_t indexId, fstring key, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
 	for (size_t i = m_segments.size(); i > 0; ) {
-		auto index = m_segments[--i]->m_indices[indexId];
-		if (index->exists(key, ctx))
+		auto& seg = m_segments[--i];
+		auto index = seg->m_indices[indexId];
+		llong rId = index->searchExact(key, ctx);
+		if (rId >= 0 && !seg->m_isDel[rId]) {
 			return true;
+		}
 	}
 	return false;
 }
@@ -1686,5 +1698,23 @@ void CompositeTable::safeStopAndWait() {
 	g_flushThread.join();
 	g_convThreads.join();
 }
+
+/*
+void CompositeTable::registerDbContext(DbContext* ctx) const {
+	assert(m_ctxListHead != ctx);
+	MyRwLock lock(m_rwMutex);
+	ctx->m_prev = m_ctxListHead;
+	ctx->m_next = m_ctxListHead->m_next;
+	m_ctxListHead->m_next->m_prev = ctx;
+	m_ctxListHead->m_next = ctx;
+}
+
+void CompositeTable::unregisterDbContext(DbContext* ctx) const {
+	assert(m_ctxListHead != ctx);
+	MyRwLock lock(m_rwMutex);
+	ctx->m_prev->m_next = ctx->m_next;
+	ctx->m_next->m_prev = ctx->m_prev;
+}
+*/
 
 } } // namespace nark::db

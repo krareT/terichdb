@@ -27,17 +27,6 @@ const ReadableStore* NestLoudsTrieIndex::getReadableStore() const {
 }
 
 ///@{ ordered and unordered index
-llong NestLoudsTrieIndex::numIndexRows() const {
-	auto dawg = m_dfa->get_dawg();
-	assert(dawg);
-	if (m_isUnique) {
-		assert(m_recBits.size() == 0);
-		return dawg->num_words();
-	} else {
-		assert(m_recBits.size() >= dawg->num_words()+2);
-		return m_recBits.size() - 1; // has a extra bit 1 at last
-	}
-}
 llong NestLoudsTrieIndex::indexStorageSize() const {
 	return m_dfa->mem_size() + m_keyToId.mem_size();
 }
@@ -63,9 +52,6 @@ llong NestLoudsTrieIndex::searchExact(fstring key, DbContext*) const {
 		}
 	}
 	return -1;
-}
-bool NestLoudsTrieIndex::exists(fstring key, DbContext*) const{
-	return m_dfa->exact_match(key);
 }
 ///@}
 

@@ -40,11 +40,9 @@ public:
 	bool isUnique() const { return m_isUnique; }
 
 	///@{ ordered and unordered index
-	virtual llong numIndexRows() const = 0;
 	virtual llong indexStorageSize() const = 0;
 
 	virtual llong searchExact(fstring key, DbContext*) const = 0;
-	virtual bool  exists(fstring key, DbContext*) const;
 	///@}
 
 	///@{ ordered index only

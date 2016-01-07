@@ -45,7 +45,15 @@ public:
 	llong replaceRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
 
-	size_t indexNum() const { return m_schema->getIndexNum(); }
+	const Schema& rowSchema() const { return *m_schema->m_rowSchema; }
+	const Schema& getIndexSchema(size_t indexId) const {
+		assert(indexId < m_schema->getIndexNum());
+		return *m_schema->m_indexSchemaSet->m_nested.elem_at(indexId);
+	}
+	size_t getIndexId(fstring colnames) const {
+		return m_schema->m_indexSchemaSet->m_nested.find_i(colnames);
+	}
+	size_t getIndexNum() const { return m_schema->getIndexNum(); }
 
 	llong indexSearchExact(size_t indexId, fstring key, DbContext*) const;
 	bool indexKeyExists(size_t indexId, fstring key, DbContext*) const;
@@ -129,11 +137,14 @@ protected:
 	ReadonlySegment* myCreateReadonlySegment(PathRef segDir) const;
 	WritableSegment* myCreateWritableSegment(PathRef segDir) const;
 
+//	void registerDbContext(DbContext* ctx) const;
+//	void unregisterDbContext(DbContext* ctx) const;
+
 public:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
-	SegmentSchemaPtr m_schema;
 protected:
+//	DbContextLink* m_ctxListHead;
 	valvec<llong>  m_rowNumVec;
 	valvec<ReadableSegmentPtr> m_segments;
 	WritableSegmentPtr m_wrSeg;
@@ -141,11 +152,13 @@ protected:
 
 	// constant once constructed
 	boost::filesystem::path m_dir;
+	SegmentSchemaPtr m_schema;
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
 	bool m_tobeDrop;
 	friend class TableIndexIter;
 	friend class TableIndexIterBackward;
+	friend class DbContext;
 };
 typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 

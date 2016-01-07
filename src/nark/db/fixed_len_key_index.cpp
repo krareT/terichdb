@@ -28,9 +28,6 @@ const ReadableStore* FixedLenKeyIndex::getReadableStore() const {
 }
 
 ///@{ ordered and unordered index
-llong FixedLenKeyIndex::numIndexRows() const {
-	return m_index.size();
-}
 llong FixedLenKeyIndex::indexStorageSize() const {
 	return m_index.mem_size();
 }
@@ -68,9 +65,6 @@ FixedLenKeyIndex::searchLowerBound(fstring key) const {
 	return std::make_pair(i, false);
 }
 
-bool FixedLenKeyIndex::exists(fstring key, DbContext*) const{
-	return searchLowerBound(key).second;
-}
 ///@}
 
 llong FixedLenKeyIndex::dataStorageSize() const {
