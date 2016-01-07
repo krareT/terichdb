@@ -5,6 +5,7 @@
 #include <nark/io/DataIO.hpp>
 #include <nark/util/mmap.hpp>
 #include <nark/db/mock_db_engine.hpp>
+#include <nark/db/wiredtiger/wt_db_segment.hpp>
 #include <boost/filesystem.hpp>
 
 namespace nark { namespace db { namespace dfadb {
@@ -27,18 +28,39 @@ DfaDbTable::createReadonlySegment(PathRef dir) const {
 
 WritableSegment*
 DfaDbTable::createWritableSegment(PathRef dir) const {
-	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment(dir));
-	return seg.release();
+	const char* dfaWritableSeg = getenv("NarkDB_DfaWritableSegment");
+	if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock")) {
+		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
+		seg->m_schema = this->m_schema;
+		return seg.release();
+	}
+	else {
+		using nark::db::wt::WtWritableSegment;
+		std::unique_ptr<WtWritableSegment> seg(new WtWritableSegment());
+		seg->m_schema = this->m_schema;
+		seg->init(dir);
+		return seg.release();
+	}
 }
 
 WritableSegment*
 DfaDbTable::openWritableSegment(PathRef dir) const {
 	auto isDelPath = dir / "isDel";
 	if (boost::filesystem::exists(isDelPath)) {
-		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
-		seg->m_schema = this->m_schema;
-		seg->load(dir);
-		return seg.release();
+		const char* dfaWritableSeg = getenv("NarkDB_DfaWritableSegment");
+		if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock")) {
+			std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
+			seg->m_schema = this->m_schema;
+			seg->load(dir);
+			return seg.release();
+		}
+		else {
+			using nark::db::wt::WtWritableSegment;
+			std::unique_ptr<WtWritableSegment> seg(new WtWritableSegment());
+			seg->m_schema = this->m_schema;
+			seg->load(dir);
+			return seg.release();
+		}
 	}
 	else {
 		return myCreateWritableSegment(dir);

@@ -578,8 +578,10 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
 	if (m_wrSeg->m_deletedWrIdSet.empty() || m_tableScanningRefCount) {
-		subId = m_wrSeg->append(row, txn);
-		assert(subId == (llong)m_wrSeg->m_isDel.size());
+		//subId = m_wrSeg->append(row, txn);
+		//assert(subId == (llong)m_wrSeg->m_isDel.size());
+		subId = (llong)m_wrSeg->m_isDel.size();
+		m_wrSeg->replace(subId, row, txn);
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {
 				m_wrSeg->remove(subId, txn);
@@ -1234,6 +1236,13 @@ public:
 				#if !defined(NDEBUG)
 					assert(*id < m_tab->numDataRows());
 					if (m_forward) {
+#if !defined(NDEBUG)
+						if (schema.compareData(key, m_keyBuf) > 0) {
+							fprintf(stderr, "ERROR: key=%s m_keyBuf=%s\n"
+								, schema.toJsonStr(key).c_str()
+								, schema.toJsonStr(m_keyBuf).c_str());
+						}
+#endif
 						assert(schema.compareData(key, m_keyBuf) <= 0);
 					} else {
 						assert(schema.compareData(key, m_keyBuf) >= 0);
@@ -1465,7 +1474,7 @@ const {
 	char szNum[32];
 	int len = snprintf(szNum, sizeof(szNum), "-%04ld", long(segIdx));
 	res /= type;
-	res.append(szNum, szNum + len);
+	res.concat(szNum, szNum + len);
 	return res;
 }
 

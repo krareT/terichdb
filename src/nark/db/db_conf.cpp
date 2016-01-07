@@ -146,8 +146,12 @@ void Schema::compile(const Schema* parent) {
 			m_canEncodeToLexByteComparable = false;
 			break;
 		}
+	}
+	for (size_t i = 0; i < m_lastVarLenCol; ++i) {
+		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		if (colmeta.isNumber()) {
 			m_needEncodeToLexByteComparable = true;
+			break;
 		}
 	}
 	if (m_name.empty()) {
@@ -646,11 +650,23 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 			THROW_STD(invalid_argument, "ColumnType::Any can not be lex-converted");
 			break;
 		case ColumnType::Uint08:
-		case ColumnType::Sint08:
 			CHECK_CURR_LAST(1);
 			curr += 1;
 			break;
+		case ColumnType::Sint08:
+			CHECK_CURR_LAST(1);
+			curr[0] ^= 1 << 7;
+			curr += 1;
+			break;
 		case ColumnType::Uint16:
+			CHECK_CURR_LAST(2);
+			{
+				uint16_t x = unaligned_load<uint16_t>(curr);
+				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+				unaligned_save(curr, x);
+			}
+			curr += 2;
+			break;
 		case ColumnType::Sint16:
 			CHECK_CURR_LAST(2);
 			{
@@ -662,25 +678,41 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 			curr += 2;
 			break;
 		case ColumnType::Uint32:
+			CHECK_CURR_LAST(4);
+			{
+				uint32_t x = unaligned_load<uint32_t>(curr);
+				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+				unaligned_save(curr, x);
+			}
+			curr += 4;
+			break;
 		case ColumnType::Sint32:
 		case ColumnType::Float32:
 			CHECK_CURR_LAST(4);
 			{
 				uint32_t x = unaligned_load<uint32_t>(curr);
 				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
-				x ^= 1 << 15;
+				x ^= uint32_t(1) << 31;
 				unaligned_save(curr, x);
 			}
 			curr += 4;
 			break;
 		case ColumnType::Uint64:
+			CHECK_CURR_LAST(8);
+			{
+				uint64_t x = unaligned_load<uint64_t>(curr);
+				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+				unaligned_save(curr, x);
+			}
+			curr += 8;
+			break;
 		case ColumnType::Sint64:
 		case ColumnType::Float64:
 			CHECK_CURR_LAST(8);
 			{
 				uint64_t x = unaligned_load<uint64_t>(curr);
 				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
-				x ^= 1 << 15;
+				x ^= uint64_t(1) << 63;
 				unaligned_save(curr, x);
 			}
 			curr += 8;

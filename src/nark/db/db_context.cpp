@@ -20,7 +20,7 @@ DbContext::DbContext(const CompositeTable* tab)
   : m_tab(const_cast<CompositeTable*>(tab))
 {
 //	tab->registerDbContext(this);
-//	syncIndex = true;
+	syncIndex = true;
 }
 
 DbContext::~DbContext() {

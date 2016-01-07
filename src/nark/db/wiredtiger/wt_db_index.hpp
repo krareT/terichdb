@@ -17,19 +17,20 @@ class NARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
 	mutable tbb::mutex   m_wtMutex;
 	mutable WT_SESSION*  m_wtSession;
 	mutable WT_CURSOR*   m_wtCursor;
+	mutable WT_CURSOR*   m_wtReplace;
 	size_t       m_rows;
 	size_t       m_indexId;
 	std::string  m_keyFmt;
 	std::string  m_uri;
-	SchemaPtr    m_schema;
-
-	WT_CURSOR* getCursor(DbContext*, bool writable) const;
+	const Schema*m_schema;
 
 	void getKeyVal(WT_CURSOR* cursor, valvec<byte>* key, llong* recId) const;
-	bool putKeyVal(WT_CURSOR* cursor, fstring key, llong recId, DbContext*) const;
+	void setKeyVal(WT_CURSOR* cursor, fstring key, llong recId,
+				   WT_ITEM* item, valvec<byte>* buf) const;
 
 public:
 	explicit WtWritableIndex(const Schema&, PathRef segDir, WT_SESSION* session);
+	~WtWritableIndex();
 	void save(PathRef) const override;
 	void load(PathRef) override;
 

@@ -54,7 +54,7 @@ void doTest(nark::fstring tableClass, PathRef tableDir) {
 		if (bits[recRow.id]) {
 			printf("dupkey: %s\n", tab->rowSchema().toJsonStr(binRow).c_str());
 		}
-		if (0x5f == i || 0x3d == i)
+		if (18 == i || 0x3d == i)
 			i = i;
 		if (ctx->insertRow(binRow) < 0) {
 		//	assert(bits.is1(recRow.id));

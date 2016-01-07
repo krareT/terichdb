@@ -54,27 +54,28 @@ public:
 	}
 };
 
-WtWritableStore::WtWritableStore(WT_CONNECTION* conn, PathRef segDir) {
+WtWritableStore::WtWritableStore(WT_SESSION* session, PathRef segDir) {
 	std::string strDir = segDir.string();
-	int err = conn->open_session(conn, NULL, NULL, &m_wtSession);
-	if (err) {
-		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
-			, strDir.c_str(), wiredtiger_strerror(err)
-			);
-	}
-	err = m_wtSession->create(m_wtSession, g_dataStoreUri, "key_format=r,value_format=u");
+	int err = session->create(session, g_dataStoreUri, "key_format=r,value_format=u");
 	if (err) {
 		THROW_STD(invalid_argument, "FATAL: wiredtiger create(%s, dir=%s) = %s"
 			, g_dataStoreUri
 			, strDir.c_str(), wiredtiger_strerror(err)
 			);
 	}
+	m_wtSession = session;
+	m_wtCursor = NULL;
+	m_wtAppend = NULL;
 }
 WtWritableStore::~WtWritableStore() {
+	if (m_wtCursor)
+		m_wtCursor->close(m_wtCursor);
+	if (m_wtAppend)
+		m_wtAppend->close(m_wtAppend);
 	m_wtSession->close(m_wtSession, NULL);
 }
 
-WT_CURSOR* WtWritableStore::getStoreCursor() const {
+WT_CURSOR* WtWritableStore::getReplaceCursor() const {
 	if (NULL == m_wtCursor) {
 		int err = m_wtSession->open_cursor(m_wtSession, g_dataStoreUri, NULL, NULL, &m_wtCursor);
 		if (err) {
@@ -85,7 +86,7 @@ WT_CURSOR* WtWritableStore::getStoreCursor() const {
 	return m_wtCursor;
 }
 
-WT_CURSOR* WtWritableStore::getStoreAppend() const {
+WT_CURSOR* WtWritableStore::getAppendCursor() const {
 	if (NULL == m_wtAppend) {
 		int err = m_wtSession->open_cursor(m_wtSession, g_dataStoreUri, NULL, "append", &m_wtAppend);
 		if (err) {
@@ -105,7 +106,7 @@ void WtWritableStore::load(PathRef path1) {
 }
 
 llong WtWritableStore::dataStorageSize() const {
-	return 0;
+	return 1024;
 }
 
 llong WtWritableStore::numDataRows() const {
@@ -117,12 +118,13 @@ const {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
+	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	auto cursor = getStoreCursor();
-	cursor->set_key(cursor, id);
+	auto cursor = getReplaceCursor();
+	cursor->set_key(cursor, recno);
 	int err = cursor->search(cursor);
 	if (err) {
-		THROW_STD(invalid_argument, "wiredtiger search failed: id=%lld", id);
+		THROW_STD(invalid_argument, "wiredtiger search failed: recno=%lld", recno);
 	}
 	WT_ITEM item;
 	cursor->get_value(cursor, &item);
@@ -141,7 +143,7 @@ llong WtWritableStore::append(fstring row, DbContext* ctx0) {
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	auto cursor = getStoreAppend();
+	auto cursor = getAppendCursor();
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
 	item.data = row.data();
@@ -165,13 +167,14 @@ void WtWritableStore::replace(llong id, fstring row, DbContext* ctx0) {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
+	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	auto cursor = getStoreCursor();
+	auto cursor = getReplaceCursor();
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
 	item.data = row.data();
 	item.size = row.size();
-	cursor->set_key(cursor, id);
+	cursor->set_key(cursor, recno);
 	cursor->set_value(cursor, &item);
 	int err = cursor->insert(cursor);
 	if (err) {
@@ -187,9 +190,10 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
+	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	auto cursor = getStoreCursor();
-	cursor->set_key(cursor, id);
+	auto cursor = getReplaceCursor();
+	cursor->set_key(cursor, recno);
 	int err = cursor->remove(cursor);
 	if (err) {
 		if (WT_NOTFOUND != err) {
@@ -198,9 +202,10 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 				, m_wtSession->strerror(m_wtSession, err)
 				);
 		} else {
-			fprintf(stderr, "WARN: WtWritableStore::remove: id=%lld not found", id);
+			fprintf(stderr, "WARN: WtWritableStore::remove: recno=%lld not found", recno);
 		}
 	}
+	cursor->reset(cursor);
 }
 
 void WtWritableStore::clear() {

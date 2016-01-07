@@ -18,11 +18,11 @@ class NARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore {
 	mutable WT_CURSOR*   m_wtAppend;
 	llong m_dataSize;
 
-	WT_CURSOR* getStoreCursor() const;
-	WT_CURSOR* getStoreAppend() const;
+	WT_CURSOR* getReplaceCursor() const;
+	WT_CURSOR* getAppendCursor() const;
 
 public:
-	WtWritableStore(WT_CONNECTION* conn, PathRef segDir);
+	WtWritableStore(WT_SESSION* session, PathRef segDir);
 	~WtWritableStore();
 
 	void save(PathRef) const override;
