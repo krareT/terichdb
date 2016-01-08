@@ -2,6 +2,7 @@
 #include "wt_db_index.hpp"
 #include "wt_db_store.hpp"
 #include "wt_db_context.hpp"
+#include <nark/num_to_str.hpp>
 
 namespace nark { namespace db { namespace wt {
 
