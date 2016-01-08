@@ -148,16 +148,20 @@ llong WtWritableStore::dataStorageSize() const {
 
 llong WtWritableStore::numDataRows() const {
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	m_wtCursor->set_key(m_wtCursor, LLONG_MAX);
+	WT_CURSOR* cursor = getReplaceCursor();
+	cursor->set_key(cursor, LLONG_MAX);
 	int cmp;
-	int err = m_wtCursor->search_near(m_wtCursor, &cmp);
+	int err = cursor->search_near(cursor, &cmp);
+	if (WT_NOTFOUND == err) {
+		return 0;
+	}
 	if (err) {
 		THROW_STD(invalid_argument, "wiredtiger search near failed: %s"
 			, m_wtSession->strerror(m_wtSession, err));
 	}
 	llong recno;
-	m_wtCursor->get_key(m_wtCursor, &recno);
-	m_wtCursor->reset(m_wtCursor);
+	cursor->get_key(cursor, &recno);
+	cursor->reset(cursor);
 	return recno; // max recno is the rows
 }
 

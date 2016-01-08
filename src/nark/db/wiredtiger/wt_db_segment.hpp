@@ -2,7 +2,7 @@
 
 #include <nark/db/db_segment.hpp>
 #include <wiredtiger.h>
-#include <tbb/tbb_thread.h>
+#include <tbb/mutex.h>
 
 namespace nark { namespace db { namespace wt {
 
@@ -17,6 +17,7 @@ protected:
 	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
 	ReadableIndex* openIndex(const Schema&, PathRef path) const override;
 
+	tbb::mutex     m_wtMutex;
 	WT_CONNECTION* m_wtConn;
 	WT_CURSOR*     m_cursorIsDel;
 	ReadableStorePtr m_rowStore;

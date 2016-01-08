@@ -577,18 +577,21 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 	}
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
-	if (m_wrSeg->m_deletedWrIdSet.empty() || m_tableScanningRefCount) {
+//	auto& ws = *m_wrSeg;
+	if (m_wrSeg->m_deletedWrIdSet.empty()) {
 		//subId = m_wrSeg->append(row, txn);
 		//assert(subId == (llong)m_wrSeg->m_isDel.size());
 		subId = (llong)m_wrSeg->m_isDel.size();
 		m_wrSeg->replace(subId, row, txn);
+		m_wrSeg->m_isDel.push_back(false);
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {
-				m_wrSeg->remove(subId, txn);
+				m_wrSeg->remove(subId, txn); // subId is exists, but value is set to empty
+				m_wrSeg->m_isDel.set1(subId);
+				m_wrSeg->m_deletedWrIdSet.push_back(subId);
 				return -1; // fail
 			}
 		}
-		m_wrSeg->m_isDel.push_back(false);
 		m_rowNumVec.back() = wrBaseId + subId + 1;
 	}
 	else {

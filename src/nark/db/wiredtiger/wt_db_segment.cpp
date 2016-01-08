@@ -119,10 +119,15 @@ llong WtWritableSegment::append(fstring row, DbContext* ctx) {
 }
 
 void WtWritableSegment::replace(llong id, fstring row, DbContext* ctx) {
+#if !defined(NDEBUG) && 0
+	llong rows = m_rowStore->numDataRows();
+	assert(id <= rows);
+#endif
 	m_wrRowStore->replace(id, row, ctx);
 }
 
 void WtWritableSegment::remove(llong id, DbContext* ctx) {
+	tbb::mutex::scoped_lock lock(m_wtMutex);
 	llong recno = id + 1;
 	m_cursorIsDel->set_key(m_cursorIsDel, recno);
 	m_cursorIsDel->set_value(m_cursorIsDel, 1);
