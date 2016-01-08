@@ -122,11 +122,23 @@ void CompositeTable::load(PathRef dir) {
 	for (auto& x : fs::directory_iterator(fs::path(m_dir))) {
 		std::string segDir = x.path().string();
 		std::string fname = x.path().filename().string();
+		if (fstring(fname).endsWith(".tmp")) {
+			fprintf(stdout, "INFO: Temporary segment: %s, remove it\n", segDir.c_str());
+			fs::remove_all(segDir);
+			continue;
+		}
 		long segIdx = -1;
 		ReadableSegmentPtr seg;
 		if (sscanf(fname.c_str(), "wr-%ld", &segIdx) > 0) {
 			if (segIdx < 0) {
 				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
+			}
+			auto rDir = getSegPath("rd", segIdx);
+			if (fs::exists(rDir)) {
+				fprintf(stdout, "INFO: readonly segment: %s existed for writable seg: %s, remove it\n"
+					, rDir.string().c_str(), segDir.c_str());
+				fs::remove_all(segDir);
+				continue;
 			}
 			std::string segDir = x.path().string();
 			fprintf(stdout, "INFO: loading segment: %s ... ", segDir.c_str());
