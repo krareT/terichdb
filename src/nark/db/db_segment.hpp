@@ -131,6 +131,7 @@ public:
 	boost::filesystem::path m_segDir;
 	bool        m_tobeDel;
 	bool        m_isDirty;
+	mutable bool m_isBusyForRemove;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 

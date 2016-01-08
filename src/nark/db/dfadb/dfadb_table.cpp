@@ -38,7 +38,7 @@ DfaDbTable::createWritableSegment(PathRef dir) const {
 		using nark::db::wt::WtWritableSegment;
 		std::unique_ptr<WtWritableSegment> seg(new WtWritableSegment());
 		seg->m_schema = this->m_schema;
-		seg->init(dir);
+		seg->load(dir);
 		return seg.release();
 	}
 }

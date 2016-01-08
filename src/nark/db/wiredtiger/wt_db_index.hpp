@@ -18,7 +18,7 @@ class NARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
 	mutable WT_SESSION*  m_wtSession;
 	mutable WT_CURSOR*   m_wtCursor;
 	mutable WT_CURSOR*   m_wtReplace;
-	size_t       m_rows;
+	llong        m_indexStorageSize;
 	size_t       m_indexId;
 	std::string  m_keyFmt;
 	std::string  m_uri;

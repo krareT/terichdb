@@ -492,6 +492,7 @@ ReadableSegment::ReadableSegment() {
 	m_delcnt = 0;
 	m_tobeDel = false;
 	m_isDirty = false;
+	m_isBusyForRemove = false;
 }
 ReadableSegment::~ReadableSegment() {
 	if (m_isDelMmap) {
@@ -958,7 +959,11 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	StoreIteratorPtr iter(input.createStoreIterForward(ctx));
 	llong id = -1;
 	llong newRowNum = 0;
-	m_isDel = input.m_isDel; // make a copy, input.m_isDel[*] may be changed
+	{
+		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
+		m_isDel = input.m_isDel; // make a copy, input.m_isDel[*] may be changed
+		m_delcnt = input.m_delcnt;
+	}
 	while (iter->increment(&id, &buf)) {
 		assert(id >= 0);
 		assert(id < inputRowNum);
@@ -1003,6 +1008,29 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 			m_colgroups[i] = store.release();
 		}
 	}
+
+	{
+		assert(newRowNum <= inputRowNum);
+		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
+		size_t old_delcnt = inputRowNum - newRowNum;
+		if (old_delcnt < input.m_delcnt) { // rows were deleted during build
+			size_t i = 0;
+			for (size_t j = 0; j < size_t(inputRowNum); ++j) {
+				if (!m_isDel[j])
+					 m_isDel.set(i, input.m_isDel[j]), ++i;
+			}
+			assert(i == size_t(newRowNum));
+		}
+		m_isDel.risk_set_size(size_t(newRowNum));
+		m_delcnt = input.m_delcnt - old_delcnt;
+		fprintf(stderr,
+			"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd] done\n",
+			old_delcnt, input.m_delcnt, m_delcnt);
+		assert(m_isDel.popcnt() == m_delcnt);
+
+		input.m_isBusyForRemove = true;
+	}
+
 	{
 		auto tmpDir = m_segDir + ".tmp";
 		fs::create_directories(tmpDir);
@@ -1016,25 +1044,6 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 	m_colgroups.erase_all();
 	this->load(m_segDir);
 
-	{
-		assert(newRowNum <= inputRowNum);
-		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
-		size_t old_delcnt = inputRowNum - newRowNum;
-		if (old_delcnt < input.m_delcnt) { // rows were deleted during build
-			size_t i = 0;
-			for (size_t j = 0; j < size_t(inputRowNum); ++j) {
-				if (!m_isDel[j])
-					 m_isDel.set(i, input.m_isDel[j]), ++i;
-			}
-			assert(i == size_t(newRowNum));
-			m_isDel.resize(size_t(newRowNum));
-		}
-		m_delcnt = input.m_delcnt - old_delcnt;
-		fprintf(stderr,
-			"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd]\n",
-			old_delcnt, input.m_delcnt, m_delcnt);
-		assert(m_isDel.popcnt() == m_delcnt);
-	}
 	m_dataMemSize = 0;
 	for (size_t i = 0; i < m_colgroups.size(); ++i) {
 		m_dataMemSize += m_colgroups[i]->dataStorageSize();

@@ -140,10 +140,14 @@ void WtWritableStore::save(PathRef path1) const {
 }
 
 void WtWritableStore::load(PathRef path1) {
+	WT_CONNECTION* conn = m_wtSession->connection;
+	boost::filesystem::path segDir = conn->get_home(conn);
+	auto dataFile = segDir / "__DataStore__.wt";
+	m_dataSize = boost::filesystem::file_size(dataFile);
 }
 
 llong WtWritableStore::dataStorageSize() const {
-	return 1024;
+	return m_dataSize;
 }
 
 llong WtWritableStore::numDataRows() const {
@@ -255,6 +259,7 @@ void WtWritableStore::replace(llong id, fstring row, DbContext* ctx0) {
 			, ctx0->m_tab->rowSchema().toJsonStr(row).c_str()
 			);
 	}
+	m_dataSize += row.size() + sizeof(recno);
 }
 
 void WtWritableStore::remove(llong id, DbContext* ctx0) {

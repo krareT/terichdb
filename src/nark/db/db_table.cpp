@@ -588,6 +588,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		subId = (llong)ws.m_isDel.size();
 		ws.replace(subId, row, txn);
 		ws.m_isDel.push_back(false);
+		m_rowNumVec.back() = wrBaseId + subId + 1;
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {
 				ws.remove(subId, txn); // subId is exists, but value is set to empty
@@ -597,7 +598,6 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 				return -1; // fail
 			}
 		}
-		m_rowNumVec.back() = wrBaseId + subId + 1;
 	}
 	else {
 		subId = ws.m_deletedWrIdSet.back();
@@ -740,12 +740,20 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 		m_wrSeg->replace(subId, row, txn);
 		return id; // id is not changed
 	}
-	else {
+	else if (!seg->m_isBusyForRemove) {
 		// mark old subId as deleted
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		lock.downgrade_to_reader();
 		return insertRowImpl(row, txn, lock); // id is changed
+	}
+	else { // busy to remove, try later
+		fprintf(stderr
+			, "INFO: CompositeTable::replaceRow(recId=%lld) failed:"
+			  " segment=%zd is going to complete compressing,"
+			  " re-search the recId and try again"
+			, id, j-1);
+		return -2;
 	}
 }
 
@@ -871,6 +879,14 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 	}
 	else { // freezed segment, just set del mark
 		auto seg = m_segments[j-1].get();
+		if (seg->m_isBusyForRemove) {
+			fprintf(stderr
+				, "INFO: CompositeTable::removeRow(recId=%lld) failed:"
+				  " segment=%zd is going to complete compressing, "
+				  "re-search the recId and try again"
+				, id, j-1);
+			return false;
+		}
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		seg->m_isDirty = true;
@@ -1704,6 +1720,8 @@ public:
 } // namespace
 
 void CompositeTable::putToCompressionQueue(size_t segIdx) {
+	auto& seg = *m_segments[segIdx];
+	assert(seg.m_isDel.size() > 0);
 	MyTask* t = TASK_NEW WrSegFreezeFlushTask(this, segIdx);
 	MyTask::enqueue(*t, PRIORITY_FLUSH);
 }

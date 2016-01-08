@@ -38,7 +38,7 @@ void doTest(nark::fstring tableClass, PathRef tableDir) {
 	TestRow recRow;
 
 	size_t insertedRows = 0;
-	size_t maxRowNum = 1000;
+	size_t maxRowNum = 10000;
 	febitvec bits(maxRowNum + 1);
 	for (size_t i = 0; i < maxRowNum; ++i) {
 		TestRow recRow;
@@ -50,7 +50,6 @@ void doTest(nark::fstring tableClass, PathRef tableDir) {
 		rowBuilder.rewind();
 		rowBuilder << recRow;
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
-		size_t oldsegments = tab->getSegNum();
 		if (bits[recRow.id]) {
 			printf("dupkey: %s\n", tab->rowSchema().toJsonStr(binRow).c_str());
 		}
@@ -64,9 +63,6 @@ void doTest(nark::fstring tableClass, PathRef tableDir) {
 			assert(bits.is0(recRow.id));
 		}
 		bits.set1(recRow.id);
-		if (tab->getSegNum() > oldsegments) {
-			tab->compact();
-		}
 	}
 
 //	NativeDataInput<RangeStream<MemIO> > decoder;

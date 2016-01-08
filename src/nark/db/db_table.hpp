@@ -159,6 +159,7 @@ protected:
 	friend class TableIndexIter;
 	friend class TableIndexIterBackward;
 	friend class DbContext;
+	friend class ReadonlySegment;
 };
 typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 

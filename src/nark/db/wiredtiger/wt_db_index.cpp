@@ -58,6 +58,9 @@ public:
 			m_index->getKeyVal(m_iter, retKey, id);
 			return key == fstring(*retKey) ? 0 : 1;
 		}
+		if (WT_NOTFOUND == err) {
+			return -1;
+		}
 		THROW_STD(logic_error, "cursor_search_near failed: %s", wiredtiger_strerror(err));
 	}
 };
@@ -108,6 +111,9 @@ public:
 			retKey->erase_all();
 			m_index->getKeyVal(m_iter, retKey, id);
 			return key == fstring(*retKey) ? 0 : 1;
+		}
+		if (WT_NOTFOUND == err) {
+			return -1;
 		}
 		THROW_STD(logic_error, "cursor_search_near failed: %s", wiredtiger_strerror(err));
 	}
@@ -256,18 +262,23 @@ IndexIterator* WtWritableIndex::createIndexIterBackward(DbContext*) const {
 }
 
 void WtWritableIndex::save(PathRef path1) const {
+#if 0
 	int err = m_wtSession->checkpoint(m_wtSession, nullptr);
 	if (err != 0) {
 		THROW_STD(logic_error, "wt_checkpoint failed: %s", wiredtiger_strerror(err));
 	}
+#endif
 }
 
 void WtWritableIndex::load(PathRef path1) {
-	// do nothing
+	WT_CONNECTION* conn = m_wtSession->connection;
+	boost::filesystem::path segDir = conn->get_home(conn);
+	auto fpath = segDir / m_uri.substr(6); // remove beginning "table:"
+	m_indexStorageSize = boost::filesystem::file_size(fpath);
 }
 
 llong WtWritableIndex::indexStorageSize() const {
-	return 1024;
+	return m_indexStorageSize;
 }
 
 bool WtWritableIndex::insert(fstring key, llong id, DbContext* ctx) {
@@ -287,6 +298,7 @@ bool WtWritableIndex::insert(fstring key, llong id, DbContext* ctx) {
 			, wiredtiger_strerror(err)
 			);
 	}
+	m_indexStorageSize += key.size() + sizeof(id); // estimate
 	return true;
 }
 
@@ -325,6 +337,8 @@ bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* 
 			, wiredtiger_strerror(err)
 			);
 	}
+// estimate size don't change
+//	m_indexStorageSize += key.size() + sizeof(id); // estimate
 	return true;
 }
 
@@ -405,6 +419,7 @@ bool WtWritableIndex::remove(fstring key, llong id, DbContext* ctx) {
 		THROW_STD(logic_error, "remove failed: %s", wiredtiger_strerror(err));
 	}
 	m_wtCursor->reset(m_wtCursor);
+	m_indexStorageSize -= key.size() + sizeof(id); // estimate
 	return true;
 }
 
@@ -414,6 +429,7 @@ void WtWritableIndex::clear() {
 	if (err != 0) {
 		THROW_STD(logic_error, "truncate failed: %s", wiredtiger_strerror(err));
 	}
+	m_indexStorageSize = 0;
 }
 
 }}} // namespace nark::db::wt
