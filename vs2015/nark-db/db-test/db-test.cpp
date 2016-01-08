@@ -179,6 +179,7 @@ int main(int argc, char* argv[]) {
 	}
 //	doTest("MockCompositeTable", "db1");
 	doTest("DfaDbTable", "dfadb");
+	CompositeTable::safeStopAndWait();
     return 0;
 }
 

@@ -35,7 +35,10 @@ CompositeTable::~CompositeTable() {
 	if (m_tobeDrop) {
 		// should delete m_dir?
 		fs::remove_all(m_dir);
+		return;
 	}
+	if (m_wrSeg)
+		m_wrSeg->flushSegment();
 /*
 	// list must be empty: has only the dummy head
 	FEBIRD_RT_assert(m_ctxListHead->m_next == m_ctxListHead, std::logic_error);
@@ -581,6 +584,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 	if (ws.m_deletedWrIdSet.empty()) {
 		//subId = ws.append(row, txn);
 		//assert(subId == (llong)ws.m_isDel.size());
+		ws.m_isDirty = true;
 		subId = (llong)ws.m_isDel.size();
 		ws.replace(subId, row, txn);
 		ws.m_isDel.push_back(false);
@@ -589,6 +593,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 				ws.remove(subId, txn); // subId is exists, but value is set to empty
 				ws.m_isDel.set1(subId);
 				ws.m_deletedWrIdSet.push_back(subId);
+				ws.m_delcnt++;
 				return -1; // fail
 			}
 		}
@@ -605,6 +610,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		ws.replace(subId, row, txn);
 		ws.m_isDel.set0(subId);
 		ws.m_delcnt--;
+		ws.m_isDirty = true;
 	}
 	return wrBaseId + subId;
 }
@@ -730,6 +736,7 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 		if (txn->syncIndex) {
 			replaceSyncIndex(subId, txn, lock);
 		}
+		m_wrSeg->m_isDirty = true;
 		m_wrSeg->replace(subId, row, txn);
 		return id; // id is not changed
 	}
@@ -1637,10 +1644,7 @@ namespace {
 			}
 		}
 		~CompressionThreadsList() {
-			for (auto th : *this) {
-				th->join();
-				delete th;
-			}
+			join();
 		}
 		void resize(size_t newSize) {
 			if (size() < newSize) {
@@ -1656,7 +1660,11 @@ namespace {
 			}
 		}
 		void join() {
-			for (auto th : *this) th->join();
+			for (auto th : *this) {
+				th->join();
+				delete th;
+			}
+			this->clear();
 		}
 	};
 	tbb::tbb_thread g_flushThread(&FlushThreadFunc);
