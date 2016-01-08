@@ -266,11 +266,11 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
-	llong recno = id + 1;
 #if 1
 	fstring emptyValue("");
 	replace(id, emptyValue, ctx0);
 #else
+	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	auto cursor = getReplaceCursor();
 	cursor->set_key(cursor, recno);

@@ -152,7 +152,9 @@ override CXXFLAGS += ${extf}
 #CXXFLAGS += -fnothrow-opt
 
 override INCS += -I${BDB_HOME}/include
+override INCS += -I/opt/include
 LIBS += -L${BDB_HOME}/lib
+LIBS += -L/opt/lib
 
 ifeq (, ${prefix})
 	ifeq (root, ${USER})
