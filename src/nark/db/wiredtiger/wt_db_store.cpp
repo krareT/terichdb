@@ -26,7 +26,6 @@ public:
 	virtual int advance(WT_CURSOR*) = 0;
 
 	bool increment(llong* id, valvec<byte>* val) override {
-		auto store = static_cast<WtWritableStore*>(m_store.get());
 		int err = advance(m_cursor);
 		if (0 == err) {
 			WT_ITEM item;
@@ -48,7 +47,6 @@ public:
 			);
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		llong id2 = -1;
 		llong recno = id + 1;
 		m_cursor->set_key(m_cursor, recno);
 		int err = m_cursor->search(m_cursor);
