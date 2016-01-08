@@ -68,7 +68,7 @@ class NARK_DB_DLL MultiPartStore : public ReadableStore {
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 
 public:
-	MultiPartStore();
+	explicit MultiPartStore(valvec<ReadableStorePtr>& m_parts);
 	~MultiPartStore();
 
 	llong dataStorageSize() const override;
@@ -80,6 +80,7 @@ public:
 	void load(PathRef segDir) override;
 	void save(PathRef segDir) const override;
 
+private:
 	void syncRowNumVec();
 
 //	SchemaPtr     m_schema;

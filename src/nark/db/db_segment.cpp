@@ -329,7 +329,9 @@ void SegmentSchema::saveMetaDFA(fstring fname) const {
 
 /////////////////////////////////////////////////////////////////////////////
 
-MultiPartStore::MultiPartStore() {
+MultiPartStore::MultiPartStore(valvec<ReadableStorePtr>& parts) {
+	m_parts.swap(parts);
+	syncRowNumVec();
 }
 
 MultiPartStore::~MultiPartStore() {
@@ -973,6 +975,8 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		colgroupTempFiles.writeColgroups(columns, projRowBuf);
 		newRowNum++;
 	}
+	assert(newRowNum <= inputRowNum);
+	assert(inputRowNum - newRowNum == m_delcnt);
 
 	// build index from temporary index files
 	colgroupTempFiles.completeWrite();
@@ -999,35 +1003,30 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 			parts.push_back(this->buildStore(schema, strVec));
 			strVec.clear();
 		}
-		if (parts.size() == 1) {
-			m_colgroups[i] = parts[0];
-		} else {
-			std::unique_ptr<MultiPartStore> store(new MultiPartStore());
-			store->m_parts.swap(parts);
-			store->syncRowNumVec();
-			m_colgroups[i] = store.release();
-		}
+		m_colgroups[i] = parts.size()==1 ? parts[0] : new MultiPartStore(parts);
 	}
 
 	{
-		assert(newRowNum <= inputRowNum);
 		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
-		size_t old_delcnt = inputRowNum - newRowNum;
-		if (old_delcnt < input.m_delcnt) { // rows were deleted during build
+		if (m_delcnt < input.m_delcnt) { // rows were deleted during build
 			size_t i = 0;
 			for (size_t j = 0; j < size_t(inputRowNum); ++j) {
 				if (!m_isDel[j])
 					 m_isDel.set(i, input.m_isDel[j]), ++i;
 			}
 			assert(i == size_t(newRowNum));
+			size_t new_delcnt = input.m_delcnt - m_delcnt;
+			fprintf(stderr,
+				"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd] done\n",
+				m_delcnt, input.m_delcnt, new_delcnt);
+			m_isDel.risk_set_size(size_t(newRowNum));
+			m_delcnt = new_delcnt;
+			assert(m_isDel.popcnt() == m_delcnt);
 		}
-		m_isDel.risk_set_size(size_t(newRowNum));
-		m_delcnt = input.m_delcnt - old_delcnt;
-		fprintf(stderr,
-			"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd] done\n",
-			old_delcnt, input.m_delcnt, m_delcnt);
-		assert(m_isDel.popcnt() == m_delcnt);
-
+		else if (m_delcnt) {
+			m_isDel.resize_fill(size_t(newRowNum), false);
+			m_delcnt = 0;
+		}
 		input.m_isBusyForRemove = true;
 	}
 
@@ -1091,7 +1090,7 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 		}
 		fstring fname = files[lo];
 		if (fname.substr(prefix.size()).startsWith(".0000.")) {
-			std::unique_ptr<MultiPartStore> mstore(new MultiPartStore());
+			valvec<ReadableStorePtr> parts;
 			size_t j = lo;
 			while (j < files.size() && (fname = files[j]).startsWith(prefix)) {
 				size_t partIdx = lcast(fname.substr(prefix.size()+1));
@@ -1100,11 +1099,10 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 					THROW_STD(invalid_argument, "missing part: %s.%zd",
 						(segDir / prefix).string().c_str(), j - lo);
 				}
-				mstore->m_parts.push_back(ReadableStore::openStore(segDir, fname));
+				parts.push_back(ReadableStore::openStore(segDir, fname));
 				++j;
 			}
-			mstore->syncRowNumVec();
-			m_colgroups[i] = mstore.release();
+			m_colgroups[i] = new MultiPartStore(parts);
 		}
 		else {
 			m_colgroups[i] = ReadableStore::openStore(segDir, fname);
