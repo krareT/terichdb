@@ -8,14 +8,18 @@ namespace nark { namespace db { namespace wt {
 WtWritableSegment::WtWritableSegment() {
 	m_wtConn = NULL;
 	m_wrRowStore = NULL;
+	m_cursorIsDel = NULL;
 	m_cacheSize = 1*(1ul << 30); // 1GB
 }
 WtWritableSegment::~WtWritableSegment() {
+	m_cursorIsDel->close(m_cursorIsDel);
 	m_indices.clear();
 	m_rowStore.reset();
 	if (m_wtConn)
 		m_wtConn->close(m_wtConn, NULL);
 }
+
+static const char g_isDelTable[] = "table:__isDel__";
 
 void WtWritableSegment::init(PathRef segDir) {
 	std::string strDir = segDir.string();
@@ -36,6 +40,20 @@ void WtWritableSegment::init(PathRef segDir) {
 	if (err) {
 		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
 			, strDir.c_str(), wiredtiger_strerror(err)
+			);
+	}
+	err = session->create(session, g_isDelTable, "key_format=r,value_format=1t");
+	if (err) {
+		THROW_STD(invalid_argument
+			, "FATAL: wiredtiger create(\"%s\", dir=%s) = %s"
+			, strDir.c_str(), g_isDelTable, wiredtiger_strerror(err)
+			);
+	}
+	err = session->open_cursor(session, g_isDelTable, NULL, NULL, &m_cursorIsDel);
+	if (err) {
+		THROW_STD(invalid_argument
+			, "FATAL: wiredtiger open cursor(\"%s\", dir=%s) = %s"
+			, strDir.c_str(), g_isDelTable, wiredtiger_strerror(err)
 			);
 	}
 	m_rowStore = new WtWritableStore(session, segDir);
@@ -105,6 +123,16 @@ void WtWritableSegment::replace(llong id, fstring row, DbContext* ctx) {
 }
 
 void WtWritableSegment::remove(llong id, DbContext* ctx) {
+	llong recno = id + 1;
+	m_cursorIsDel->set_key(m_cursorIsDel, recno);
+	m_cursorIsDel->set_value(m_cursorIsDel, 1);
+	int err = m_cursorIsDel->insert(m_cursorIsDel);
+	if (err) {
+		THROW_STD(invalid_argument
+			, "FATAL: wiredtiger mark del(recno=%lld, dir=%s) = %s"
+			, recno, m_wtConn->get_home(m_wtConn), wiredtiger_strerror(err)
+			);
+	}
 	m_wrRowStore->remove(id, ctx);
 }
 
@@ -123,7 +151,30 @@ void WtWritableSegment::save(PathRef path) const {
 
 void WtWritableSegment::load(PathRef path) {
 	init(path);
-	WritableSegment::load(path);
+	if (boost::filesystem::exists(path / "isDel")) {
+		WritableSegment::load(path);
+		return;
+	}
+
+	this->openIndices(path);
+
+	// rebuild m_isDel
+	llong rows = m_rowStore->numDataRows();
+	m_isDel.resize_fill(size_t(rows), 0);
+	WT_CURSOR* cursor = m_cursorIsDel;
+	cursor->reset(cursor);
+	while (cursor->next(cursor) == 0) {
+		llong recno;
+		int val = 0;
+		cursor->get_key(cursor, &recno);
+		cursor->get_value(cursor, &val);
+		FEBIRD_RT_assert(recno > 0, std::logic_error);
+		if (val) {
+			llong id = recno - 1;
+			m_isDel.set1(size_t(id));
+		}
+	}
+	cursor->reset(cursor);
 }
 
 }}} // namespace nark::db::wt

@@ -524,10 +524,14 @@ void ReadableSegment::saveIsDel(PathRef dir) const {
 		return;
 	}
 	fs::path isDelFpath = dir / "isDel";
-	NativeDataOutput<FileStream> file;
-	file.open(isDelFpath.string().c_str(), "wb");
-	file << uint64_t(m_isDel.size());
-	file.ensureWrite(m_isDel.bldata(), m_isDel.mem_size());
+	fs::path tmpFpath = isDelFpath + ".tmp";
+	{
+		NativeDataOutput<FileStream> file;
+		file.open(tmpFpath.string().c_str(), "wb");
+		file << uint64_t(m_isDel.size());
+		file.ensureWrite(m_isDel.bldata(), m_isDel.mem_size());
+	}
+	fs::rename(tmpFpath, isDelFpath);
 }
 
 void ReadableSegment::loadIsDel(PathRef dir) {
@@ -606,9 +610,9 @@ void ReadableSegment::save(PathRef segDir) const {
 	if (m_tobeDel) {
 		return; // not needed
 	}
-	this->saveIsDel(segDir);
-	this->saveIndices(segDir);
 	this->saveRecordStore(segDir);
+	this->saveIndices(segDir);
+	this->saveIsDel(segDir);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -999,8 +1003,12 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 			m_colgroups[i] = store.release();
 		}
 	}
-	fs::create_directories(m_segDir);
-	this->save(m_segDir);
+	{
+		auto tmpDir = m_segDir + ".tmp";
+		fs::create_directories(tmpDir);
+		this->save(tmpDir);
+		fs::rename(tmpDir, m_segDir);
+	}
 
 // reload as mmap
 	m_isDel.clear();

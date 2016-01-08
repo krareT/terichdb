@@ -13,47 +13,80 @@ namespace fs = boost::filesystem;
 static const char g_dataStoreUri[] = "table:__DataStore__";
 
 //////////////////////////////////////////////////////////////////
-class WtWritableStoreIterForward : public StoreIterator {
-	size_t m_id;
+class WtWritableStoreIterBase : public StoreIterator {
+	WT_CURSOR* m_cursor;
 public:
-	WtWritableStoreIterForward(const WtWritableStore* store) {
+	WtWritableStoreIterBase(const WtWritableStore* store, WT_CURSOR* cursor) {
 		m_store.reset(const_cast<WtWritableStore*>(store));
-		m_id = 0;
+		m_cursor = cursor;
 	}
+	~WtWritableStoreIterBase() {
+		m_cursor->close(m_cursor);
+	}
+	virtual int advance(WT_CURSOR*) = 0;
+
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WtWritableStore*>(m_store.get());
-		abort();
-		return false;
+		int err = advance(m_cursor);
+		if (0 == err) {
+			WT_ITEM item;
+			llong recno;
+			m_cursor->get_key(m_cursor, &recno);
+			m_cursor->get_value(m_cursor, &item);
+			*id = recno - 1;
+			val->assign((const byte*)item.data, item.size);
+			return true;
+		}
+		if (WT_NOTFOUND == err) {
+			return false;
+		}
+		WT_CONNECTION* conn = m_cursor->session->connection;
+		THROW_STD(invalid_argument
+			, "FATAL: wiredtiger search(%s, dir=%s) = %s"
+			, g_dataStoreUri, conn->get_home(conn)
+			, wiredtiger_strerror(err)
+			);
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		m_id = id;
 		llong id2 = -1;
-		return increment(&id2, val);
+		llong recno = id + 1;
+		m_cursor->set_key(m_cursor, recno);
+		int err = m_cursor->search(m_cursor);
+		if (err == 0) {
+			WT_ITEM item;
+			m_cursor->get_value(m_cursor, &item);
+			val->assign((const byte*)item.data, item.size);
+			return true;
+		}
+		if (WT_NOTFOUND == err) {
+			return false;
+		}
+		WT_CONNECTION* conn = m_cursor->session->connection;
+		THROW_STD(invalid_argument
+			, "FATAL: wiredtiger search(%s, dir=%s) = %s"
+			, g_dataStoreUri, conn->get_home(conn)
+			, wiredtiger_strerror(err)
+			);
 	}
 	void reset() override {
-		m_id = 0;
+		m_cursor->reset(m_cursor);
 	}
 };
-class WtWritableStoreIterBackward : public StoreIterator {
-	size_t m_id;
+class WtWritableStoreIterForward : public WtWritableStoreIterBase {
 public:
-	WtWritableStoreIterBackward(const WtWritableStore* store) {
-		m_store.reset(const_cast<WtWritableStore*>(store));
-		m_id = store->numDataRows();
+	virtual int advance(WT_CURSOR* cursor) override {
+		return cursor->next(cursor);
 	}
-	bool increment(llong* id, valvec<byte>* val) override {
-		auto store = static_cast<WtWritableStore*>(m_store.get());
-		abort();
-		return false;
+	WtWritableStoreIterForward(const WtWritableStore* store, WT_CURSOR* cursor)
+		: WtWritableStoreIterBase(store, cursor) {}
+};
+class WtWritableStoreIterBackward : public WtWritableStoreIterBase {
+public:
+	virtual int advance(WT_CURSOR* cursor) override {
+		return cursor->prev(cursor);
 	}
-	bool seekExact(llong id, valvec<byte>* val) override {
-		m_id = id + 1;
-		llong id2 = -1;
-		return increment(&id2, val);
-	}
-	void reset() override {
-		m_id = m_store->numDataRows();
-	}
+	WtWritableStoreIterBackward(const WtWritableStore* store, WT_CURSOR* cursor)
+		: WtWritableStoreIterBase(store, cursor) {}
 };
 
 WtWritableStore::WtWritableStore(WT_SESSION* session, PathRef segDir) {
@@ -82,7 +115,8 @@ WT_CURSOR* WtWritableStore::getReplaceCursor() const {
 		int err = m_wtSession->open_cursor(m_wtSession, g_dataStoreUri, NULL, NULL, &m_wtCursor);
 		if (err) {
 			auto msg = m_wtSession->strerror(m_wtSession, err);
-			THROW_STD(invalid_argument, "ERROR: wiredtiger store open_cursor: %s", msg);
+			THROW_STD(invalid_argument,
+				"ERROR: wiredtiger store open_cursor for replace: %s", msg);
 		}
 	}
 	return m_wtCursor;
@@ -93,7 +127,8 @@ WT_CURSOR* WtWritableStore::getAppendCursor() const {
 		int err = m_wtSession->open_cursor(m_wtSession, g_dataStoreUri, NULL, "append", &m_wtAppend);
 		if (err) {
 			auto msg = m_wtSession->strerror(m_wtSession, err);
-			THROW_STD(invalid_argument, "ERROR: wiredtiger store append open_cursor: %s", msg);
+			THROW_STD(invalid_argument,
+				"ERROR: wiredtiger store open_cursor for append: %s", msg);
 		}
 	}
 	return m_wtAppend;
@@ -112,7 +147,18 @@ llong WtWritableStore::dataStorageSize() const {
 }
 
 llong WtWritableStore::numDataRows() const {
-	return 0;
+	tbb::mutex::scoped_lock lock(m_wtMutex);
+	m_wtCursor->set_key(m_wtCursor, LLONG_MAX);
+	int cmp;
+	int err = m_wtCursor->search_near(m_wtCursor, &cmp);
+	if (err) {
+		THROW_STD(invalid_argument, "wiredtiger search near failed: %s"
+			, m_wtSession->strerror(m_wtSession, err));
+	}
+	llong recno;
+	m_wtCursor->get_key(m_wtCursor, &recno);
+	m_wtCursor->reset(m_wtCursor);
+	return recno; // max recno is the rows
 }
 
 void WtWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx0)
@@ -135,10 +181,29 @@ const {
 }
 
 StoreIterator* WtWritableStore::createStoreIterForward(DbContext*) const {
-	return new WtWritableStoreIterForward(this);
+	tbb::mutex::scoped_lock lock(m_wtMutex);
+	WT_CURSOR* cursor;
+	WT_SESSION* ses = m_wtSession;
+	int err = ses->open_cursor(ses, g_dataStoreUri, NULL, NULL, &cursor);
+	if (err) {
+		auto msg = ses->strerror(ses, err);
+		THROW_STD(invalid_argument,
+			"ERROR: wiredtiger store open forward cursor: %s", msg);
+	}
+	return new WtWritableStoreIterForward(this, cursor);
 }
+
 StoreIterator* WtWritableStore::createStoreIterBackward(DbContext*) const {
-	return new WtWritableStoreIterBackward(this);
+	tbb::mutex::scoped_lock lock(m_wtMutex);
+	WT_CURSOR* cursor;
+	WT_SESSION* ses = m_wtSession;
+	int err = ses->open_cursor(ses, g_dataStoreUri, NULL, NULL, &cursor);
+	if (err) {
+		auto msg = ses->strerror(ses, err);
+		THROW_STD(invalid_argument,
+			"ERROR: wiredtiger store open backward cursor: %s", msg);
+	}
+	return new WtWritableStoreIterBackward(this, cursor);
 }
 
 llong WtWritableStore::append(fstring row, DbContext* ctx0) {
@@ -193,6 +258,10 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
 	llong recno = id + 1;
+#if 1
+	fstring emptyValue("");
+	replace(id, emptyValue, ctx0);
+#else
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	auto cursor = getReplaceCursor();
 	cursor->set_key(cursor, recno);
@@ -200,7 +269,7 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 	if (err) {
 		if (WT_NOTFOUND != err) {
 			THROW_STD(invalid_argument
-				, "wiredtiger replace failed, err=%s"
+				, "wiredtiger remove failed, err=%s"
 				, m_wtSession->strerror(m_wtSession, err)
 				);
 		} else {
@@ -208,6 +277,7 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 		}
 	}
 	cursor->reset(cursor);
+#endif
 }
 
 void WtWritableStore::clear() {

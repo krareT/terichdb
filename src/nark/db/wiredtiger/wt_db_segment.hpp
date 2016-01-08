@@ -18,6 +18,7 @@ protected:
 	ReadableIndex* openIndex(const Schema&, PathRef path) const override;
 
 	WT_CONNECTION* m_wtConn;
+	WT_CURSOR*     m_cursorIsDel;
 	ReadableStorePtr m_rowStore;
 	WritableStore*   m_wrRowStore;
 
