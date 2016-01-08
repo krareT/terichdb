@@ -577,34 +577,34 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 	}
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
-//	auto& ws = *m_wrSeg;
-	if (m_wrSeg->m_deletedWrIdSet.empty()) {
-		//subId = m_wrSeg->append(row, txn);
-		//assert(subId == (llong)m_wrSeg->m_isDel.size());
-		subId = (llong)m_wrSeg->m_isDel.size();
-		m_wrSeg->replace(subId, row, txn);
-		m_wrSeg->m_isDel.push_back(false);
+	auto& ws = *m_wrSeg;
+	if (ws.m_deletedWrIdSet.empty()) {
+		//subId = ws.append(row, txn);
+		//assert(subId == (llong)ws.m_isDel.size());
+		subId = (llong)ws.m_isDel.size();
+		ws.replace(subId, row, txn);
+		ws.m_isDel.push_back(false);
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {
-				m_wrSeg->remove(subId, txn); // subId is exists, but value is set to empty
-				m_wrSeg->m_isDel.set1(subId);
-				m_wrSeg->m_deletedWrIdSet.push_back(subId);
+				ws.remove(subId, txn); // subId is exists, but value is set to empty
+				ws.m_isDel.set1(subId);
+				ws.m_deletedWrIdSet.push_back(subId);
 				return -1; // fail
 			}
 		}
 		m_rowNumVec.back() = wrBaseId + subId + 1;
 	}
 	else {
-		subId = m_wrSeg->m_deletedWrIdSet.back();
+		subId = ws.m_deletedWrIdSet.back();
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {
 				return -1; // fail
 			}
 		}
-		m_wrSeg->m_deletedWrIdSet.pop_back();
-		m_wrSeg->replace(subId, row, txn);
-		m_wrSeg->m_isDel.set0(subId);
-		m_wrSeg->m_delcnt--;
+		ws.m_deletedWrIdSet.pop_back();
+		ws.replace(subId, row, txn);
+		ws.m_isDel.set0(subId);
+		ws.m_delcnt--;
 	}
 	return wrBaseId + subId;
 }
