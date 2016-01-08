@@ -33,7 +33,6 @@ public:
 		assert(nullptr != m_iter);
 		int err = m_iter->next(m_iter);
 		if (0 == err) {
-			key->erase_all();
 			m_index->getKeyVal(m_iter, key, id);
 			return true;
 		}
@@ -54,7 +53,6 @@ public:
 			if (cmp < 0) {
 				return -1;
 			}
-			retKey->erase_all();
 			m_index->getKeyVal(m_iter, retKey, id);
 			return key == fstring(*retKey) ? 0 : 1;
 		}
@@ -87,7 +85,6 @@ public:
 		assert(nullptr != m_iter);
 		int err = m_iter->prev(m_iter);
 		if (0 == err) {
-			key->erase_all();
 			m_index->getKeyVal(m_iter, key, id);
 			return true;
 		}
@@ -108,7 +105,6 @@ public:
 			if (cmp > 0) {
 				return increment(id, retKey) ? 1 : -1;
 			}
-			retKey->erase_all();
 			m_index->getKeyVal(m_iter, retKey, id);
 			return key == fstring(*retKey) ? 0 : 1;
 		}
@@ -180,7 +176,6 @@ WtWritableIndex::getKeyVal(WT_CURSOR* cursor, valvec<byte>* key, llong* recId)
 const {
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
-	size_t oldsize = key->size();
 	if (m_isUnique) {
 		cursor->get_key(cursor, &item);
 		cursor->get_value(cursor, recId);
@@ -189,9 +184,9 @@ const {
 		cursor->get_key(cursor, &item, recId);
 	//	cursor->get_value(cursor, ...); // has no value
 	}
-	key->append((const byte*)item.data, item.size);
+	key->assign((const byte*)item.data, item.size);
 	if (m_schema->m_needEncodeToLexByteComparable) {
-		m_schema->byteLexConvert(key->data() + oldsize, item.size);
+		m_schema->byteLexConvert(key->data(), item.size);
 	}
 }
 
