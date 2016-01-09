@@ -1491,6 +1491,25 @@ void CompositeTable::asyncFinishWriting() {
 	putToCompressionQueue(m_segments.size()-1);
 }
 
+void CompositeTable::syncFinishWriting() {
+	asyncFinishWriting();
+	for (;;) {
+		bool hasWritableSegment = false;
+		{
+			MyRwLock lock(m_rwMutex, false);
+			for (auto& seg : m_segments) {
+				if (seg->getWritableStore()) {
+					hasWritableSegment = true;
+					break;
+				}
+			}
+		}
+		if (hasWritableSegment) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
+	}
+}
+
 void CompositeTable::dropTable() {
 	assert(!m_dir.empty());
 	for (auto& seg : m_segments) {
