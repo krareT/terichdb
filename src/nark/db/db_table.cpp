@@ -13,7 +13,7 @@
 #include <thread> // for std::this_thread::sleep_for
 #include <tbb/task.h>
 #include <tbb/tbb_thread.h>
-#include <tbb/concurrent_queue.h>
+#include <nark/util/concurrent_queue.hpp>
 
 namespace nark { namespace db {
 
@@ -37,8 +37,8 @@ CompositeTable::~CompositeTable() {
 		fs::remove_all(m_dir);
 		return;
 	}
-	if (m_wrSeg)
-		m_wrSeg->flushSegment();
+//	if (m_wrSeg)
+//		m_wrSeg->flushSegment();
 /*
 	// list must be empty: has only the dummy head
 	FEBIRD_RT_assert(m_ctxListHead->m_next == m_ctxListHead, std::logic_error);
@@ -1487,8 +1487,9 @@ void CompositeTable::flush() {
 }
 
 void CompositeTable::asyncFinishWriting() {
-	MyRwLock lock(m_rwMutex, false);
+	MyRwLock lock(m_rwMutex, true);
 	putToCompressionQueue(m_segments.size()-1);
+	m_wrSeg = nullptr; // can't write anymore
 }
 
 void CompositeTable::syncFinishWriting() {
@@ -1646,43 +1647,39 @@ namespace {
 		static void enqueue(MyTask& t, tbb::priority_t pr);
 	};
 	typedef boost::intrusive_ptr<MyTask> MyTaskPtr;
-	tbb::concurrent_queue<MyTaskPtr> g_flushQueue;
-	tbb::concurrent_queue<MyTaskPtr> g_compressQueue;
+	nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_flushQueue;
+	nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_compressQueue;
 
-//	tbb::queuing_rw_mutex g_threadMutex;
-	volatile bool g_stop = false;
+	volatile bool g_stopCompress = false;
+	volatile bool g_flushStopped = false;
 
 	inline void MyTask::enqueue(MyTask& t, tbb::priority_t pr) {
 		if (PRIORITY_FLUSH == pr)
-			g_flushQueue.push(&t);
+			g_flushQueue.push_back(&t);
 		else
-			g_compressQueue.push(&t);
+			g_compressQueue.push_back(&t);
 	}
 
 	void FlushThreadFunc() {
-		for (;;) {
+		while (true) {
 			MyTaskPtr t;
-			while (g_flushQueue.try_pop(t)) {
-				t->execute();
+			while (g_flushQueue.pop_front(t, 100)) {
+				if (t)
+					t->execute();
+				else // must only one flush thread
+					goto Done; // nullptr is stop notifier
 			}
-			t = NULL;
-			if (g_stop) {
-				break;
-			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
+	Done:
+		g_flushStopped = true;
 	}
 
 	void CompressThreadFunc() {
-		for (;;) {
+		while (!g_flushStopped && !g_stopCompress) {
 			MyTaskPtr t;
-			while (!g_stop && g_compressQueue.try_pop(t)) {
+			while (!g_stopCompress && g_compressQueue.pop_front(t, 100)) {
 				t->execute();
 			}
-			if (g_stop) {
-				break;
-			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 	}
 
@@ -1720,7 +1717,7 @@ namespace {
 		}
 	};
 	tbb::tbb_thread g_flushThread(&FlushThreadFunc);
-	CompressionThreadsList g_convThreads;
+	CompressionThreadsList g_compressThreads;
 
 #endif
 
@@ -1763,13 +1760,21 @@ void CompositeTable::putToCompressionQueue(size_t segIdx) {
 }
 
 void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {
-	g_convThreads.resize(threadsNum);
+	g_compressThreads.resize(threadsNum);
 }
 
-void CompositeTable::safeStopAndWait() {
-	g_stop = true;
+// flush is the most urgent
+void CompositeTable::safeStopAndWaitForFlush() {
+	g_stopCompress = true;
+	g_flushQueue.push_back(nullptr); // notify and stop flag
 	g_flushThread.join();
-	g_convThreads.join();
+	g_compressThreads.join();
+}
+
+void CompositeTable::safeStopAndWaitForCompress() {
+	g_flushQueue.push_back(nullptr); // notify and stop flag
+	g_flushThread.join();
+	g_compressThreads.join();
 }
 
 /*

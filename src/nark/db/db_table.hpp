@@ -120,7 +120,8 @@ public:
 	///@}
 
 	static void setCompressionThreadsNum(size_t threadsNum);
-	static void safeStopAndWait();
+	static void safeStopAndWaitForFlush();
+	static void safeStopAndWaitForCompress();
 
 protected:
 	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);
