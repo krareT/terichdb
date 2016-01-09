@@ -166,6 +166,9 @@ void doTest(nark::fstring tableClass, PathRef tableDir) {
 		printf("test iterate table passed, iterRows=%lld, insertedRows=%lld\n",
 			iterRows, insertedRows);
 	}
+
+	// last writable segment will put to compressing queue
+	tab->asyncFinishWriting();
 }
 
 int main(int argc, char* argv[]) {

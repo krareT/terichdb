@@ -99,6 +99,7 @@ public:
 	bool compact();
 	void clear();
 	void flush();
+	void asyncFinishWriting();
 
 	void dropTable();
 
@@ -111,9 +112,12 @@ public:
 		return m_segments[segIdx];
 	}
 
+	///@{ internal use only
 	void convWritableSegmentToReadonly(size_t segIdx);
 	void freezeFlushWritableSegment(size_t segIdx);
 	void putToCompressionQueue(size_t segIdx);
+	///@}
+
 	static void setCompressionThreadsNum(size_t threadsNum);
 	static void safeStopAndWait();
 

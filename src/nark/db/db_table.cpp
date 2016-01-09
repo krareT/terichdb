@@ -1486,6 +1486,11 @@ void CompositeTable::flush() {
 	}
 }
 
+void CompositeTable::asyncFinishWriting() {
+	MyRwLock lock(m_rwMutex, false);
+	putToCompressionQueue(m_segments.size()-1);
+}
+
 void CompositeTable::dropTable() {
 	assert(!m_dir.empty());
 	for (auto& seg : m_segments) {
@@ -1732,8 +1737,8 @@ public:
 } // namespace
 
 void CompositeTable::putToCompressionQueue(size_t segIdx) {
-	auto& seg = *m_segments[segIdx];
-	assert(seg.m_isDel.size() > 0);
+	assert(segIdx < m_segments.size());
+	assert(m_segments[segIdx]->m_isDel.size() > 0);
 	MyTask* t = TASK_NEW WrSegFreezeFlushTask(this, segIdx);
 	MyTask::enqueue(*t, PRIORITY_FLUSH);
 }
