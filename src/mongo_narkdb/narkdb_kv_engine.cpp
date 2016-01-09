@@ -140,7 +140,7 @@ void NarkDbKVEngine::cleanShutdown() {
 //  syncSizeInfo(true);
 	std::lock_guard<std::mutex> lock(m_mutex);
     m_tables.clear();
-	CompositeTable::safeStopAndWait();
+	CompositeTable::safeStopAndWaitForFlush();
 }
 
 Status

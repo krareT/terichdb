@@ -107,7 +107,7 @@ GetoptDone:
 		}
 	}
 	printf("waiting for compact thread complete...\n");
-	nark::db::CompositeTable::safeStopAndWait();
+	nark::db::CompositeTable::safeStopAndWaitForCompress();
 //	thr.join();
 //	tbb::task::wait_for_all();
 	printf("done!\n");
