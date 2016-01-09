@@ -1671,6 +1671,7 @@ namespace {
 			}
 		}
 	Done:
+		assert(g_flushQueue.empty());
 		g_flushStopped = true;
 	}
 
@@ -1678,9 +1679,12 @@ namespace {
 		while (!g_flushStopped && !g_stopCompress) {
 			MyTaskPtr t;
 			while (!g_stopCompress && g_compressQueue.pop_front(t, 100)) {
+				if (g_stopCompress)
+					break;
 				t->execute();
 			}
 		}
+		g_compressQueue.clearQueue();
 	}
 
 	class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
