@@ -128,7 +128,7 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 			_sizeStorer.fillCache();
         }
     }
-	CompositeTable::setCompressionThreadsNum(4);
+//	CompositeTable::setCompressionThreadsNum(4);
 }
 
 NarkDbKVEngine::~NarkDbKVEngine() {

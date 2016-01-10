@@ -13,7 +13,7 @@ namespace boost { namespace filesystem {
 	}
 	inline path operator+(const path& x, const char* y) {
 		path z = x;
-		z.concat(y);
+		z.concat(y, y + strlen(y));
 		return z;
 	}
 //	class path;
