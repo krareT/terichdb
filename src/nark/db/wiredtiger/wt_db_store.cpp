@@ -99,6 +99,7 @@ WtWritableStore::WtWritableStore(WT_SESSION* session, PathRef segDir) {
 	m_wtSession = session;
 	m_wtCursor = NULL;
 	m_wtAppend = NULL;
+	m_dataSize = 0;
 }
 WtWritableStore::~WtWritableStore() {
 	if (m_wtCursor)
