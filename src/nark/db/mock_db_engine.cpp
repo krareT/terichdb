@@ -430,11 +430,11 @@ llong MockReadonlyIndex::indexStorageSize() const {
 	return m_ids.used_mem_size() + m_keys.offsets.used_mem_size();
 }
 
-const ReadableIndex* MockReadonlyIndex::getReadableIndex() const {
+ReadableIndex* MockReadonlyIndex::getReadableIndex() {
 	return this;
 }
 
-const ReadableStore* MockReadonlyIndex::getReadableStore() const {
+ReadableStore* MockReadonlyIndex::getReadableStore() {
 	return this;
 }
 

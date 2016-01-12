@@ -831,18 +831,22 @@ StoreIterator* ReadonlySegment::createStoreIterBackward(DbContext* ctx) const {
 
 void
 ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx) {
-	m_indices.resize(input[0]->m_indices.size());
+	const size_t indexNum = m_schema->getIndexNum();
+	const size_t colgroupNum = m_schema->getColgroupNum();
+	m_indices.resize(indexNum);
+	m_colgroups.resize(colgroupNum);
 	valvec<byte> buf;
-	SortableStrVec strVec;
 	for (size_t i = 0; i < m_indices.size(); ++i) {
+		SortableStrVec strVec;
 		const Schema& indexSchema = m_schema->getIndexSchema(i);
 		size_t fixedIndexRowLen = indexSchema.getFixedRowLen();
 		for (size_t j = 0; j < input.size(); ++j) {
 			auto seg = input[j];
 			auto indexStore = seg->m_indices[i]->getReadableStore();
-			llong num = indexStore->numDataRows();
-			for (llong id = 0; id < num; ++id) {
-				if (!seg->m_isDel[id]) {
+			assert(nullptr != indexStore);
+			llong rows = seg->numDataRows();
+			for (llong id = 0; id < rows; ++id) {
+				if (!seg->m_isDel[size_t(id)]) {
 					indexStore->getValue(id, &buf, ctx);
 					if (fixedIndexRowLen) {
 						assert(buf.size() == fixedIndexRowLen);
@@ -852,8 +856,13 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 				}
 			}
 		}
-		m_indices[i] = this->buildIndex(indexSchema, strVec);
-		strVec.clear();
+		ReadableIndex* index = this->buildIndex(indexSchema, strVec);
+		m_indices[i] = index;
+		m_colgroups[i] = index->getReadableStore();
+	}
+
+	for (size_t i = indexNum; i < colgroupNum; ++i) {
+
 	}
 }
 
@@ -988,7 +997,7 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		colgroupTempFiles[i].prepairRead(dio);
 		colgroupTempFiles[i].collectData(dio, newRowNum, strVec);
 		m_indices[i] = this->buildIndex(schema, strVec);
-		m_colgroups[i] = const_cast<ReadableStore*>(m_indices[i]->getReadableStore());
+		m_colgroups[i] = m_indices[i]->getReadableStore();
 		strVec.clear();
 	}
 	for (size_t i = indexNum; i < colgroupTempFiles.size(); ++i) {
@@ -1073,7 +1082,7 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 		assert(m_indices[i]); // index must have be loaded
 		auto store = m_indices[i]->getReadableStore();
 		assert(nullptr != store);
-		m_colgroups[i] = const_cast<ReadableStore*>(store);
+		m_colgroups[i] = store;
 	}
 	SortableStrVec files;
 	for(auto ent : fs::directory_iterator(segDir)) {

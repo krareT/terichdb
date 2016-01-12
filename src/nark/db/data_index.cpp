@@ -74,7 +74,7 @@ void ReadableIndex::decodeIndexKey(const Schema& schema, byte* key, size_t keyLe
 	}
 }
 
-const ReadableStore* ReadableIndex::getReadableStore() const {
+ReadableStore* ReadableIndex::getReadableStore() {
 	return nullptr;
 }
 WritableIndex* ReadableIndex::getWritableIndex() {

@@ -69,7 +69,7 @@ public:
 	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
-	virtual const ReadableIndex* getReadableIndex() const;
+	virtual ReadableIndex* getReadableIndex();
 
 	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {
 		val->risk_set_size(0);

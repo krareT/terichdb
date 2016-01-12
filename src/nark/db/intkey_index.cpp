@@ -19,11 +19,11 @@ ZipIntKeyIndex::~ZipIntKeyIndex() {
 	}
 }
 
-const ReadableIndex* ZipIntKeyIndex::getReadableIndex() const {
+ReadableIndex* ZipIntKeyIndex::getReadableIndex() {
 	return this;
 }
 
-const ReadableStore* ZipIntKeyIndex::getReadableStore() const {
+ReadableStore* ZipIntKeyIndex::getReadableStore() {
 	return this;
 }
 

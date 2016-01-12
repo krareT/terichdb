@@ -18,11 +18,11 @@ NestLoudsTrieIndex::~NestLoudsTrieIndex() {
 	}
 }
 
-const ReadableIndex* NestLoudsTrieIndex::getReadableIndex() const {
+ReadableIndex* NestLoudsTrieIndex::getReadableIndex() {
 	return this;
 }
 
-const ReadableStore* NestLoudsTrieIndex::getReadableStore() const {
+ReadableStore* NestLoudsTrieIndex::getReadableStore() {
 	return this;
 }
 

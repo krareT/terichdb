@@ -77,6 +77,10 @@ else
   endif
 endif
 
+ifeq (WITH_BMI2,1)
+	CPU += -mbmi -mbmi2
+endif
+
 COMMON_C_FLAGS  += -Wformat=2 -Wcomment
 COMMON_C_FLAGS  += -Wall -Wextra
 COMMON_C_FLAGS  += -Wno-unused-parameter

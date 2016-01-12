@@ -23,7 +23,11 @@ FixedLenKeyIndex::~FixedLenKeyIndex() {
 	}
 }
 
-const ReadableStore* FixedLenKeyIndex::getReadableStore() const {
+ReadableStore* FixedLenKeyIndex::getReadableStore() {
+	return this;
+}
+
+ReadableIndex* FixedLenKeyIndex::getReadableIndex() {
 	return this;
 }
 

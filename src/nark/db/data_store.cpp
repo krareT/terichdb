@@ -69,7 +69,7 @@ WritableStore* ReadableStore::getWritableStore() {
 	return nullptr;
 }
 
-const ReadableIndex* ReadableStore::getReadableIndex() const {
+ReadableIndex* ReadableStore::getReadableIndex() {
 	return nullptr;
 }
 

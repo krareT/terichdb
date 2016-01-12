@@ -22,7 +22,8 @@ public:
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
 
-	const ReadableStore* getReadableStore() const override;
+	ReadableStore* getReadableStore() override;
+	ReadableIndex* getReadableIndex() override;
 
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;

@@ -56,8 +56,8 @@ public:
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
 	llong indexStorageSize() const override;
 
-	const ReadableIndex* getReadableIndex() const override;
-	const ReadableStore* getReadableStore() const override;
+	ReadableIndex* getReadableIndex() override;
+	ReadableStore* getReadableStore() override;
 };
 typedef boost::intrusive_ptr<MockReadonlyIndex> MockReadonlyIndexPtr;
 
