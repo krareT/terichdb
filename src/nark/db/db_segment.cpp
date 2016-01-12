@@ -53,7 +53,7 @@ const {
 	if (id >= maxId) {
 		THROW_STD(out_of_range, "id %lld, maxId = %lld", id, maxId);
 	}
-	size_t upp = upper_bound_a(m_rowNumVec, id);
+	size_t upp = upper_bound_a(m_rowNumVec, uint32_t(id));
 	assert(upp < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[upp-1];
 	m_parts[upp-1]->getValueAppend(id - baseId, val, ctx);
@@ -179,10 +179,10 @@ void MultiPartStore::syncRowNumVec() {
 	m_rowNumVec.resize_no_init(m_parts.size() + 1);
 	llong rows = 0;
 	for (size_t i = 0; i < m_parts.size(); ++i) {
-		m_rowNumVec[i] = rows;
+		m_rowNumVec[i] = uint32_t(rows);
 		rows += m_parts[i]->numDataRows();
 	}
-	m_rowNumVec.back() = rows;
+	m_rowNumVec.back() = uint32_t(rows);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -191,7 +191,6 @@ ReadableSegment::ReadableSegment() {
 	m_delcnt = 0;
 	m_tobeDel = false;
 	m_isDirty = false;
-	m_isBusyForRemove = false;
 }
 ReadableSegment::~ReadableSegment() {
 	if (m_isDelMmap) {
@@ -320,7 +319,6 @@ void ReadableSegment::save(PathRef segDir) const {
 ReadonlySegment::ReadonlySegment() {
 	m_dataMemSize = 0;
 	m_totalStorageSize = 0;
-	m_maxPartDataSize = 2LL * 1024*1024*1024;
 }
 ReadonlySegment::~ReadonlySegment() {
 }
@@ -653,25 +651,28 @@ namespace {
 }
 
 void
-ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
+ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 {
-	assert(input.numDataRows() > 0);
+	DbContextPtr ctx(tab->createDbContext());
+	ReadableSegmentPtr input;
+	{
+		MyRwLock lock(tab->m_rwMutex, false);
+		input = tab->m_segments[segIdx];
+		m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
+		m_delcnt = input->m_delcnt;
+	}
+	assert(input->numDataRows() > 0);
 	size_t indexNum = m_schema->getIndexNum();
 	TempFileList colgroupTempFiles(*m_schema->m_colgroupSchemaSet);
 
 	valvec<fstring> columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf, projRowBuf;
 	SortableStrVec strVec;
-	llong inputRowNum = input.numDataRows();
-	assert(size_t(inputRowNum) == input.m_isDel.size());
-	StoreIteratorPtr iter(input.createStoreIterForward(ctx));
+	llong inputRowNum = input->numDataRows();
+	assert(size_t(inputRowNum) == input->m_isDel.size());
+	StoreIteratorPtr iter(input->createStoreIterForward(ctx.get()));
 	llong id = -1;
 	llong newRowNum = 0;
-	{
-		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
-		m_isDel = input.m_isDel; // make a copy, input.m_isDel[*] may be changed
-		m_delcnt = input.m_delcnt;
-	}
 	while (iter->increment(&id, &buf)) {
 		assert(id >= 0);
 		assert(id < inputRowNum);
@@ -711,20 +712,33 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 		}
 		m_colgroups[i] = parts.size()==1 ? parts[0] : new MultiPartStore(parts);
 	}
+	m_dataMemSize = 0;
+	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+		m_dataMemSize += m_colgroups[i]->dataStorageSize();
+	}
 
+	auto tmpDir = m_segDir + ".tmp";
+	fs::create_directories(tmpDir);
+	this->save(tmpDir);
+
+	// reload as mmap
+	m_isDel.clear();
+	m_indices.erase_all();
+	m_colgroups.erase_all();
+	this->load(tmpDir);
 	{
-		MyRwLock lock(ctx->m_tab->m_rwMutex, false);
-		if (m_delcnt < input.m_delcnt) { // rows were deleted during build
+		MyRwLock lock(tab->m_rwMutex, false);
+		if (m_delcnt < input->m_delcnt) { // rows were deleted during build
 			size_t i = 0;
 			for (size_t j = 0; j < size_t(inputRowNum); ++j) {
 				if (!m_isDel[j])
-					 m_isDel.set(i, input.m_isDel[j]), ++i;
+					 m_isDel.set(i, input->m_isDel[j]), ++i;
 			}
 			assert(i == size_t(newRowNum));
-			size_t new_delcnt = input.m_delcnt - m_delcnt;
+			size_t new_delcnt = input->m_delcnt - m_delcnt;
 			fprintf(stderr,
 				"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd] done\n",
-				m_delcnt, input.m_delcnt, new_delcnt);
+				m_delcnt, input->m_delcnt, new_delcnt);
 			m_isDel.risk_set_size(size_t(newRowNum));
 			m_delcnt = new_delcnt;
 			assert(m_isDel.popcnt() == m_delcnt);
@@ -733,26 +747,11 @@ ReadonlySegment::convFrom(const ReadableSegment& input, DbContext* ctx)
 			m_isDel.resize_fill(size_t(newRowNum), false);
 			m_delcnt = 0;
 		}
-		input.m_isBusyForRemove = true;
+		((uint64_t*)m_isDelMmap)[0] = newRowNum;
+		tab->m_segments[segIdx] = this;
 	}
-
-	{
-		auto tmpDir = m_segDir + ".tmp";
-		fs::create_directories(tmpDir);
-		this->save(tmpDir);
-		fs::rename(tmpDir, m_segDir);
-	}
-
-// reload as mmap
-	m_isDel.clear();
-	m_indices.erase_all();
-	m_colgroups.erase_all();
-	this->load(m_segDir);
-
-	m_dataMemSize = 0;
-	for (size_t i = 0; i < m_colgroups.size(); ++i) {
-		m_dataMemSize += m_colgroups[i]->dataStorageSize();
-	}
+	fs::rename(tmpDir, m_segDir);
+	input->deleteSegment();
 }
 
 void ReadonlySegment::saveRecordStore(PathRef segDir) const {

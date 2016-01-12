@@ -753,20 +753,12 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 		m_wrSeg->replace(subId, row, txn);
 		return id; // id is not changed
 	}
-	else if (!seg->m_isBusyForRemove) {
+	else {
 		// mark old subId as deleted
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		lock.downgrade_to_reader();
 		return insertRowImpl(row, txn, lock); // id is changed
-	}
-	else { // busy to remove, try later
-		fprintf(stderr
-			, "INFO: CompositeTable::replaceRow(recId=%lld) failed:"
-			  " segment=%zd is going to complete compressing,"
-			  " re-search the recId and try again"
-			, id, j-1);
-		return -2;
 	}
 }
 
@@ -867,8 +859,13 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 	assert(j < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
-	assert(m_segments[j-1]->m_isDel.is0(subId));
-	if (m_segments[j-1]->m_isDel.is0(subId)) {
+	auto seg = m_segments[j-1].get();
+	assert(seg->m_isDel.is0(subId));
+	if (seg->m_isDel.is1(subId)) {
+	//	THROW_STD(invalid_argument
+	//		, "Row has been deleted: id=%lld seg=%zd baseId=%lld subId=%lld"
+	//		, id, j, baseId, subId);
+		return false;
 	}
 	if (j == m_rowNumVec.size()) {
 		if (txn->syncIndex) {
@@ -885,21 +882,10 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		}
 		// TODO: if remove fail, set m_isDel[subId] = 1 ??
 		m_wrSeg->remove(subId, txn);
-		if (m_wrSeg->m_isDel.size()-1 == size_t(subId)) {
-			m_wrSeg->m_isDel.resize(m_wrSeg->m_isDel.size()-1);
-		}
+		m_wrSeg->m_deletedWrIdSet.push_back(uint32_t(subId));
 		m_wrSeg->m_isDirty = true;
 	}
 	else { // freezed segment, just set del mark
-		auto seg = m_segments[j-1].get();
-		if (seg->m_isBusyForRemove) {
-			fprintf(stderr
-				, "INFO: CompositeTable::removeRow(recId=%lld) failed:"
-				  " segment=%zd is going to complete compressing, "
-				  "re-search the recId and try again"
-				, id, j-1);
-			return false;
-		}
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		seg->m_isDirty = true;
@@ -1414,50 +1400,7 @@ const {
 #endif
 
 bool CompositeTable::compact() {
-	size_t firstWrSegIdx, lastWrSegIdx;
-	fstring dirBaseName;
-	DbContextPtr ctx(createDbContext());
-	{
-		MyRwLock lock(m_rwMutex, false);
-		if (m_tableScanningRefCount > 0) {
-			return false;
-		}
-		if (m_segments.size() < 2) {
-			return false;
-		}
-		// don't include m_segments.back(), it is the working wrseg: m_wrSeg
-		lastWrSegIdx = m_segments.size() - 1;
-		firstWrSegIdx = lastWrSegIdx;
-		for (; firstWrSegIdx > 0; firstWrSegIdx--) {
-			if (m_segments[firstWrSegIdx-1]->getWritableStore() == nullptr)
-				break;
-		}
-		if (firstWrSegIdx == lastWrSegIdx) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			goto MergeReadonlySeg;
-		}
-	}
-	fprintf(stderr,
-		"INFO: CompositeTable::compact: firstWrSeg=%zd, lastWrSeg=%zd\n",
-		firstWrSegIdx, lastWrSegIdx);
-	for (size_t segIdx = firstWrSegIdx; segIdx < lastWrSegIdx; ++segIdx) {
-		ReadableSegmentPtr srcSeg;
-		{
-			MyRwLock lock(m_rwMutex, false);
-			srcSeg = m_segments[segIdx];
-		}
-		auto segDir = getSegPath("rd", segIdx);
-		ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
-		newSeg->convFrom(*srcSeg, &*ctx);
-		{
-			MyRwLock lock(m_rwMutex, true);
-			m_segments[segIdx] = newSeg;
-		}
-		srcSeg->deleteSegment();
-	}
 
-MergeReadonlySeg:
-	// now don't merge
 	return true;
 }
 
@@ -1489,7 +1432,10 @@ void CompositeTable::flush() {
 
 void CompositeTable::asyncFinishWriting() {
 	MyRwLock lock(m_rwMutex, true);
-	putToCompressionQueue(m_segments.size()-1);
+	size_t rows = m_wrSeg->m_isDel.size();
+	if (rows) {
+		putToCompressionQueue(m_segments.size()-1);
+	}
 	m_wrSeg = nullptr; // can't write anymore
 }
 
@@ -1585,21 +1531,11 @@ void CompositeTable::save(PathRef dir) const {
 
 void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
 	DbContextPtr ctx(this->createDbContext());
-	ReadableSegmentPtr srcSeg;
-	{
-		MyRwLock lock(m_rwMutex, false);
-		srcSeg = m_segments[segIdx];
-	}
 	auto segDir = getSegPath("rd", segIdx);
-	fprintf(stderr, "convWritableSegmentToReadonly: %s\n", srcSeg->m_segDir.string().c_str());
+	fprintf(stderr, "convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
 	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
-	newSeg->convFrom(*srcSeg, &*ctx);
-	{
-		MyRwLock lock(m_rwMutex, true);
-		m_segments[segIdx] = newSeg;
-	}
-	srcSeg->deleteSegment();
-	fprintf(stderr, "convWritableSegmentToReadonly: %s done!\n", srcSeg->m_segDir.string().c_str());
+	newSeg->convFrom(this, segIdx);
+	fprintf(stderr, "convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
 }
 
 void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
@@ -1700,7 +1636,7 @@ namespace {
 			}
 		}
 		~CompressionThreadsList() {
-			join();
+			CompositeTable::safeStopAndWaitForFlush();
 		}
 		void resize(size_t newSize) {
 			if (size() < newSize) {

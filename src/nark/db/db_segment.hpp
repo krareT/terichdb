@@ -32,7 +32,7 @@ private:
 	void syncRowNumVec();
 
 //	SchemaPtr     m_schema;
-	valvec<llong> m_rowNumVec;  // parallel with m_parts
+	valvec<uint32_t> m_rowNumVec;  // parallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 };
 
@@ -80,7 +80,6 @@ public:
 	boost::filesystem::path m_segDir;
 	bool        m_tobeDel;
 	bool        m_isDirty;
-	mutable bool m_isBusyForRemove;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
@@ -110,7 +109,7 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
-	void convFrom(const ReadableSegment& input, DbContext* ctx);
+	void convFrom(class CompositeTable*, size_t segIdx);
 
 	void getValueImpl(size_t id, valvec<byte>* val, DbContext*) const;
 
@@ -136,11 +135,11 @@ protected:
 	void saveRecordStore(PathRef segDir) const override;
 
 protected:
+	friend class CompositeTable;
 	class MyStoreIterForward;  friend class MyStoreIterForward;
 	class MyStoreIterBackward; friend class MyStoreIterBackward;
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
-	size_t m_maxPartDataSize;
 	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
