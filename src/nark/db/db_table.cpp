@@ -1,4 +1,5 @@
 #include "db_table.hpp"
+#include "db_segment.hpp"
 #include <nark/util/autoclose.hpp>
 #include <nark/util/linebuf.hpp>
 #include <nark/io/FileStream.hpp>
@@ -79,7 +80,7 @@ CompositeTable* CompositeTable::createTable(fstring tableClass) {
 }
 
 void
-CompositeTable::init(PathRef dir, SegmentSchemaPtr schema) {
+CompositeTable::init(PathRef dir, SchemaConfigPtr schema) {
 	assert(!dir.empty());
 	assert(schema->columnNum() > 0);
 	assert(schema->getIndexNum() > 0);
@@ -108,7 +109,7 @@ void CompositeTable::load(PathRef dir) {
 	m_dir = dir;
 	{
 		fs::path jsonFile = fs::path(m_dir) / "dbmeta.json";
-		m_schema.reset(new SegmentSchema());
+		m_schema.reset(new SchemaConfig());
 		m_schema->loadJsonFile(jsonFile.string());
 		size_t indexNum = m_schema->getIndexNum();
 		for (size_t i = 0; i < indexNum; ++i) {

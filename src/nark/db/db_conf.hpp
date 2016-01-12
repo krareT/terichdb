@@ -264,6 +264,57 @@ namespace nark { namespace db {
 	};
 	typedef boost::intrusive_ptr<SchemaSet> SchemaSetPtr;
 
+	class NARK_DB_DLL SchemaConfig : public RefCounter {
+	public:
+		struct Colproject {
+			uint32_t colgroupId;
+			uint32_t subColumnId;
+		};
+		SchemaPtr     m_rowSchema;
+		SchemaSetPtr  m_indexSchemaSet;
+		SchemaSetPtr  m_colgroupSchemaSet;
+		valvec<Colproject> m_colproject; // parallel with m_rowSchema
+		llong m_readonlyDataMemSize;
+		llong m_maxWrSegSize;
+
+		SchemaConfig();
+		~SchemaConfig();
+
+		const Schema& getIndexSchema(size_t indexId) const {
+			assert(indexId < getIndexNum());
+			return *m_indexSchemaSet->m_nested.elem_at(indexId);
+		}
+		const SchemaSet& getIndexSchemaSet() const { return *m_indexSchemaSet; }
+		size_t getIndexNum() const { return m_indexSchemaSet->m_nested.end_i(); }
+		size_t getIndexId(fstring indexColumnNames) const {
+			return m_indexSchemaSet->m_nested.find_i(indexColumnNames);
+		}
+
+		const Schema& getColgroupSchema(size_t colgroupId) const {
+			assert(colgroupId < getColgroupNum());
+			return *m_colgroupSchemaSet->m_nested.elem_at(colgroupId);
+		}
+		const SchemaSet& getColgroupSchemaSet() const { return *m_colgroupSchemaSet; }
+		size_t getColgroupNum() const { return m_colgroupSchemaSet->m_nested.end_i(); }
+		size_t getColgroupId(fstring colgroupColumnNames) const {
+			return m_colgroupSchemaSet->m_nested.find_i(colgroupColumnNames);
+		}
+
+		const Schema& getRowSchema() const { return *m_rowSchema; }
+		size_t columnNum() const { return m_rowSchema->columnNum(); }
+
+		void loadJsonString(fstring jstr);
+		void loadJsonFile(fstring fname);
+		void saveJsonFile(fstring fname) const;
+
+		void loadMetaDFA(fstring fname);
+		void saveMetaDFA(fstring fname) const;
+
+	protected:
+		void compileSchema();
+	};
+	typedef boost::intrusive_ptr<SchemaConfig> SchemaConfigPtr;
+
 	struct NARK_DB_DLL DbConf {
 		std::string dir;
 	};

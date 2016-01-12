@@ -20,7 +20,6 @@ using nark::db::Schema;
 using nark::db::SchemaPtr;
 using nark::db::SchemaSet;
 using nark::db::SchemaSetPtr;
-using nark::db::SegmentSchema;
 
 extern const char G_schemaLessFieldName[];
 

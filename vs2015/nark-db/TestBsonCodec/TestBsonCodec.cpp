@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
 		return 2;
 	}
 	valvec<char> recBuf;
-	nark::db::SegmentSchema schema;
+	nark::db::SchemaConfig schema;
 	schema.loadJsonFile(schemaFile);
 	mongo::narkdb::SchemaRecordCoder coder;
 	mongo::narkdb::SchemaRecordCoder::FieldsMap fields2;

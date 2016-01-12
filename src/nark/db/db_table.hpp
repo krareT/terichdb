@@ -1,13 +1,20 @@
 #ifndef __nark_db_table_store_hpp__
 #define __nark_db_table_store_hpp__
 
-#include "db_segment.hpp"
+#include "data_store.hpp"
+#include "data_index.hpp"
 #include <tbb/queuing_rw_mutex.h>
 
 namespace nark { namespace db {
 
 typedef tbb::queuing_rw_mutex              MyRwMutex;
 typedef tbb::queuing_rw_mutex::scoped_lock MyRwLock;
+
+class NARK_DB_DLL ReadableSegment;
+class NARK_DB_DLL ReadonlySegment;
+class NARK_DB_DLL WritableSegment;
+typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
+typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
 // is not a WritableStore
 class NARK_DB_DLL CompositeTable : public ReadableStore {
@@ -27,7 +34,7 @@ public:
 
 	static CompositeTable* createTable(fstring tableClass);
 
-	virtual void init(PathRef dir, SegmentSchemaPtr);
+	virtual void init(PathRef dir, SchemaConfigPtr);
 
 	void load(PathRef dir) override;
 	void save(PathRef dir) const override;
@@ -108,10 +115,6 @@ public:
 
 	size_t getSegNum () const { return m_segments.size(); }
 	size_t getWritableSegNum() const;
-	ReadableSegmentPtr getSegment(size_t segIdx) const {
-		assert(segIdx < m_segments.size());
-		return m_segments[segIdx];
-	}
 
 	///@{ internal use only
 	void convWritableSegmentToReadonly(size_t segIdx);
@@ -158,7 +161,7 @@ protected:
 
 	// constant once constructed
 	boost::filesystem::path m_dir;
-	SegmentSchemaPtr m_schema;
+	SchemaConfigPtr m_schema;
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
 	bool m_tobeDrop;
