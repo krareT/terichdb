@@ -1662,6 +1662,20 @@ void SchemaConfig::compileSchema() {
 		restAll->m_keepCols.fill(true);
 		m_colgroupSchemaSet->m_nested.insert_i(restAll);
 	}
+	m_colproject.resize(m_rowSchema->columnNum(), {UINT32_MAX, UINT32_MAX});
+	size_t colgroupNum = m_colgroupSchemaSet->m_nested.end_i();
+	for (size_t i = 0; i < colgroupNum; ++i) {
+		const Schema& schema = *m_colgroupSchemaSet->m_nested.elem_at(i);
+		for (size_t j = 0; j < schema.columnNum(); ++j) {
+			fstring colname = schema.m_columnsMeta.key(j);
+			size_t columnId = m_rowSchema->m_columnsMeta.find_i(colname);
+			assert(columnId < m_rowSchema->columnNum());
+			if (UINT32_MAX == m_colproject[columnId].colgroupId) {
+				m_colproject[columnId].colgroupId = i;
+				m_colproject[columnId].subColumnId = j;
+			}
+		}
+	}
 }
 
 void SchemaConfig::loadJsonFile(fstring fname) {

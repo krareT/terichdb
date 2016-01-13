@@ -38,6 +38,7 @@ CompositeTable::~CompositeTable() {
 		fs::remove_all(m_dir);
 		return;
 	}
+	flush();
 //	if (m_wrSeg)
 //		m_wrSeg->flushSegment();
 /*
@@ -1636,7 +1637,8 @@ namespace {
 			}
 		}
 		~CompressionThreadsList() {
-			CompositeTable::safeStopAndWaitForFlush();
+			if (!this->empty())
+				CompositeTable::safeStopAndWaitForFlush();
 		}
 		void resize(size_t newSize) {
 			if (size() < newSize) {

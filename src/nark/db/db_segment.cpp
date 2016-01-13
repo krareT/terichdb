@@ -451,6 +451,8 @@ const {
 	auto cp = m_schema->m_colproject[columnId];
 	size_t colgroupId = cp.colgroupId;
 	const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+//	printf("colprojects = %zd, colgroupId = %zd, schema.cols = %zd\n"
+//		, m_schema->m_colproject.size(), colgroupId, schema.columnNum());
 	if (schema.columnNum() == 1) {
 		m_colgroups[colgroupId]->getValue(recId, colsData, ctx);
 	}
@@ -683,7 +685,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		newRowNum++;
 	}
 	assert(newRowNum <= inputRowNum);
-	assert(inputRowNum - newRowNum == m_delcnt);
+	assert(size_t(inputRowNum - newRowNum) == m_delcnt);
 
 	// build index from temporary index files
 	colgroupTempFiles.completeWrite();
