@@ -444,7 +444,7 @@ Status NarkDbRecordStore::compact(OperationContext* txn,
 								  RecordStoreCompactAdaptor* adaptor,
 								  const CompactOptions* options,
 								  CompactStats* stats) {
-	m_table->compact();
+	m_table->syncFinishWriting();
     return Status::OK();
 }
 
