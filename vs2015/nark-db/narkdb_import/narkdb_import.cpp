@@ -9,28 +9,6 @@ void usage(const char* prog) {
 	fprintf(stderr, "usage: %s options db-dir input-data-files...\n", prog);
 }
 
-/*
-static bool g_run = true;
-void compactThreadProc(nark::db::CompositeTable* tab) {
-	size_t oldsegs = tab->getSegNum();
-	nark::profiling pf;
-	while (g_run) {
-		size_t newsegs = tab->getSegNum();
-		if (newsegs != oldsegs) {
-			printf("compact: oldsegs=%zd newsegs=%zd\n", oldsegs, newsegs);
-			long long t0 = pf.now();
-			tab->compact(); // may be take very long time
-			long long t1 = pf.now();
-			printf("compact: oldsegs=%zd newsegs=%zd time=%f's\n", oldsegs, newsegs, pf.sf(t0,t1));
-			oldsegs = newsegs;
-		}
-		else {
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-		}
-	}
-}
-*/
-
 int main(int argc, char* argv[]) {
 	int inputFormat = 't';
 	int compressionThreadsNum = 1;
@@ -93,13 +71,16 @@ GetoptDone:
 			if (parsed == colnum) {
 				ctx->insertRow(row);
 				rows++;
-				if (lines % FEBIRD_IF_DEBUG(100000, 1000000) == 0) {
+				if (lines % FEBIRD_IF_DEBUG(10000, 1000000) == 0) {
 					printf("lines=%zd rows=%zd bytes=%zd currRow: %s\n",
 						lines, rows, bytes,
 						tab->rowSchema().toJsonStr(row).c_str());
 					if (tab->getWritableSegNum() > 3) {
 						printf("Waiting 10 seconds for compact thread catching up...\n");
 						std::this_thread::sleep_for(std::chrono::seconds(10));
+					}
+					else {
+						FEBIRD_IF_DEBUG(std::this_thread::sleep_for(std::chrono::seconds(2)),;);
 					}
 				}
 			}
@@ -108,8 +89,6 @@ GetoptDone:
 	}
 	printf("waiting for compact thread complete...\n");
 	nark::db::CompositeTable::safeStopAndWaitForCompress();
-//	thr.join();
-//	tbb::task::wait_for_all();
 	printf("done!\n");
     return 0;
 }
