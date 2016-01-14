@@ -1826,7 +1826,7 @@ CompositeTable::getMergePath(PathRef dir, size_t mergeSeq)
 const {
 	auto res = dir;
 	char szBuf[32];
-	int len = snprintf(szBuf, sizeof(szBuf), "g-%04ld", long(mergeSeq));
+	snprintf(szBuf, sizeof(szBuf), "g-%04ld", long(mergeSeq));
 	res /= szBuf;
 	return res;
 }
