@@ -16,6 +16,9 @@
 #include <tbb/tbb_thread.h>
 #include <nark/util/concurrent_queue.hpp>
 
+//#undef min
+//#undef max
+
 namespace nark { namespace db {
 
 namespace fs = boost::filesystem;
@@ -29,6 +32,7 @@ CompositeTable::CompositeTable() {
 	m_tobeDrop = false;
 	m_segments.reserve(DEFAULT_maxSegNum);
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
+	m_mergeSeqNum = 0;
 //	m_ctxListHead = new DbContextLink();
 }
 
@@ -39,6 +43,8 @@ CompositeTable::~CompositeTable() {
 		return;
 	}
 	flush();
+	m_segments.clear();
+//	removeStaleDir(m_dir, m_mergeSeqNum);
 //	if (m_wrSeg)
 //		m_wrSeg->flushSegment();
 /*
@@ -91,11 +97,26 @@ CompositeTable::init(PathRef dir, SchemaConfigPtr schema) {
 	}
 	m_schema = schema;
 	m_dir = dir;
+	m_mergeSeqNum = 0;
 
 	m_wrSeg = this->myCreateWritableSegment(getSegPath("wr", 0));
 	m_segments.push_back(m_wrSeg);
 	m_rowNumVec.erase_all();
 	m_rowNumVec.push_back(0);
+}
+
+static void removeStaleDir(PathRef root, size_t inUseMergeSeq) {
+	for (auto& x : fs::directory_iterator(root)) {
+		std::string mergeDir = x.path().filename().string();
+		size_t mergeSeq = -1;
+		if (sscanf(mergeDir.c_str(), "g-%04zd", &mergeSeq) == 1) {
+			if (mergeSeq != inUseMergeSeq) {
+				fprintf(stderr, "INFO: Remove stale dir: %s\n"
+					, x.path().string().c_str());
+				fs::remove_all(x.path());
+			}
+		}
+	}
 }
 
 void CompositeTable::load(PathRef dir) {
@@ -121,7 +142,24 @@ void CompositeTable::load(PathRef dir) {
 				m_multIndices.push_back(i);
 		}
 	}
-	for (auto& x : fs::directory_iterator(fs::path(m_dir))) {
+	long mergeSeq = -1;
+	for (auto& x : fs::directory_iterator(m_dir)) {
+		std::string mergeDir = x.path().filename().string();
+		long mergeSeq2 = -1;
+		if (sscanf(mergeDir.c_str(), "g-%04ld", &mergeSeq2) == 1) {
+			if (mergeSeq < mergeSeq2)
+				mergeSeq = mergeSeq2;
+		}
+	}
+	if (mergeSeq < 0) {
+		m_mergeSeqNum = 0;
+		fs::create_directories(getMergePath(m_dir, 0));
+	}
+	else {
+		m_mergeSeqNum = mergeSeq;
+	}
+	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
+	for (auto& x : fs::directory_iterator(mergeDir)) {
 		std::string segDir = x.path().string();
 		std::string fname = x.path().filename().string();
 		if (fstring(fname).endsWith(".tmp")) {
@@ -134,6 +172,15 @@ void CompositeTable::load(PathRef dir) {
 		if (sscanf(fname.c_str(), "wr-%ld", &segIdx) > 0) {
 			if (segIdx < 0) {
 				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
+			}
+			if (fs::is_symlink(segDir)) {
+				fs::path target = fs::canonical(fs::read_symlink(segDir), mergeDir);
+				fprintf(stdout
+					, "INFO: writable segment: %s is symbol link to: %s, reduce it\n"
+					, segDir.c_str(), target.string().c_str());
+				fs::remove(segDir);
+				if (fs::exists(target))
+					fs::rename(target, segDir);
 			}
 			auto rDir = getSegPath("rd", segIdx);
 			if (fs::exists(rDir)) {
@@ -180,6 +227,7 @@ void CompositeTable::load(PathRef dir) {
 	}
 	fprintf(stderr, "INFO: CompositeTable::load(%s): loaded %zd segs\n",
 		dir.string().c_str(), m_segments.size());
+	removeStaleDir(m_dir, m_mergeSeqNum);
 	if (m_segments.size() == 0 || !m_segments.back()->getWritableStore()) {
 		// THROW_STD(invalid_argument, "no any segment found");
 		// allow user create an table dir which just contains json meta file
@@ -506,6 +554,9 @@ const {
 
 bool
 CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
+	if (m_isMerging) {
+		return false;
+	}
 	if (m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
 		if (lock.upgrade_to_writer() ||
 			// if upgrade_to_writer fails, it means the lock has been
@@ -513,27 +564,33 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 			// the condition again
 			m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize)
 		{
-			if (m_segments.size() == m_segments.capacity()) {
-				THROW_STD(invalid_argument,
-					"Reaching maxSegNum=%d", int(m_segments.capacity()));
-			}
-			// createWritableSegment should be fast, other wise the lock time
-			// may be too long
-			putToCompressionQueue(m_segments.size() - 1);
-			size_t newSegIdx = m_segments.size();
-			m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
-			m_segments.push_back(m_wrSeg);
-			llong newMaxRowNum = m_rowNumVec.back();
-			m_rowNumVec.push_back(newMaxRowNum);
-			// freeze oldwrseg, this may be too slow
-			// auto& oldwrseg = m_segments.ende(2);
-			// oldwrseg->saveIsDel(oldwrseg->m_segDir);
-			// oldwrseg->loadIsDel(oldwrseg->m_segDir); // mmap
+			doCreateNewSegmentInLock();
 		}
 	//	lock.downgrade_to_reader(); // TBB bug, sometimes didn't downgrade
 		return true;
 	}
 	return false;
+}
+
+void
+CompositeTable::doCreateNewSegmentInLock() {
+	assert(!m_isMerging);
+	if (m_segments.size() == m_segments.capacity()) {
+		THROW_STD(invalid_argument,
+			"Reaching maxSegNum=%d", int(m_segments.capacity()));
+	}
+	// createWritableSegment should be fast, other wise the lock time
+	// may be too long
+	putToCompressionQueue(m_segments.size() - 1);
+	size_t newSegIdx = m_segments.size();
+	m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
+	m_segments.push_back(m_wrSeg);
+	llong newMaxRowNum = m_rowNumVec.back();
+	m_rowNumVec.push_back(newMaxRowNum);
+	// freeze oldwrseg, this may be too slow
+	// auto& oldwrseg = m_segments.ende(2);
+	// oldwrseg->saveIsDel(oldwrseg->m_segDir);
+	// oldwrseg->loadIsDel(oldwrseg->m_segDir); // mmap
 }
 
 ReadonlySegment*
@@ -756,9 +813,15 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 	}
 	else {
 		// mark old subId as deleted
+		if (seg->m_bookDeletion) {
+			assert(seg->getWritableStore() == nullptr); // must be readonly
+			seg->m_deletionList.push_back(uint32_t(subId));
+		}
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		lock.downgrade_to_reader();
+	//	lock.release();
+	//	lock.acquire(m_rwMutex, false);
 		return insertRowImpl(row, txn, lock); // id is changed
 	}
 }
@@ -887,6 +950,10 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		m_wrSeg->m_isDirty = true;
 	}
 	else { // freezed segment, just set del mark
+		if (seg->m_bookDeletion) {
+			assert(seg->getWritableStore() == nullptr); // must be readonly
+			seg->m_deletionList.push_back(uint32_t(subId));
+		}
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		seg->m_isDirty = true;
@@ -1400,9 +1467,289 @@ const {
 }
 #endif
 
-bool CompositeTable::compact() {
+namespace {
+fstring getDotExtension(fstring fpath) {
+	for (size_t extPos = fpath.size(); extPos > 0; --extPos) {
+		if ('.' == fpath[extPos-1])
+			return fpath.substr(extPos-1);
+	}
+	THROW_STD(invalid_argument, "fpath=%s has no extesion", fpath.c_str());
+}
 
-	return true;
+struct SegEntry {
+	ReadableSegment* seg;
+	size_t idx;
+	SortableStrVec files;
+	SegEntry(ReadableSegment* s, size_t i) : seg(s), idx(i) {}
+};
+
+} // namespace
+
+class CompositeTable::MergeParam : public valvec<SegEntry> {
+public:
+	size_t m_tabSegNum = 0;
+	bool canMerge(CompositeTable* tab) {
+		this->reserve(tab->m_segments.size() + 1);
+		{
+			MyRwLock lock(tab->m_rwMutex, false);
+			for (size_t i = 0; i < tab->m_segments.size(); ++i) {
+				auto seg = tab->m_segments[i].get();
+				if (seg->getWritableStore())
+					break; // writable seg must be at top side
+				else
+					this->push_back({seg, i});
+			}
+			if (this->size() <= 1)
+				return false;
+			if (this->size() + 1 < tab->m_segments.size())
+				return false;
+			tab->m_isMerging = true; // can omit write lock
+			// if tab->m_isMerging is false, tab can create new segments
+			// then this->m_tabSegNum would be staled, this->m_tabSegNum is
+			// used for violation check
+			this->m_tabSegNum = tab->m_segments.size();
+		}
+		size_t sumSegRows = 0;
+		for (size_t i = 0; i < this->size(); ++i) {
+			sumSegRows += this->p[i].seg->m_isDel.size();
+		}
+		size_t avgSegRows = sumSegRows / this->size();
+
+		// find max range in which every seg rows < avg*1.5
+		size_t rngBeg = 0, rngLen = 0;
+		for(size_t j = 0; j < this->size(); ) {
+			size_t k = j;
+			for (; k < this->size(); ++k) {
+				if (this->p[k].seg->m_isDel.size() > avgSegRows*3/2)
+					break;
+			}
+			if (k - j > rngLen) {
+				rngBeg = j;
+				rngLen = k - j;
+			}
+			j = k + 1;
+		}
+		for (size_t j = 0; j < rngLen; ++j) {
+			this->p[j] = this->p[rngBeg + j];
+		}
+		this->trim(rngLen);
+		if (rngLen < 2) {
+			tab->m_isMerging = false; // can omit write lock
+			return false;
+		}
+		return true;
+	}
+
+	std::string joinPathList() const {
+		std::string str;
+		for (auto& x : *this) {
+			str += "\t";
+			str += x.seg->m_segDir.string();
+			str += "\n";
+		}
+		return str;
+	}
+};
+
+void CompositeTable::merge(MergeParam& toMerge) {
+	fs::path destMergeDir = getMergePath(m_dir, m_mergeSeqNum+1);
+	if (fs::exists(destMergeDir)) {
+		THROW_STD(logic_error, "dir: '%s' should not existed"
+			, destMergeDir.string().c_str());
+	}
+	fs::path destSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", toMerge[0].idx);
+	std::string segPathList = toMerge.joinPathList();
+	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s ...\n"
+		, segPathList.c_str(), destSegDir.string().c_str());
+try{
+	fs::create_directories(destSegDir);
+	ReadonlySegmentPtr dseg = this->myCreateReadonlySegment(destSegDir);
+	const size_t indexNum = m_schema->getIndexNum();
+	const size_t colgroupNum = m_schema->getColgroupNum();
+	dseg->m_indices.resize(indexNum);
+	DbContextPtr ctx(this->createDbContext());
+	for (size_t i = 0; i < indexNum; ++i) {
+		valvec<byte> buf;
+		SortableStrVec strVec;
+		const Schema& schema = m_schema->getIndexSchema(i);
+		size_t fixedIndexRowLen = schema.getFixedRowLen();
+		for (size_t j = 0; j < toMerge.size(); ++j) {
+			auto seg = toMerge[j].seg;
+			auto indexStore = seg->m_indices[i]->getReadableStore();
+			assert(nullptr != indexStore);
+			llong rows = seg->numDataRows();
+			for (llong id = 0; id < rows; ++id) {
+				if (!seg->m_isDel[size_t(id)]) {
+					indexStore->getValue(id, &buf, ctx.get());
+					if (fixedIndexRowLen) {
+						assert(buf.size() == fixedIndexRowLen);
+						strVec.m_strpool.append(buf);
+					} else
+						strVec.push_back(buf);
+				}
+			}
+		}
+		ReadableIndex* index = dseg->buildIndex(schema, strVec);
+		dseg->m_indices[i] = index;
+	}
+	for (auto& e : toMerge) {
+		for(auto fpath : fs::directory_iterator(e.seg->m_segDir)) {
+			e.files.push_back(fpath.path().filename().string());
+		}
+		e.files.sort();
+	}
+
+	for (size_t i = indexNum; i < colgroupNum; ++i) {
+		const Schema& schema = m_schema->getColgroupSchema(i);
+		std::string prefix = "colgroup-" + schema.m_name;
+		size_t newPartIdx = 0;
+		for (auto& e : toMerge) {
+			auto& segDir = e.seg->m_segDir;
+			size_t lo = e.files.lower_bound(prefix);
+			if (lo >= e.files.size() || !e.files[lo].startsWith(prefix)) {
+				THROW_STD(invalid_argument, "missing: %s",
+					(segDir / prefix).string().c_str());
+			}
+			size_t j = lo;
+			while (j < e.files.size() && e.files[j].startsWith(prefix)) {
+				fstring fname = e.files[j];
+				std::string dotExt = getDotExtension(fname).str();
+				if (prefix.size() + dotExt.size() < fname.size()) {
+					// oldpartIdx is between prefix and dotExt
+					size_t oldpartIdx = lcast(fname.substr(prefix.size()+1));
+					assert(oldpartIdx == j - lo);
+					if (oldpartIdx != j - lo) {
+						THROW_STD(invalid_argument, "missing part: %s.%zd%s"
+							, (segDir / prefix).string().c_str()
+							, j - lo, dotExt.c_str());
+					}
+				}
+				char szNumBuf[16];
+				snprintf(szNumBuf, sizeof(szNumBuf), "-%04zd", newPartIdx);
+				std::string destFname = prefix + szNumBuf + dotExt;
+				fs::path    destFpath = destSegDir / destFname;
+				try {
+					fs::create_hard_link(segDir / fname.str(), destFpath);
+				}
+				catch (const std::exception& ex) {
+					fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
+					throw;
+				}
+				j++;
+				newPartIdx++;
+			}
+		}
+	}
+
+	size_t rows = 0;
+	for (auto& e : toMerge) {
+		rows += e.seg->m_isDel.size();
+		e.seg->m_bookDeletion = true;
+	}
+	dseg->m_isDel.erase_all();
+	dseg->m_isDel.reserve(rows);
+	for (auto& e : toMerge) {
+		dseg->m_isDel.append(e.seg->m_isDel);
+	}
+	dseg->m_delcnt = dseg->m_isDel.popcnt();
+	dseg->saveIndices(destSegDir);
+	dseg->saveIsDel(destSegDir);
+
+	// load as mmap
+	dseg->m_isDel.clear();
+	dseg->m_indices.erase_all();
+	dseg->m_colgroups.erase_all();
+	dseg->load(destSegDir);
+
+	// m_isMerging is true, m_segments will never be changed
+	// so lock is not needed
+	assert(m_segments.size() == toMerge.m_tabSegNum);
+	if (m_segments.size() != toMerge.m_tabSegNum) {
+		THROW_STD(logic_error
+			, "Unexpected: m_segments.size = %zd , toMerge.m_tabSegNum = %zd"
+			, m_segments.size(), toMerge.m_tabSegNum);
+	}
+	// newSegPathes don't include m_wrSeg
+//	valvec<fs::path> newSegPathes(m_segments.size()-1, valvec_reserve());
+	valvec<ReadableSegmentPtr> newSegs(m_segments.capacity(), valvec_reserve());
+	valvec<llong> newRowNumVec(m_rowNumVec.capacity(), valvec_reserve());
+	newRowNumVec.push_back(0);
+	rows = 0;
+	auto addseg = [&](const ReadableSegmentPtr& seg) {
+		rows += seg->m_isDel.size();
+		newSegs.push_back(seg);
+		newRowNumVec.push_back(llong(rows));
+	};
+	for (size_t i = 0; i < toMerge[0].idx; ++i) {
+		assert(nullptr == m_segments[i]->getWritableStore());
+		auto newSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", i);
+		fs::create_directory(newSegDir);
+		for (auto& fpath : fs::directory_iterator(m_segments[i]->m_segDir)) {
+			try {
+				fs::create_hard_link(fpath, newSegDir / fpath.path().filename());
+			}
+			catch (const std::exception& ex) {
+				fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
+				throw;
+			}
+		}
+		addseg(m_segments[i]);
+	}
+	addseg(dseg);
+	for (size_t i = toMerge.back().idx + 1; i < m_segments.size()-1; ++i) {
+		assert(nullptr == m_segments[i]->getWritableStore());
+		assert(newSegs.size() == i - toMerge.size() + 1);
+		auto newSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", newSegs.size());
+		fs::create_directory(newSegDir);
+		for (auto& fpath : m_segments[i]->m_segDir) {
+			fs::create_hard_link(fpath, newSegDir / fpath.filename());
+		}
+		addseg(m_segments[i]);
+	}
+	{
+		fs::path Old = m_wrSeg->m_segDir;
+		fs::path New = getSegPath2(m_dir, m_mergeSeqNum+1, "wr", newSegs.size());
+		fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
+		try {
+			fs::create_directory_symlink(Rela, New);
+		} catch (const std::exception& ex) {
+			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
+			throw;
+		}
+	}
+	{
+		MyRwLock lock(m_rwMutex, true);
+		addseg(m_wrSeg); // m_wrSeg is still at old segDir
+		rows = 0;
+		for (auto& e : toMerge) {
+			for (size_t subId : e.seg->m_deletionList) {
+				dseg->m_isDel.set1(rows + subId);
+			}
+			rows += e.seg->m_isDel.size();
+			e.seg->m_bookDeletion = false;
+			e.seg->m_deletionList.erase_all();
+		}
+		m_segments.swap(newSegs);
+		m_rowNumVec.swap(newRowNumVec);
+		m_mergeSeqNum++;
+		m_isMerging = false;
+		if (m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
+			doCreateNewSegmentInLock();
+		}
+	}
+	for (auto& tobeDel : toMerge) {
+		tobeDel.seg->deleteSegment();
+	}
+	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s done!\n"
+		, segPathList.c_str(), destSegDir.string().c_str());
+}
+catch (const std::exception& ex) {
+	fprintf(stderr
+		, "ERROR: merge segments: ex.what = %s\n%sTo\t%s failed, rollback!\n"
+		, ex.what(), segPathList.c_str(), destSegDir.string().c_str());
+	FEBIRD_IF_DEBUG(throw,;);
+	fs::remove_all(destMergeDir);
+}
 }
 
 void CompositeTable::clear() {
@@ -1475,19 +1822,31 @@ std::string CompositeTable::toJsonStr(fstring row) const {
 }
 
 boost::filesystem::path
-CompositeTable::getSegPath(const char* type, size_t segIdx)
+CompositeTable::getMergePath(PathRef dir, size_t mergeSeq)
 const {
-	return getSegPath2(m_dir, type, segIdx);
+	auto res = dir;
+	char szBuf[32];
+	int len = snprintf(szBuf, sizeof(szBuf), "g-%04ld", long(mergeSeq));
+	res /= szBuf;
+	return res;
 }
 
 boost::filesystem::path
-CompositeTable::getSegPath2(PathRef dir, const char* type, size_t segIdx)
+CompositeTable::getSegPath(const char* type, size_t segIdx)
+const {
+	return getSegPath2(m_dir, m_mergeSeqNum, type, segIdx);
+}
+
+boost::filesystem::path
+CompositeTable::getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx)
 const {
 	auto res = dir;
-	char szNum[32];
-	int len = snprintf(szNum, sizeof(szNum), "-%04ld", long(segIdx));
+	char szBuf[32];
+	int len = snprintf(szBuf, sizeof(szBuf), "g-%04ld", long(mergeSeq));
+	res /= szBuf;
+	len = snprintf(szBuf, sizeof(szBuf), "-%04ld", long(segIdx));
 	res /= type;
-	res.concat(szNum, szNum + len);
+	res.concat(szBuf, szBuf + len);
 	return res;
 }
 
@@ -1511,9 +1870,9 @@ void CompositeTable::save(PathRef dir) const {
 	for (size_t segIdx = 0; segIdx < segNum-1; ++segIdx) {
 		auto seg = m_segments[segIdx];
 		if (seg->getWritableStore())
-			seg->save(getSegPath2(dir, "wr", segIdx));
+			seg->save(getSegPath2(dir, 0, "wr", segIdx));
 		else
-			seg->save(getSegPath2(dir, "rd", segIdx));
+			seg->save(getSegPath2(dir, 0, "rd", segIdx));
 	}
 
 	// save the remained segments, new segment may created during
@@ -1523,7 +1882,7 @@ void CompositeTable::save(PathRef dir) const {
 	for (size_t segIdx = segNum-1; segIdx < segNum2; ++segIdx) {
 		auto seg = m_segments[segIdx];
 		assert(seg->getWritableStore());
-		seg->save(getSegPath2(dir, "wr", segIdx));
+		seg->save(getSegPath2(dir, 0, "wr", segIdx));
 	}
 	lock.upgrade_to_writer();
 	fs::path jsonFile = dir / "dbmeta.json";
@@ -1531,12 +1890,38 @@ void CompositeTable::save(PathRef dir) const {
 }
 
 void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
+  {
 	DbContextPtr ctx(this->createDbContext());
 	auto segDir = getSegPath("rd", segIdx);
 	fprintf(stderr, "convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
 	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
 	newSeg->convFrom(this, segIdx);
 	fprintf(stderr, "convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
+	fs::path wrSegPath = getSegPath("wr", segIdx);
+	if (fs::is_symlink(wrSegPath)) {
+		fs::path base = wrSegPath.parent_path();
+		fs::path target = fs::read_symlink(wrSegPath);
+		fs::path targetMergeDir = fs::canonical(target.parent_path(), base);
+		if (fs::exists(wrSegPath)) {
+			// do nothing
+		}
+		else if (fs::exists(targetMergeDir)) {
+			try { fs::remove_all(targetMergeDir); }
+			catch (const std::exception& ex) {
+				// windows can not delete a hardlink when another hardlink
+				// to the same file is in use
+				fprintf(stderr
+					, "ERROR: convWritableSegmentToReadonly: ex.what = %s\n"
+					, ex.what());
+			}
+		}
+		fs::remove(wrSegPath);
+	}
+  }
+  MergeParam toMerge;
+  if (toMerge.canMerge(this)) {
+	  this->merge(toMerge);
+  }
 }
 
 void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
@@ -1572,99 +1957,80 @@ void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
 
 namespace {
 
-#define PRIORITY_COMPRESS  tbb::priority_normal
-#define PRIORITY_FLUSH     tbb::priority_high
+class MyTask : public RefCounter {
+public:
+	virtual void execute() = 0;
+};
+typedef boost::intrusive_ptr<MyTask> MyTaskPtr;
+nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_flushQueue;
+nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_compressQueue;
 
-#if defined(NARK_DB_USE_TBB_TASK_MANAGER)
-	typedef tbb::task MyTask;
-	typedef MyTask* MyTaskPtr;
-	#define TASK_NEW new(MyTask::allocate_root())
-#else
-	#define TASK_NEW new
-	class MyTask : public RefCounter {
-	public:
-		virtual MyTask* execute() = 0;
-		static void enqueue(MyTask& t, tbb::priority_t pr);
-	};
-	typedef boost::intrusive_ptr<MyTask> MyTaskPtr;
-	nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_flushQueue;
-	nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_compressQueue;
+volatile bool g_stopCompress = false;
+volatile bool g_flushStopped = false;
 
-	volatile bool g_stopCompress = false;
-	volatile bool g_flushStopped = false;
-
-	inline void MyTask::enqueue(MyTask& t, tbb::priority_t pr) {
-		if (PRIORITY_FLUSH == pr)
-			g_flushQueue.push_back(&t);
-		else
-			g_compressQueue.push_back(&t);
-	}
-
-	void FlushThreadFunc() {
-		while (true) {
-			MyTaskPtr t;
-			while (g_flushQueue.pop_front(t, 100)) {
-				if (t)
-					t->execute();
-				else // must only one flush thread
-					goto Done; // nullptr is stop notifier
-			}
-		}
-	Done:
-		assert(g_flushQueue.empty());
-		g_flushStopped = true;
-	}
-
-	void CompressThreadFunc() {
-		while (!g_flushStopped && !g_stopCompress) {
-			MyTaskPtr t;
-			while (!g_stopCompress && g_compressQueue.pop_front(t, 100)) {
-				if (g_stopCompress)
-					break;
+void FlushThreadFunc() {
+	while (true) {
+		MyTaskPtr t;
+		while (g_flushQueue.pop_front(t, 100)) {
+			if (t)
 				t->execute();
-			}
+			else // must only one flush thread
+				goto Done; // nullptr is stop notifier
 		}
-		g_compressQueue.clearQueue();
 	}
+Done:
+	assert(g_flushQueue.empty());
+	g_flushStopped = true;
+}
 
-	class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
-	public:
-		CompressionThreadsList() {
-			size_t n = tbb::tbb_thread::hardware_concurrency();
-			this->resize(n);
-			for (size_t i = 0; i < n; ++i) {
-				(*this)[i] = new tbb::tbb_thread(&CompressThreadFunc);
-			}
+void CompressThreadFunc() {
+	while (!g_flushStopped && !g_stopCompress) {
+		MyTaskPtr t;
+		while (!g_stopCompress && g_compressQueue.pop_front(t, 100)) {
+			if (g_stopCompress)
+				break;
+			t->execute();
 		}
-		~CompressionThreadsList() {
-			if (!this->empty())
-				CompositeTable::safeStopAndWaitForFlush();
-		}
-		void resize(size_t newSize) {
-			if (size() < newSize) {
-				reserve(newSize);
-				for (size_t i = size(); i < newSize; ++i) {
-					push_back(new tbb::tbb_thread(&CompressThreadFunc));
-				}
-			} else {
-				fprintf(stderr
-					, "WARN: CompressionThreadsList::resize: ignored newSize=%zd oldSize=%zd\n"
-					, newSize, size()
-					);
-			}
-		}
-		void join() {
-			for (auto th : *this) {
-				th->join();
-				delete th;
-			}
-			this->clear();
-		}
-	};
-	tbb::tbb_thread g_flushThread(&FlushThreadFunc);
-	CompressionThreadsList g_compressThreads;
+	}
+	g_compressQueue.clearQueue();
+}
 
-#endif
+class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
+public:
+	CompressionThreadsList() {
+		size_t n = tbb::tbb_thread::hardware_concurrency();
+		this->resize(n);
+		for (size_t i = 0; i < n; ++i) {
+			(*this)[i] = new tbb::tbb_thread(&CompressThreadFunc);
+		}
+	}
+	~CompressionThreadsList() {
+		if (!this->empty())
+			CompositeTable::safeStopAndWaitForFlush();
+	}
+	void resize(size_t newSize) {
+		if (size() < newSize) {
+			reserve(newSize);
+			for (size_t i = size(); i < newSize; ++i) {
+				push_back(new tbb::tbb_thread(&CompressThreadFunc));
+			}
+		} else {
+			fprintf(stderr
+				, "WARN: CompressionThreadsList::resize: ignored newSize=%zd oldSize=%zd\n"
+				, newSize, size()
+				);
+		}
+	}
+	void join() {
+		for (auto th : *this) {
+			th->join();
+			delete th;
+		}
+		this->clear();
+	}
+};
+tbb::tbb_thread g_flushThread(&FlushThreadFunc);
+CompressionThreadsList g_compressThreads;
 
 class SegWrToRdConvTask : public MyTask {
 	CompositeTablePtr m_tab;
@@ -1674,9 +2040,8 @@ public:
 	SegWrToRdConvTask(CompositeTablePtr tab, size_t segIdx)
 		: m_tab(tab), m_segIdx(segIdx) {}
 
-	MyTask* execute() override {
+	void execute() override {
 		m_tab->convWritableSegmentToReadonly(m_segIdx);
-		return NULL;
 	}
 };
 
@@ -1687,11 +2052,9 @@ public:
 	WrSegFreezeFlushTask(CompositeTablePtr tab, size_t segIdx)
 		: m_tab(tab), m_segIdx(segIdx) {}
 
-	MyTask* execute() override {
+	void execute() override {
 		m_tab->freezeFlushWritableSegment(m_segIdx);
-		auto t = TASK_NEW SegWrToRdConvTask(m_tab, m_segIdx);
-		MyTask::enqueue(*t, PRIORITY_COMPRESS);
-		return NULL;
+		g_compressQueue.push_back(new SegWrToRdConvTask(m_tab, m_segIdx));
 	}
 };
 
@@ -1700,8 +2063,7 @@ public:
 void CompositeTable::putToCompressionQueue(size_t segIdx) {
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
-	MyTask* t = TASK_NEW WrSegFreezeFlushTask(this, segIdx);
-	MyTask::enqueue(*t, PRIORITY_FLUSH);
+	g_flushQueue.push_back(new WrSegFreezeFlushTask(this, segIdx));
 }
 
 void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {

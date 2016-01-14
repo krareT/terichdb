@@ -103,7 +103,6 @@ public:
 	const;
 #endif
 
-	bool compact();
 	void clear();
 	void flush();
 	void asyncFinishWriting();
@@ -129,15 +128,20 @@ public:
 protected:
 	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);
 
+	class MergeParam; friend class MergeParam;
+	void merge(MergeParam&);
+
 	bool maybeCreateNewSegment(MyRwLock&);
+	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
 	bool insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
 	bool insertSyncIndex(llong subId, DbContext*);
 	bool replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
 	bool replaceSyncIndex(llong newSubId, DbContext*, MyRwLock&);
 
+	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
-	boost::filesystem::path getSegPath2(PathRef dir, const char* type, size_t segIdx) const;
+	boost::filesystem::path getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx) const;
 
 	virtual ReadonlySegment* createReadonlySegment(PathRef segDir) const = 0;
 	virtual WritableSegment* createWritableSegment(PathRef segDir) const = 0;
@@ -157,7 +161,7 @@ protected:
 	valvec<llong>  m_rowNumVec;
 	valvec<ReadableSegmentPtr> m_segments;
 	WritableSegmentPtr m_wrSeg;
-	llong m_readonlyDataMemSize;
+	size_t m_mergeSeqNum;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;
@@ -165,6 +169,7 @@ protected:
 	valvec<size_t> m_uniqIndices;
 	valvec<size_t> m_multIndices;
 	bool m_tobeDrop;
+	bool m_isMerging;
 	friend class TableIndexIter;
 	friend class TableIndexIterBackward;
 	friend class DbContext;
