@@ -191,6 +191,7 @@ ReadableSegment::ReadableSegment() {
 	m_delcnt = 0;
 	m_tobeDel = false;
 	m_isDirty = false;
+	m_bookDeletion = false;
 }
 ReadableSegment::~ReadableSegment() {
 	if (m_isDelMmap) {
@@ -201,9 +202,18 @@ ReadableSegment::~ReadableSegment() {
 	else if (m_isDirty && !m_tobeDel && !m_segDir.empty()) {
 		saveIsDel(m_segDir);
 	}
+	m_indices.clear(); // destroy index objects
 	assert(!m_segDir.empty());
 	if (m_tobeDel && !m_segDir.empty()) {
-		boost::filesystem::remove_all(m_segDir);
+		try { boost::filesystem::remove_all(m_segDir); }
+		catch (const std::exception& ex) {
+			fprintf(stderr
+				, "ERROR: ReadableSegment::~ReadableSegment(): ex.what = %s\n"
+				, ex.what());
+		// windows can not delete a hardlink when another hardlink
+		// to the same file is in use
+		//	FEBIRD_IF_DEBUG(abort(),;);
+		}
 	}
 }
 
@@ -321,6 +331,7 @@ ReadonlySegment::ReadonlySegment() {
 	m_totalStorageSize = 0;
 }
 ReadonlySegment::~ReadonlySegment() {
+	m_colgroups.clear();
 }
 
 llong ReadonlySegment::dataStorageSize() const {
@@ -790,7 +801,7 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 	for (size_t i = indexNum; i < colgroupNum; ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
 		std::string prefix = "colgroup-" + schema.m_name;
-		size_t lo = lower_bound_0<SortableStrVec&>(files, files.size(), prefix);
+		size_t lo = files.lower_bound(prefix);
 		if (lo >= files.size() || !files[lo].startsWith(prefix)) {
 			THROW_STD(invalid_argument, "missing: %s",
 				(segDir / prefix).string().c_str());

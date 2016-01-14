@@ -78,8 +78,10 @@ public:
 	febitvec    m_isDel;
 	byte*       m_isDelMmap = nullptr;
 	boost::filesystem::path m_segDir;
+	valvec<uint32_t> m_deletionList;
 	bool        m_tobeDel;
 	bool        m_isDirty;
+	bool        m_bookDeletion;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
