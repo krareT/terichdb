@@ -12,7 +12,7 @@ WtWritableSegment::WtWritableSegment() {
 	m_cursorIsDel = NULL;
 	m_cacheSize = 1*(1ul << 30); // 1GB
 	if (const char* env = getenv("NarkDb_WrSegCacheSizeMB")) {
-		m_cacheSize = (size_t)strtoull(env, NULL, 10);
+		m_cacheSize = (size_t)strtoull(env, NULL, 10) * 1024 * 1024;
 	}
 }
 WtWritableSegment::~WtWritableSegment() {
