@@ -282,7 +282,7 @@ bool WtWritableIndex::insert(fstring key, llong id, DbContext* ctx) {
 	setKeyVal(m_wtCursor, key, id, &item, &ctx->buf1);
 	int err = m_wtCursor->insert(m_wtCursor);
 	if (err == WT_DUPLICATE_KEY) {
-		fprintf(stderr, "wiredtiger dupkey: %s\n", m_schema->toJsonStr(key).c_str());
+	//	fprintf(stderr, "wiredtiger dupkey: %s\n", m_schema->toJsonStr(key).c_str());
 		return false;
 	}
 	if (err) {
