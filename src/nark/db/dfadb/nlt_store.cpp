@@ -1,4 +1,5 @@
 #include "nlt_store.hpp"
+#include <typeinfo>
 
 namespace nark { namespace db { namespace dfadb {
 
@@ -45,6 +46,11 @@ void NestLoudsTrieStore::load(PathRef path) {
 	m_store.reset(dynamic_cast<NestLoudsTrieDataStore_SE_512*>(dfa.get()));
 	if (m_store) {
 		dfa.release();
+	}
+	else {
+		THROW_STD(invalid_argument
+			, "FATAL: file: %s is %s, not a NestLoudsTrieDataStore_SE_512"
+			, typeid(*dfa).name(), fpath.c_str());
 	}
 }
 
