@@ -71,25 +71,25 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\nark\3rdparty\re2;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\boost_1_59_0\stage\lib;C:\osc\tbb\build\vs2010\ia32\Debug-MT;C:\osc\tbb\build\vs2010\ia32\Release-MT;$(LibraryPath)</LibraryPath>
     <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\nark\3rdparty\re2;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
     <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\nark\3rdparty\re2;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\boost_1_59_0\stage\lib;C:\osc\tbb\build\vs2010\ia32\Debug-MT;C:\osc\tbb\build\vs2010\ia32\Release-MT;$(LibraryPath)</LibraryPath>
     <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\boost-home;C:\osc\nark\src;C:\osc\tbb\include;C:\osc\nark-db\src;C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\nark\3rdparty\re2;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
     <ExecutablePath>C:\osc\wiredtiger-2.7.0;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
