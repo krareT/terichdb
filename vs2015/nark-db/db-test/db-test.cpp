@@ -28,7 +28,7 @@ struct TestRow {
 
 using namespace nark::db;
 
-void doTest(nark::fstring tableClass, PathRef tableDir) {
+void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 	using namespace nark;
 	CompositeTablePtr tab = CompositeTable::createTable(tableClass);
 	tab->load(tableDir);
@@ -38,7 +38,6 @@ void doTest(nark::fstring tableClass, PathRef tableDir) {
 	TestRow recRow;
 
 	size_t insertedRows = 0;
-	size_t maxRowNum = 10000;
 	febitvec bits(maxRowNum + 1);
 	for (size_t i = 0; i < maxRowNum; ++i) {
 		TestRow recRow;
@@ -172,12 +171,13 @@ void doTest(nark::fstring tableClass, PathRef tableDir) {
 }
 
 int main(int argc, char* argv[]) {
-	if (argc < 3) {
-		fprintf(stderr, "usage: %s indexCol keys ...\n", argv[0]);
+	if (argc < 2) {
+		fprintf(stderr, "usage: %s maxRowNum\n", argv[0]);
 		return 1;
 	}
-//	doTest("MockCompositeTable", "db1");
-	doTest("DfaDbTable", "dfadb");
+	size_t maxRowNum = (size_t)strtoull(argv[1], NULL, 10);
+//	doTest("MockCompositeTable", "db1", maxRowNum);
+	doTest("DfaDbTable", "dfadb", maxRowNum);
 	CompositeTable::safeStopAndWaitForCompress();
     return 0;
 }
