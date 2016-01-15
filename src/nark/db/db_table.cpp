@@ -1688,39 +1688,35 @@ try{
 		newSegs.push_back(seg);
 		newRowNumVec.push_back(llong(rows));
 	};
-	for (size_t i = 0; i < toMerge[0].idx; ++i) {
-		assert(nullptr == m_segments[i]->getWritableStore());
-		auto newSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", i);
+	auto shareReadonlySeg = [&](size_t Old) {
+		size_t New = newSegs.size();
+		auto&  seg = m_segments[Old];
+		assert(nullptr == seg->getWritableStore());
+		auto newSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", New);
 		fs::create_directory(newSegDir);
-		for (auto& fpath : fs::directory_iterator(m_segments[i]->m_segDir)) {
-			try {
-				fs::create_hard_link(fpath, newSegDir / fpath.path().filename());
-			}
+		for (auto& fpath : fs::directory_iterator(seg->m_segDir)) {
+			fs::path linkPath = newSegDir / fpath.path().filename();
+			try { fs::create_hard_link(fpath, linkPath); }
 			catch (const std::exception& ex) {
 				fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
 				throw;
 			}
 		}
-		addseg(m_segments[i]);
+		addseg(seg);
+	};
+	for (size_t i = 0; i < toMerge[0].idx; ++i) {
+		shareReadonlySeg(i);
 	}
 	addseg(dseg);
 	for (size_t i = toMerge.back().idx + 1; i < m_segments.size()-1; ++i) {
-		assert(nullptr == m_segments[i]->getWritableStore());
-		assert(newSegs.size() == i - toMerge.size() + 1);
-		auto newSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", newSegs.size());
-		fs::create_directory(newSegDir);
-		for (auto& fpath : m_segments[i]->m_segDir) {
-			fs::create_hard_link(fpath, newSegDir / fpath.filename());
-		}
-		addseg(m_segments[i]);
+		shareReadonlySeg(i);
 	}
 	{
 		fs::path Old = m_wrSeg->m_segDir;
 		fs::path New = getSegPath2(m_dir, m_mergeSeqNum+1, "wr", newSegs.size());
 		fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
-		try {
-			fs::create_directory_symlink(Rela, New);
-		} catch (const std::exception& ex) {
+		try { fs::create_directory_symlink(Rela, New); }
+		catch (const std::exception& ex) {
 			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
 			throw;
 		}

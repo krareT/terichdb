@@ -269,7 +269,7 @@ byte* ReadableSegment::loadIsDel_aux(PathRef segDir, febitvec& isDel) const {
 	byte* isDelMmap = (byte*)mmap_load(fpath, &bytes, writable);
 	uint64_t rowNum = ((uint64_t*)isDelMmap)[0];
 	isDel.risk_mmap_from(isDelMmap + 8, bytes - 8);
-	assert(m_isDel.size() >= rowNum);
+	assert(isDel.size() >= rowNum);
 	isDel.risk_set_size(size_t(rowNum));
 	return isDelMmap;
 }
@@ -896,18 +896,21 @@ WritableSegment::~WritableSegment() {
 }
 
 void WritableSegment::pushIsDel(bool val) {
-	const size_t ChunkBits = 1*1024*1024; // 1M bits = 128K Bytes
+	const size_t ChunkBits = FEBIRD_IF_DEBUG(4*1024, 1*1024*1024);
 	if (nark_unlikely(nullptr == m_isDelMmap)) {
 		assert(m_isDel.size() == 0);
 		assert(m_isDel.capacity() == 0);
 		m_isDel.resize_fill(ChunkBits - 64, 0); // 64 is for uint64 header
 		saveIsDel(m_segDir);
 		m_isDel.clear();
-		loadIsDel(m_segDir);
+		m_isDelMmap = loadIsDel_aux(m_segDir, m_isDel);
+		((uint64_t*)m_isDelMmap)[0] = 0;
+		m_isDel.risk_set_size(0);
+		m_delcnt = 0;
 	}
 	else if (nark_unlikely(m_isDel.size() == m_isDel.capacity())) {
 		assert((64 + m_isDel.size()) % ChunkBits == 0);
-		size_t newCap = ((64+m_isDel.size()+ChunkBits-1) & ~(ChunkBits-1)) - 64;
+		size_t newCap = ((64+m_isDel.size()+2*ChunkBits-1) & ~(ChunkBits-1));
 		mmap_close(m_isDelMmap, sizeof(uint64_t) + m_isDel.mem_size());
 		m_isDelMmap = nullptr;
 		m_isDel.risk_release_ownership();
@@ -916,19 +919,20 @@ void WritableSegment::pushIsDel(bool val) {
 	{
 		Auto_close_fd fd(::_open(fpath.c_str(), O_CREAT|O_BINARY|O_RDWR));
 		if (fd < 0) {
-			THROW_STD(logic_error, "::open(%s, O_CREAT|O_BINARY|O_RDWR) = %s"
+			THROW_STD(logic_error
+				, "FATAL: ::_open(%s, O_CREAT|O_BINARY|O_RDWR) = %s"
 				, fpath.c_str(), strerror(errno));
 		}
 		int err = ::_chsize_s(fd, newCap/8);
 		if (err) {
-			THROW_STD(logic_error, "::_chsize_s(%s, %zd) = %s"
+			THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %zd) = %s"
 				, fpath.c_str(), newCap/8, strerror(errno));
 		}
 	}
 #else
 		int err = ::truncate(fpath.c_str(), newCap/8);
 		if (err) {
-			THROW_STD(logic_error, "::truncate(%s, %zd) = %s"
+			THROW_STD(logic_error, "FATAL: ::truncate(%s, %zd) = %s"
 				, fpath.c_str(), newCap/8, strerror(errno));
 		}
 #endif
@@ -936,6 +940,7 @@ void WritableSegment::pushIsDel(bool val) {
 		assert(nullptr != m_isDelMmap);
 	}
 	assert(m_isDel.size() < m_isDel.capacity());
+	assert(m_isDel.size() == size_t(((uint64_t*)m_isDelMmap)[0]));
 	m_isDel.unchecked_push_back(val);
 	((uint64_t*)m_isDelMmap)[0] = m_isDel.size();
 }

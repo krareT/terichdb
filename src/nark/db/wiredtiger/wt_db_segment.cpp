@@ -20,8 +20,6 @@ WtWritableSegment::~WtWritableSegment() {
 		m_wtConn->close(m_wtConn, NULL);
 }
 
-static const char g_isDelTable[] = "table:__isDel__";
-
 void WtWritableSegment::init(PathRef segDir) {
 	std::string strDir = segDir.string();
 	char conf[512];
@@ -41,13 +39,6 @@ void WtWritableSegment::init(PathRef segDir) {
 	if (err) {
 		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
 			, strDir.c_str(), wiredtiger_strerror(err)
-			);
-	}
-	err = session->create(session, g_isDelTable, "key_format=r,value_format=1t");
-	if (err) {
-		THROW_STD(invalid_argument
-			, "FATAL: wiredtiger create(\"%s\", dir=%s) = %s"
-			, strDir.c_str(), g_isDelTable, wiredtiger_strerror(err)
 			);
 	}
 	m_rowStore = new WtWritableStore(session, segDir);
