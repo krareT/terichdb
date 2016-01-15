@@ -159,14 +159,27 @@ void CompositeTable::load(PathRef dir) {
 		m_mergeSeqNum = mergeSeq;
 	}
 	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
+	SortableStrVec segDirList;
 	for (auto& x : fs::directory_iterator(mergeDir)) {
 		std::string segDir = x.path().string();
 		std::string fname = x.path().filename().string();
-		if (fstring(fname).endsWith(".tmp")) {
+		fstring fstr = fname;
+		if (fstr.endsWith(".tmp")) {
 			fprintf(stdout, "INFO: Temporary segment: %s, remove it\n", segDir.c_str());
 			fs::remove_all(segDir);
 			continue;
 		}
+		if (fstr.startsWith("wr-") || fstr.startsWith("rd-")) {
+			segDirList.push_back(fname);
+		} else {
+			fprintf(stdout, "INFO: Skip unknown dir: %s\n", segDir.c_str());
+		}
+	}
+	segDirList.sort();
+	for (size_t i = 0; i < segDirList.size(); ++i) {
+		std::string fname = segDirList[i].str();
+		fs::path    segDir = mergeDir / fname;
+		std::string strDir = segDir.string();
 		long segIdx = -1;
 		ReadableSegmentPtr seg;
 		if (sscanf(fname.c_str(), "wr-%ld", &segIdx) > 0) {
@@ -177,7 +190,7 @@ void CompositeTable::load(PathRef dir) {
 				fs::path target = fs::canonical(fs::read_symlink(segDir), mergeDir);
 				fprintf(stdout
 					, "INFO: writable segment: %s is symbol link to: %s, reduce it\n"
-					, segDir.c_str(), target.string().c_str());
+					, strDir.c_str(), target.string().c_str());
 				fs::remove(segDir);
 				if (fs::exists(target))
 					fs::rename(target, segDir);
@@ -185,12 +198,11 @@ void CompositeTable::load(PathRef dir) {
 			auto rDir = getSegPath("rd", segIdx);
 			if (fs::exists(rDir)) {
 				fprintf(stdout, "INFO: readonly segment: %s existed for writable seg: %s, remove it\n"
-					, rDir.string().c_str(), segDir.c_str());
+					, rDir.string().c_str(), strDir.c_str());
 				fs::remove_all(segDir);
 				continue;
 			}
-			std::string segDir = x.path().string();
-			fprintf(stdout, "INFO: loading segment: %s ... ", segDir.c_str());
+			fprintf(stdout, "INFO: loading segment: %s ... ", strDir.c_str());
 			auto wseg = openWritableSegment(segDir);
 			wseg->m_segDir = segDir;
 			seg = wseg;
@@ -200,15 +212,12 @@ void CompositeTable::load(PathRef dir) {
 			if (segIdx < 0) {
 				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
 			}
-			seg = myCreateReadonlySegment(x.path().string());
+			seg = myCreateReadonlySegment(segDir);
 			assert(seg);
-			fprintf(stdout, "INFO: loading segment: %s ... ", segDir.c_str());
+			fprintf(stdout, "INFO: loading segment: %s ... ", strDir.c_str());
 			fflush(stdout);
 			seg->load(seg->m_segDir);
 			fprintf(stdout, "done!\n");
-		}
-		else {
-			continue;
 		}
 		if (m_segments.size() <= size_t(segIdx)) {
 			m_segments.resize(segIdx + 1);
@@ -239,7 +248,6 @@ void CompositeTable::load(PathRef dir) {
 	else {
 		auto seg = dynamic_cast<WritableSegment*>(m_segments.back().get());
 		assert(NULL != seg);
-		seg->unmapIsDel();
 		m_wrSeg.reset(seg); // old wr seg at end
 	}
 	m_rowNumVec.resize_no_init(m_segments.size() + 1);
@@ -658,7 +666,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		ws.m_isDirty = true;
 		subId = (llong)ws.m_isDel.size();
 		ws.replace(subId, row, txn);
-		ws.m_isDel.push_back(false);
+		ws.pushIsDel(false);
 		m_rowNumVec.back() = wrBaseId + subId + 1;
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {

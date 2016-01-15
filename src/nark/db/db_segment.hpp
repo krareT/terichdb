@@ -65,7 +65,6 @@ public:
 	void saveIsDel(PathRef segDir) const;
 	void loadIsDel(PathRef segDir);
 	byte*loadIsDel_aux(PathRef segDir, febitvec& isDel) const;
-	void unmapIsDel();
 
 	void deleteSegment();
 
@@ -152,6 +151,8 @@ class NARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore
 public:
 	WritableSegment();
 	~WritableSegment();
+
+	void pushIsDel(bool val);
 
 	WritableStore* getWritableStore() override;
 

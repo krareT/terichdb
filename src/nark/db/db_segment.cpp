@@ -19,6 +19,11 @@
 #include <nark/fsa/nest_trie_dawg.hpp>
 #endif
 
+#if defined(_MSC_VER)
+	#include <io.h>
+#endif
+#include <fcntl.h>
+
 #include "json.hpp"
 
 namespace nark { namespace db {
@@ -267,15 +272,6 @@ byte* ReadableSegment::loadIsDel_aux(PathRef segDir, febitvec& isDel) const {
 	assert(m_isDel.size() >= rowNum);
 	isDel.risk_set_size(size_t(rowNum));
 	return isDelMmap;
-}
-
-void ReadableSegment::unmapIsDel() {
-	febitvec isDel(m_isDel);
-	size_t bitBytes = m_isDel.capacity()/8;
-	mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);
-	m_isDel.risk_release_ownership();
-	m_isDel.swap(isDel);
-	m_isDelMmap = nullptr;
 }
 
 void ReadableSegment::openIndices(PathRef segDir) {
@@ -897,6 +893,51 @@ WritableSegment::WritableSegment() {
 WritableSegment::~WritableSegment() {
 	if (!m_tobeDel)
 		flushSegment();
+}
+
+void WritableSegment::pushIsDel(bool val) {
+	const size_t ChunkBits = 1*1024*1024; // 1M bits = 128K Bytes
+	if (nark_unlikely(nullptr == m_isDelMmap)) {
+		assert(m_isDel.size() == 0);
+		assert(m_isDel.capacity() == 0);
+		m_isDel.resize_fill(ChunkBits - 64, 0); // 64 is for uint64 header
+		saveIsDel(m_segDir);
+		m_isDel.clear();
+		loadIsDel(m_segDir);
+	}
+	else if (nark_unlikely(m_isDel.size() == m_isDel.capacity())) {
+		assert((64 + m_isDel.size()) % ChunkBits == 0);
+		size_t newCap = ((64+m_isDel.size()+ChunkBits-1) & ~(ChunkBits-1)) - 64;
+		mmap_close(m_isDelMmap, sizeof(uint64_t) + m_isDel.mem_size());
+		m_isDelMmap = nullptr;
+		m_isDel.risk_release_ownership();
+		std::string fpath = (m_segDir / "isDel").string();
+#ifdef _MSC_VER
+	{
+		Auto_close_fd fd(::_open(fpath.c_str(), O_CREAT|O_BINARY|O_RDWR));
+		if (fd < 0) {
+			THROW_STD(logic_error, "::open(%s, O_CREAT|O_BINARY|O_RDWR) = %s"
+				, fpath.c_str(), strerror(errno));
+		}
+		int err = ::_chsize_s(fd, newCap/8);
+		if (err) {
+			THROW_STD(logic_error, "::_chsize_s(%s, %zd) = %s"
+				, fpath.c_str(), newCap/8, strerror(errno));
+		}
+	}
+#else
+		int err = ::truncate(fpath.c_str(), newCap/8);
+		if (err) {
+			THROW_STD(logic_error, "::truncate(%s, %zd) = %s"
+				, fpath.c_str(), newCap/8, strerror(errno));
+		}
+#endif
+		m_isDelMmap = loadIsDel_aux(m_segDir, m_isDel);
+		assert(nullptr != m_isDelMmap);
+	}
+	assert(m_isDel.size() < m_isDel.capacity());
+	m_isDel.unchecked_push_back(val);
+	((uint64_t*)m_isDelMmap)[0] = m_isDel.size();
 }
 
 WritableStore* WritableSegment::getWritableStore() {
