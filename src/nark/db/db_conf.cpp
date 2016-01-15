@@ -1615,7 +1615,8 @@ SchemaConfig::~SchemaConfig() {
 void SchemaConfig::compileSchema() {
 	m_indexSchemaSet->compileSchemaSet(m_rowSchema.get());
 	febitvec hasIndex(m_rowSchema->columnNum(), false);
-	for (size_t i = 0; i < m_indexSchemaSet->m_nested.end_i(); ++i) {
+	const size_t indexNum = this->getIndexNum();
+	for (size_t i = 0; i < indexNum; ++i) {
 		const Schema& schema = *m_indexSchemaSet->m_nested.elem_at(i);
 		const size_t colnum = schema.columnNum();
 		for (size_t j = 0; j < colnum; ++j) {
@@ -1675,6 +1676,15 @@ void SchemaConfig::compileSchema() {
 				m_colproject[columnId].subColumnId = j;
 			}
 		}
+	}
+	m_uniqIndices.erase_all();
+	m_multIndices.erase_all();
+	for (size_t i = 0; i < indexNum; ++i) {
+		auto& schema = this->getIndexSchema(i);
+		if (schema.m_isUnique)
+			m_uniqIndices.push_back(i);
+		else
+			m_multIndices.push_back(i);
 	}
 }
 

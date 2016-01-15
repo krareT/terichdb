@@ -134,9 +134,9 @@ protected:
 	bool maybeCreateNewSegment(MyRwLock&);
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
-	bool insertCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
+	bool insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool insertSyncIndex(llong subId, DbContext*);
-	bool replaceCheckSegDup(size_t begSeg, size_t endSeg, DbContext*);
+	bool replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool replaceSyncIndex(llong newSubId, DbContext*, MyRwLock&);
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
@@ -162,14 +162,13 @@ protected:
 	valvec<ReadableSegmentPtr> m_segments;
 	WritableSegmentPtr m_wrSeg;
 	size_t m_mergeSeqNum;
+	size_t m_newWrSegNum;
+	bool m_tobeDrop;
+	bool m_isMerging;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;
 	SchemaConfigPtr m_schema;
-	valvec<size_t> m_uniqIndices;
-	valvec<size_t> m_multIndices;
-	bool m_tobeDrop;
-	bool m_isMerging;
 	friend class TableIndexIter;
 	friend class TableIndexIterBackward;
 	friend class DbContext;

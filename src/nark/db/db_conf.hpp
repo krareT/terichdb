@@ -273,6 +273,8 @@ namespace nark { namespace db {
 		SchemaPtr     m_rowSchema;
 		SchemaSetPtr  m_indexSchemaSet;
 		SchemaSetPtr  m_colgroupSchemaSet;
+		valvec<size_t> m_uniqIndices;
+		valvec<size_t> m_multIndices;
 		valvec<Colproject> m_colproject; // parallel with m_rowSchema
 		llong m_readonlyDataMemSize;
 		llong m_maxWrSegSize;
