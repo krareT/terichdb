@@ -114,7 +114,10 @@ static void removeStaleDir(PathRef root, size_t inUseMergeSeq) {
 			if (mergeSeq != inUseMergeSeq) {
 				fprintf(stderr, "INFO: Remove stale dir: %s\n"
 					, x.path().string().c_str());
-				fs::remove_all(x.path());
+				try { fs::remove_all(x.path()); }
+				catch (const std::exception& ex) {
+					fprintf(stderr, "ERROR: ex.what = %s\n", ex.what());
+				}
 			}
 		}
 	}
@@ -158,14 +161,14 @@ void CompositeTable::load(PathRef dir) {
 		std::string fname = x.path().filename().string();
 		fstring fstr = fname;
 		if (fstr.endsWith(".tmp")) {
-			fprintf(stdout, "INFO: Temporary segment: %s, remove it\n", segDir.c_str());
+			fprintf(stderr, "WARN: Temporary segment: %s, remove it\n", segDir.c_str());
 			fs::remove_all(segDir);
 			continue;
 		}
 		if (fstr.startsWith("wr-") || fstr.startsWith("rd-")) {
 			segDirList.push_back(fname);
 		} else {
-			fprintf(stdout, "INFO: Skip unknown dir: %s\n", segDir.c_str());
+			fprintf(stderr, "WARN: Skip unknown dir: %s\n", segDir.c_str());
 		}
 	}
 	segDirList.sort();
@@ -181,8 +184,8 @@ void CompositeTable::load(PathRef dir) {
 			}
 			if (fs::is_symlink(segDir)) {
 				fs::path target = fs::canonical(fs::read_symlink(segDir), mergeDir);
-				fprintf(stdout
-					, "INFO: writable segment: %s is symbol link to: %s, reduce it\n"
+				fprintf(stderr
+					, "WARN: writable segment: %s is symbol link to: %s, reduce it\n"
 					, strDir.c_str(), target.string().c_str());
 				fs::remove(segDir);
 				if (fs::exists(target))
@@ -196,6 +199,7 @@ void CompositeTable::load(PathRef dir) {
 				continue;
 			}
 			fprintf(stdout, "INFO: loading segment: %s ... ", strDir.c_str());
+			fflush(stdout);
 			auto wseg = openWritableSegment(segDir);
 			wseg->m_segDir = segDir;
 			seg = wseg;
@@ -1693,7 +1697,7 @@ try{
 			, m_segments.size(), toMerge.m_tabSegNum);
 	}
 	// newSegPathes don't include m_wrSeg
-//	valvec<fs::path> newSegPathes(m_segments.size()-1, valvec_reserve());
+	valvec<fs::path> newSegPathes(m_segments.size()-1, valvec_reserve());
 	valvec<ReadableSegmentPtr> newSegs(m_segments.capacity(), valvec_reserve());
 	valvec<llong> newRowNumVec(m_rowNumVec.capacity(), valvec_reserve());
 	newRowNumVec.push_back(0);
@@ -1708,6 +1712,7 @@ try{
 		auto&  seg = m_segments[Old];
 		assert(nullptr == seg->getWritableStore());
 		auto newSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", New);
+#if 0
 		fs::create_directory(newSegDir);
 		for (auto& fpath : fs::directory_iterator(seg->m_segDir)) {
 			fs::path linkPath = newSegDir / fpath.path().filename();
@@ -1717,12 +1722,17 @@ try{
 				throw;
 			}
 		}
+#else
+		fs::rename(seg->m_segDir, newSegDir);
+#endif
 		addseg(seg);
+		newSegPathes.emplace_back(std::move(newSegDir));
 	};
 	for (size_t i = 0; i < toMerge[0].idx; ++i) {
 		shareReadonlySeg(i);
 	}
 	addseg(dseg);
+	newSegPathes.emplace_back();
 	for (size_t i = toMerge.back().idx + 1; i < m_segments.size()-1; ++i) {
 		shareReadonlySeg(i);
 	}
@@ -1747,6 +1757,12 @@ try{
 			rows += e.seg->m_isDel.size();
 			e.seg->m_bookDeletion = false;
 			e.seg->m_deletionList.erase_all();
+		}
+		for (size_t i = 0; i < newSegs.size()-1; ++i) {
+			auto&  seg = newSegs[i];
+			assert(nullptr == seg->getWritableStore());
+			if (!newSegPathes[i].empty())
+				seg->m_segDir.swap(newSegPathes[i]);
 		}
 		m_segments.swap(newSegs);
 		m_rowNumVec.swap(newRowNumVec);
