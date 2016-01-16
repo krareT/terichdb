@@ -132,9 +132,25 @@ void WtWritableSegment::load(PathRef path) {
 	init(path);
 	if (boost::filesystem::exists(path / "isDel")) {
 		WritableSegment::load(path);
-		return;
+		size_t rows = (size_t)m_rowStore->numDataRows();
+		if (rows+1 < m_isDel.size() || (rows+1 == m_isDel.size() && !m_isDel[rows])) {
+			fprintf(stderr
+				, "WARN: wiredtiger store: rows[saved=%zd real=%zd], some data may lossed\n"
+				, m_isDel.size(), rows);
+		//	m_isDel.risk_set_size(rows); // don't uncomment, because we must allow m_isDel be larger
+		}
+		else if (rows > m_isDel.size()) {
+			fprintf(stderr
+				, "WARN: wiredtiger store: rows[saved=%zd real=%zd], some error may occurred, ignore it and easy recover\n"
+				, m_isDel.size(), rows);
+			while (m_isDel.size() < rows) {
+				this->pushIsDel(false);
+			}
+		}
 	}
-	this->openIndices(path);
+	else {
+		this->openIndices(path);
+	}
 }
 
 }}} // namespace nark::db::wt

@@ -670,26 +670,34 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 		m_delcnt = input->m_delcnt;
 	}
-	assert(input->numDataRows() > 0);
+	llong savedInputRowNum = input->m_isDel.size();
+	assert(savedInputRowNum > 0);
 	size_t indexNum = m_schema->getIndexNum();
 	TempFileList colgroupTempFiles(*m_schema->m_colgroupSchemaSet);
 
 	valvec<fstring> columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf, projRowBuf;
 	SortableStrVec strVec;
-	llong inputRowNum = input->numDataRows();
-	assert(size_t(inputRowNum) == input->m_isDel.size());
+	llong inputRowNum = 0;
 	StoreIteratorPtr iter(input->createStoreIterForward(ctx.get()));
 	llong id = -1;
 	llong newRowNum = 0;
 	while (iter->increment(&id, &buf)) {
+		inputRowNum++;
 		assert(id >= 0);
-		assert(id < inputRowNum);
+		assert(id < savedInputRowNum);
 		if (m_isDel[id]) continue;
 
 		m_schema->m_rowSchema->parseRow(buf, &columns);
 		colgroupTempFiles.writeColgroups(columns, projRowBuf);
 		newRowNum++;
+	}
+	if (inputRowNum < savedInputRowNum) {
+		fprintf(stderr
+			, "WARN: inputRows[real=%zd saved=%zd], some data have lossed\n"
+			, inputRowNum, savedInputRowNum);
+		input->m_isDel.risk_set_size(inputRowNum);
+		this->m_isDel.risk_set_size(inputRowNum);
 	}
 	assert(newRowNum <= inputRowNum);
 	assert(size_t(inputRowNum - newRowNum) == m_delcnt);

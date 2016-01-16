@@ -80,7 +80,7 @@ GetoptDone:
 						std::this_thread::sleep_for(std::chrono::seconds(10));
 					}
 					else {
-						FEBIRD_IF_DEBUG(std::this_thread::sleep_for(std::chrono::seconds(1)),;);
+						FEBIRD_IF_DEBUG(std::this_thread::sleep_for(std::chrono::seconds(2)),;);
 					}
 				}
 			}
