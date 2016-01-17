@@ -611,6 +611,7 @@ WritableSegment*
 CompositeTable::myCreateWritableSegment(PathRef segDir) const {
 	fs::create_directories(segDir.c_str());
 	std::unique_ptr<WritableSegment> seg(createWritableSegment(segDir));
+	assert(seg);
 	seg->m_segDir = segDir;
 	seg->m_schema = this->m_schema;
 	if (seg->m_indices.empty()) {
@@ -1737,7 +1738,8 @@ try{
 		shareReadonlySeg(i);
 	}
 	{
-		fs::path Old = m_wrSeg->m_segDir;
+		auto wrSeg = m_segments.back(); // m_wrSeg maybe reset by asyncFinishWriting
+		fs::path Old = wrSeg->m_segDir;
 		fs::path New = getSegPath2(m_dir, m_mergeSeqNum+1, "wr", newSegs.size());
 		fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
 		try { fs::create_directory_symlink(Rela, New); }
@@ -1748,7 +1750,10 @@ try{
 	}
 	{
 		MyRwLock lock(m_rwMutex, true);
-		addseg(m_wrSeg); // m_wrSeg is still at old segDir
+		// m_wrSeg is still at old segDir, m_wrSeg maybe reset as NULL
+		// in asyncFinishWriting, use m_segments.back(), don't use m_wrSeg
+		addseg(m_segments.back());
+
 		rows = 0;
 		for (auto& e : toMerge) {
 			for (size_t subId : e.seg->m_deletionList) {
@@ -1768,7 +1773,8 @@ try{
 		m_rowNumVec.swap(newRowNumVec);
 		m_mergeSeqNum++;
 		m_isMerging = false;
-		if (m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
+		// m_wrSeg == NULL indicate writing is stopped
+		if (m_wrSeg && m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
 			doCreateNewSegmentInLock();
 		}
 	}

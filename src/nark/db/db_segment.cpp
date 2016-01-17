@@ -694,7 +694,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	}
 	if (inputRowNum < savedInputRowNum) {
 		fprintf(stderr
-			, "WARN: inputRows[real=%zd saved=%zd], some data have lossed\n"
+			, "WARN: inputRows[real=%lld saved=%lld], some data have lossed\n"
 			, inputRowNum, savedInputRowNum);
 		input->m_isDel.risk_set_size(inputRowNum);
 		this->m_isDel.risk_set_size(inputRowNum);

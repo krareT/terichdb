@@ -130,8 +130,8 @@ void NestLoudsTrieIndex::build(SortableStrVec& strVec) {
 		m_isUnique = false;
 		assert(keys < rows);
 		valvec<uint32_t> psum(keys+1, 0);
-		for (size_t i = 0; i < rows; ++i) psum[idToKey[i]]++;
-		for (size_t i = 0; i < keys; ++i) psum[i+1] += psum[i];
+		for (size_t i = 0; i < rows; ++i) psum[1+idToKey[i]]++;
+		for (size_t i = 0; i < keys; ++i) psum[1+i] += psum[i];
 		assert(psum[keys] == rows);
 		m_recBits.resize_fill(rows+1, false);
 		for (size_t i = 0; i < psum.size(); ++i) {
@@ -167,7 +167,8 @@ void NestLoudsTrieIndex::build(SortableStrVec& strVec) {
 	//	size_t keyIdx = m_dfa->index(backup[id]);
 		std::string key = backup[id].str();
 		intptr_t id2 = searchExact(backup[id], NULL);
-		assert(id2 == id);
+		if (keys == rows)
+			assert(id2 == id);
 	}
 #endif
 }
@@ -185,31 +186,40 @@ void NestLoudsTrieIndex::load(PathRef path) {
 
 	size_t rows  = ((uint32_t*)m_idmapBase)[0];
 	size_t keys  = ((uint32_t*)m_idmapBase)[1];
-	size_t bytes = ((uint32_t*)m_idmapBase)[2];
+	size_t bytes = ((uint32_t*)m_idmapBase)[2]; // for m_idToKey
 	size_t rslen = ((uint32_t*)m_idmapBase)[3];
-	size_t ubits = nark_bsr_u64(rows-1) + 1;
+	size_t rbits = nark_bsr_u64(rows-1) + 1;
+	size_t kbits = nark_bsr_u64(keys-1) + 1;
 	bytes *= 16; // large rows will overflow m_idToKeys.mem_size() as uint32
 	if (m_dfa->num_words() != keys) {
 		THROW_STD(invalid_argument,
 			"path=%s, broken data: keys[dfa=%zd map=%zd]",
 			path.string().c_str(), m_dfa->num_words(), keys);
 	}
-	m_idToKey.risk_set_data(m_idmapBase+16        , rows, ubits);
-	m_keyToId.risk_set_data(m_idmapBase+16 + bytes, rows, ubits);
+	m_idToKey.risk_set_data(m_idmapBase+16        , rows, kbits);
+	m_keyToId.risk_set_data(m_idmapBase+16 + bytes, rows, rbits);
 	assert(m_idToKey.mem_size() == bytes);
-	assert(m_keyToId.mem_size() == bytes);
+//	assert(m_keyToId.mem_size() == bytes);
 	m_isUnique = keys == rows;
 	if (!m_isUnique) {
-		m_recBits.risk_mmap_from(m_idmapBase+16+2*bytes, rslen);
+		m_recBits.risk_mmap_from(m_idmapBase+16+bytes+m_keyToId.mem_size(), rslen);
 		m_recBits.risk_set_size(rows + 1);
 	}
 }
 
 void NestLoudsTrieIndex::save(PathRef path) const {
-	assert(m_idToKey.size() == m_dfa->num_words());
+#ifndef NDEBUG
+	if (m_isUnique) {
+		assert(m_dfa->num_words() == m_idToKey.size());
+		assert(m_idToKey.mem_size() == m_keyToId.mem_size());
+	}
+	else {
+		assert(m_dfa->num_words() < m_idToKey.size());
+		assert(m_idToKey.uintbits() <= m_keyToId.uintbits());
+	}
 	assert(m_idToKey.size() == m_keyToId.size());
-	assert(m_idToKey.mem_size() == m_keyToId.mem_size());
 	assert(m_idToKey.mem_size() % 16 == 0);
+#endif
 	if (m_idToKey.mem_size() % 16 != 0) {
 		THROW_STD(logic_error,
 			"(m_idToKey.mem_size()=%zd) %% 16 = %zd, must be 0",
