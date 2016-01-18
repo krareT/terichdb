@@ -20,7 +20,7 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	void build(SortableStrVec& strVec);
+	void build(const Schema&, SortableStrVec& strVec);
 	void load(PathRef path) override;
 	void save(PathRef path) const override;
 

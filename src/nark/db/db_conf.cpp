@@ -14,11 +14,16 @@
 namespace nark { namespace db {
 
 ColumnMeta::ColumnMeta() {
+	fixedLen = 0;
+	reserved1 = 0;
+	reserved2 = 0;
 	type = ColumnType::Any;
 	uType = 255; // unknown
 }
 
 ColumnMeta::ColumnMeta(ColumnType t) {
+	reserved1 = 0;
+	reserved2 = 0;
 	type = t;
 	switch (t) {
 	default:
@@ -105,6 +110,7 @@ Schema::Schema() {
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_keepCols.fill(true);
+	m_sufarrCompressMinFreq = 0;
 }
 Schema::~Schema() {
 }
@@ -1752,6 +1758,15 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 	} else {
 		m_maxWrSegSize = *iter;
 	}
+	int sufarrCompressMinFreq = 0;
+	iter = meta.find("SufarrCompressMinFreq");
+	if (meta.end() != iter) {
+		int minFreq = iter.value();
+		if (minFreq < 0) minFreq = 0;
+		if (minFreq > 255) minFreq = 255;
+		sufarrCompressMinFreq = minFreq;
+	}
+
 	const json& tableIndex = meta["TableIndex"];
 	if (!tableIndex.is_array()) {
 		THROW_STD(invalid_argument, "json TableIndex must be an array");
@@ -1792,6 +1807,12 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			indexSchema->m_isUnique = false; // default
 		else
 			indexSchema->m_isUnique = found.value();
+	}
+	// TODO: config different schema->m_sufarrCompressMinFreq for each
+	// NOW just set as the same
+	for (size_t i = 0; i < m_colgroupSchemaSet->m_nested.end_i(); ++i) {
+		auto& schema = m_colgroupSchemaSet->m_nested.elem_at(i);
+		schema->m_sufarrCompressMinFreq = sufarrCompressMinFreq;
 	}
 	compileSchema();
 }

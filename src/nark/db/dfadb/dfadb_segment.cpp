@@ -60,7 +60,7 @@ const {
 		assert(fixlen > 0);
 		patchStrVec(storeData, fixlen);
 	}
-	nlt->build(storeData);
+	nlt->build(schema, storeData);
 	return nlt.release();
 }
 

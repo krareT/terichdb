@@ -80,7 +80,7 @@ namespace nark { namespace db {
 	};
 
 	struct NARK_DB_DLL ColumnMeta {
-		uint32_t fixedLen = 0;
+		uint32_t fixedLen;
 	//	static_bitmap<16, uint16_t> flags;
 		unsigned char reserved1;
 		unsigned char reserved2;
@@ -154,6 +154,7 @@ namespace nark { namespace db {
 		// if not zero, len of (m_lastVarLenCol-1) is omitted
 		size_t m_lastVarLenCol;
 		size_t m_restFixLenSum; // len sum of [m_lastVarLenCol, colnum)
+		int    m_sufarrCompressMinFreq;
 
 		bool m_isOrdered; // just for index schema
 		bool m_isUnique;
