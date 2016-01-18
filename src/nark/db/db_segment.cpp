@@ -210,6 +210,7 @@ ReadableSegment::~ReadableSegment() {
 	m_indices.clear(); // destroy index objects
 	assert(!m_segDir.empty());
 	if (m_tobeDel && !m_segDir.empty()) {
+	//	fprintf(stderr, "INFO: remove: %s\n", m_segDir.string().c_str());
 		try { boost::filesystem::remove_all(m_segDir); }
 		catch (const std::exception& ex) {
 			fprintf(stderr

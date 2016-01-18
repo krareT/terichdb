@@ -1653,10 +1653,11 @@ try{
 					}
 				}
 				char szNumBuf[16];
-				snprintf(szNumBuf, sizeof(szNumBuf), "-%04zd", newPartIdx);
+				snprintf(szNumBuf, sizeof(szNumBuf), ".%04zd", newPartIdx);
 				std::string destFname = prefix + szNumBuf + dotExt;
 				fs::path    destFpath = destSegDir / destFname;
 				try {
+				//	fprintf(stderr, "INFO: create_hard_link(%s, %s)\n", (segDir / fname.str()).string().c_str(), destFpath.string().c_str());
 					fs::create_hard_link(segDir / fname.str(), destFpath);
 				}
 				catch (const std::exception& ex) {
