@@ -105,7 +105,6 @@ public:
 
 	void clear();
 	void flush();
-	void asyncFinishWriting();
 	void syncFinishWriting();
 
 	void dropTable();

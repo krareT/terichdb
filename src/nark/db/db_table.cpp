@@ -1657,7 +1657,9 @@ try{
 				std::string destFname = prefix + szNumBuf + dotExt;
 				fs::path    destFpath = destSegDir / destFname;
 				try {
-				//	fprintf(stderr, "INFO: create_hard_link(%s, %s)\n", (segDir / fname.str()).string().c_str(), destFpath.string().c_str());
+					fprintf(stderr, "INFO: create_hard_link(%s, %s)\n"
+						, (segDir / fname.str()).string().c_str()
+						, destFpath.string().c_str());
 					fs::create_hard_link(segDir / fname.str(), destFpath);
 				}
 				catch (const std::exception& ex) {
@@ -1725,6 +1727,9 @@ try{
 			}
 		}
 #else
+		fprintf(stderr, "INFO: rename(%s, %s)\n"
+			, seg->m_segDir.string().c_str()
+			, newSegDir.string().c_str());
 		fs::rename(seg->m_segDir, newSegDir);
 #endif
 		addseg(seg);
@@ -1738,9 +1743,9 @@ try{
 	for (size_t i = toMerge.back().idx + 1; i < m_segments.size()-1; ++i) {
 		shareReadonlySeg(i);
 	}
-	{
-		auto wrSeg = m_segments.back(); // m_wrSeg maybe reset by asyncFinishWriting
-		fs::path Old = wrSeg->m_segDir;
+	if (m_segments.back()->getWritableStore()) {
+		assert(m_wrSeg);
+		fs::path Old = m_wrSeg->m_segDir;
 		fs::path New = getSegPath2(m_dir, m_mergeSeqNum+1, "wr", newSegs.size());
 		fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
 		try { fs::create_directory_symlink(Rela, New); }
@@ -1748,13 +1753,20 @@ try{
 			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
 			throw;
 		}
+		addseg(m_wrSeg);
+	}
+	else if (toMerge.back().idx + 1 < m_segments.size()) {
+		assert(nullptr == m_wrSeg);
+		shareReadonlySeg(m_segments.size()-1);
+	}
+	else {
+		// called by syncFinishWriting(), and
+		// last ReadonlySegment is in 'toMerge'
+		assert(nullptr == m_wrSeg);
+		assert(toMerge.back().idx + 1 == m_segments.size());
 	}
 	{
 		MyRwLock lock(m_rwMutex, true);
-		// m_wrSeg is still at old segDir, m_wrSeg maybe reset as NULL
-		// in asyncFinishWriting, use m_segments.back(), don't use m_wrSeg
-		addseg(m_segments.back());
-
 		rows = 0;
 		for (auto& e : toMerge) {
 			for (size_t subId : e.seg->m_deletionList) {
@@ -1769,6 +1781,17 @@ try{
 			assert(nullptr == seg->getWritableStore());
 			if (!newSegPathes[i].empty())
 				seg->m_segDir.swap(newSegPathes[i]);
+		}
+		if (newSegs.back()->getWritableStore() == nullptr) {
+			assert(nullptr == m_wrSeg);
+			if (toMerge.back().idx + 1 == m_segments.size()) {
+				// called by syncFinishWriting(), and
+				// last ReadonlySegment is merged
+				assert(newSegPathes.back().empty());
+			}
+			else {
+				newSegs.back()->m_segDir.swap(newSegPathes.back());
+			}
 		}
 		m_segments.swap(newSegs);
 		m_rowNumVec.swap(newRowNumVec);
@@ -1820,32 +1843,52 @@ void CompositeTable::flush() {
 	}
 }
 
-void CompositeTable::asyncFinishWriting() {
-	MyRwLock lock(m_rwMutex, true);
-	size_t rows = m_wrSeg->m_isDel.size();
-	if (rows) {
-		putToCompressionQueue(m_segments.size()-1);
-	}
-	m_wrSeg = nullptr; // can't write anymore
-}
-
 void CompositeTable::syncFinishWriting() {
-	asyncFinishWriting();
+	m_wrSeg = nullptr; // can't write anymore
 	for (;;) {
-		bool hasWritableSegment = false;
+		MyRwLock lock(m_rwMutex, false);
+		if (this->m_isMerging) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		} else {
+			break;
+		}
+	}
+	size_t wrSegCnt;
+	size_t waitedtimes = 0;
+	ReadableSegmentPtr wrSegPtr;
+	for (;;) {
+		wrSegCnt = 0;
+		wrSegPtr = nullptr;
 		{
 			MyRwLock lock(m_rwMutex, false);
 			for (auto& seg : m_segments) {
 				if (seg->getWritableStore()) {
-					hasWritableSegment = true;
-					break;
+					wrSegCnt++;
+					wrSegPtr = seg;
 				}
 			}
 		}
-		if (hasWritableSegment) {
+		if (wrSegCnt > 1) {
+			if (waitedtimes % 10 == 0) {
+				fprintf(stderr
+					, "INFO: wait for pending compression: wrSegCnt = %zd, times = %zd\n"
+					, wrSegCnt, waitedtimes);
+			}
+			waitedtimes++;
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		} else {
 			break;
+		}
+	}
+	if (wrSegPtr) {
+		assert(1 == wrSegCnt);
+		assert(!m_isMerging);
+		assert(!m_wrSeg);
+		size_t rows = wrSegPtr->m_isDel.size();
+		if (rows) {
+			// m_segment.back() will never be compressed except here!
+			wrSegPtr = nullptr;
+			convWritableSegmentToReadonly(m_segments.size()-1);
 		}
 	}
 }
@@ -1935,10 +1978,10 @@ void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
   {
 	DbContextPtr ctx(this->createDbContext());
 	auto segDir = getSegPath("rd", segIdx);
-	fprintf(stderr, "convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
+	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
 	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
 	newSeg->convFrom(this, segIdx);
-	fprintf(stderr, "convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
+	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
 	fs::path wrSegPath = getSegPath("wr", segIdx);
 	if (fs::is_symlink(wrSegPath)) {
 		fs::path base = wrSegPath.parent_path();
