@@ -34,6 +34,7 @@ CompositeTable::CompositeTable() {
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
 	m_mergeSeqNum = 0;
 	m_newWrSegNum = 0;
+	m_bgTaskNum = 0;
 //	m_ctxListHead = new DbContextLink();
 }
 
@@ -1744,8 +1745,8 @@ try{
 		shareReadonlySeg(i);
 	}
 	if (m_segments.back()->getWritableStore()) {
-		assert(m_wrSeg);
-		fs::path Old = m_wrSeg->m_segDir;
+		auto& seg = m_segments.back();
+		fs::path Old = seg->m_segDir;
 		fs::path New = getSegPath2(m_dir, m_mergeSeqNum+1, "wr", newSegs.size());
 		fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
 		try { fs::create_directory_symlink(Rela, New); }
@@ -1753,7 +1754,7 @@ try{
 			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
 			throw;
 		}
-		addseg(m_wrSeg);
+		addseg(seg);
 	}
 	else if (toMerge.back().idx + 1 < m_segments.size()) {
 		assert(nullptr == m_wrSeg);
@@ -1843,54 +1844,33 @@ void CompositeTable::flush() {
 	}
 }
 
-void CompositeTable::syncFinishWriting() {
-	m_wrSeg = nullptr; // can't write anymore
-	for (;;) {
-		MyRwLock lock(m_rwMutex, false);
-		if (this->m_isMerging) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-		} else {
-			break;
-		}
-	}
-	size_t wrSegCnt;
-	size_t waitedtimes = 0;
-	ReadableSegmentPtr wrSegPtr;
-	for (;;) {
-		wrSegCnt = 0;
-		wrSegPtr = nullptr;
+static void waitForBackgroundTasks(MyRwMutex& m_rwMutex, size_t& m_bgTaskNum) {
+	size_t retryNum = 0;
+	for (;;retryNum++) {
+		size_t bgTaskNum;
 		{
 			MyRwLock lock(m_rwMutex, false);
-			for (auto& seg : m_segments) {
-				if (seg->getWritableStore()) {
-					wrSegCnt++;
-					wrSegPtr = seg;
-				}
-			}
+			bgTaskNum = m_bgTaskNum;
 		}
-		if (wrSegCnt > 1) {
-			if (waitedtimes % 10 == 0) {
-				fprintf(stderr
-					, "INFO: wait for pending compression: wrSegCnt = %zd, times = %zd\n"
-					, wrSegCnt, waitedtimes);
-			}
-			waitedtimes++;
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-		} else {
+		if (0 == bgTaskNum)
 			break;
+		if (retryNum % 10 == 0) {
+			fprintf(stderr
+				, "INFO: waitForBackgroundTasks: tasks = %zd, retry = %zd\n"
+				, bgTaskNum, retryNum);
 		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
-	if (wrSegPtr) {
-		assert(1 == wrSegCnt);
-		assert(!m_isMerging);
-		assert(!m_wrSeg);
-		size_t rows = wrSegPtr->m_isDel.size();
-		if (rows) {
-			// m_segment.back() will never be compressed except here!
-			wrSegPtr = nullptr;
-			convWritableSegmentToReadonly(m_segments.size()-1);
-		}
+}
+
+void CompositeTable::syncFinishWriting() {
+	m_wrSeg = nullptr; // can't write anymore
+	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
+	{
+		MyRwLock lock(m_rwMutex, true);
+		putToCompressionQueue(m_segments.size()-1);
 	}
+	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
 }
 
 void CompositeTable::dropTable() {
@@ -1975,6 +1955,10 @@ void CompositeTable::save(PathRef dir) const {
 }
 
 void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
+	BOOST_SCOPE_EXIT(&m_rwMutex, &m_bgTaskNum){
+		MyRwLock lock(m_rwMutex, true);
+		m_bgTaskNum--;
+	}BOOST_SCOPE_EXIT_END;
   {
 	DbContextPtr ctx(this->createDbContext());
 	auto segDir = getSegPath("rd", segIdx);
@@ -2152,6 +2136,7 @@ void CompositeTable::putToCompressionQueue(size_t segIdx) {
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
 	g_flushQueue.push_back(new WrSegFreezeFlushTask(this, segIdx));
+	m_bgTaskNum++;
 }
 
 void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {

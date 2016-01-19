@@ -162,6 +162,7 @@ protected:
 	WritableSegmentPtr m_wrSeg;
 	size_t m_mergeSeqNum;
 	size_t m_newWrSegNum;
+	size_t m_bgTaskNum;
 	bool m_tobeDrop;
 	bool m_isMerging;
 
