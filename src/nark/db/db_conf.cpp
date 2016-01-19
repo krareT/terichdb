@@ -110,6 +110,8 @@ Schema::Schema() {
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_keepCols.fill(true);
+	m_minFragLen = 0;
+	m_maxFragLen = 0;
 	m_sufarrCompressMinFreq = 0;
 }
 Schema::~Schema() {
@@ -186,6 +188,9 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 #define CHECK_CURR_LAST(len) CHECK_CURR_LAST3(curr, last, len)
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
+#ifndef NDEBUG
+		const fstring colname = m_columnsMeta.key(i);
+#endif
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		fstring coldata;
 		coldata.p = (const char*)curr;
@@ -1700,6 +1705,22 @@ void SchemaConfig::loadJsonFile(fstring fname) {
 	loadJsonString(alljson);
 }
 
+template<class Json, class Value>
+Value getJsonValue(const Json& js, const std::string& key, const Value& Default) {
+	auto iter = js.find(key);
+	if (js.end() != iter)
+		return Value(iter.value());
+	else
+		return Default;
+}
+
+template<class Int>
+Int limitInBound(Int Val, Int Min, Int Max) {
+	if (Val < Min) return Min;
+	if (Val > Max) return Max;
+	return Val;
+}
+
 void SchemaConfig::loadJsonString(fstring jstr) {
 	using nark::json;
 	const json meta = json::parse(jstr.p
@@ -1710,6 +1731,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 	const json& cols = rowSchema["columns"];
 	m_rowSchema.reset(new Schema());
 	m_colgroupSchemaSet.reset(new SchemaSet());
+	int sufarrCompressMinFreq = getJsonValue(meta, "SufarrCompressMinFreq", 0);
 	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
 		const auto& col = iter.value();
 		std::string name = iter.key();
@@ -1730,15 +1752,16 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			colmeta.uType = byte(uType);
 		}
 		found = col.find("colstore");
-		if (col.end() != found) {
-			bool colstore = found.value();
-			if (colstore) {
-				// this colstore has the only-one 'name' field
-				SchemaPtr schema(new Schema());
-				schema->m_columnsMeta.insert_i(name, colmeta);
-				schema->m_name = name;
-				m_colgroupSchemaSet->m_nested.insert_i(schema);
-			}
+		if (col.end() != found && bool(found.value())) {
+			// this colstore has the only-one 'name' field
+			SchemaPtr schema(new Schema());
+			schema->m_columnsMeta.insert_i(name, colmeta);
+			schema->m_name = name;
+			schema->m_maxFragLen = getJsonValue(col, "maxFragLen", 0);
+			schema->m_minFragLen = getJsonValue(col, "minFragLen", 0);
+			schema->m_sufarrCompressMinFreq = getJsonValue(
+					col, "SufarrCompressMinFreq", sufarrCompressMinFreq);
+			m_colgroupSchemaSet->m_nested.insert_i(schema);
 		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
 		if (!ib.second) {
@@ -1758,15 +1781,6 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 	} else {
 		m_maxWrSegSize = *iter;
 	}
-	int sufarrCompressMinFreq = 0;
-	iter = meta.find("SufarrCompressMinFreq");
-	if (meta.end() != iter) {
-		int minFreq = iter.value();
-		if (minFreq < 0) minFreq = 0;
-		if (minFreq > 255) minFreq = 255;
-		sufarrCompressMinFreq = minFreq;
-	}
-
 	const json& tableIndex = meta["TableIndex"];
 	if (!tableIndex.is_array()) {
 		THROW_STD(invalid_argument, "json TableIndex must be an array");
@@ -1807,12 +1821,6 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			indexSchema->m_isUnique = false; // default
 		else
 			indexSchema->m_isUnique = found.value();
-	}
-	// TODO: config different schema->m_sufarrCompressMinFreq for each
-	// NOW just set as the same
-	for (size_t i = 0; i < m_colgroupSchemaSet->m_nested.end_i(); ++i) {
-		auto& schema = m_colgroupSchemaSet->m_nested.elem_at(i);
-		schema->m_sufarrCompressMinFreq = sufarrCompressMinFreq;
 	}
 	compileSchema();
 }

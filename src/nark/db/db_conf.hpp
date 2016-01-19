@@ -154,6 +154,8 @@ namespace nark { namespace db {
 		// if not zero, len of (m_lastVarLenCol-1) is omitted
 		size_t m_lastVarLenCol;
 		size_t m_restFixLenSum; // len sum of [m_lastVarLenCol, colnum)
+		int    m_minFragLen;
+		int    m_maxFragLen;
 		int    m_sufarrCompressMinFreq;
 
 		bool m_isOrdered; // just for index schema
@@ -222,7 +224,13 @@ namespace nark { namespace db {
 					dio << (unsigned char)(0);
 				else {
 					dio.ensureWrite(x.data(), x.size());
-					if (0 != x[x.n-1])
+					const size_t len = strnlen(x.data(), x.size());
+					assert(len==x.size() || len+1==x.size());
+					if ( !(len==x.size() || len+1==x.size()) ) {
+						THROW_STD(invalid_argument,
+							"strZero.size=%zd strnlen=%zd", x.size(), len);
+					}
+					if (x.size() == len)
 						dio << (unsigned char)(0);
 				}
 			}

@@ -32,10 +32,15 @@ StoreIterator* NestLoudsTrieStore::createStoreIterBackward(DbContext*) const {
 
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	NestLoudsTrieConfig conf;
-//	conf.maxFragLen = 512;
 	conf.initFromEnv();
 	if (schema.m_sufarrCompressMinFreq) {
 		conf.saFragMinFreq = (byte_t)schema.m_sufarrCompressMinFreq;
+	}
+	if (schema.m_minFragLen) {
+		conf.minFragLen = schema.m_minFragLen;
+	}
+	if (schema.m_maxFragLen) {
+		conf.maxFragLen = schema.m_maxFragLen;
 	}
 	m_store.reset(new NestLoudsTrieDataStore_SE_512());
 	m_store->build_from(strVec, conf);
