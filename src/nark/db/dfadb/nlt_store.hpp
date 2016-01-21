@@ -25,7 +25,7 @@ public:
 	void save(PathRef path) const override;
 
 protected:
-	std::unique_ptr<NestLoudsTrieDataStore_SE_512> m_store;
+	std::unique_ptr<DataStore> m_store;
 };
 
 }}} // namespace nark::db::dfadb

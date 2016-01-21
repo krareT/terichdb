@@ -112,7 +112,8 @@ Schema::Schema() {
 	m_keepCols.fill(true);
 	m_minFragLen = 0;
 	m_maxFragLen = 0;
-	m_sufarrCompressMinFreq = 0;
+	m_sufarrMinFreq = 0;
+	m_rankSelectClass = 512;
 }
 Schema::~Schema() {
 }
@@ -1731,7 +1732,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 	const json& cols = rowSchema["columns"];
 	m_rowSchema.reset(new Schema());
 	m_colgroupSchemaSet.reset(new SchemaSet());
-	int sufarrCompressMinFreq = getJsonValue(meta, "SufarrCompressMinFreq", 0);
+	int sufarrMinFreq = getJsonValue(meta, "SufarrCompressMinFreq", 0);
 	for (auto iter = cols.cbegin(); iter != cols.cend(); ++iter) {
 		const auto& col = iter.value();
 		std::string name = iter.key();
@@ -1759,8 +1760,11 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			schema->m_name = name;
 			schema->m_maxFragLen = getJsonValue(col, "maxFragLen", 0);
 			schema->m_minFragLen = getJsonValue(col, "minFragLen", 0);
-			schema->m_sufarrCompressMinFreq = getJsonValue(
-					col, "SufarrCompressMinFreq", sufarrCompressMinFreq);
+			schema->m_sufarrMinFreq = getJsonValue(col, "sufarrMinFreq", sufarrMinFreq);
+			//  512: rank_select_se_512
+			//  256: rank_select_se_256
+			// -256: rank_select_il_256
+			schema->m_rankSelectClass = getJsonValue(col, "rs", 512);
 			m_colgroupSchemaSet->m_nested.insert_i(schema);
 		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);

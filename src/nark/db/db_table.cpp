@@ -1854,7 +1854,7 @@ static void waitForBackgroundTasks(MyRwMutex& m_rwMutex, size_t& m_bgTaskNum) {
 		}
 		if (0 == bgTaskNum)
 			break;
-		if (retryNum % 10 == 0) {
+		if (retryNum % 100 == 0) {
 			fprintf(stderr
 				, "INFO: waitForBackgroundTasks: tasks = %zd, retry = %zd\n"
 				, bgTaskNum, retryNum);

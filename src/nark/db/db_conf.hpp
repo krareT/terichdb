@@ -156,7 +156,8 @@ namespace nark { namespace db {
 		size_t m_restFixLenSum; // len sum of [m_lastVarLenCol, colnum)
 		int    m_minFragLen;
 		int    m_maxFragLen;
-		int    m_sufarrCompressMinFreq;
+		int    m_sufarrMinFreq;
+		int    m_rankSelectClass;
 
 		bool m_isOrdered; // just for index schema
 		bool m_isUnique;

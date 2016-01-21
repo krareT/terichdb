@@ -30,11 +30,20 @@ StoreIterator* NestLoudsTrieStore::createStoreIterBackward(DbContext*) const {
 	return nullptr; // not needed
 }
 
+template<class Class>
+static
+Class* doBuild(const NestLoudsTrieConfig& conf,
+			   const Schema& schema, SortableStrVec& strVec) {
+	std::unique_ptr<Class> trie(new Class());
+	trie->build_from(strVec, conf);
+	return trie.release();
+}
+
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	NestLoudsTrieConfig conf;
 	conf.initFromEnv();
-	if (schema.m_sufarrCompressMinFreq) {
-		conf.saFragMinFreq = (byte_t)schema.m_sufarrCompressMinFreq;
+	if (schema.m_sufarrMinFreq) {
+		conf.saFragMinFreq = (byte_t)schema.m_sufarrMinFreq;
 	}
 	if (schema.m_minFragLen) {
 		conf.minFragLen = schema.m_minFragLen;
@@ -42,8 +51,22 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	if (schema.m_maxFragLen) {
 		conf.maxFragLen = schema.m_maxFragLen;
 	}
-	m_store.reset(new NestLoudsTrieDataStore_SE_512());
-	m_store->build_from(strVec, conf);
+	switch (schema.m_rankSelectClass) {
+	case -256:
+		m_store.reset(doBuild<NestLoudsTrieDataStore_IL>(conf, schema, strVec));
+		break;
+	case +256:
+		m_store.reset(doBuild<NestLoudsTrieDataStore_SE>(conf, schema, strVec));
+		break;
+	case +512:
+		m_store.reset(doBuild<NestLoudsTrieDataStore_SE_512>(conf, schema, strVec));
+		break;
+	default:
+		fprintf(stderr, "WARN: invalid schema(%s).rs = %d, use default: se_512\n"
+					  , schema.m_name.c_str(), schema.m_rankSelectClass);
+		m_store.reset(doBuild<NestLoudsTrieDataStore_SE_512>(conf, schema, strVec));
+		break;
+	}
 }
 
 void NestLoudsTrieStore::load(PathRef path) {
@@ -51,7 +74,7 @@ void NestLoudsTrieStore::load(PathRef path) {
 					  ? path.string()
 					  : path.string() + ".nlt";
 	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(fpath.c_str()));
-	m_store.reset(dynamic_cast<NestLoudsTrieDataStore_SE_512*>(dfa.get()));
+	m_store.reset(dynamic_cast<DataStore*>(dfa.get()));
 	if (m_store) {
 		dfa.release();
 	}
