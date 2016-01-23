@@ -1758,6 +1758,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			SchemaPtr schema(new Schema());
 			schema->m_columnsMeta.insert_i(name, colmeta);
 			schema->m_name = name;
+			schema->m_nltDelims  = getJsonValue(col, "nltDelims", std::string());
 			schema->m_maxFragLen = getJsonValue(col, "maxFragLen", 0);
 			schema->m_minFragLen = getJsonValue(col, "minFragLen", 0);
 			schema->m_sufarrMinFreq = getJsonValue(col, "sufarrMinFreq", sufarrMinFreq);

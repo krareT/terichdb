@@ -51,6 +51,9 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	if (schema.m_maxFragLen) {
 		conf.maxFragLen = schema.m_maxFragLen;
 	}
+	if (schema.m_nltDelims.size()) {
+		conf.setBestDelims(schema.m_nltDelims.c_str());
+	}
 	switch (schema.m_rankSelectClass) {
 	case -256:
 		m_store.reset(doBuild<NestLoudsTrieDataStore_IL>(conf, schema, strVec));

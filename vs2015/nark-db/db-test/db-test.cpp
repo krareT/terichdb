@@ -167,7 +167,7 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 	}
 
 	// last writable segment will put to compressing queue
-	tab->asyncFinishWriting();
+	tab->syncFinishWriting();
 }
 
 int main(int argc, char* argv[]) {

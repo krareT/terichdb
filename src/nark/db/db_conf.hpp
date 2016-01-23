@@ -150,6 +150,7 @@ namespace nark { namespace db {
 
 		hash_strmap<ColumnMeta> m_columnsMeta;
 		std::string m_name;
+		std::string m_nltDelims;
 
 		// if not zero, len of (m_lastVarLenCol-1) is omitted
 		size_t m_lastVarLenCol;
