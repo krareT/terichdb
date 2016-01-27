@@ -160,10 +160,11 @@ namespace nark { namespace db {
 		int    m_sufarrMinFreq;
 		int    m_rankSelectClass;
 
-		bool m_isOrdered; // just for index schema
-		bool m_isUnique;
-		bool m_needEncodeToLexByteComparable;
-		bool m_canEncodeToLexByteComparable;
+		bool   m_isOrdered : 1; // just for index schema
+		bool   m_isUnique  : 1;
+		bool   m_needEncodeToLexByteComparable : 1;
+		bool   m_canEncodeToLexByteComparable  : 1;
+		bool   m_useFastZip : 1;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
 		// used for ordered index, m_indexOrder.is1(i) means i'th column

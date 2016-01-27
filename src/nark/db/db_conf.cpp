@@ -109,6 +109,7 @@ Schema::Schema() {
 	m_isOrdered = false;
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
+	m_useFastZip = false;
 	m_keepCols.fill(true);
 	m_minFragLen = 0;
 	m_maxFragLen = 0;
@@ -1710,7 +1711,7 @@ template<class Json, class Value>
 Value getJsonValue(const Json& js, const std::string& key, const Value& Default) {
 	auto iter = js.find(key);
 	if (js.end() != iter)
-		return Value(iter.value());
+		return static_cast<const Value&>(iter.value());
 	else
 		return Default;
 }
@@ -1766,6 +1767,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			//  256: rank_select_se_256
 			// -256: rank_select_il_256
 			schema->m_rankSelectClass = getJsonValue(col, "rs", 512);
+			schema->m_useFastZip = getJsonValue(col, "useFastZip", false);
 			m_colgroupSchemaSet->m_nested.insert_i(schema);
 		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
