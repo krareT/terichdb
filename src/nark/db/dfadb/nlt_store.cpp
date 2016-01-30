@@ -109,9 +109,14 @@ void NestLoudsTrieStore::save(PathRef path) const {
 	if (BaseDFA* dfa = dynamic_cast<BaseDFA*>(&*m_store)) {
 		dfa->save_mmap(fpath.c_str());
 	}
+	else if (auto zds = dynamic_cast<FastZipDataStore*>(&*m_store)) {
+		zds->save_mmap(fpath);
+	}
+	else if (auto zds = dynamic_cast<DictZipDataStore*>(&*m_store)) {
+		zds->save_mmap(fpath);
+	}
 	else {
-		auto fzds = dynamic_cast<FastZipDataStore*>(m_store.get());
-		fzds->save_mmap(fpath);
+		THROW_STD(invalid_argument, "Unexpected");
 	}
 }
 
