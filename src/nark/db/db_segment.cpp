@@ -800,7 +800,10 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 	}
 	SortableStrVec files;
 	for(auto ent : fs::directory_iterator(segDir)) {
-		files.push_back(ent.path().filename().string());
+		std::string  fname = ent.path().filename().string();
+		if (!fstring(fname).endsWith("-dict")) {
+			files.push_back(fname);
+		}
 	}
 	files.sort();
 	for (size_t i = indexNum; i < colgroupNum; ++i) {

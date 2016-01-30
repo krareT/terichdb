@@ -1703,6 +1703,7 @@ try{
 
 	// m_isMerging is true, m_segments will never be changed
 	// so lock is not needed
+	assert(m_isMerging);
 	assert(m_segments.size() == toMerge.m_tabSegNum);
 	if (m_segments.size() != toMerge.m_tabSegNum) {
 		THROW_STD(logic_error
@@ -1975,7 +1976,8 @@ void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
 	newSeg->convFrom(this, segIdx);
 	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
 	fs::path wrSegPath = getSegPath("wr", segIdx);
-	if (fs::is_symlink(wrSegPath)) {
+	try {
+	  if (fs::is_symlink(wrSegPath)) {
 		fs::path base = wrSegPath.parent_path();
 		fs::path target = fs::read_symlink(wrSegPath);
 		fs::path targetMergeDir = fs::canonical(target.parent_path(), base);
@@ -1993,6 +1995,11 @@ void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
 			}
 		}
 		fs::remove(wrSegPath);
+	  }
+	} catch (const std::exception& ex) {
+		fprintf(stderr
+			, "WARN: convWritableSegmentToReadonly: ex.what = %s\n"
+			, ex.what());
 	}
 	if (this->m_isMerging) {
 		return;
@@ -2000,6 +2007,7 @@ void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
   }
   MergeParam toMerge;
   if (toMerge.canMerge(this)) {
+	  assert(this->m_isMerging);
 	  this->merge(toMerge);
   }
 }
