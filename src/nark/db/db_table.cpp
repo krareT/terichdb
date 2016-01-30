@@ -1639,18 +1639,26 @@ try{
 				THROW_STD(invalid_argument, "missing: %s",
 					(segDir / prefix).string().c_str());
 			}
+			size_t prevOldpartIdx = 0;
 			size_t j = lo;
 			while (j < e.files.size() && e.files[j].startsWith(prefix)) {
 				fstring fname = e.files[j];
 				std::string dotExt = getDotExtension(fname).str();
+				size_t oldpartIdx = 0;
 				if (prefix.size() + dotExt.size() < fname.size()) {
 					// oldpartIdx is between prefix and dotExt
-					size_t oldpartIdx = lcast(fname.substr(prefix.size()+1));
-					assert(oldpartIdx == j - lo);
-					if (oldpartIdx != j - lo) {
+					// one part can have multiple different dotExt file
+					oldpartIdx = lcast(fname.substr(prefix.size()+1));
+					assert(oldpartIdx - prevOldpartIdx <= 1);
+					if (oldpartIdx - prevOldpartIdx > 1) {
 						THROW_STD(invalid_argument, "missing part: %s.%zd%s"
 							, (segDir / prefix).string().c_str()
-							, j - lo, dotExt.c_str());
+							, prevOldpartIdx+1, dotExt.c_str());
+					}
+					if (prevOldpartIdx != oldpartIdx) {
+						assert(prevOldpartIdx + 1 == oldpartIdx);
+						newPartIdx++;
+						prevOldpartIdx = oldpartIdx;
 					}
 				}
 				char szNumBuf[16];
@@ -1668,8 +1676,8 @@ try{
 					throw;
 				}
 				j++;
-				newPartIdx++;
 			}
+			newPartIdx++;
 		}
 	}
 
