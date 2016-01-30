@@ -56,6 +56,7 @@ void initConfigFromSchema(NestLoudsTrieConfig& conf, const Schema& schema) {
 	if (schema.m_nltDelims.size()) {
 		conf.setBestDelims(schema.m_nltDelims.c_str());
 	}
+	conf.nestLevel = schema.m_nltNestLevel;
 }
 
 static
@@ -77,9 +78,14 @@ DataStore* nltBuild(const Schema& schema, SortableStrVec& strVec) {
 }
 
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
-	if (schema.m_useFastZip) {
+	if (schema.m_dictZipSampleRatio) {
+		std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
+		zds->build_from(strVec, schema.m_dictZipSampleRatio);
+		m_store.reset(zds.release());
+	}
+	else if (schema.m_useFastZip) {
 		std::unique_ptr<FastZipDataStore> fzds(new FastZipDataStore());
-		NestLoudsTrieConfig conf;
+		NestLoudsTrieConfig  conf;
 		initConfigFromSchema(conf, schema);
 		fzds->build_from(strVec, conf);
 		m_store.reset(fzds.release());

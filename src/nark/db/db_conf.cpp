@@ -103,10 +103,13 @@ bool ColumnMeta::isNumber() const {
 
 /////////////////////////////////////////////////////////////////////////////
 
+const unsigned int DEFAULT_nltNestLevel = 4;
+
 Schema::Schema() {
 	m_fixedLen = size_t(-1);
 	m_parent = nullptr;
 	m_isOrdered = false;
+	m_dictZipSampleRatio = 0.0;
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_useFastZip = false;
@@ -115,6 +118,7 @@ Schema::Schema() {
 	m_maxFragLen = 0;
 	m_sufarrMinFreq = 0;
 	m_rankSelectClass = 512;
+	m_nltNestLevel = DEFAULT_nltNestLevel;
 }
 Schema::~Schema() {
 }
@@ -1759,6 +1763,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			SchemaPtr schema(new Schema());
 			schema->m_columnsMeta.insert_i(name, colmeta);
 			schema->m_name = name;
+			schema->m_dictZipSampleRatio = getJsonValue(col, "dictZipSampleRatio", float(0.0));
 			schema->m_nltDelims  = getJsonValue(col, "nltDelims", std::string());
 			schema->m_maxFragLen = getJsonValue(col, "maxFragLen", 0);
 			schema->m_minFragLen = getJsonValue(col, "minFragLen", 0);
@@ -1768,6 +1773,8 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			// -256: rank_select_il_256
 			schema->m_rankSelectClass = getJsonValue(col, "rs", 512);
 			schema->m_useFastZip = getJsonValue(col, "useFastZip", false);
+			schema->m_nltNestLevel = (byte)limitInBound(
+				getJsonValue(col, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
 			m_colgroupSchemaSet->m_nested.insert_i(schema);
 		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);

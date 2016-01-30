@@ -43,7 +43,7 @@ const {
 		patchStrVec(indexData, fixlen);
 	}
 	std::unique_ptr<NestLoudsTrieIndex> index(new NestLoudsTrieIndex());
-	index->build(indexData);
+	index->build(schema, indexData);
 	return index.release();
 }
 

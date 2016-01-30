@@ -159,6 +159,8 @@ namespace nark { namespace db {
 		int    m_maxFragLen;
 		int    m_sufarrMinFreq;
 		int    m_rankSelectClass;
+		float  m_dictZipSampleRatio;
+		byte   m_nltNestLevel;
 
 		bool   m_isOrdered : 1; // just for index schema
 		bool   m_isUnique  : 1;

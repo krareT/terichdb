@@ -102,11 +102,12 @@ StoreIterator* NestLoudsTrieIndex::createStoreIterBackward(DbContext*) const {
 	return nullptr; // not needed
 }
 
-void NestLoudsTrieIndex::build(SortableStrVec& strVec) {
+void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 	FEBIRD_IF_DEBUG(SortableStrVec backup = strVec, ;);
 	const size_t rows = strVec.size();
 	NestLoudsTrieConfig conf;
 	conf.initFromEnv();
+	conf.nestLevel = schema.m_nltNestLevel;
 	valvec<uint32_t> idToKey;
 	m_dfa.reset(new NestLoudsTrieDAWG_SE_512());
 	m_dfa->build_with_id(strVec, idToKey, conf);
