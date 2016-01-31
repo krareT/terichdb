@@ -132,6 +132,10 @@ protected:
 			buildStore(const Schema&, SortableStrVec& storeData)
 			const = 0;
 
+	virtual ReadableStore*
+			buildDictZipStore(const Schema&, StoreIterator& inputIter)
+			const;
+
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
 

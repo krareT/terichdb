@@ -17,6 +17,7 @@ protected:
 
 	ReadableIndex* buildIndex(const Schema&, SortableStrVec& indexData) const override;
 	ReadableStore* buildStore(const Schema&, SortableStrVec& storeData) const override;
+	ReadableStore* buildDictZipStore(const Schema&, StoreIterator&iter) const override;
 };
 
 }}} // namespace nark::db::dfadb

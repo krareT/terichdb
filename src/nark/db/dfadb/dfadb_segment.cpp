@@ -64,4 +64,13 @@ const {
 	return nlt.release();
 }
 
+ReadableStore*
+DfaDbReadonlySegment::buildDictZipStore(const Schema& schema, StoreIterator& inputIter)
+const {
+	std::unique_ptr<NestLoudsTrieStore> nlt(new NestLoudsTrieStore());
+	nlt->build_by_iter(schema, inputIter);
+	return nlt.release();
+}
+
+
 }}} // namespace nark::db::dfadb

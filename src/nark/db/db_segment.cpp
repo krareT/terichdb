@@ -572,16 +572,22 @@ ReadonlySegment::mergeFrom(const valvec<const ReadonlySegment*>& input, DbContex
 }
 
 namespace {
-	class FileDataIO {
+	class FileDataIO : public ReadableStore {
+		class FileStoreIter;
 		FileStream m_fp;
 		NativeDataOutput<OutputBuffer> m_obuf;
 		size_t m_fixedLen;
+		size_t m_fileSize;
+		size_t m_rows;
 		FileDataIO(const FileDataIO&) = delete;
 	public:
 		FileDataIO(size_t fixedLen) {
+			intrusive_ptr_add_ref(this); // Trick: will never be deleted
 			m_fp.attach(tmpfile());
 			m_obuf.attach(&m_fp);
 			m_fixedLen = fixedLen;
+			m_fileSize = 0;
+			m_rows = 0;
 		}
 		void dioWrite(const valvec<byte>& rowData) {
 		//	assert(rowData.size() > 0); // can be empty
@@ -594,16 +600,19 @@ namespace {
 						, rowData.size(), m_fixedLen);
 			}
 			m_obuf.ensureWrite(rowData.data(), rowData.size());
+			m_rows++;
 		}
 		void completeWrite() {
 			m_obuf.flush();
 			m_fp.rewind();
+			m_fileSize = m_fp.size();
 		}
 		FileStream& fp() { return m_fp; }
 		size_t fixedLen() const { return m_fixedLen; }
 
 		void prepairRead(NativeDataInput<InputBuffer>& dio) {
 			m_fp.disbuf();
+			m_fp.rewind();
 			dio.resetbuf();
 			dio.attach(&m_fp);
 		}
@@ -631,7 +640,68 @@ namespace {
 				return newRowNum;
 			}
 		}
+
+		llong dataStorageSize() const override { return m_fileSize; }
+		llong numDataRows() const override { return m_rows; }
+
+		double avgLen() const { return (m_fileSize + 0.1) / (m_rows + 0.1); }
+
+		StoreIterator* createStoreIterForward(DbContext*) const override;
+		StoreIterator* createStoreIterBackward(DbContext*) const override {
+			THROW_STD(invalid_argument, "Not Implemented");
+			return NULL;
+		}
+		void getValueAppend(llong, valvec<byte>*, DbContext*) const override {
+			THROW_STD(invalid_argument, "Not Implemented");
+		}
+		void save(PathRef) const {
+			THROW_STD(invalid_argument, "Not Implemented");
+		}
+		void load(PathRef) {
+			THROW_STD(invalid_argument, "Not Implemented");
+		}
 	};
+
+	class FileDataIO::FileStoreIter : public StoreIterator {
+		NativeDataInput<InputBuffer> m_ibuf;
+		llong m_id;
+		llong m_rows;
+		size_t m_fixedLen;
+	public:
+		explicit FileStoreIter(FileDataIO* store) {
+			m_store.reset(store);
+			store->prepairRead(m_ibuf);
+			m_id = 0;
+			m_rows = store->numDataRows();
+			m_fixedLen = store->fixedLen();
+		}
+		bool increment(llong* id, valvec<byte>* val) override {
+			if (m_id < m_rows) {
+				if (m_fixedLen) {
+					val->resize_no_init(m_fixedLen);
+					m_ibuf.ensureRead(val->data(), m_fixedLen);
+				}
+				else {
+					m_ibuf >> *val;
+				}
+				*id = m_id++;
+				return true;
+			}
+			return false;
+		}
+		bool seekExact(llong  id, valvec<byte>* val) override {
+			THROW_STD(invalid_argument, "Not Implemented");
+			return false;
+		}
+		void reset() override {
+			dynamic_cast<FileDataIO*>(m_store.get())->prepairRead(m_ibuf);
+			m_id = 0;
+		}
+	};
+
+	StoreIterator* FileDataIO::createStoreIterForward(DbContext*) const {
+		return new FileStoreIter(const_cast<FileDataIO*>(this));
+	}	
 
 	class TempFileList : public valvec<FileDataIO> {
 		const SchemaSet& m_schemaSet;
@@ -658,6 +728,12 @@ namespace {
 			}
 		}
 	};
+}
+
+ReadableStore*
+ReadonlySegment::buildDictZipStore(const Schema&, StoreIterator& inputIter) const {
+	THROW_STD(invalid_argument,
+		"Not Implemented, Only Implemented by DfaDbReadonlySegment");
 }
 
 void
@@ -718,6 +794,20 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	}
 	for (size_t i = indexNum; i < colgroupTempFiles.size(); ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
+		// dictZipLocalMatch is true by default
+		// dictZipLocalMatch == false is just for experiment
+		// dictZipLocalMatch should always be true in production
+		// dictZipSampleRatio < 0 indicate don't use dictZip
+		if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
+			double sRatio = schema.m_dictZipSampleRatio;
+			double avgLen = colgroupTempFiles[i].avgLen();
+			if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
+				StoreIteratorPtr
+				iter = colgroupTempFiles[i].createStoreIterForward(NULL);
+				m_colgroups[i] = this->buildDictZipStore(schema, *iter);
+				continue;
+			}
+		}
 		size_t maxMem = m_schema->m_readonlyDataMemSize;
 		llong rows = 0;
 		valvec<ReadableStorePtr> parts;

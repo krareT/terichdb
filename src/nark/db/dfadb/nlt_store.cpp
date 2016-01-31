@@ -96,6 +96,27 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	}
 }
 
+void NestLoudsTrieStore::build_by_iter(const Schema& schema, StoreIterator& iter) {
+	std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
+	std::unique_ptr<DictZipDataStore::ZipBuilder> builder(zds->createZipBuilder());
+	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
+					   ? schema.m_dictZipSampleRatio : 0.05;
+	llong recId;
+	valvec<byte> rec;
+	while (iter.increment(&recId, &rec)) {
+		if (rand() < RAND_MAX * sampleRatio) {
+			builder->addSample(rec);
+		}
+	}
+	builder->prepare(recId + 1);
+	iter.reset();
+	while (iter.increment(&recId, &rec)) {
+		builder->addRecord(rec);
+	}
+	zds->completeBuild(*builder);
+	m_store.reset(zds.release());
+}
+
 void NestLoudsTrieStore::load(PathRef path) {
 	std::string fpath = fstring(path.string()).endsWith(".nlt")
 					  ? path.string()
