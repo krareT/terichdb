@@ -167,6 +167,7 @@ namespace nark { namespace db {
 		bool   m_needEncodeToLexByteComparable : 1;
 		bool   m_canEncodeToLexByteComparable  : 1;
 		bool   m_useFastZip : 1;
+		bool   m_dictZipLocalMatch : 1;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
 		// used for ordered index, m_indexOrder.is1(i) means i'th column

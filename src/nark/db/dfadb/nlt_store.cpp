@@ -78,9 +78,10 @@ DataStore* nltBuild(const Schema& schema, SortableStrVec& strVec) {
 }
 
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
-	if (schema.m_dictZipSampleRatio) {
+	if (schema.m_dictZipSampleRatio > 0) {
 		std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
-		zds->build_from(strVec, schema.m_dictZipSampleRatio);
+		zds->build_from(strVec,
+			schema.m_dictZipSampleRatio, schema.m_dictZipLocalMatch);
 		m_store.reset(zds.release());
 	}
 	else if (schema.m_useFastZip) {

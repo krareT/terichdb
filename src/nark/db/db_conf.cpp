@@ -113,6 +113,7 @@ Schema::Schema() {
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_useFastZip = false;
+	m_dictZipLocalMatch = true;
 	m_keepCols.fill(true);
 	m_minFragLen = 0;
 	m_maxFragLen = 0;
@@ -1764,6 +1765,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			schema->m_columnsMeta.insert_i(name, colmeta);
 			schema->m_name = name;
 			schema->m_dictZipSampleRatio = getJsonValue(col, "dictZipSampleRatio", float(0.0));
+			schema->m_dictZipLocalMatch  = getJsonValue(col, "dictZipLocalMatch", true);
 			schema->m_nltDelims  = getJsonValue(col, "nltDelims", std::string());
 			schema->m_maxFragLen = getJsonValue(col, "maxFragLen", 0);
 			schema->m_minFragLen = getJsonValue(col, "minFragLen", 0);
