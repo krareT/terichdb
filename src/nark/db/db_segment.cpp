@@ -23,6 +23,7 @@
 	#include <io.h>
 #endif
 #include <fcntl.h>
+#include <float.h>
 
 #include "json.hpp"
 

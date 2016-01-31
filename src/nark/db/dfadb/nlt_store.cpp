@@ -2,6 +2,7 @@
 #include <nark/int_vector.hpp>
 #include <nark/fast_zip_data_store.hpp>
 #include <typeinfo>
+#include <float.h>
 
 namespace nark { namespace db { namespace dfadb {
 
