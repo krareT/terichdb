@@ -66,6 +66,7 @@ public:
 	virtual llong dataStorageSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
+	virtual void removeDeleted(const ReadableStore&, const febitvec& isDel) const;
 	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
@@ -86,28 +87,32 @@ public:
 	virtual void  clear() = 0;
 };
 //typedef boost::intrusive_ptr<WritableStore> WritableStorePtr;
-/*
-class CompositeStore : public WritableStore {
-	valvec<ReadableStorePtr> m_readonly;
-	valvec<llong> m_rowNumVec;
-	febitvec m_isDeleted;
-	WritableStore* m_writable;
-	std::mutex m_mutex;
+
+class NARK_DB_DLL MultiPartStore : public ReadableStore {
+	class MyStoreIterForward;	friend class MyStoreIterForward;
+	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 
 public:
-	bool isDeleted(llong id) const { return m_isDeleted[id]; }
+	explicit MultiPartStore(valvec<ReadableStorePtr>& m_parts);
+	~MultiPartStore();
+
+	llong dataStorageSize() const override;
 	llong numDataRows() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	llong insert(fstring row) override;
-	llong replace(llong id, fstring row) override;
-	void remove(llong id) override;
+	void load(PathRef segDir) override;
+	void save(PathRef segDir) const override;
 
-	void compact();
-	virtual ReadableStore* mergeToReadonly(const valvec<ReadableStorePtr>& input) const = 0;
-	virtual WritableStore* createWritable() const = 0;
+private:
+	void syncRowNumVec();
+
+//	SchemaPtr     m_schema;
+	valvec<uint32_t> m_rowNumVec;  // parallel with m_parts
+	valvec<ReadableStorePtr> m_parts; // partition of row set
 };
-typedef boost::intrusive_ptr<CompositeStore> CompositeStorePtr;
-*/
+
 
 } } // namespace nark::db
 

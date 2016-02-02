@@ -81,8 +81,7 @@ DataStore* nltBuild(const Schema& schema, SortableStrVec& strVec) {
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	if (schema.m_dictZipSampleRatio > 0) {
 		std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
-		zds->build_from(strVec,
-			schema.m_dictZipSampleRatio, schema.m_dictZipLocalMatch);
+		zds->build_none_local_match(strVec, schema.m_dictZipSampleRatio);
 		m_store.reset(zds.release());
 	}
 	else if (schema.m_useFastZip) {
@@ -97,7 +96,7 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	}
 }
 
-void NestLoudsTrieStore::build_by_iter(const Schema& schema, StoreIterator& iter) {
+void NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath, StoreIterator& iter) {
 	std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
 	std::unique_ptr<DictZipDataStore::ZipBuilder> builder(zds->createZipBuilder());
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
@@ -109,7 +108,7 @@ void NestLoudsTrieStore::build_by_iter(const Schema& schema, StoreIterator& iter
 			builder->addSample(rec);
 		}
 	}
-	builder->prepare(recId + 1);
+	builder->prepare(recId + 1, fpath);
 	iter.reset();
 	while (iter.increment(&recId, &rec)) {
 		builder->addRecord(rec);

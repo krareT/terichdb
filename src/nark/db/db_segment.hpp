@@ -11,31 +11,6 @@ namespace nark {
 
 namespace nark { namespace db {
 
-class NARK_DB_DLL MultiPartStore : public ReadableStore {
-	class MyStoreIterForward;	friend class MyStoreIterForward;
-	class MyStoreIterBackward;	friend class MyStoreIterBackward;
-
-public:
-	explicit MultiPartStore(valvec<ReadableStorePtr>& m_parts);
-	~MultiPartStore();
-
-	llong dataStorageSize() const override;
-	llong numDataRows() const override;
-	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIterator* createStoreIterForward(DbContext*) const override;
-	StoreIterator* createStoreIterBackward(DbContext*) const override;
-
-	void load(PathRef segDir) override;
-	void save(PathRef segDir) const override;
-
-private:
-	void syncRowNumVec();
-
-//	SchemaPtr     m_schema;
-	valvec<uint32_t> m_rowNumVec;  // parallel with m_parts
-	valvec<ReadableStorePtr> m_parts; // partition of row set
-};
-
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
 class NARK_DB_DLL ReadableSegment : public ReadableStore {
