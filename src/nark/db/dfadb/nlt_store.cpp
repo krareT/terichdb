@@ -108,7 +108,7 @@ void NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath, Stor
 			builder->addSample(rec);
 		}
 	}
-	builder->prepare(recId + 1, fpath);
+	builder->prepare(recId + 1, fpath.string());
 	iter.reset();
 	while (iter.increment(&recId, &rec)) {
 		builder->addRecord(rec);

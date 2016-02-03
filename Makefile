@@ -77,7 +77,7 @@ else
   endif
 endif
 
-ifeq (WITH_BMI2,1)
+ifeq (${WITH_BMI2},1)
 	CPU += -mbmi -mbmi2
 endif
 
