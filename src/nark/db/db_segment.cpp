@@ -27,6 +27,8 @@
 
 #include "json.hpp"
 
+#include <boost/scope_exit.hpp>
+
 namespace nark { namespace db {
 
 namespace fs = boost::filesystem;
@@ -61,6 +63,10 @@ ReadableSegment::~ReadableSegment() {
 		//	FEBIRD_IF_DEBUG(abort(),;);
 		}
 	}
+}
+
+ReadonlySegment* ReadableSegment::getReadonlySegment() {
+	return nullptr;
 }
 
 void ReadableSegment::deleteSegment() {
@@ -171,6 +177,13 @@ ReadonlySegment::~ReadonlySegment() {
 	m_colgroups.clear();
 }
 
+ReadonlySegment* ReadonlySegment::getReadonlySegment() override {
+	return this;
+}
+
+llong ReadonlySegment::dataInflateSize() const {
+	return m_dataMemSize;
+}
 llong ReadonlySegment::dataStorageSize() const {
 	return m_dataMemSize;
 }
@@ -418,6 +431,7 @@ namespace {
 		NativeDataOutput<OutputBuffer> m_obuf;
 		size_t m_fixedLen;
 		size_t m_fileSize;
+		size_t m_dataSize;
 		size_t m_rows;
 		FileDataIO(const FileDataIO&) = delete;
 	public:
@@ -427,6 +441,7 @@ namespace {
 			m_obuf.attach(&m_fp);
 			m_fixedLen = fixedLen;
 			m_fileSize = 0;
+			m_dataSize = 0;
 			m_rows = 0;
 		}
 		void dioWrite(const valvec<byte>& rowData) {
@@ -441,6 +456,7 @@ namespace {
 			}
 			m_obuf.ensureWrite(rowData.data(), rowData.size());
 			m_rows++;
+			m_dataSize += rowData.size();
 		}
 		void completeWrite() {
 			m_obuf.flush();
@@ -481,6 +497,7 @@ namespace {
 			}
 		}
 
+		llong dataInflateSize() const override { return m_dataSize; }
 		llong dataStorageSize() const override { return m_fileSize; }
 		llong numDataRows() const override { return m_rows; }
 
@@ -571,7 +588,8 @@ namespace {
 }
 
 ReadableStore*
-ReadonlySegment::buildDictZipStore(const Schema&, StoreIterator& inputIter) const {
+ReadonlySegment::buildDictZipStore(const Schema&, StoreIterator&,
+								   const bm_uint_t* isDel) const {
 	THROW_STD(invalid_argument,
 		"Not Implemented, Only Implemented by DfaDbReadonlySegment");
 }
@@ -579,6 +597,9 @@ ReadonlySegment::buildDictZipStore(const Schema&, StoreIterator& inputIter) cons
 void
 ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 {
+	auto tmpDir = m_segDir + ".tmp";
+	fs::create_directories(tmpDir);
+
 	DbContextPtr ctx(tab->createDbContext());
 	ReadableSegmentPtr input;
 	{
@@ -644,7 +665,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 			if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
 				StoreIteratorPtr
 				iter = colgroupTempFiles[i].createStoreIterForward(NULL);
-				m_colgroups[i] = this->buildDictZipStore(schema, *iter);
+				m_colgroups[i] = this->buildDictZipStore(schema, *iter, NULL);
 				continue;
 			}
 		}
@@ -660,13 +681,24 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		}
 		m_colgroups[i] = parts.size()==1 ? parts[0] : new MultiPartStore(parts);
 	}
+
+	completeAndReload(tab, segIdx, &*input, newRowNum);
+
+	fs::rename(tmpDir, m_segDir);
+	input->deleteSegment();
+}
+
+void
+ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
+								   class ReadableSegment* input, llong newRowNum) {
 	m_dataMemSize = 0;
+	m_dataInflateSize = 0;
 	for (size_t i = 0; i < m_colgroups.size(); ++i) {
 		m_dataMemSize += m_colgroups[i]->dataStorageSize();
+		m_dataInflateSize += m_colgroups[i]->dataInflateSize();
 	}
 
 	auto tmpDir = m_segDir + ".tmp";
-	fs::create_directories(tmpDir);
 	this->save(tmpDir);
 
 	// reload as mmap
@@ -674,32 +706,163 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	m_indices.erase_all();
 	m_colgroups.erase_all();
 	this->load(tmpDir);
+
+	MyRwLock lock(tab->m_rwMutex, false);
+	if (m_delcnt < input->m_delcnt) { // rows were deleted during build
+		size_t i = 0;
+		size_t inputRowNum = input->m_isDel.size();
+		for (size_t j = 0; j < inputRowNum; ++j) {
+			if (!m_isDel[j])
+				 m_isDel.set(i, input->m_isDel[j]), ++i;
+		}
+		assert(i == size_t(newRowNum));
+		size_t new_delcnt = input->m_delcnt - m_delcnt;
+		fprintf(stderr,
+			"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd] done\n",
+			m_delcnt, input->m_delcnt, new_delcnt);
+		m_isDel.risk_set_size(size_t(newRowNum));
+		m_delcnt = new_delcnt;
+		assert(m_isDel.popcnt() == m_delcnt);
+	}
+	else if (m_delcnt) {
+		m_isDel.resize_fill(size_t(newRowNum), false);
+		m_delcnt = 0;
+	}
+	lock.upgrade_to_writer();
+	((uint64_t*)m_isDelMmap)[0] = newRowNum;
+	tab->m_segments[segIdx] = this;
+}
+
+static inline
+void pushRecord(SortableStrVec& strVec, const ReadableStore& store,
+				const bm_uint_t* isDel, llong recId, size_t fixlen,
+				DbContext* ctx) {
+	if (!nark_bit_test(isDel, recId)) {
+		size_t oldsize = strVec.str_size();
+		store.getValueAppend(recId, &strVec.m_strpool, ctx);
+		if (!fixlen) {
+			SortableStrVec::SEntry ent;
+			ent.offset = oldsize;
+			ent.length = strVec.str_size() - oldsize;
+			ent.seq_id = uint32_t(strVec.m_index.size());
+			strVec.m_index.push_back(ent);
+		}
+	}
+};
+void
+ReadonlySegment::purgeDeletedRecords(class CompositeTable* tab, size_t segIdx) {
+	DbContextPtr ctx(tab->createDbContext());
+	ReadonlySegmentPtr input;
 	{
 		MyRwLock lock(tab->m_rwMutex, false);
-		if (m_delcnt < input->m_delcnt) { // rows were deleted during build
-			size_t i = 0;
-			for (size_t j = 0; j < size_t(inputRowNum); ++j) {
-				if (!m_isDel[j])
-					 m_isDel.set(i, input->m_isDel[j]), ++i;
-			}
-			assert(i == size_t(newRowNum));
-			size_t new_delcnt = input->m_delcnt - m_delcnt;
-			fprintf(stderr,
-				"INFO: ReadonlySegment::convFrom: delcnt[old=%zd input2=%zd new=%zd] done\n",
-				m_delcnt, input->m_delcnt, new_delcnt);
-			m_isDel.risk_set_size(size_t(newRowNum));
-			m_delcnt = new_delcnt;
-			assert(m_isDel.popcnt() == m_delcnt);
-		}
-		else if (m_delcnt) {
-			m_isDel.resize_fill(size_t(newRowNum), false);
-			m_delcnt = 0;
-		}
-		((uint64_t*)m_isDelMmap)[0] = newRowNum;
-		tab->m_segments[segIdx] = this;
+		input = dynamic_cast<ReadonlySegment*>(&*tab->m_segments[segIdx]);
+		m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
+		m_delcnt = input->m_delcnt;
+		lock.upgrade_to_writer();
+		tab->m_purgeStatus = CompositeTable::PurgeStatus::purging;
 	}
-	fs::rename(tmpDir, m_segDir);
-	input->deleteSegment();
+
+	llong inputRowNum = input->m_isDel.size();
+	assert(inputRowNum > 0);
+	llong newRowNum = m_isDel.size() - m_delcnt;
+	size_t indexNum = m_schema->getIndexNum();
+	size_t colgroupNum = m_schema->getColgroupNum();
+	const bm_uint_t* isDel = m_isDel.bldata();
+	SortableStrVec strVec;
+
+	for (size_t i = 0; i < indexNum; ++i) {
+		const Schema& schema = m_schema->getIndexSchema(i);
+		const size_t  fixlen = schema.getFixedRowLen();
+		const auto& store = *input->m_indices[i]->getReadableStore();
+		StoreIteratorPtr iter = store.createStoreIterForward(ctx.get());
+		if (iter) {
+			valvec<byte_t> rec;
+			llong recId;
+			while (iter->increment(&recId, &rec)) {
+				if (!nark_bit_test(isDel, recId)) {
+					if (fixlen)
+						strVec.m_strpool.append(rec);
+					else
+						strVec.push_back(rec);
+				}
+			}
+		}
+		else {
+			for (llong recId = 0; recId < inputRowNum; ++recId) {
+				pushRecord(strVec, store, isDel, recId, fixlen, ctx.get());
+			}
+		}
+		m_indices[i] = this->buildIndex(schema, strVec);
+		m_colgroups[i] = m_indices[i]->getReadableStore();
+		strVec.clear();
+	}
+
+	for (size_t i = indexNum; i < colgroupNum; ++i) {
+		const Schema& schema = m_schema->getColgroupSchema(i);
+		const auto& colgroup = *input->m_colgroups[i];
+		if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
+			double sRatio = schema.m_dictZipSampleRatio;
+			double avgLen = 1.0 * colgroup.dataInflateSize() / colgroup.numDataRows();
+			if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
+				StoreIteratorPtr iter = colgroup.createStoreIterForward(ctx.get());
+				if (!iter) {
+					iter = colgroup.createDefaultStoreIterForward(ctx.get());
+				}
+				m_colgroups[i] = buildDictZipStore(schema, *iter, isDel);
+				continue;
+			}
+		}
+		size_t fixlen = schema.getFixedRowLen();
+		size_t maxMem = size_t(m_schema->m_readonlyDataMemSize);
+		valvec<ReadableStorePtr> parts;
+		auto partsPushRecord = [&](const ReadableStore& store, llong recId) {
+			if (nark_unlikely(strVec.mem_size() >= maxMem)) {
+				parts.push_back(this->buildStore(schema, strVec));
+				strVec.clear();
+			}
+			pushRecord(strVec, store, isDel, recId, fixlen, ctx.get());
+		};
+		if (auto cgparts = dynamic_cast<const MultiPartStore*>(&colgroup)) {
+			llong baseId = 0;
+			for (size_t j = 0; j < cgparts->numParts(); ++j) {
+				auto& partStore = cgparts->getPart(j);
+				llong partRows = partStore.numDataRows();
+				for (llong recId = 0; recId < partRows; ++recId) {
+					partsPushRecord(partStore, baseId + recId);
+				}
+				baseId += partRows;
+			}
+		}
+		else {
+			for (llong recId = 0; recId < inputRowNum; ++recId) {
+				partsPushRecord(colgroup, recId);
+			}
+		}
+		if (strVec.str_size() > 0) {
+			parts.push_back(this->buildStore(schema, strVec));
+			strVec.clear();
+		}
+		m_colgroups[i] = parts.size()==1 ? parts[0] : new MultiPartStore(parts);
+	}
+
+	completeAndReload(tab, segIdx, &*input, newRowNum);
+
+	assert(input->m_segDir == this->m_segDir);
+	auto backupDir = m_segDir + ".backup";
+	fs::rename(input->m_segDir, backupDir);
+	{
+		MyRwLock lock(tab->m_rwMutex, true);
+		input->m_segDir = backupDir;
+		input->deleteSegment(); // will delete backupDir
+	}
+	try { fs::rename(m_segDir + ".tmp", m_segDir); }
+	catch (const std::exception& ex) {
+		fs::rename(backupDir, m_segDir);
+		std::string strDir = m_segDir.string();
+		fprintf(stderr
+			, "ERROR: rename(%s.tmp, %s), ex.what = %s"
+			, strDir.c_str(), strDir.c_str(), ex.what());
+	}
 }
 
 void ReadonlySegment::saveRecordStore(PathRef segDir) const {
@@ -764,6 +927,17 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 			m_colgroups[i] = ReadableStore::openStore(segDir, fname);
 		}
 	}
+}
+
+void ReadonlySegment::closeFiles() {
+	if (m_isDelMmap) {
+		size_t bitBytes = m_isDel.capacity()/8;
+		mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);
+		m_isDelMmap = nullptr;
+		m_isDel.risk_release_ownership();
+	}
+	m_indices.clear();
+	m_colgroups.clear();
 }
 
 ReadableIndex*

@@ -22,6 +22,10 @@ FixedLenStore::~FixedLenStore() {
 	}
 }
 
+llong FixedLenStore::dataInflateSize() const {
+	return m_keys.used_mem_size();
+}
+
 llong FixedLenStore::dataStorageSize() const {
 	return m_keys.used_mem_size();
 }

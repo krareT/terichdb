@@ -14,6 +14,7 @@ public:
 	~ZipIntStore();
 
 	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	StoreIterator* createStoreIterForward(DbContext*) const override;

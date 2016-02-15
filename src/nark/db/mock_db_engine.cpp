@@ -13,6 +13,9 @@ NARK_DB_REGISTER_STORE("mock", MockReadonlyStore);
 llong MockReadonlyStore::dataStorageSize() const {
 	return m_rows.used_mem_size();
 }
+llong MockReadonlyStore::dataInflateSize() const {
+	return m_rows.used_mem_size();
+}
 llong MockReadonlyStore::numDataRows() const {
 	return m_rows.size();
 }
@@ -392,6 +395,10 @@ llong MockReadonlyIndex::dataStorageSize() const {
 		+ m_keys.strpool.used_mem_size();
 }
 
+llong MockReadonlyIndex::dataInflateSize() const {
+	return m_keys.strpool.used_mem_size();
+}
+
 void
 MockReadonlyIndex::getValueAppend(llong id, valvec<byte>* key, DbContext*)
 const {
@@ -508,6 +515,10 @@ void MockWritableStore::load(PathRef fpath) {
 
 llong MockWritableStore::dataStorageSize() const {
 	return m_rows.used_mem_size() + m_dataSize;
+}
+
+llong MockWritableStore::dataInflateSize() const {
+	return m_dataSize;
 }
 
 llong MockWritableStore::numDataRows() const {
@@ -818,6 +829,10 @@ MockWritableSegment::openIndex(const Schema& schema, PathRef path) const {
 
 llong MockWritableSegment::dataStorageSize() const {
 	return m_rows.used_mem_size() + m_dataSize;
+}
+
+llong MockWritableSegment::dataInflateSize() const {
+	return m_dataSize;
 }
 
 void

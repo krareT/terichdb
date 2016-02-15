@@ -109,6 +109,8 @@ Schema::Schema() {
 	m_fixedLen = size_t(-1);
 	m_parent = nullptr;
 	m_isOrdered = false;
+//	m_isPrimary = false;
+	m_isUnique  = false;
 	m_dictZipSampleRatio = 0.0;
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
@@ -1620,12 +1622,16 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 ///////////////////////////////////////////////////////////////////////////////
 
 
-const llong DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
-const llong DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
+const llong  DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
+const llong  DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
+const size_t DEFAULT_minMergeSegNum      = FEBIRD_IF_DEBUG(2, 5);
+const double DEFAULT_purgeDeleteThreshold = 0.20;
 
 SchemaConfig::SchemaConfig() {
 	m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
 	m_maxWrSegSize = DEFAULT_maxWrSegSize;
+	m_minMergeSegNum = DEFAULT_minMergeSegNum;
+	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
 }
 SchemaConfig::~SchemaConfig() {
 }
@@ -1797,11 +1803,17 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 	} else {
 		m_maxWrSegSize = *iter;
 	}
+	m_minMergeSegNum = getJsonValue(
+		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
+	m_purgeDeleteThreshold = getJsonValue(
+		meta, "PurgeDeleteThreshold", DEFAULT_purgeDeleteThreshold);
+
 	const json& tableIndex = meta["TableIndex"];
 	if (!tableIndex.is_array()) {
 		THROW_STD(invalid_argument, "json TableIndex must be an array");
 	}
 	m_indexSchemaSet.reset(new SchemaSet());
+//	bool hasPrimaryIndex = false;
 	for (const auto& index : tableIndex) {
 		SchemaPtr indexSchema(new Schema());
 		const std::string& strFields = index["fields"];
@@ -1826,18 +1838,25 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			THROW_STD(invalid_argument,
 				"duplicate index: %s", strFields.c_str());
 		}
-		auto found = index.find("ordered");
-		if (index.end() == found)
-			indexSchema->m_isOrdered = true; // default
-		else
-			indexSchema->m_isOrdered = found.value();
-
-		found = index.find("unique");
-		if (index.end() == found)
-			indexSchema->m_isUnique = false; // default
-		else
-			indexSchema->m_isUnique = found.value();
+		indexSchema->m_isOrdered = getJsonValue(index, "ordered", true);
+//		indexSchema->m_isPrimary = getJsonValue(index, "primary", false);
+		indexSchema->m_isUnique  = getJsonValue(index, "unique" , false);
+/*
+		if (indexSchema->m_isPrimary) {
+			if (hasPrimaryIndex) {
+				THROW_STD(invalid_argument, "ERROR: More than one primary index");
+			}
+		}
+*/
 	}
+/*
+	// now primary index concept is not required
+	// uncomment related code when primary index become required
+	if (!hasPrimaryIndex) {
+		THROW_STD(invalid_argument,
+			"ERROR: No primary index, a table must have exactly one primary index");
+	}
+*/
 	compileSchema();
 }
 

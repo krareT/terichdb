@@ -29,6 +29,7 @@ public:
 	ReadableStore* getReadableStore() override;
 
 	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	StoreIterator* createStoreIterForward(DbContext*) const override;
@@ -39,9 +40,11 @@ public:
 	void save(PathRef path) const override;
 
 protected:
+	struct FileHeader;
 	std::unique_ptr<NestLoudsTrieDAWG_SE_512> m_dfa;
-	byte_t*     m_idmapBase;
+	FileHeader* m_idmapBase;
 	size_t      m_idmapSize;
+	size_t      m_dataInflateSize;
 	UintVecMin0 m_keyToId;
 	UintVecMin0 m_idToKey;
 	rank_select_se_512 m_recBits; // only for dupable index

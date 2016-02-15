@@ -30,6 +30,8 @@ const size_t DEFAULT_maxSegNum = 4095;
 CompositeTable::CompositeTable() {
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
+	m_isMerging = false;
+	m_purgeStatus = PurgeStatus::none;
 	m_segments.reserve(DEFAULT_maxSegNum);
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
 	m_mergeSeqNum = 0;
@@ -545,6 +547,11 @@ llong CompositeTable::dataStorageSize() const {
 	return m_wrSeg->dataStorageSize();
 }
 
+llong CompositeTable::dataInflateSize() const {
+	MyRwLock lock(m_rwMutex, false);
+	return m_wrSeg->dataInflateSize();
+}
+
 void
 CompositeTable::getValueAppend(llong id, valvec<byte>* val, DbContext* txn)
 const {
@@ -587,7 +594,7 @@ CompositeTable::doCreateNewSegmentInLock() {
 	}
 	// createWritableSegment should be fast, other wise the lock time
 	// may be too long
-	putToCompressionQueue(m_segments.size() - 1);
+	putToFlushQueue(m_segments.size() - 1);
 	size_t newSegIdx = m_segments.size();
 	m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
 	m_segments.push_back(m_wrSeg);
@@ -832,6 +839,7 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 		}
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
+		tryAsyncPurgeDeleteInLock(seg);
 		lock.downgrade_to_reader();
 	//	lock.release();
 	//	lock.acquire(m_rwMutex, false);
@@ -978,6 +986,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		seg->m_isDirty = true;
+		tryAsyncPurgeDeleteInLock(seg);
 	}
 	return true;
 }
@@ -1512,6 +1521,10 @@ public:
 	bool canMerge(CompositeTable* tab) {
 		if (tab->m_isMerging)
 			return false;
+		if (PurgeStatus::none != tab->m_purgeStatus)
+			return false;
+
+		// memory alloc should be out of lock scope
 		this->reserve(tab->m_segments.size() + 1);
 		{
 			MyRwLock lock(tab->m_rwMutex, false);
@@ -1562,8 +1575,8 @@ public:
 			this->p[j] = this->p[rngBeg + j];
 		}
 		this->trim(rngLen);
-		if (rngLen < 2) {
-			tab->m_isMerging = false; // can omit write lock
+		if (rngLen < tab->m_schema->m_minMergeSegNum) {
+			tab->m_isMerging = false;
 			return false;
 		}
 		return true;
@@ -1811,6 +1824,9 @@ try{
 		if (m_wrSeg && m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
 			doCreateNewSegmentInLock();
 		}
+		if (PurgeStatus::pending == m_purgeStatus) {
+			inLockPutPurgeDeleteTaskToQueue();
+		}
 	}
 	for (auto& tobeDel : toMerge) {
 		tobeDel.seg->deleteSegment();
@@ -1877,9 +1893,14 @@ void CompositeTable::syncFinishWriting() {
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
 	{
 		MyRwLock lock(m_rwMutex, true);
-		putToCompressionQueue(m_segments.size()-1);
+		putToFlushQueue(m_segments.size()-1);
 	}
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
+}
+
+void CompositeTable::asyncPurgeDelete() {
+	MyRwLock lock(m_rwMutex, true);
+	asyncPurgeDeleteInLock();
 }
 
 void CompositeTable::dropTable() {
@@ -2041,6 +2062,33 @@ void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
 	fprintf(stderr, "freezeFlushWritableSegment: %s done!\n", seg->m_segDir.string().c_str());
 }
 
+void CompositeTable::runPurgeDelete() {
+	double threshold = m_schema->m_purgeDeleteThreshold;
+	for (;;) {
+		size_t segIdx = size_t(-1);
+		ReadonlySegmentPtr srcSeg;
+		{
+			MyRwLock lock(m_rwMutex, false);
+			auto segs = m_segments.data();
+			for (size_t i = 0, n = m_segments.size(); i < n; ++i) {
+				auto r = segs[i]->getReadonlySegment();
+				if (r && r->m_delcnt >= r->m_isDel.size() * threshold) {
+					segIdx = i;
+					srcSeg = r;
+					break;
+				}
+			}
+		}
+		if (size_t(-1) == segIdx) {
+			break;
+		}
+		ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
+		dest->purgeDeletedRecords(this, segIdx);
+	}
+	MyRwLock lock(m_rwMutex, true);
+	m_purgeStatus = PurgeStatus::none;
+}
+
 /////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -2133,6 +2181,15 @@ public:
 	}
 };
 
+class PurgeDeleteTask : public MyTask {
+	CompositeTablePtr m_tab;
+public:
+	void execute() override {
+		m_tab->runPurgeDelete();
+	}
+	PurgeDeleteTask(CompositeTablePtr tab) : m_tab(tab) {}
+};
+
 class WrSegFreezeFlushTask : public MyTask {
 	CompositeTablePtr m_tab;
 	size_t m_segIdx;
@@ -2148,10 +2205,46 @@ public:
 
 } // namespace
 
-void CompositeTable::putToCompressionQueue(size_t segIdx) {
+void CompositeTable::putToFlushQueue(size_t segIdx) {
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
 	g_flushQueue.push_back(new WrSegFreezeFlushTask(this, segIdx));
+	m_bgTaskNum++;
+}
+
+void CompositeTable::putToCompressionQueue(size_t segIdx) {
+	assert(segIdx < m_segments.size());
+	assert(m_segments[segIdx]->m_isDel.size() > 0);
+	g_compressQueue.push_back(new SegWrToRdConvTask(this, segIdx));
+	m_bgTaskNum++;
+}
+
+inline
+bool CompositeTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
+	auto maxDelcnt = seg->m_isDel.size() * m_schema->m_purgeDeleteThreshold;
+	if (seg->m_delcnt >= maxDelcnt) {
+		asyncPurgeDeleteInLock();
+		return true;
+	}
+	return false;
+}
+
+void CompositeTable::asyncPurgeDeleteInLock() {
+	if (PurgeStatus::purging == m_purgeStatus) {
+		// do nothing
+		assert(!m_isMerging);
+	}
+	else if (m_isMerging) {
+		m_purgeStatus = PurgeStatus::pending;
+	}
+	else if (PurgeStatus::pending == m_purgeStatus) {
+		inLockPutPurgeDeleteTaskToQueue();
+	}
+}
+
+void CompositeTable::inLockPutPurgeDeleteTaskToQueue() {
+	g_compressQueue.push_back(new PurgeDeleteTask(this));
+	m_purgeStatus = PurgeStatus::purging;
 	m_bgTaskNum++;
 }
 

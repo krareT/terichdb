@@ -8,6 +8,7 @@ namespace nark { namespace db { namespace dfadb {
 NestLoudsTrieIndex::NestLoudsTrieIndex() {
 	m_idmapBase = nullptr;
 	m_idmapSize = 0;
+	m_dataInflateSize = 0;
 }
 NestLoudsTrieIndex::~NestLoudsTrieIndex() {
 	if (m_idmapBase) {
@@ -59,6 +60,10 @@ llong NestLoudsTrieIndex::dataStorageSize() const {
 	return m_idToKey.mem_size();
 }
 
+llong NestLoudsTrieIndex::dataInflateSize() const {
+	return m_dataInflateSize;
+}
+
 llong NestLoudsTrieIndex::numDataRows() const {
 	auto dawg = m_dfa->get_dawg();
 	assert(dawg);
@@ -103,6 +108,7 @@ StoreIterator* NestLoudsTrieIndex::createStoreIterBackward(DbContext*) const {
 }
 
 void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
+	m_dataInflateSize = strVec.str_size();
 	FEBIRD_IF_DEBUG(SortableStrVec backup = strVec, ;);
 	const size_t rows = strVec.size();
 	NestLoudsTrieConfig conf;
@@ -174,7 +180,18 @@ void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 #endif
 }
 
+struct NestLoudsTrieIndex::FileHeader {
+	uint32_t rows;
+	uint32_t keys;
+	uint32_t idToKeyBytesDiv16; // real size may overflow uint32
+	uint32_t recBitsMemSize;
+	uint64_t dataInflateSize;
+	uint64_t pad1;
+	uint64_t pad2[4];
+};
+
 void NestLoudsTrieIndex::load(PathRef path) {
+	BOOST_STATIC_ASSERT(sizeof(FileHeader) == 64);
 	auto pathNLT = path + ".nlt";
 	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(pathNLT.string().c_str()));
 	m_dfa.reset(dynamic_cast<NestLoudsTrieDAWG_SE_512*>(dfa.get()));
@@ -183,12 +200,12 @@ void NestLoudsTrieIndex::load(PathRef path) {
 	}
 
 	auto pathIdMap = path + ".idmap";
-	m_idmapBase = (byte_t*)mmap_load(pathIdMap.string(), &m_idmapSize);
+	m_idmapBase = (FileHeader*)mmap_load(pathIdMap.string(), &m_idmapSize);
 
-	size_t rows  = ((uint32_t*)m_idmapBase)[0];
-	size_t keys  = ((uint32_t*)m_idmapBase)[1];
-	size_t bytes = ((uint32_t*)m_idmapBase)[2]; // for m_idToKey
-	size_t rslen = ((uint32_t*)m_idmapBase)[3];
+	size_t rows  = m_idmapBase->rows;
+	size_t keys  = m_idmapBase->keys;
+	size_t bytes = m_idmapBase->idToKeyBytesDiv16;
+	size_t rslen = m_idmapBase->recBitsMemSize;
 	size_t rbits = nark_bsr_u64(rows-1) + 1;
 	size_t kbits = nark_bsr_u64(keys-1) + 1;
 	bytes *= 16; // large rows will overflow m_idToKeys.mem_size() as uint32
@@ -197,15 +214,16 @@ void NestLoudsTrieIndex::load(PathRef path) {
 			"path=%s, broken data: keys[dfa=%zd map=%zd]",
 			path.string().c_str(), m_dfa->num_words(), keys);
 	}
-	m_idToKey.risk_set_data(m_idmapBase+16        , rows, kbits);
-	m_keyToId.risk_set_data(m_idmapBase+16 + bytes, rows, rbits);
+	m_idToKey.risk_set_data((byte*)(m_idmapBase+1)        , rows, kbits);
+	m_keyToId.risk_set_data((byte*)(m_idmapBase+1) + bytes, rows, rbits);
 	assert(m_idToKey.mem_size() == bytes);
 //	assert(m_keyToId.mem_size() == bytes);
 	m_isUnique = keys == rows;
 	if (!m_isUnique) {
-		m_recBits.risk_mmap_from(m_idmapBase+16+bytes+m_keyToId.mem_size(), rslen);
+		m_recBits.risk_mmap_from((byte*)(m_idmapBase+1)+bytes+m_keyToId.mem_size(), rslen);
 		m_recBits.risk_set_size(rows + 1);
 	}
+	m_dataInflateSize = m_idmapBase->dataInflateSize;
 }
 
 void NestLoudsTrieIndex::save(PathRef path) const {
@@ -231,12 +249,15 @@ void NestLoudsTrieIndex::save(PathRef path) const {
 	m_dfa->save_mmap(pathNLT.string().c_str());
 
 	auto pathIdMap = path + ".idmap";
-	NativeDataOutput<FileStream> dio;
-	dio.open(pathIdMap.string().c_str(), "wb");
-	dio << uint32_t(numDataRows());
-	dio << uint32_t(m_dfa->num_words());
-	dio << uint32_t(m_idToKey.mem_size()/16); // mem_size may overflow uint32
-	dio << uint32_t(m_recBits.mem_size());
+	FileStream dio(pathIdMap.string().c_str(), "wb");
+	FileHeader header;
+	memset(&header, 0, sizeof(FileHeader));
+	header.rows = uint32_t(numDataRows());
+	header.keys = uint32_t(m_dfa->num_words());
+	header.idToKeyBytesDiv16 = uint32_t(m_idToKey.mem_size()/16);
+	header.recBitsMemSize = uint32_t(m_recBits.mem_size());
+	header.dataInflateSize = m_dataInflateSize;
+	dio.ensureWrite(&header, sizeof(FileHeader));
 	dio.ensureWrite(m_idToKey.data(), m_idToKey.mem_size());
 	dio.ensureWrite(m_keyToId.data(), m_keyToId.mem_size());
 	if (!m_isUnique) {

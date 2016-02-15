@@ -184,6 +184,8 @@ void SeqNumIndex<Int>::clear() {}
 template<class Int>
 llong SeqNumIndex<Int>::dataStorageSize() const { return 2 * sizeof(llong); }
 template<class Int>
+llong SeqNumIndex<Int>::dataInflateSize() const { return sizeof(Int) * m_cnt; }
+template<class Int>
 llong SeqNumIndex<Int>::numDataRows() const { return m_cnt; }
 
 template<class Int>

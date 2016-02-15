@@ -46,11 +46,15 @@ public:
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
 	llong insertRow(fstring row, DbContext*);
 	llong replaceRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
+
+	size_t removeByIndex(size_t indexId, fstring indexKey, DbContext*);
+	llong  replaceRow(size_t indexId, fstring indexKey, DbContext*);
 
 	const Schema& rowSchema() const { return *m_schema->m_rowSchema; }
 	const Schema& getIndexSchema(size_t indexId) const {
@@ -106,6 +110,7 @@ public:
 	void clear();
 	void flush();
 	void syncFinishWriting();
+	void asyncPurgeDelete();
 
 	void dropTable();
 
@@ -117,6 +122,8 @@ public:
 	///@{ internal use only
 	void convWritableSegmentToReadonly(size_t segIdx);
 	void freezeFlushWritableSegment(size_t segIdx);
+	void runPurgeDelete();
+	void putToFlushQueue(size_t segIdx);
 	void putToCompressionQueue(size_t segIdx);
 	///@}
 
@@ -149,6 +156,10 @@ protected:
 	ReadonlySegment* myCreateReadonlySegment(PathRef segDir) const;
 	WritableSegment* myCreateWritableSegment(PathRef segDir) const;
 
+	bool tryAsyncPurgeDeleteInLock(const ReadableSegment* seg);
+	void asyncPurgeDeleteInLock();
+	void inLockPutPurgeDeleteTaskToQueue();
+
 //	void registerDbContext(DbContext* ctx) const;
 //	void unregisterDbContext(DbContext* ctx) const;
 
@@ -156,6 +167,12 @@ public:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
 protected:
+	enum class PurgeStatus : unsigned char {
+		none,
+		pending,
+		purging,
+	};
+
 //	DbContextLink* m_ctxListHead;
 	valvec<llong>  m_rowNumVec;
 	valvec<ReadableSegmentPtr> m_segments;
@@ -165,6 +182,7 @@ protected:
 	size_t m_bgTaskNum;
 	bool m_tobeDrop;
 	bool m_isMerging;
+	PurgeStatus m_purgeStatus;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;
@@ -227,7 +245,6 @@ DbContext::indexReplace(size_t indexId, fstring indexKey, llong oldId, llong new
 	assert(this != nullptr);
 	m_tab->indexReplace(indexId, indexKey, oldId, newId, this);
 }
-
 
 
 } } // namespace nark::db

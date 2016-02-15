@@ -149,6 +149,10 @@ llong WtWritableStore::dataStorageSize() const {
 	return m_dataSize;
 }
 
+llong WtWritableStore::dataInflateSize() const {
+	return m_dataSize;
+}
+
 llong WtWritableStore::numDataRows() const {
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	WT_CURSOR* cursor = getReplaceCursor();

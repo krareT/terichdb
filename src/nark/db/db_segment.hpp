@@ -17,6 +17,7 @@ class NARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
 	ReadableSegment();
 	~ReadableSegment();
+	virtual class ReadonlySegment* getReadonlySegment();
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
@@ -76,6 +77,9 @@ public:
 	ReadonlySegment();
 	~ReadonlySegment();
 
+	ReadonlySegment* getReadonlySegment() override;
+
+	llong dataInflateSize() const override;
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
@@ -86,6 +90,7 @@ public:
 
 	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
 	void convFrom(class CompositeTable*, size_t segIdx);
+	void purgeDeletedRecords(class CompositeTable*, size_t segIdx);
 
 	void getValueImpl(size_t id, valvec<byte>* val, DbContext*) const;
 
@@ -108,16 +113,23 @@ protected:
 			const = 0;
 
 	virtual ReadableStore*
-			buildDictZipStore(const Schema&, StoreIterator& inputIter)
+			buildDictZipStore(const Schema&, StoreIterator& inputIter, const bm_uint_t* isDel)
 			const;
+
+	void completeAndReload(class CompositeTable*, size_t segIdx,
+						   class ReadableSegment* input,
+						   llong newRowNum);
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
+
+	void closeFiles();
 
 protected:
 	friend class CompositeTable;
 	class MyStoreIterForward;  friend class MyStoreIterForward;
 	class MyStoreIterBackward; friend class MyStoreIterBackward;
+	llong  m_dataInflateSize;
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
 	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups

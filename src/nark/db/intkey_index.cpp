@@ -98,6 +98,22 @@ llong ZipIntKeyIndex::dataStorageSize() const {
 	return m_keys.mem_size() + m_index.mem_size();
 }
 
+llong ZipIntKeyIndex::dataInflateSize() const {
+	switch (m_keyType) {
+	default:
+		THROW_STD(invalid_argument,
+			"Bad m_keyType=%s", Schema::columnTypeStr(m_keyType));
+	case ColumnType::Sint08:
+	case ColumnType::Uint08: return 1 * m_keys.size();
+	case ColumnType::Sint16: 
+	case ColumnType::Uint16: return 2 * m_keys.size();
+	case ColumnType::Sint32:
+	case ColumnType::Uint32: return 4 * m_keys.size();
+	case ColumnType::Sint64:
+	case ColumnType::Uint64: return 8 * m_keys.size();
+	}
+}
+
 llong ZipIntKeyIndex::numDataRows() const {
 	return m_keys.size();
 }

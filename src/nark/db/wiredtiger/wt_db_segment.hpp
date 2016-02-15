@@ -5,7 +5,7 @@
 
 namespace nark { namespace db { namespace wt {
 
-class NARK_DB_DLL WtWritableSegment : public WritableSegment {
+class NARK_DB_DLL WtWritableSegment : public PlainWritableSegment {
 public:
 	WtWritableSegment();
 	~WtWritableSegment();
@@ -25,6 +25,7 @@ public:
 	void loadRecordStore(PathRef segDir);
 	void saveRecordStore(PathRef segDir) const;
 
+	llong dataInflateSize() const override;
 	llong dataStorageSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 

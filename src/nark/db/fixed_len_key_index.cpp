@@ -75,6 +75,10 @@ llong FixedLenKeyIndex::dataStorageSize() const {
 	return m_keys.used_mem_size() + m_index.mem_size();
 }
 
+llong FixedLenKeyIndex::dataInflateSize() const {
+	return m_fixedLen * m_keys.size();
+}
+
 llong FixedLenKeyIndex::numDataRows() const {
 	return m_keys.size();
 }

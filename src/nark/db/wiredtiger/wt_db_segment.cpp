@@ -83,6 +83,10 @@ void WtWritableSegment::saveRecordStore(PathRef segDir) const {
 	m_rowStore->save(segDir);
 }
 
+llong WtWritableSegment::dataInflateSize() const {
+	return m_rowStore->dataInflateSize();
+}
+
 llong WtWritableSegment::dataStorageSize() const {
 	return m_rowStore->dataStorageSize();
 }

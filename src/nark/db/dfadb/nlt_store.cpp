@@ -17,6 +17,10 @@ llong NestLoudsTrieStore::dataStorageSize() const {
 	return m_store->mem_size();
 }
 
+llong NestLoudsTrieStore::dataInflateSize() const {
+	return m_store->total_data_size();
+}
+
 llong NestLoudsTrieStore::numDataRows() const {
 	return m_store->num_records();
 }
@@ -96,7 +100,9 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	}
 }
 
-void NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath, StoreIterator& iter) {
+void
+NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
+								  StoreIterator& iter, const bm_uint_t* isDel) {
 	std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
 	std::unique_ptr<DictZipDataStore::ZipBuilder> builder(zds->createZipBuilder());
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
@@ -104,14 +110,18 @@ void NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath, Stor
 	llong recId;
 	valvec<byte> rec;
 	while (iter.increment(&recId, &rec)) {
-		if (rand() < RAND_MAX * sampleRatio) {
-			builder->addSample(rec);
+		if (NULL == isDel || !nark_bit_test(isDel, recId)) {
+			if (rand() < RAND_MAX * sampleRatio ) {
+				builder->addSample(rec);
+			}
 		}
 	}
 	builder->prepare(recId + 1, fpath.string());
 	iter.reset();
 	while (iter.increment(&recId, &rec)) {
-		builder->addRecord(rec);
+		if (NULL == isDel || !nark_bit_test(isDel, recId)) {
+			builder->addRecord(rec);
+		}
 	}
 	zds->completeBuild(*builder);
 	m_store.reset(zds.release());

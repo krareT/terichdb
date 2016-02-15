@@ -39,9 +39,6 @@ ReadableStore::ReadableStore() {
 ReadableStore::~ReadableStore() {
 }
 
-void ReadableStore::removeDeleted(const ReadableStore&, const febitvec& isDel) const {
-}
-
 ReadableStore* ReadableStore::openStore(PathRef segDir, fstring fname) {
 	size_t sufpos = fname.size();
 	while (sufpos > 0 && fname[sufpos-1] != '.') --sufpos;
@@ -76,6 +73,82 @@ ReadableIndex* ReadableStore::getReadableIndex() {
 	return nullptr;
 }
 
+namespace {
+	class DefaultStoreIterForward : public StoreIterator {
+		DbContextPtr m_ctx;
+		llong m_rows;
+		llong m_id;
+	public:
+		DefaultStoreIterForward(ReadableStore* store, DbContext* ctx) {
+			m_store.reset(store);
+			m_ctx.reset(ctx);
+			m_rows = store->numDataRows();
+			m_id = 0;
+		}
+		bool increment(llong* id, valvec<byte>* val) override {
+			if (m_id < m_rows) {
+				m_store->getValue(m_id, val, m_ctx.get());
+				*id = m_id++;
+				return true;
+			}
+			return false;
+		}
+		bool seekExact(llong  id, valvec<byte>* val) override {
+			if (id <= m_rows) {
+				m_id = m_rows;
+				return true;
+			}
+			return false;
+		}
+		void reset() {
+			m_rows = m_store->numDataRows();
+			m_id = 0;
+		}
+	};
+	class DefaultStoreIterBackward : public StoreIterator {
+		DbContextPtr m_ctx;
+		llong m_rows;
+		llong m_id;
+	public:
+		DefaultStoreIterBackward(ReadableStore* store, DbContext* ctx) {
+			m_store.reset(store);
+			m_ctx.reset(ctx);
+			m_rows = store->numDataRows();
+			m_id = m_rows;
+		}
+		bool increment(llong* id, valvec<byte>* val) override {
+			if (m_id > 0) {
+				m_store->getValue(m_id, val, m_ctx.get());
+				*id = --m_id;
+				return true;
+			}
+			return false;
+		}
+		bool seekExact(llong  id, valvec<byte>* val) override {
+			if (id <= m_rows) {
+				m_id = m_rows;
+				return true;
+			}
+			return false;
+		}
+		void reset() {
+			m_rows = m_store->numDataRows();
+			m_id = m_rows;
+		}
+	};
+} // namespace
+
+StoreIterator*
+ReadableStore::createDefaultStoreIterForward(DbContext* ctx) const {
+	return new DefaultStoreIterForward(const_cast<ReadableStore*>(this), ctx);
+}
+StoreIterator*
+ReadableStore::createDefaultStoreIterBackward(DbContext* ctx) const {
+	return new DefaultStoreIterBackward(const_cast<ReadableStore*>(this), ctx);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 WritableStore::~WritableStore() {
 }
 
@@ -89,6 +162,12 @@ MultiPartStore::MultiPartStore(valvec<ReadableStorePtr>& parts) {
 MultiPartStore::~MultiPartStore() {
 }
 
+llong MultiPartStore::dataInflateSize() const {
+	size_t size = 0;
+	for (auto& part : m_parts)
+		size += part->dataInflateSize();
+	return size;
+}
 llong MultiPartStore::dataStorageSize() const {
 	size_t size = 0;
 	for (auto& part : m_parts)
@@ -138,7 +217,7 @@ public:
 		*id = m_id++;
 		llong baseId = owner->m_rowNumVec[m_partIdx];
 		llong subId = *id - baseId;
-		owner->m_parts[m_partIdx]->getValueAppend(subId, val, m_ctx.get());
+		owner->m_parts[m_partIdx]->getValue(subId, val, m_ctx.get());
 		return true;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
@@ -149,7 +228,7 @@ public:
 		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
 		llong  baseId = owner->m_rowNumVec[upp-1];
 		llong  subId = id - baseId;
-		owner->m_parts[upp-1]->getValueAppend(subId, val, m_ctx.get());
+		owner->m_parts[upp-1]->getValue(subId, val, m_ctx.get());
 		m_id = id+1;
 		m_partIdx = upp-1;
 		return true;
@@ -189,7 +268,7 @@ public:
 		*id = --m_id;
 		llong baseId = owner->m_rowNumVec[m_partIdx-1];
 		llong subId = *id - baseId;
-		owner->m_parts[m_partIdx-1]->getValueAppend(subId, val, m_ctx.get());
+		owner->m_parts[m_partIdx-1]->getValue(subId, val, m_ctx.get());
 		return true;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
@@ -200,7 +279,7 @@ public:
 		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
 		llong  baseId = owner->m_rowNumVec[upp-1];
 		llong  subId = id - baseId;
-		owner->m_parts[upp-1]->getValueAppend(subId, val, m_ctx.get());
+		owner->m_parts[upp-1]->getValue(subId, val, m_ctx.get());
 		m_partIdx = upp;
 		m_id = id;
 		return true;

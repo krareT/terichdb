@@ -22,6 +22,23 @@ llong ZipIntStore::dataStorageSize() const {
 	return m_dedup.mem_size() + m_index.mem_size();
 }
 
+llong ZipIntStore::dataInflateSize() const {
+	size_t rows = m_index.size() ? m_index.size() : m_dedup.size();
+	switch (m_intType) {
+	default:
+		THROW_STD(invalid_argument,
+			"Bad m_keyType=%s", Schema::columnTypeStr(m_intType));
+	case ColumnType::Sint08:
+	case ColumnType::Uint08: return 1 * rows;
+	case ColumnType::Sint16:
+	case ColumnType::Uint16: return 2 * rows;
+	case ColumnType::Sint32:
+	case ColumnType::Uint32: return 4 * rows;
+	case ColumnType::Sint64:
+	case ColumnType::Uint64: return 8 * rows;
+	}
+}
+
 llong ZipIntStore::numDataRows() const {
 	return m_index.size() ? m_index.size() : m_dedup.size();
 }

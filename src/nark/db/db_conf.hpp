@@ -163,6 +163,7 @@ namespace nark { namespace db {
 		byte   m_nltNestLevel;
 
 		bool   m_isOrdered : 1; // just for index schema
+//		bool   m_isPrimary : 1;
 		bool   m_isUnique  : 1;
 		bool   m_needEncodeToLexByteComparable : 1;
 		bool   m_canEncodeToLexByteComparable  : 1;
@@ -293,6 +294,8 @@ namespace nark { namespace db {
 		valvec<Colproject> m_colproject; // parallel with m_rowSchema
 		llong m_readonlyDataMemSize;
 		llong m_maxWrSegSize;
+		size_t m_minMergeSegNum;
+		double m_purgeDeleteThreshold;
 
 		SchemaConfig();
 		~SchemaConfig();

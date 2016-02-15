@@ -20,6 +20,7 @@ public:
 	void load(PathRef) override;
 
 	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const;
 	StoreIterator* createStoreIterForward(DbContext*) const override;
@@ -49,6 +50,7 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
 
 	llong searchExact(fstring key, DbContext*) const override;
@@ -71,6 +73,7 @@ public:
 	void load(PathRef) override;
 
 	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	StoreIterator* createStoreIterForward(DbContext*) const override;
@@ -132,6 +135,7 @@ public:
 protected:
 	ReadableIndex* openIndex(const Schema&, PathRef) const override;
 	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;

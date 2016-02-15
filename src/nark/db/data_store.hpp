@@ -64,9 +64,9 @@ public:
 	ReadableStore();
 	~ReadableStore();
 	virtual llong dataStorageSize() const = 0;
+	virtual llong dataInflateSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
-	virtual void removeDeleted(const ReadableStore&, const febitvec& isDel) const;
 	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
@@ -76,6 +76,9 @@ public:
 		val->risk_set_size(0);
 		getValueAppend(id, val, ctx);
 	}
+
+	StoreIterator* createDefaultStoreIterForward(DbContext*) const;
+	StoreIterator* createDefaultStoreIterBackward(DbContext*) const;
 };
 
 class NARK_DB_DLL WritableStore {
@@ -96,6 +99,7 @@ public:
 	explicit MultiPartStore(valvec<ReadableStorePtr>& m_parts);
 	~MultiPartStore();
 
+	llong dataInflateSize() const override;
 	llong dataStorageSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
@@ -104,6 +108,9 @@ public:
 
 	void load(PathRef segDir) override;
 	void save(PathRef segDir) const override;
+
+	size_t numParts() const { return m_parts.size(); }
+	const ReadableStore& getPart(size_t i) const { return *m_parts[i]; }
 
 private:
 	void syncRowNumVec();
