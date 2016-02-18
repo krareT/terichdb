@@ -66,13 +66,14 @@ const {
 
 ReadableStore*
 DfaDbReadonlySegment::buildDictZipStore(const Schema& schema,
+										PathRef dir,
 										StoreIterator& inputIter,
-										const bm_uint_t* isDel)
+										const bm_uint_t* isDel,
+										const febitvec* isPurged)
 const {
 	std::unique_ptr<NestLoudsTrieStore> nlt(new NestLoudsTrieStore());
-	auto tmpDir = m_segDir + ".tmp";
-	auto fpath = tmpDir / (schema.m_name + ".nlt");
-	nlt->build_by_iter(schema, fpath, inputIter, isDel);
+	auto fpath = dir / (schema.m_name + ".nlt");
+	nlt->build_by_iter(schema, fpath, inputIter, isDel, isPurged);
 	return nlt.release();
 }
 

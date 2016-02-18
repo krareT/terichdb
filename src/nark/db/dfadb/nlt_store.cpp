@@ -102,25 +102,59 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 
 void
 NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
-								  StoreIterator& iter, const bm_uint_t* isDel) {
+								  StoreIterator& iter,
+								  const bm_uint_t* isDel,
+								  const febitvec* isPurged) {
 	std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
 	std::unique_ptr<DictZipDataStore::ZipBuilder> builder(zds->createZipBuilder());
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
 					   ? schema.m_dictZipSampleRatio : 0.05;
-	llong recId;
 	valvec<byte> rec;
-	while (iter.increment(&recId, &rec)) {
-		if (NULL == isDel || !nark_bit_test(isDel, recId)) {
-			if (rand() < RAND_MAX * sampleRatio ) {
-				builder->addSample(rec);
+	if (NULL == isPurged || isPurged->size() == 0) {
+		llong recId;
+		while (iter.increment(&recId, &rec)) {
+			if (NULL == isDel || !nark_bit_test(isDel, recId)) {
+				if (rand() < RAND_MAX * sampleRatio ) {
+					builder->addSample(rec);
+				}
+			}
+		}
+		builder->prepare(recId + 1, fpath.string());
+		iter.reset();
+		while (iter.increment(&recId, &rec)) {
+			if (NULL == isDel || !nark_bit_test(isDel, recId)) {
+				builder->addRecord(rec);
 			}
 		}
 	}
-	builder->prepare(recId + 1, fpath.string());
-	iter.reset();
-	while (iter.increment(&recId, &rec)) {
-		if (NULL == isDel || !nark_bit_test(isDel, recId)) {
-			builder->addRecord(rec);
+	else {
+		llong  physicId = 0;
+		size_t logicNum = isPurged->size();
+		const bm_uint_t* isPurgedptr = isPurged->bldata();
+		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
+			if (!nark_bit_test(isPurgedptr, logicId)) {
+				bool hasData = iter.seekExact(physicId, &rec);
+				FEBIRD_RT_assert(hasData, std::logic_error);
+				if (NULL == isDel || !nark_bit_test(isDel, logicId)) {
+					if (rand() < RAND_MAX * sampleRatio) {
+						builder->addSample(rec);
+					}
+				}
+				physicId++;
+			}
+		}
+		builder->prepare(physicId, fpath.string());
+		iter.reset();
+		physicId = 0;
+		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
+			if (!nark_bit_test(isPurgedptr, logicId)) {
+				bool hasData = iter.increment(&physicId, &rec);
+				FEBIRD_RT_assert(hasData, std::logic_error);
+				if (NULL == isDel || !nark_bit_test(isDel, logicId)) {
+					builder->addRecord(rec);
+				}
+				physicId++;
+			}
 		}
 	}
 	zds->completeBuild(*builder);

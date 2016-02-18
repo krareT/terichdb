@@ -25,6 +25,7 @@ ColumnMeta::ColumnMeta(ColumnType t) {
 	reserved1 = 0;
 	reserved2 = 0;
 	type = t;
+	uType = 255;
 	switch (t) {
 	default:
 		THROW_STD(runtime_error, "Invalid data row");
@@ -122,6 +123,8 @@ Schema::Schema() {
 	m_sufarrMinFreq = 0;
 	m_rankSelectClass = 512;
 	m_nltNestLevel = DEFAULT_nltNestLevel;
+	m_lastVarLenCol = 0;
+	m_restFixLenSum = 0;
 }
 Schema::~Schema() {
 }

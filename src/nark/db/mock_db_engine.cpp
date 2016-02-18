@@ -274,6 +274,7 @@ void MockReadonlyIndex::getIndexKey(llong* id, valvec<byte>* key, size_t pos) co
 
 MockReadonlyIndex::MockReadonlyIndex(const Schema& schema) {
 	m_schema = &schema;
+	m_fixedLen = schema.getFixedRowLen();
 }
 
 MockReadonlyIndex::~MockReadonlyIndex() {

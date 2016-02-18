@@ -4,6 +4,7 @@
 #include "data_index.hpp"
 #include "data_store.hpp"
 #include <nark/bitmap.hpp>
+#include <nark/rank_select.hpp>
 
 namespace nark {
 	class SortableStrVec;
@@ -57,6 +58,7 @@ public:
 	bool        m_tobeDel;
 	bool        m_isDirty;
 	bool        m_bookDeletion;
+	bool        m_withPurgeBits;  // just for ReadonlySegment
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
@@ -88,16 +90,19 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	void mergeFrom(const valvec<const ReadonlySegment*>& input, DbContext* ctx);
 	void convFrom(class CompositeTable*, size_t segIdx);
 	void purgeDeletedRecords(class CompositeTable*, size_t segIdx);
 
-	void getValueImpl(size_t id, valvec<byte>* val, DbContext*) const;
+	void getValueByLogicId(size_t id, valvec<byte>* val, DbContext*) const;
+	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
 	void selectOneColumn(llong recId, size_t columnId,
 						 valvec<byte>* colsData, DbContext*) const override;
+
+	void load(PathRef segDir) override;
+	void save(PathRef segDir) const override;
 
 protected:
 	// Index can use different implementation for different
@@ -113,17 +118,23 @@ protected:
 			const = 0;
 
 	virtual ReadableStore*
-			buildDictZipStore(const Schema&, StoreIterator& inputIter, const bm_uint_t* isDel)
+			buildDictZipStore(const Schema&, PathRef dir, StoreIterator& inputIter,
+							  const bm_uint_t* isDel, const febitvec* isPurged)
 			const;
 
 	void completeAndReload(class CompositeTable*, size_t segIdx,
-						   class ReadableSegment* input,
-						   llong newRowNum);
+						   class ReadableSegment* input);
+
+	ReadableIndexPtr purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx);
+	ReadableStorePtr purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
 
 	void closeFiles();
+	void removePurgeBitsForCompactIdspace(PathRef segDir);
+
+	size_t getPhysicId(size_t logicId) const;
 
 protected:
 	friend class CompositeTable;
@@ -133,6 +144,8 @@ protected:
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
 	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
+	rank_select_se m_isPurged;
+	byte*          m_isPurgedMmap;
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 

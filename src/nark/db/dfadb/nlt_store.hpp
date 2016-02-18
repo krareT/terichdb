@@ -22,7 +22,8 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	void build(const Schema&, SortableStrVec& strVec);
-	void build_by_iter(const Schema&, PathRef fpath, StoreIterator& iter, const bm_uint_t* isDel);
+	void build_by_iter(const Schema&, PathRef fpath, StoreIterator& iter,
+					   const bm_uint_t* isDel, const febitvec* isPurged);
 	void load(PathRef path) override;
 	void save(PathRef path) const override;
 

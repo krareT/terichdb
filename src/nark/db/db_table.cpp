@@ -1507,17 +1507,76 @@ fstring getDotExtension(fstring fpath) {
 }
 
 struct SegEntry {
-	ReadableSegment* seg;
+	ReadonlySegment* seg;
 	size_t idx;
 	SortableStrVec files;
-	SegEntry(ReadableSegment* s, size_t i) : seg(s), idx(i) {}
+	febitvec newIsPurged;
+	size_t oldNumPurged;
+	size_t newNumPurged;
+
+	// constructor must be fast enough
+	SegEntry(ReadonlySegment* s, size_t i) : seg(s), idx(i) {
+		oldNumPurged = 0;
+		newNumPurged = 0;
+	}
+	bool needsRePurge() const { return newNumPurged != oldNumPurged; }
+	void reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size_t& newPartIdx);
 };
+
+void
+SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size_t& newPartIdx) {
+	auto& srcSegDir = seg->m_segDir;
+	size_t lo = files.lower_bound(prefix);
+	if (lo >= files.size() || !files[lo].startsWith(prefix)) {
+		THROW_STD(invalid_argument, "missing: %s",
+			(srcSegDir / prefix).string().c_str());
+	}
+	size_t prevOldpartIdx = 0;
+	size_t j = lo;
+	while (j < files.size() && files[j].startsWith(prefix)) {
+		fstring fname = files[j];
+		std::string dotExt = getDotExtension(fname).str();
+		size_t oldpartIdx = 0;
+		if (prefix.size() + dotExt.size() < fname.size()) {
+			// oldpartIdx is between prefix and dotExt
+			// one part can have multiple different dotExt file
+			oldpartIdx = lcast(fname.substr(prefix.size()+1));
+			assert(oldpartIdx - prevOldpartIdx <= 1);
+			if (oldpartIdx - prevOldpartIdx > 1) {
+				THROW_STD(invalid_argument, "missing part: %s.%zd%s"
+					, (srcSegDir / prefix).string().c_str()
+					, prevOldpartIdx+1, dotExt.c_str());
+			}
+			if (prevOldpartIdx != oldpartIdx) {
+				assert(prevOldpartIdx + 1 == oldpartIdx);
+				newPartIdx++;
+				prevOldpartIdx = oldpartIdx;
+			}
+		}
+		char szNumBuf[16];
+		snprintf(szNumBuf, sizeof(szNumBuf), ".%04zd", newPartIdx);
+		std::string destFname = prefix + szNumBuf + dotExt;
+		fs::path    destFpath = destSegDir / destFname;
+		try {
+			fprintf(stderr, "INFO: create_hard_link(%s, %s)\n"
+				, (srcSegDir / fname.str()).string().c_str()
+				, destFpath.string().c_str());
+			fs::create_hard_link(srcSegDir / fname.str(), destFpath);
+		}
+		catch (const std::exception& ex) {
+			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
+			throw;
+		}
+		j++;
+	}
+}
 
 } // namespace
 
 class CompositeTable::MergeParam : public valvec<SegEntry> {
 public:
 	size_t m_tabSegNum = 0;
+
 	bool canMerge(CompositeTable* tab) {
 		if (tab->m_isMerging)
 			return false;
@@ -1533,7 +1592,7 @@ public:
 				if (seg->getWritableStore())
 					break; // writable seg must be at top side
 				else
-					this->push_back({seg, i});
+					this->push_back({seg->getReadonlySegment(), i});
 			}
 			if (this->size() <= 1)
 				return false;
@@ -1591,8 +1650,110 @@ public:
 		}
 		return str;
 	}
+
+	void syncPurgeBits(double purgeThreshold);
+
+	ReadableIndex*
+	mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx);
 };
 
+
+void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
+	for (auto& e : *this) {
+		ReadonlySegment* seg   = e.seg;
+		size_t oldNumPurged    = seg->m_isPurged.max_rank1();
+		size_t newMarkDelcnt   = seg->m_delcnt - oldNumPurged;
+		size_t oldRealRecords  = seg->m_isDel.size() - oldNumPurged;
+		double newMarkDelRatio = 1.0*newMarkDelcnt / (oldRealRecords + 0.1);
+		if (newMarkDelRatio > purgeThreshold) {
+			// do purge: physic delete
+			e.newIsPurged = seg->m_isDel; // don't lock
+			e.newNumPurged = e.newIsPurged.popcnt();
+		} else {
+			e.newIsPurged = seg->m_isPurged;
+			e.newNumPurged = oldNumPurged;
+		}
+		e.oldNumPurged = oldNumPurged;
+	}
+}
+
+ReadableIndex*
+CompositeTable::MergeParam::
+mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
+	valvec<byte> rec;
+	SortableStrVec strVec;
+	const Schema& schema = this->p[0].seg->m_schema->getIndexSchema(indexId);
+	const size_t fixedIndexRowLen = schema.getFixedRowLen();
+	for (auto& e : *this) {
+		auto seg = e.seg;
+		auto indexStore = seg->m_indices[indexId]->getReadableStore();
+		assert(nullptr != indexStore);
+		size_t logicRows = size_t(seg->numDataRows());
+		size_t physicId = 0;
+		for (size_t logicId = 0; logicId < logicRows; ++logicId) {
+			if (e.newIsPurged.empty() || !e.newIsPurged[logicId]) {
+				indexStore->getValue(physicId, &rec, ctx);
+				if (fixedIndexRowLen) {
+					assert(rec.size() == fixedIndexRowLen);
+					strVec.m_strpool.append(rec);
+				} else {
+					strVec.push_back(rec);
+				}
+				physicId++;
+			}
+		}
+	}
+	return dseg->buildIndex(schema, strVec);
+}
+
+static void
+moveStoreFiles(PathRef srcDir, PathRef destDir,
+			   const std::string& prefix, size_t& newPartIdx) {
+	size_t prevOldpartIdx = 0;
+	for (auto& entry : fs::directory_iterator(srcDir)) {
+		std::string fname = entry.path().filename().string();
+		if ("." == fname || ".." == fname) {
+			continue;
+		}
+		assert(fstring(fname).startsWith(prefix));
+		std::string dotExt = getDotExtension(fname).str();
+		size_t oldpartIdx = 0;
+		if (prefix.size() + dotExt.size() < fname.size()) {
+			// oldpartIdx is between prefix and dotExt
+			// one part can have multiple different dotExt file
+			oldpartIdx = lcast(fname.substr(prefix.size()+1));
+			assert(oldpartIdx - prevOldpartIdx <= 1);
+			if (oldpartIdx - prevOldpartIdx > 1) {
+				THROW_STD(invalid_argument, "missing part: %s.%zd%s"
+					, (srcDir / prefix).string().c_str()
+					, prevOldpartIdx+1, dotExt.c_str());
+			}
+			if (prevOldpartIdx != oldpartIdx) {
+				assert(prevOldpartIdx + 1 == oldpartIdx);
+				newPartIdx++;
+				prevOldpartIdx = oldpartIdx;
+			}
+		}
+		char szNumBuf[16];
+		snprintf(szNumBuf, sizeof(szNumBuf), ".%04zd", newPartIdx);
+		std::string destFname = prefix + szNumBuf + dotExt;
+		fs::path    destFpath = destDir / destFname;
+		try {
+			fprintf(stderr, "INFO: create_hard_link(%s, %s)\n"
+				, (srcDir / fname).string().c_str()
+				, destFpath.string().c_str());
+			fs::rename(srcDir / fname, destFpath);
+		}
+		catch (const std::exception& ex) {
+			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
+			throw;
+		}
+	}
+}
+
+// If segments to be merged have purged records, these physical records id
+// must be mapped to logical records id, thus purge bitmap is required for
+// the merged result segment
 void CompositeTable::merge(MergeParam& toMerge) {
 	fs::path destMergeDir = getMergePath(m_dir, m_mergeSeqNum+1);
 	if (fs::exists(destMergeDir)) {
@@ -1609,30 +1770,13 @@ try{
 	const size_t indexNum = m_schema->getIndexNum();
 	const size_t colgroupNum = m_schema->getColgroupNum();
 	dseg->m_indices.resize(indexNum);
+	dseg->m_colgroups.resize(colgroupNum);
+	toMerge.syncPurgeBits(m_schema->m_purgeDeleteThreshold);
 	DbContextPtr ctx(this->createDbContext());
 	for (size_t i = 0; i < indexNum; ++i) {
-		valvec<byte> buf;
-		SortableStrVec strVec;
-		const Schema& schema = m_schema->getIndexSchema(i);
-		size_t fixedIndexRowLen = schema.getFixedRowLen();
-		for (size_t j = 0; j < toMerge.size(); ++j) {
-			auto seg = toMerge[j].seg;
-			auto indexStore = seg->m_indices[i]->getReadableStore();
-			assert(nullptr != indexStore);
-			llong rows = seg->numDataRows();
-			for (llong id = 0; id < rows; ++id) {
-				if (!seg->m_isDel[size_t(id)]) {
-					indexStore->getValue(id, &buf, ctx.get());
-					if (fixedIndexRowLen) {
-						assert(buf.size() == fixedIndexRowLen);
-						strVec.m_strpool.append(buf);
-					} else
-						strVec.push_back(buf);
-				}
-			}
-		}
-		ReadableIndex* index = dseg->buildIndex(schema, strVec);
+		ReadableIndex* index = toMerge.mergeIndex(dseg.get(), i, ctx.get());
 		dseg->m_indices[i] = index;
+		dseg->m_colgroups[i] = index->getReadableStore();
 	}
 	for (auto& e : toMerge) {
 		for(auto fpath : fs::directory_iterator(e.seg->m_segDir)) {
@@ -1640,55 +1784,22 @@ try{
 		}
 		e.files.sort();
 	}
-
 	for (size_t i = indexNum; i < colgroupNum; ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
-		std::string prefix = "colgroup-" + schema.m_name;
+		const std::string prefix = "colgroup-" + schema.m_name;
 		size_t newPartIdx = 0;
 		for (auto& e : toMerge) {
-			auto& segDir = e.seg->m_segDir;
-			size_t lo = e.files.lower_bound(prefix);
-			if (lo >= e.files.size() || !e.files[lo].startsWith(prefix)) {
-				THROW_STD(invalid_argument, "missing: %s",
-					(segDir / prefix).string().c_str());
-			}
-			size_t prevOldpartIdx = 0;
-			size_t j = lo;
-			while (j < e.files.size() && e.files[j].startsWith(prefix)) {
-				fstring fname = e.files[j];
-				std::string dotExt = getDotExtension(fname).str();
-				size_t oldpartIdx = 0;
-				if (prefix.size() + dotExt.size() < fname.size()) {
-					// oldpartIdx is between prefix and dotExt
-					// one part can have multiple different dotExt file
-					oldpartIdx = lcast(fname.substr(prefix.size()+1));
-					assert(oldpartIdx - prevOldpartIdx <= 1);
-					if (oldpartIdx - prevOldpartIdx > 1) {
-						THROW_STD(invalid_argument, "missing part: %s.%zd%s"
-							, (segDir / prefix).string().c_str()
-							, prevOldpartIdx+1, dotExt.c_str());
-					}
-					if (prevOldpartIdx != oldpartIdx) {
-						assert(prevOldpartIdx + 1 == oldpartIdx);
-						newPartIdx++;
-						prevOldpartIdx = oldpartIdx;
-					}
-				}
-				char szNumBuf[16];
-				snprintf(szNumBuf, sizeof(szNumBuf), ".%04zd", newPartIdx);
-				std::string destFname = prefix + szNumBuf + dotExt;
-				fs::path    destFpath = destSegDir / destFname;
-				try {
-					fprintf(stderr, "INFO: create_hard_link(%s, %s)\n"
-						, (segDir / fname.str()).string().c_str()
-						, destFpath.string().c_str());
-					fs::create_hard_link(segDir / fname.str(), destFpath);
-				}
-				catch (const std::exception& ex) {
-					fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
-					throw;
-				}
-				j++;
+			if (e.needsRePurge()) {
+				auto tmpDir1 = destSegDir / "temp-store";
+				fs::create_directory(tmpDir1);
+				dseg->m_isDel.swap(e.newIsPurged);
+				auto store = dseg->purgeColgroup(i, e.seg, ctx.get(), tmpDir1);
+				dseg->m_isDel.swap(e.newIsPurged);
+				store->save(tmpDir1);
+				moveStoreFiles(tmpDir1, destSegDir, prefix, newPartIdx);
+				fs::remove_all(tmpDir1);
+			} else {
+				e.reuseOldStoreFiles(destSegDir, prefix, newPartIdx);
 			}
 			newPartIdx++;
 		}
