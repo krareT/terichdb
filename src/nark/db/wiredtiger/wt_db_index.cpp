@@ -410,6 +410,13 @@ bool WtWritableIndex::remove(fstring key, llong id, DbContext* ctx) {
 	}
 	m_wtCursor->set_key(m_wtCursor, &item);
 	int err = m_wtCursor->remove(m_wtCursor);
+	if (WT_NOTFOUND == err) {
+		fprintf(stderr
+			, "WARN: wt_remove non-existing key = %s\n"
+			, m_schema->toJsonStr(key).c_str()
+			);
+		return false;
+	}
 	if (err) {
 		THROW_STD(logic_error, "remove failed: %s", wiredtiger_strerror(err));
 	}

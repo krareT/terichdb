@@ -32,6 +32,9 @@ public:
 			llong recno;
 			m_cursor->get_key(m_cursor, &recno);
 			m_cursor->get_value(m_cursor, &item);
+			if (0 == item.size) {
+				*id = *id;
+			}
 			*id = recno - 1;
 			val->assign((const byte*)item.data, item.size);
 			return true;

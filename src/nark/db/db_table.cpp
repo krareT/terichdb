@@ -596,11 +596,13 @@ CompositeTable::doCreateNewSegmentInLock() {
 	// may be too long
 	putToFlushQueue(m_segments.size() - 1);
 	size_t newSegIdx = m_segments.size();
+	auto oldwrseg = m_wrSeg.get();
 	m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
 	m_segments.push_back(m_wrSeg);
 	llong newMaxRowNum = m_rowNumVec.back();
 	m_rowNumVec.push_back(newMaxRowNum);
 	m_newWrSegNum++;
+	oldwrseg->m_deletedWrIdSet.clear(); // free memory
 	// freeze oldwrseg, this may be too slow
 	// auto& oldwrseg = m_segments.ende(2);
 	// oldwrseg->saveIsDel(oldwrseg->m_segDir);
@@ -645,7 +647,7 @@ bool CompositeTable::exists(llong id) const {
 	size_t subId = size_t(id - baseId);
 	assert(subId < m_segments[upp-1]->m_isDel.size());
 	assert(m_segments[upp-1]->m_isDel.size() == m_rowNumVec[upp] - baseId);
-	return m_segments[upp-1]->m_isDel[subId];
+	return m_segments[upp-1]->m_isDel.is0(subId);
 }
 
 llong
@@ -963,19 +965,20 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 	assert(txn != nullptr);
 	MyRwLock lock(m_rwMutex, true);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
+	assert(id < m_rowNumVec.back());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	assert(j < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	auto seg = m_segments[j-1].get();
 //	assert(seg->m_isDel.is0(subId));
-	if (seg->m_isDel.is1(subId)) {
+	if (seg->m_isDel.is1(size_t(subId))) {
 	//	THROW_STD(invalid_argument
 	//		, "Row has been deleted: id=%lld seg=%zd baseId=%lld subId=%lld"
 	//		, id, j, baseId, subId);
 		return false;
 	}
-	if (j == m_rowNumVec.size()) {
+	if (j == m_rowNumVec.size()-1) {
 		if (txn->syncIndex) {
 			valvec<byte> &row = txn->row1, &key = txn->key1;
 			valvec<fstring>& columns = txn->cols1;
@@ -991,6 +994,8 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		// TODO: if remove fail, set m_isDel[subId] = 1 ??
 		m_wrSeg->remove(subId, txn);
 		m_wrSeg->m_deletedWrIdSet.push_back(uint32_t(subId));
+		m_wrSeg->m_delcnt++;
+		m_wrSeg->m_isDel.set1(subId); // always set delmark
 		m_wrSeg->m_isDirty = true;
 	}
 	else { // freezed segment, just set del mark

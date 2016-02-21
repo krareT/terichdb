@@ -652,44 +652,45 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		input->m_bookDeletion = true;
 	}
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
-	m_delcnt = m_isDel.popcnt(); // recompute delcnt
-	llong savedInputRowNum = input->m_isDel.size();
-	assert(savedInputRowNum > 0);
+//	m_delcnt = m_isDel.popcnt(); // recompute delcnt
+	llong logicRowNum = input->m_isDel.size();
+	llong newRowNum = 0;
+	assert(logicRowNum > 0);
 	size_t indexNum = m_schema->getIndexNum();
 	TempFileList colgroupTempFiles(*m_schema->m_colgroupSchemaSet);
-
+{
 	valvec<fstring> columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf;
-	SortableStrVec strVec;
 	StoreIteratorPtr iter(input->createStoreIterForward(ctx.get()));
 	llong id = -1;
-	llong newRowNum = 0;
-	while (iter->increment(&id, &buf) /* && id < savedInputRowNum*/) {
+	while (iter->increment(&id, &buf) /* && id < logicRowNum*/) {
 		assert(id >= 0);
-		assert(id < savedInputRowNum);
-		if (m_isDel[id]) continue;
-
-		m_schema->m_rowSchema->parseRow(buf, &columns);
-		colgroupTempFiles.writeColgroups(columns);
-		newRowNum++;
+		assert(id < logicRowNum);
+		if (!m_isDel[id]) {
+			m_schema->m_rowSchema->parseRow(buf, &columns);
+			colgroupTempFiles.writeColgroups(columns);
+			newRowNum++;
+		}
 	}
 	llong inputRowNum = id + 1;
-	assert(inputRowNum <= savedInputRowNum);
-	if (inputRowNum < savedInputRowNum) {
+	assert(inputRowNum <= logicRowNum);
+	if (inputRowNum < logicRowNum) {
 		fprintf(stderr
 			, "WARN: inputRows[real=%lld saved=%lld], some data have lost\n"
-			, inputRowNum, savedInputRowNum);
-		input->m_isDel.set1(inputRowNum, savedInputRowNum - inputRowNum);
-		m_isDel.set1(inputRowNum, savedInputRowNum - inputRowNum);
+			, inputRowNum, logicRowNum);
+		input->m_isDel.set1(inputRowNum, logicRowNum - inputRowNum);
+		m_isDel.set1(inputRowNum, logicRowNum - inputRowNum);
 	}
+	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	assert(newRowNum <= inputRowNum);
-	assert(size_t(inputRowNum - newRowNum) == m_delcnt);
-
+	assert(size_t(logicRowNum - newRowNum) == m_delcnt);
+}
 	// build index from temporary index files
 	colgroupTempFiles.completeWrite();
 	m_indices.resize(indexNum);
 	m_colgroups.resize(m_schema->getColgroupNum());
 	NativeDataInput<InputBuffer> dio;
+	SortableStrVec strVec;
 	for (size_t i = 0; i < indexNum; ++i) {
 		const Schema& schema = m_schema->getIndexSchema(i);
 		colgroupTempFiles[i].prepairRead(dio);
@@ -719,7 +720,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		valvec<ReadableStorePtr> parts;
 		colgroupTempFiles[i].prepairRead(dio);
 		while (rows < newRowNum) {
-			size_t rest = newRowNum - rows;
+			size_t rest = size_t(newRowNum - rows);
 			rows += colgroupTempFiles[i].collectData(dio, rest, strVec, maxMem);
 			parts.push_back(this->buildStore(schema, strVec));
 			strVec.clear();
@@ -767,6 +768,7 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 			for (size_t i = 0, n = m_isDel.size(); i < n; ++i) {
 				nark_bit_set1(isDel, dlist[i]);
 			}
+			assert(this->m_isDel.popcnt() == input->m_delcnt);
 		}
 		else {
 			m_isDel.risk_memcpy(input->m_isDel);
