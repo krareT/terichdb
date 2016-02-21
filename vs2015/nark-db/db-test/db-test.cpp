@@ -54,12 +54,14 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		if (bits[recRow.id]) {
 			printf("dupkey: %s\n", tab->rowSchema().toJsonStr(binRow).c_str());
 		}
-		if (1395 == i)
+		if (1067 == i)
 			i = i;
-		if (ctx->insertRow(binRow) < 0) {
+		llong recId = ctx->insertRow(binRow);
+		if (recId < 0) {
 		//	assert(bits.is1(recRow.id));
 			printf("Insert failed: %s\n", ctx->errMsg.c_str());
 		} else {
+			printf("Insert recId = %lld: %s\n", recId, tab->toJsonStr(binRow).c_str());
 			insertedRows++;
 			assert(bits.is0(recRow.id));
 		}
@@ -68,12 +70,14 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		if (rand() < RAND_MAX*0.3) {
 			llong randomRecordId = rand() % tab->numDataRows();
 			uint64_t keyId = 0;
+			recBuf.erase_all();
 			if (tab->exists(randomRecordId)) {
 				size_t indexId = tab->getIndexId("id");
 				tab->selectOneColumn(randomRecordId, indexId, &recBuf, &*ctx);
 				keyId = unaligned_load<uint64_t>(recBuf.data());
 				assert(keyId > 0);
 			//	assert(bits.is1(keyId));
+				ctx->getValue(randomRecordId, &recBuf);
 			}
 			bool isDeleted = false;
 			if (rand() < RAND_MAX*0.3) {
@@ -86,6 +90,8 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 				isDeleted = true;
 			}
 			if (isDeleted && keyId > 0) {
+				printf("delete success: recId = %lld: %s\n"
+					, randomRecordId, tab->toJsonStr(recBuf).c_str());
 				bits.set0(keyId);
 				deletedRows++;
 			}

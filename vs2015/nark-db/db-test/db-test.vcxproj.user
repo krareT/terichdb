@@ -3,6 +3,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerEnvironment>PATH=C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Debug-MT;%PATH%</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>100000 &gt; stdout</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>100000</LocalDebuggerCommandArguments>
   </PropertyGroup>
 </Project>
