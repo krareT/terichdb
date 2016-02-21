@@ -49,6 +49,8 @@ public:
 	llong dataInflateSize() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
+	bool exists(llong id) const;
+
 	llong insertRow(fstring row, DbContext*);
 	llong replaceRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);

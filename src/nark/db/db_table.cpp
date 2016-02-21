@@ -633,6 +633,21 @@ CompositeTable::myCreateWritableSegment(PathRef segDir) const {
 	return seg.release();
 }
 
+bool CompositeTable::exists(llong id) const {
+	assert(id >= 0);
+	MyRwLock lock(m_rwMutex, false);
+	if (nark_unlikely(id >= llong(m_rowNumVec.back()))) {
+		return false;
+	}
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	assert(upp < m_rowNumVec.size());
+	llong baseId = m_rowNumVec[upp-1];
+	size_t subId = size_t(id - baseId);
+	assert(subId < m_segments[upp-1]->m_isDel.size());
+	assert(m_segments[upp-1]->m_isDel.size() == m_rowNumVec[upp] - baseId);
+	return m_segments[upp-1]->m_isDel[subId];
+}
+
 llong
 CompositeTable::insertRow(fstring row, DbContext* txn) {
 	if (txn->syncIndex) { // parseRow doesn't need lock
@@ -953,7 +968,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	auto seg = m_segments[j-1].get();
-	assert(seg->m_isDel.is0(subId));
+//	assert(seg->m_isDel.is0(subId));
 	if (seg->m_isDel.is1(subId)) {
 	//	THROW_STD(invalid_argument
 	//		, "Row has been deleted: id=%lld seg=%zd baseId=%lld subId=%lld"
@@ -980,7 +995,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 	}
 	else { // freezed segment, just set del mark
 		if (seg->m_bookDeletion) {
-			assert(seg->getWritableStore() == nullptr); // must be readonly
+		//	assert(seg->getWritableStore() == nullptr); // must be readonly??
 			seg->m_deletionList.push_back(uint32_t(subId));
 		}
 		seg->m_isDel.set1(subId);
@@ -1668,7 +1683,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		if (newMarkDelRatio > purgeThreshold) {
 			// do purge: physic delete
 			e.newIsPurged = seg->m_isDel; // don't lock
-			e.newNumPurged = e.newIsPurged.popcnt();
+			e.newNumPurged = e.newIsPurged.popcnt(); // recompute purge count
 		} else {
 			e.newIsPurged = seg->m_isPurged;
 			e.newNumPurged = oldNumPurged;
@@ -1688,7 +1703,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 		auto seg = e.seg;
 		auto indexStore = seg->m_indices[indexId]->getReadableStore();
 		assert(nullptr != indexStore);
-		size_t logicRows = size_t(seg->numDataRows());
+		size_t logicRows = seg->m_isDel.size();
 		size_t physicId = 0;
 		for (size_t logicId = 0; logicId < logicRows; ++logicId) {
 			if (e.newIsPurged.empty() || !e.newIsPurged[logicId]) {

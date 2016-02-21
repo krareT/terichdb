@@ -179,6 +179,9 @@ ReadonlySegment::ReadonlySegment() {
 	m_isPurgedMmap = 0;
 }
 ReadonlySegment::~ReadonlySegment() {
+	if (m_isPurgedMmap) {
+		m_isPurged.risk_release_ownership();
+	}
 	m_colgroups.clear();
 }
 
@@ -740,7 +743,7 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 		m_dataInflateSize += m_colgroups[i]->dataInflateSize();
 	}
 
-	m_isPurged.copy(m_isDel);
+	m_isPurged.assign(m_isDel);
 	m_isPurged.build_cache(false, false); // just need rank
 	m_withPurgeBits = true;
 	auto tmpDir = m_segDir + ".tmp";
@@ -752,14 +755,15 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 	m_indices.erase_all();
 	m_colgroups.erase_all();
 	this->load(tmpDir);
+	assert(this->m_isDel.size() == input->m_isDel.size());
 
 	MyRwLock lock(tab->m_rwMutex, false);
 	if (m_delcnt < input->m_delcnt) { // rows were deleted during build
 		m_delcnt = input->m_delcnt;
-		assert(m_bookDeletion);
-		if (m_deletionList.size() * 1024 < m_isDel.size()) {
-			auto dlist = m_deletionList.data();
-			auto isDel = m_isDel.bldata();
+		assert(input->m_bookDeletion);
+		if (input->m_deletionList.size() * 1024 < m_isDel.size()) {
+			auto dlist = input->m_deletionList.data();
+			auto isDel = this->m_isDel.bldata();
 			for (size_t i = 0, n = m_isDel.size(); i < n; ++i) {
 				nark_bit_set1(isDel, dlist[i]);
 			}
@@ -789,7 +793,7 @@ void pushRecord(SortableStrVec& strVec, const ReadableStore& store,
 	}
 }
 void
-ReadonlySegment::purgeDeletedRecords(class CompositeTable* tab, size_t segIdx) {
+ReadonlySegment::purgeDeletedRecords(CompositeTable* tab, size_t segIdx) {
 	DbContextPtr ctx(tab->createDbContext());
 	ReadonlySegmentPtr input;
 	{

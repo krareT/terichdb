@@ -34,10 +34,12 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 	tab->load(tableDir);
 	DbContextPtr ctx(tab->createDbContext());
 
+	valvec<byte> recBuf;
 	NativeDataOutput<AutoGrownMemIO> rowBuilder;
 	TestRow recRow;
 
 	size_t insertedRows = 0;
+	size_t deletedRows = 0;
 	febitvec bits(maxRowNum + 1);
 	for (size_t i = 0; i < maxRowNum; ++i) {
 		TestRow recRow;
@@ -52,7 +54,7 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		if (bits[recRow.id]) {
 			printf("dupkey: %s\n", tab->rowSchema().toJsonStr(binRow).c_str());
 		}
-		if (18 == i || 0x3d == i)
+		if (1395 == i)
 			i = i;
 		if (ctx->insertRow(binRow) < 0) {
 		//	assert(bits.is1(recRow.id));
@@ -62,6 +64,32 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 			assert(bits.is0(recRow.id));
 		}
 		bits.set1(recRow.id);
+
+		if (rand() < RAND_MAX*0.3) {
+			llong randomRecordId = rand() % tab->numDataRows();
+			uint64_t keyId = 0;
+			if (tab->exists(randomRecordId)) {
+				size_t indexId = tab->getIndexId("id");
+				tab->selectOneColumn(randomRecordId, indexId, &recBuf, &*ctx);
+				keyId = unaligned_load<uint64_t>(recBuf.data());
+				assert(keyId > 0);
+			//	assert(bits.is1(keyId));
+			}
+			bool isDeleted = false;
+			if (rand() < RAND_MAX*0.3) {
+				// may remove deleted record
+				ctx->removeRow(randomRecordId);
+				isDeleted = true;
+			}
+			else if (tab->exists(randomRecordId)) {
+				ctx->removeRow(randomRecordId);
+				isDeleted = true;
+			}
+			if (isDeleted && keyId > 0) {
+				bits.set0(keyId);
+				deletedRows++;
+			}
+		}
 	}
 
 //	NativeDataInput<RangeStream<MemIO> > decoder;
