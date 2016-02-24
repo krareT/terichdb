@@ -138,6 +138,7 @@ protected:
 
 	class MergeParam; friend class MergeParam;
 	void merge(MergeParam&);
+	void checkRowNumVecNoLock() const;
 
 	bool maybeCreateNewSegment(MyRwLock&);
 	void doCreateNewSegmentInLock();

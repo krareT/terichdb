@@ -27,6 +27,17 @@ const size_t DEFAULT_maxSegNum = 4095;
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#if defined(NDEBUG)
+	#define DebugCheckRowNumVecNoLock(This)
+#else
+	#define DebugCheckRowNumVecNoLock(This) \
+	This->checkRowNumVecNoLock(); \
+	auto BOOST_PP_CAT(Self, __LINE__) = This; \
+	BOOST_SCOPE_EXIT(BOOST_PP_CAT(Self, __LINE__)) { \
+		BOOST_PP_CAT(Self, __LINE__)->checkRowNumVecNoLock(); \
+	} BOOST_SCOPE_EXIT_END
+#endif
+
 CompositeTable::CompositeTable() {
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
@@ -567,6 +578,7 @@ const {
 
 bool
 CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
+	DebugCheckRowNumVecNoLock(this);
 	if (m_isMerging) {
 		return false;
 	}
@@ -646,8 +658,11 @@ bool CompositeTable::exists(llong id) const {
 	llong baseId = m_rowNumVec[upp-1];
 	size_t subId = size_t(id - baseId);
 	auto seg = m_segments[upp-1].get();
+#if !defined(NDEBUG)
+	size_t upperId = m_rowNumVec[upp];
 	assert(subId < seg->m_isDel.size());
-	assert(seg->m_isDel.size() == m_rowNumVec[upp] - baseId);
+	assert(seg->m_isDel.size() == upperId - baseId);
+#endif
 	return seg->m_isDel.is0(subId);
 }
 
@@ -663,6 +678,7 @@ CompositeTable::insertRow(fstring row, DbContext* txn) {
 
 llong
 CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
+	DebugCheckRowNumVecNoLock(this);
 	bool isWriteLocked = maybeCreateNewSegment(lock);
 	if (txn->syncIndex) {
 		const size_t old_newWrSegNum = m_newWrSegNum;
@@ -794,6 +810,7 @@ llong
 CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 	m_schema->m_rowSchema->parseRow(row, &txn->cols1); // new row
 	MyRwLock lock(m_rwMutex, false);
+	DebugCheckRowNumVecNoLock(this);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	assert(id < m_rowNumVec.back());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
@@ -969,6 +986,7 @@ bool
 CompositeTable::removeRow(llong id, DbContext* txn) {
 	assert(txn != nullptr);
 	MyRwLock lock(m_rwMutex, true);
+	DebugCheckRowNumVecNoLock(this);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	assert(id < m_rowNumVec.back());
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
@@ -1467,6 +1485,7 @@ CompositeTable::selectColumns(llong id, const valvec<size_t>& cols,
 							  valvec<byte>* colsData, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
+	DebugCheckRowNumVecNoLock(this);
 	llong rows = m_rowNumVec.back();
 	if (id < 0 || id >= rows) {
 		THROW_STD(out_of_range, "id = %lld, rows=%lld", id, rows);
@@ -1481,6 +1500,7 @@ CompositeTable::selectColumns(llong id, const size_t* colsId, size_t colsNum,
 							  valvec<byte>* colsData, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
+	DebugCheckRowNumVecNoLock(this);
 	llong rows = m_rowNumVec.back();
 	if (id < 0 || id >= rows) {
 		THROW_STD(out_of_range, "id = %lld, rows=%lld", id, rows);
@@ -1495,6 +1515,7 @@ CompositeTable::selectOneColumn(llong id, size_t columnId,
 								valvec<byte>* colsData, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
+	DebugCheckRowNumVecNoLock(this);
 	llong rows = m_rowNumVec.back();
 	if (id < 0 || id >= rows) {
 		THROW_STD(out_of_range, "id = %lld, rows=%lld", id, rows);
@@ -1555,7 +1576,7 @@ struct SegEntry {
 
 void
 SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size_t& newPartIdx) {
-	auto& srcSegDir = seg->m_segDir;
+	PathRef srcSegDir = seg->m_segDir;
 	size_t lo = files.lower_bound(prefix);
 	if (lo >= files.size() || !files[lo].startsWith(prefix)) {
 		THROW_STD(invalid_argument, "missing: %s",
@@ -1566,11 +1587,10 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 	while (j < files.size() && files[j].startsWith(prefix)) {
 		fstring fname = files[j];
 		std::string dotExt = getDotExtension(fname).str();
-		size_t oldpartIdx = 0;
 		if (prefix.size() + dotExt.size() < fname.size()) {
 			// oldpartIdx is between prefix and dotExt
 			// one part can have multiple different dotExt file
-			oldpartIdx = lcast(fname.substr(prefix.size()+1));
+			size_t oldpartIdx = lcast(fname.substr(prefix.size()+1));
 			assert(oldpartIdx - prevOldpartIdx <= 1);
 			if (oldpartIdx - prevOldpartIdx > 1) {
 				THROW_STD(invalid_argument, "missing part: %s.%zd%s"
@@ -1606,6 +1626,7 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 class CompositeTable::MergeParam : public valvec<SegEntry> {
 public:
 	size_t m_tabSegNum = 0;
+	size_t m_newSegRows = 0;
 
 	bool canMerge(CompositeTable* tab) {
 		if (tab->m_isMerging)
@@ -1639,6 +1660,7 @@ public:
 			// then this->m_tabSegNum would be staled, this->m_tabSegNum is
 			// used for violation check
 			this->m_tabSegNum = tab->m_segments.size();
+			DebugCheckRowNumVecNoLock(tab);
 		}
 		size_t sumSegRows = 0;
 		for (size_t i = 0; i < this->size(); ++i) {
@@ -1667,6 +1689,10 @@ public:
 		if (rngLen < tab->m_schema->m_minMergeSegNum) {
 			tab->m_isMerging = false;
 			return false;
+		}
+		m_newSegRows = 0;
+		for (size_t j = 0; j < rngLen; ++j) {
+			m_newSegRows += this->p[j].seg->m_isDel.size();
 		}
 		return true;
 	}
@@ -1725,14 +1751,18 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 		assert(nullptr != indexStore);
 		size_t logicRows = seg->m_isDel.size();
 		size_t physicId = 0;
+		const bm_uint_t* oldpurgeBits = seg->m_isPurged.bldata();
+		const bm_uint_t* newpurgeBits = e.newIsPurged.bldata();
 		for (size_t logicId = 0; logicId < logicRows; ++logicId) {
-			if (e.newIsPurged.empty() || !e.newIsPurged[logicId]) {
-				indexStore->getValue(physicId, &rec, ctx);
-				if (fixedIndexRowLen) {
-					assert(rec.size() == fixedIndexRowLen);
-					strVec.m_strpool.append(rec);
-				} else {
-					strVec.push_back(rec);
+			if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
+				if (!newpurgeBits || !nark_bit_test(newpurgeBits, logicId)) {
+					indexStore->getValue(physicId, &rec, ctx);
+					if (fixedIndexRowLen) {
+						assert(rec.size() == fixedIndexRowLen);
+						strVec.m_strpool.append(rec);
+					} else {
+						strVec.push_back(rec);
+					}
 				}
 				physicId++;
 			}
@@ -1760,11 +1790,10 @@ moveStoreFiles(PathRef srcDir, PathRef destDir,
 		}
 		assert(fstring(fname).startsWith(prefix));
 		std::string dotExt = getDotExtension(fname).str();
-		size_t oldpartIdx = 0;
 		if (prefix.size() + dotExt.size() < fname.size()) {
 			// oldpartIdx is between prefix and dotExt
 			// one part can have multiple different dotExt file
-			oldpartIdx = lcast(fname.substr(prefix.size()+1));
+			size_t oldpartIdx = lcast(fname.substr(prefix.size()+1));
 			assert(oldpartIdx - prevOldpartIdx <= 1);
 			if (oldpartIdx - prevOldpartIdx > 1) {
 				THROW_STD(invalid_argument, "missing part: %s.%zd%s"
@@ -1853,6 +1882,7 @@ try{
 		rows += e.seg->m_isDel.size();
 	}
 	if (toMerge.needsPurgeBits()) {
+		assert(dseg->m_isPurged.size() == 0);
 		for (auto& e : toMerge) {
 			if (e.newIsPurged.empty()) {
 				dseg->m_isPurged.grow(e.seg->m_isDel.size(), false);
@@ -1862,13 +1892,16 @@ try{
 			}
 		}
 		dseg->m_isPurged.build_cache(true, false);
+		assert(dseg->m_isPurged.size() == toMerge.m_newSegRows);
 	}
+	assert(rows == toMerge.m_newSegRows);
 	dseg->m_isDel.erase_all();
 	dseg->m_isDel.reserve(rows);
 	for (auto& e : toMerge) {
 		dseg->m_isDel.append(e.seg->m_isDel);
 	}
-	assert(dseg->m_isDel.size() == dseg->m_isPurged.size());
+//	assert(dseg->m_isDel.size() == dseg->m_isPurged.size());
+	assert(dseg->m_isDel.size() == toMerge.m_newSegRows);
 	dseg->m_delcnt = dseg->m_isDel.popcnt();
 
 	dseg->savePurgeBits(destSegDir);
@@ -1882,7 +1915,8 @@ try{
 	dseg->m_indices.erase_all();
 	dseg->m_colgroups.erase_all();
 	dseg->load(destSegDir);
-	assert(dseg->m_isDel.size() == dseg->m_isPurged.size());
+//	assert(dseg->m_isDel.size() == dseg->m_isPurged.size());
+	assert(dseg->m_isDel.size() == toMerge.m_newSegRows);
 
 	// m_isMerging is true, m_segments will never be changed
 	// so lock is not needed
@@ -1960,6 +1994,7 @@ try{
 	}
 	{
 		MyRwLock lock(m_rwMutex, true);
+		DebugCheckRowNumVecNoLock(this);
 		rows = 0;
 		for (auto& e : toMerge) {
 			for (size_t subId : e.seg->m_deletionList) {
@@ -1969,6 +2004,7 @@ try{
 			e.seg->m_bookDeletion = false;
 			e.seg->m_deletionList.erase_all();
 		}
+		assert(rows == toMerge.m_newSegRows);
 		dseg->m_delcnt = dseg->m_isDel.popcnt();
 		for (size_t i = 0; i < newSegs.size()-1; ++i) {
 			auto&  seg = newSegs[i];
@@ -1989,6 +2025,7 @@ try{
 		}
 		m_segments.swap(newSegs);
 		m_rowNumVec.swap(newRowNumVec);
+		m_rowNumVec.back() = newRowNumVec.back();
 		m_mergeSeqNum++;
 		m_isMerging = false;
 		// m_wrSeg == NULL indicate writing is stopped
@@ -2013,6 +2050,16 @@ catch (const std::exception& ex) {
 	FEBIRD_IF_DEBUG(throw,;);
 	fs::remove_all(destMergeDir);
 }
+}
+
+void CompositeTable::checkRowNumVecNoLock() const {
+#if !defined(NDEBUG)
+	for(size_t i = 0; i < m_segments.size(); ++i) {
+		size_t r1 = m_segments[i]->m_isDel.size();
+		size_t r2 = m_rowNumVec[i+1] - m_rowNumVec[i];
+		assert(r1 == r2);
+	}
+#endif
 }
 
 void CompositeTable::clear() {
@@ -2222,6 +2269,11 @@ void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
 }
 
 void CompositeTable::runPurgeDelete() {
+	BOOST_SCOPE_EXIT(&m_rwMutex, &m_purgeStatus, &m_bgTaskNum) {
+		MyRwLock lock(m_rwMutex, true);
+		m_purgeStatus = PurgeStatus::none;
+		m_bgTaskNum--;
+	} BOOST_SCOPE_EXIT_END;
 	for (;;) {
 		double threshold = m_schema->m_purgeDeleteThreshold;
 		size_t segIdx = size_t(-1);
@@ -2248,8 +2300,6 @@ void CompositeTable::runPurgeDelete() {
 		ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
 		dest->purgeDeletedRecords(this, segIdx);
 	}
-	MyRwLock lock(m_rwMutex, true);
-	m_purgeStatus = PurgeStatus::none;
 }
 
 /////////////////////////////////////////////////////////////////////

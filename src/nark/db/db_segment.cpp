@@ -373,6 +373,8 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		while (size_t(m_id) < owner->m_isDel.size() && owner->m_isDel[m_id])
+			m_id++;
 		if (size_t(m_id) < owner->m_isDel.size()) {
 			*id = m_id++;
 			owner->getValueByLogicId(*id, val, m_ctx.get());
@@ -400,6 +402,8 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		while (m_id > 0 && owner->m_isDel[m_id-1])
+			 --m_id;
 		if (m_id > 0) {
 			*id = --m_id;
 			owner->getValueByLogicId(*id, val, m_ctx.get());
@@ -689,7 +693,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 			, "WARN: inputRows[real=%lld saved=%lld], some data have lost\n"
 			, inputRowNum, logicRowNum);
 		input->m_isDel.set1(inputRowNum, logicRowNum - inputRowNum);
-		m_isDel.set1(inputRowNum, logicRowNum - inputRowNum);
+		this->m_isDel.set1(inputRowNum, logicRowNum - inputRowNum);
 	}
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	assert(newRowNum <= inputRowNum);
@@ -957,8 +961,8 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 		}
 		pushRecord(strVec, store, isDel, logicId, physicId, fixlen, ctx);
 	};
-	const bm_uint_t* purgeBits = input->m_isPurged.bldata();
-	assert(!purgeBits || input->m_isPurged.size() == m_isDel.size());
+	const bm_uint_t* oldpurgeBits = input->m_isPurged.bldata();
+	assert(!oldpurgeBits || input->m_isPurged.size() == m_isDel.size());
 	if (auto cgparts = dynamic_cast<const MultiPartStore*>(&colgroup)) {
 		llong logicId = 0;
 		llong basePhysicId = 0;
@@ -967,7 +971,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 			llong partRows = partStore.numDataRows();
 			llong subPhysicId = 0;
 			while (logicId < inputRowNum && subPhysicId < partRows) {
-				if (!purgeBits || !nark_bit_test(purgeBits, logicId)) {
+				if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
 					llong physicId = basePhysicId + subPhysicId;
 					partsPushRecord(partStore, logicId, physicId);
 					subPhysicId++;
@@ -981,14 +985,14 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	else {
 		llong physicId = 0;
 		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
-			if (!purgeBits || !nark_bit_test(purgeBits, logicId)) {
+			if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
 				partsPushRecord(colgroup, logicId, physicId);
 				physicId++;
 			}
 		}
 #if !defined(NDEBUG)
-		if (purgeBits) { assert(physicId == input->m_isPurged.max_rank0()); }
-		else		   { assert(physicId == m_isDel.size()); }
+		if (oldpurgeBits) { assert(physicId == input->m_isPurged.max_rank0()); }
+		else			  { assert(physicId == m_isDel.size()); }
 #endif
 	}
 	if (strVec.str_size() > 0) {
