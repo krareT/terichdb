@@ -29,7 +29,7 @@ DfaDbTable::createReadonlySegment(PathRef dir) const {
 WritableSegment*
 DfaDbTable::createWritableSegment(PathRef dir) const {
 	const char* dfaWritableSeg = getenv("NarkDB_DfaWritableSegment");
-	if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock")) {
+	if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock") == 0) {
 		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 		seg->m_schema = this->m_schema;
 		return seg.release();

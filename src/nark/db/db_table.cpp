@@ -645,9 +645,10 @@ bool CompositeTable::exists(llong id) const {
 	assert(upp < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[upp-1];
 	size_t subId = size_t(id - baseId);
-	assert(subId < m_segments[upp-1]->m_isDel.size());
-	assert(m_segments[upp-1]->m_isDel.size() == m_rowNumVec[upp] - baseId);
-	return m_segments[upp-1]->m_isDel.is0(subId);
+	auto seg = m_segments[upp-1].get();
+	assert(subId < seg->m_isDel.size());
+	assert(seg->m_isDel.size() == m_rowNumVec[upp] - baseId);
+	return seg->m_isDel.is0(subId);
 }
 
 llong
@@ -698,12 +699,14 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 				ws.m_isDel.set1(subId);
 				ws.m_deletedWrIdSet.push_back(subId);
 				ws.m_delcnt++;
+				assert(ws.m_isDel.popcnt() == ws.m_delcnt);
 				return -1; // fail
 			}
 		}
 	}
 	else {
 		subId = ws.m_deletedWrIdSet.back();
+		assert(ws.m_isDel[subId]);
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {
 				return -1; // fail
@@ -714,6 +717,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		ws.m_isDel.set0(subId);
 		ws.m_delcnt--;
 		ws.m_isDirty = true;
+		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
 	}
 	return wrBaseId + subId;
 }
@@ -856,6 +860,7 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 		}
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
+		assert(seg->m_isDel.popcnt() == seg->m_delcnt);
 		tryAsyncPurgeDeleteInLock(seg);
 		lock.downgrade_to_reader();
 	//	lock.release();
@@ -997,6 +1002,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		m_wrSeg->m_delcnt++;
 		m_wrSeg->m_isDel.set1(subId); // always set delmark
 		m_wrSeg->m_isDirty = true;
+		assert(m_wrSeg->m_isDel.popcnt() == m_wrSeg->m_delcnt);
 	}
 	else { // freezed segment, just set del mark
 		if (seg->m_bookDeletion) {
@@ -1006,6 +1012,10 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		seg->m_isDirty = true;
+#if !defined(NDEBUG)
+		size_t delcnt = seg->m_isDel.popcnt();
+		assert(delcnt == seg->m_delcnt);
+#endif
 		tryAsyncPurgeDeleteInLock(seg);
 	}
 	return true;
@@ -1675,6 +1685,8 @@ public:
 
 	ReadableIndex*
 	mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx);
+
+	bool needsPurgeBits() const;
 };
 
 
@@ -1685,6 +1697,9 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		size_t newMarkDelcnt   = seg->m_delcnt - oldNumPurged;
 		size_t oldRealRecords  = seg->m_isDel.size() - oldNumPurged;
 		double newMarkDelRatio = 1.0*newMarkDelcnt / (oldRealRecords + 0.1);
+		// may cause book more records during 'e.newIsPurged = seg->m_isDel'
+		// but this would not cause big problems
+		seg->m_bookDeletion = true;
 		if (newMarkDelRatio > purgeThreshold) {
 			// do purge: physic delete
 			e.newIsPurged = seg->m_isDel; // don't lock
@@ -1724,6 +1739,14 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 		}
 	}
 	return dseg->buildIndex(schema, strVec);
+}
+
+bool CompositeTable::MergeParam::needsPurgeBits() const {
+	for (auto& e : *this) {
+		if (!e.newIsPurged.empty())
+			return true;
+	}
+	return false;
 }
 
 static void
@@ -1828,22 +1851,38 @@ try{
 	size_t rows = 0;
 	for (auto& e : toMerge) {
 		rows += e.seg->m_isDel.size();
-		e.seg->m_bookDeletion = true;
+	}
+	if (toMerge.needsPurgeBits()) {
+		for (auto& e : toMerge) {
+			if (e.newIsPurged.empty()) {
+				dseg->m_isPurged.grow(e.seg->m_isDel.size(), false);
+			} else {
+				assert(e.seg->m_isDel.size() == e.seg->m_isPurged.size());
+				dseg->m_isPurged.append(e.newIsPurged);
+			}
+		}
+		dseg->m_isPurged.build_cache(true, false);
 	}
 	dseg->m_isDel.erase_all();
 	dseg->m_isDel.reserve(rows);
 	for (auto& e : toMerge) {
 		dseg->m_isDel.append(e.seg->m_isDel);
 	}
+	assert(dseg->m_isDel.size() == dseg->m_isPurged.size());
 	dseg->m_delcnt = dseg->m_isDel.popcnt();
+
+	dseg->savePurgeBits(destSegDir);
 	dseg->saveIndices(destSegDir);
 	dseg->saveIsDel(destSegDir);
 
 	// load as mmap
+	dseg->m_withPurgeBits = true;
 	dseg->m_isDel.clear();
+	dseg->m_isPurged.clear();
 	dseg->m_indices.erase_all();
 	dseg->m_colgroups.erase_all();
 	dseg->load(destSegDir);
+	assert(dseg->m_isDel.size() == dseg->m_isPurged.size());
 
 	// m_isMerging is true, m_segments will never be changed
 	// so lock is not needed
@@ -1930,6 +1969,7 @@ try{
 			e.seg->m_bookDeletion = false;
 			e.seg->m_deletionList.erase_all();
 		}
+		dseg->m_delcnt = dseg->m_isDel.popcnt();
 		for (size_t i = 0; i < newSegs.size()-1; ++i) {
 			auto&  seg = newSegs[i];
 			assert(nullptr == seg->getWritableStore());
@@ -1957,6 +1997,7 @@ try{
 		}
 		if (PurgeStatus::pending == m_purgeStatus) {
 			inLockPutPurgeDeleteTaskToQueue();
+			m_purgeStatus = PurgeStatus::inqueue;
 		}
 	}
 	for (auto& tobeDel : toMerge) {
@@ -2177,25 +2218,12 @@ void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
 	seg->saveIndices(seg->m_segDir);
 	seg->saveRecordStore(seg->m_segDir);
 	seg->saveIsDel(seg->m_segDir);
-	febitvec isDel;
-	byte*  isDelMmap = seg->loadIsDel_aux(seg->m_segDir, isDel);
-	assert(isDel.size() == seg->m_isDel.size());
-	size_t old_delcnt = isDel.popcnt();
-	{
-		MyRwLock lock(m_rwMutex, false);
-		assert(old_delcnt <= seg->m_delcnt);
-		if (seg->m_delcnt > old_delcnt) { // should be very rare
-			memcpy(isDel.data(), seg->m_isDel.data(), isDel.mem_size());
-		}
-		seg->m_isDel.swap(isDel);
-		seg->m_isDelMmap = isDelMmap;
-	}
 	fprintf(stderr, "freezeFlushWritableSegment: %s done!\n", seg->m_segDir.string().c_str());
 }
 
 void CompositeTable::runPurgeDelete() {
-	double threshold = m_schema->m_purgeDeleteThreshold;
 	for (;;) {
+		double threshold = m_schema->m_purgeDeleteThreshold;
 		size_t segIdx = size_t(-1);
 		ReadonlySegmentPtr srcSeg;
 		{
@@ -2203,10 +2231,14 @@ void CompositeTable::runPurgeDelete() {
 			auto segs = m_segments.data();
 			for (size_t i = 0, n = m_segments.size(); i < n; ++i) {
 				auto r = segs[i]->getReadonlySegment();
-				if (r && r->m_delcnt >= r->m_isDel.size() * threshold) {
-					segIdx = i;
-					srcSeg = r;
-					break;
+				if (r) {
+					size_t newDelcnt = r->m_delcnt - r->m_isPurged.max_rank1();
+					size_t physicNum = r->m_isPurged.max_rank0();
+					if (newDelcnt >= physicNum * threshold) {
+						segIdx = i;
+						srcSeg = r;
+						break;
+					}
 				}
 			}
 		}
@@ -2368,8 +2400,13 @@ void CompositeTable::asyncPurgeDeleteInLock() {
 	else if (m_isMerging) {
 		m_purgeStatus = PurgeStatus::pending;
 	}
-	else if (PurgeStatus::pending == m_purgeStatus) {
+	else if (PurgeStatus::pending == m_purgeStatus ||
+			 PurgeStatus::none    == m_purgeStatus) {
 		inLockPutPurgeDeleteTaskToQueue();
+		m_purgeStatus = PurgeStatus::inqueue;
+	}
+	else {
+		// do nothing
 	}
 }
 

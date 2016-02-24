@@ -180,6 +180,7 @@ ReadonlySegment::ReadonlySegment() {
 }
 ReadonlySegment::~ReadonlySegment() {
 	if (m_isPurgedMmap) {
+		mmap_close(m_isPurgedMmap, m_isPurged.mem_size());
 		m_isPurged.risk_release_ownership();
 	}
 	m_colgroups.clear();
@@ -215,6 +216,15 @@ size_t ReadonlySegment::getPhysicId(size_t logicId) const {
 		return logicId;
 	} else {
 		return m_isPurged.rank0(logicId);
+	}
+}
+
+size_t ReadonlySegment::getLogicId(size_t physicId) const {
+	if (m_isPurged.empty()) {
+		return physicId;
+	} else {
+		assert(physicId < m_isPurged.max_rank0());
+		return m_isPurged.select0(physicId);
 	}
 }
 
@@ -745,7 +755,7 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 	}
 
 	m_isPurged.assign(m_isDel);
-	m_isPurged.build_cache(false, false); // just need rank
+	m_isPurged.build_cache(true, false); // need select0
 	m_withPurgeBits = true;
 	auto tmpDir = m_segDir + ".tmp";
 	this->save(tmpDir);
@@ -765,13 +775,24 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 		if (input->m_deletionList.size() * 1024 < m_isDel.size()) {
 			auto dlist = input->m_deletionList.data();
 			auto isDel = this->m_isDel.bldata();
-			for (size_t i = 0, n = m_isDel.size(); i < n; ++i) {
+			for (size_t i = 0, n = input->m_deletionList.size(); i < n; ++i) {
 				nark_bit_set1(isDel, dlist[i]);
 			}
-			assert(this->m_isDel.popcnt() == input->m_delcnt);
+#if !defined(NDEBUG)
+			size_t computed_delcnt1 = this->m_isDel.popcnt();
+			size_t computed_delcnt2 = input->m_isDel.popcnt();
+			assert(computed_delcnt1 == input->m_delcnt);
+			assert(computed_delcnt2 == input->m_delcnt);
+#endif
 		}
 		else {
 			m_isDel.risk_memcpy(input->m_isDel);
+#if !defined(NDEBUG)
+			size_t computed_delcnt1 = this->m_isDel.popcnt();
+			size_t computed_delcnt2 = input->m_isDel.popcnt();
+			assert(computed_delcnt1 == input->m_delcnt);
+			assert(computed_delcnt2 == input->m_delcnt);
+#endif
 		}
 	}
 	lock.upgrade_to_writer();
@@ -780,11 +801,12 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 
 static inline
 void pushRecord(SortableStrVec& strVec, const ReadableStore& store,
-				const bm_uint_t* isDel, llong recId, size_t fixlen,
-				DbContext* ctx) {
-	if (!nark_bit_test(isDel, recId)) {
+				const bm_uint_t* isDel, llong logicId, llong physicId,
+				size_t fixlen, DbContext* ctx) {
+	assert(physicId <= logicId);
+	if (!nark_bit_test(isDel, logicId)) {
 		size_t oldsize = strVec.str_size();
-		store.getValueAppend(recId, &strVec.m_strpool, ctx);
+		store.getValueAppend(physicId, &strVec.m_strpool, ctx);
 		if (!fixlen) {
 			SortableStrVec::SEntry ent;
 			ent.offset = oldsize;
@@ -794,6 +816,28 @@ void pushRecord(SortableStrVec& strVec, const ReadableStore& store,
 		}
 	}
 }
+static
+fs::path renameToBackupFromDir(PathRef segDir) {
+	fs::path backupDir;
+	for (int tmpNum = 0; ; ++tmpNum) {
+		char szBuf[32];
+		snprintf(szBuf, sizeof(szBuf), ".backup-%d", tmpNum);
+		backupDir = segDir + szBuf;
+		if (!fs::exists(backupDir))
+			break;
+		fprintf(stderr, "ERROR: existed %s\n", backupDir.string().c_str());
+	}
+	try { fs::rename(segDir, backupDir); }
+	catch (const std::exception& ex) {
+		std::string strDir = segDir.string();
+		fprintf(stderr
+			, "ERROR: rename(%s, %s.backup), ex.what = %s\n"
+			, strDir.c_str(), strDir.c_str(), ex.what());
+		abort();
+	}
+	return backupDir;
+}
+
 void
 ReadonlySegment::purgeDeletedRecords(CompositeTable* tab, size_t segIdx) {
 	DbContextPtr ctx(tab->createDbContext());
@@ -804,33 +848,47 @@ ReadonlySegment::purgeDeletedRecords(CompositeTable* tab, size_t segIdx) {
 		tab->m_purgeStatus = CompositeTable::PurgeStatus::purging;
 		input->m_bookDeletion = true;
 	}
+	fprintf(stderr, "INFO: purging %s\n", input->m_segDir.string().c_str());
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
-
+	m_indices.resize(m_schema->getIndexNum());
+	m_colgroups.resize(m_schema->getColgroupNum());
+	auto tmpSegDir = m_segDir + ".tmp";
+	fs::create_directories(tmpSegDir);
+{
+/*
+	size_t logicRows = input->m_isDel.size();
+	size_t physicId = 0;
+	AutoFree<uint32_t> physicToLogic(logicRows, UINT32_MAX);
+	for (size_t logicId = 0; logicId < logicRows; ++logicId) {
+	}
+*/
 	for (size_t i = 0; i < m_indices.size(); ++i) {
 		m_indices[i] = purgeIndex(i, input.get(), ctx.get());
 		m_colgroups[i] = m_indices[i]->getReadableStore();
 	}
+}
 	for (size_t i = m_indices.size(); i < m_colgroups.size(); ++i) {
-		m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), m_segDir + ".tmp");
+		m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), tmpSegDir);
 	}
 	completeAndReload(tab, segIdx, &*input);
 
 	assert(input->m_segDir == this->m_segDir);
-	auto backupDir = m_segDir + ".backup";
-	fs::rename(input->m_segDir, backupDir);
+	fs::path backupDir = renameToBackupFromDir(input->m_segDir);
 	{
 		MyRwLock lock(tab->m_rwMutex, true);
 		input->m_segDir = backupDir;
 		input->deleteSegment(); // will delete backupDir
+		tab->m_segments[segIdx] = this;
 	}
-	try { fs::rename(m_segDir + ".tmp", m_segDir); }
+	try { fs::rename(tmpSegDir, m_segDir); }
 	catch (const std::exception& ex) {
 		fs::rename(backupDir, m_segDir);
 		std::string strDir = m_segDir.string();
 		fprintf(stderr
-			, "ERROR: rename(%s.tmp, %s), ex.what = %s"
+			, "ERROR: rename(%s.tmp, %s), ex.what = %s\n"
 			, strDir.c_str(), strDir.c_str(), ex.what());
+		abort();
 	}
 }
 
@@ -844,11 +902,12 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 	const size_t  fixlen = schema.getFixedRowLen();
 	const auto& store = *input->m_indices[indexId]->getReadableStore();
 	StoreIteratorPtr iter = store.createStoreIterForward(ctx);
-	if (iter) {
+	if (false && iter) { // for performance, don't use iter
 		valvec<byte_t> rec;
-		llong recId;
-		while (iter->increment(&recId, &rec)) {
-			if (!nark_bit_test(isDel, recId)) {
+		llong physicId;
+		while (iter->increment(&physicId, &rec)) {
+			size_t logicId = input->getLogicId(size_t(physicId));
+			if (!nark_bit_test(isDel, logicId)) {
 				if (fixlen)
 					strVec.m_strpool.append(rec);
 				else
@@ -857,8 +916,13 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 		}
 	}
 	else {
-		for (llong recId = 0; recId < inputRowNum; ++recId) {
-			pushRecord(strVec, store, isDel, recId, fixlen, ctx);
+		const bm_uint_t* purgeBits = input->m_isPurged.bldata();
+		llong physicId = 0;
+		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
+			if (!nark_bit_test(purgeBits, logicId)) {
+				pushRecord(strVec, store, isDel, logicId, physicId, fixlen, ctx);
+				physicId++;
+			}
 		}
 	}
 	return this->buildIndex(schema, strVec);
@@ -866,6 +930,7 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 
 ReadableStorePtr
 ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir) {
+	assert(m_isDel.size() == input->m_isDel.size());
 	SortableStrVec strVec;
 	const bm_uint_t* isDel = m_isDel.bldata();
 	llong inputRowNum = input->m_isDel.size();
@@ -885,28 +950,46 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	size_t fixlen = schema.getFixedRowLen();
 	size_t maxMem = size_t(m_schema->m_readonlyDataMemSize);
 	valvec<ReadableStorePtr> parts;
-	auto partsPushRecord = [&](const ReadableStore& store, llong recId) {
+	auto partsPushRecord = [&](const ReadableStore& store, llong logicId, llong physicId) {
 		if (nark_unlikely(strVec.mem_size() >= maxMem)) {
 			parts.push_back(this->buildStore(schema, strVec));
 			strVec.clear();
 		}
-		pushRecord(strVec, store, isDel, recId, fixlen, ctx);
+		pushRecord(strVec, store, isDel, logicId, physicId, fixlen, ctx);
 	};
+	const bm_uint_t* purgeBits = input->m_isPurged.bldata();
+	assert(!purgeBits || input->m_isPurged.size() == m_isDel.size());
 	if (auto cgparts = dynamic_cast<const MultiPartStore*>(&colgroup)) {
-		llong baseId = 0;
+		llong logicId = 0;
+		llong basePhysicId = 0;
 		for (size_t j = 0; j < cgparts->numParts(); ++j) {
 			auto& partStore = cgparts->getPart(j);
 			llong partRows = partStore.numDataRows();
-			for (llong recId = 0; recId < partRows; ++recId) {
-				partsPushRecord(partStore, baseId + recId);
+			llong subPhysicId = 0;
+			while (logicId < inputRowNum && subPhysicId < partRows) {
+				if (!purgeBits || !nark_bit_test(purgeBits, logicId)) {
+					llong physicId = basePhysicId + subPhysicId;
+					partsPushRecord(partStore, logicId, physicId);
+					subPhysicId++;
+				}
+				logicId++;
 			}
-			baseId += partRows;
+			assert(subPhysicId == partRows);
+			basePhysicId += partRows;
 		}
 	}
 	else {
-		for (llong recId = 0; recId < inputRowNum; ++recId) {
-			partsPushRecord(colgroup, recId);
+		llong physicId = 0;
+		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
+			if (!purgeBits || !nark_bit_test(purgeBits, logicId)) {
+				partsPushRecord(colgroup, logicId, physicId);
+				physicId++;
+			}
 		}
+#if !defined(NDEBUG)
+		if (purgeBits) { assert(physicId == input->m_isPurged.max_rank0()); }
+		else		   { assert(physicId == m_isDel.size()); }
+#endif
 	}
 	if (strVec.str_size() > 0) {
 		parts.push_back(this->buildStore(schema, strVec));
@@ -930,6 +1013,7 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 	m_isPurgedMmap = (byte*)mmap_load(purgeFpath.string(), &bytes);
 	m_isPurged.risk_mmap_from(m_isPurgedMmap, bytes);
 	assert(m_isPurged.size() == m_isDel.size());
+	assert(m_withPurgeBits); // for self test debug
 	if (m_withPurgeBits) {
 		// logical record id will be m_isPurged.select0(physical id)
 		return;
@@ -960,16 +1044,20 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 	fs::remove(purgeFpath);
 }
 
+void ReadonlySegment::savePurgeBits(PathRef segDir) const {
+	if (m_isPurgedMmap && segDir == m_segDir)
+		return;
+	PathRef purgeFpath = segDir / "IsPurged.rs";
+	FileStream fp(purgeFpath.string().c_str(), "wb");
+	fp.ensureWrite(m_isPurged.data(), m_isPurged.mem_size());
+}
+
 void ReadonlySegment::save(PathRef segDir) const {
 	assert(!segDir.empty());
 	if (m_tobeDel) {
 		return;
 	}
-	if (!m_isPurgedMmap && segDir != m_segDir) {
-		PathRef purgeFpath = segDir / "IsPurged.rs";
-		FileStream fp(purgeFpath.string().c_str(), "wb");
-		fp.ensureWrite(m_isPurged.data(), m_isPurged.mem_size());
-	}
+	savePurgeBits(segDir);
 	ReadableSegment::save(segDir);
 }
 

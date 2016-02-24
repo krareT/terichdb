@@ -133,8 +133,10 @@ protected:
 
 	void closeFiles();
 	void removePurgeBitsForCompactIdspace(PathRef segDir);
+	void savePurgeBits(PathRef segDir) const;
 
 	size_t getPhysicId(size_t logicId) const;
+	size_t getLogicId(size_t physicId) const;
 
 protected:
 	friend class CompositeTable;

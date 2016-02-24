@@ -172,6 +172,7 @@ protected:
 	enum class PurgeStatus : unsigned char {
 		none,
 		pending,
+		inqueue,
 		purging,
 	};
 
