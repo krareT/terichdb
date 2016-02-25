@@ -140,6 +140,7 @@ protected:
 
 protected:
 	friend class CompositeTable;
+	friend class TableIndexIter;
 	class MyStoreIterForward;  friend class MyStoreIterForward;
 	class MyStoreIterBackward; friend class MyStoreIterBackward;
 	llong  m_dataInflateSize;

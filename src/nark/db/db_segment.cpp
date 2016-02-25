@@ -677,7 +677,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	valvec<byte> buf;
 	StoreIteratorPtr iter(input->createStoreIterForward(ctx.get()));
 	llong id = -1;
-	while (iter->increment(&id, &buf) /* && id < logicRowNum*/) {
+	while (iter->increment(&id, &buf) && id < logicRowNum) {
 		assert(id >= 0);
 		assert(id < logicRowNum);
 		if (!m_isDel[id]) {

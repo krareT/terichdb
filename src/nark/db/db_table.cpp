@@ -604,11 +604,20 @@ CompositeTable::doCreateNewSegmentInLock() {
 		THROW_STD(invalid_argument,
 			"Reaching maxSegNum=%d", int(m_segments.capacity()));
 	}
+	auto oldwrseg = m_wrSeg.get();
+	while (oldwrseg->m_isDel.size() && oldwrseg->m_isDel.back()) {
+		assert(oldwrseg->m_delcnt > 0);
+		oldwrseg->m_isDel.pop_back();
+		oldwrseg->m_delcnt--;
+	}
+	if (oldwrseg->m_isDelMmap) {
+		((uint64_t*)oldwrseg->m_isDelMmap)[0] = oldwrseg->m_isDel.size();
+	}
+	m_rowNumVec.back() = m_rowNumVec.ende(2) + oldwrseg->m_isDel.size();
 	// createWritableSegment should be fast, other wise the lock time
 	// may be too long
 	putToFlushQueue(m_segments.size() - 1);
 	size_t newSegIdx = m_segments.size();
-	auto oldwrseg = m_wrSeg.get();
 	m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
 	m_segments.push_back(m_wrSeg);
 	llong newMaxRowNum = m_rowNumVec.back();
@@ -1197,6 +1206,7 @@ class TableIndexIter : public IndexIterator {
 	const size_t m_indexId;
 	struct OneSeg {
 		ReadableSegmentPtr seg;
+		ReadonlySegment const* rdseg = NULL;
 		IndexIteratorPtr   iter;
 		valvec<byte>       data;
 		llong              subId = -1;
@@ -1262,6 +1272,7 @@ class TableIndexIter : public IndexIterator {
 					cur.subId = -2; // need re-seek position??
 				}
 				cur.seg  = m_tab->m_segments[i];
+				cur.rdseg = m_tab->m_segments[i]->getReadonlySegment();
 				cur.iter = nullptr;
 				cur.data.erase_all();
 				cur.baseId = m_tab->m_rowNumVec[i];
@@ -1311,6 +1322,8 @@ public:
 				auto& cur = m_segs[i];
 				if (cur.iter->increment(&cur.subId, &cur.data)) {
 					m_heap.push_back(i);
+					if (cur.rdseg)
+						cur.subId = cur.rdseg->getLogicId(cur.subId);
 				}
 			}
 			std::make_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
@@ -1341,7 +1354,10 @@ public:
 		if (cur.iter->increment(&cur.subId, &cur.data)) {
 			assert(m_heap.back() == segIdx);
 			std::push_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
-		} else {
+			if (cur.rdseg)
+				cur.subId = cur.rdseg->getLogicId(cur.subId);
+		}
+		else {
 			m_heap.pop_back();
 			cur.subId = -3; // eof
 			cur.data.erase_all();
@@ -1391,8 +1407,11 @@ public:
 		for(size_t i = 0; i < m_segs.size(); ++i) {
 			auto& cur = m_segs[i];
 			int ret = cur.iter->seekLowerBound(key, &cur.subId, &cur.data);
-			if (ret >= 0)
+			if (ret >= 0) {
 				m_heap.push_back(i);
+				if (cur.rdseg)
+					cur.subId = cur.rdseg->getLogicId(cur.subId);
+			}
 		}
 		m_isHeapBuilt = true;
 		if (m_heap.size()) {
@@ -2112,7 +2131,14 @@ void CompositeTable::syncFinishWriting() {
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
 	{
 		MyRwLock lock(m_rwMutex, true);
-		putToFlushQueue(m_segments.size()-1);
+		auto wrseg = m_segments.back().get();
+		if (wrseg->m_isDel.empty()) {
+			wrseg->deleteSegment();
+			m_segments.pop_back();
+		}
+		else {
+			putToFlushQueue(m_segments.size()-1);
+		}
 	}
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
 }
