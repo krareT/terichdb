@@ -5,6 +5,10 @@
 #include "data_index.hpp"
 #include <tbb/queuing_rw_mutex.h>
 
+namespace nark {
+	class BaseDFA; // forward declaration
+} // namespace nark
+
 namespace nark { namespace db {
 
 typedef tbb::queuing_rw_mutex              MyRwMutex;
@@ -70,6 +74,9 @@ public:
 
 	llong indexSearchExact(size_t indexId, fstring key, DbContext*) const;
 	bool indexKeyExists(size_t indexId, fstring key, DbContext*) const;
+	
+	virtual	bool indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec, DbContext*) const;
+	virtual	bool indexMatchRegex(size_t indexId, fstring  regexStr, valvec<llong>* recIdvec, DbContext*) const;
 
 	bool indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);

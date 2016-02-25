@@ -1076,6 +1076,22 @@ const {
 	return -1;
 }
 
+// implemented in DfaDbTable
+///@params recIdvec result of matched record id list
+bool
+CompositeTable::indexMatchRegex(size_t indexId, BaseDFA* regexDFA,
+								valvec<llong>* recIdvec, DbContext*)
+const {
+	THROW_STD(invalid_argument, "Methed is not implemented");
+}
+
+bool
+CompositeTable::indexMatchRegex(size_t indexId, fstring  regexStr,
+								valvec<llong>* recIdvec, DbContext*)
+const {
+	THROW_STD(invalid_argument, "Methed is not implemented");
+}
+
 bool
 CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 							DbContext* txn)
