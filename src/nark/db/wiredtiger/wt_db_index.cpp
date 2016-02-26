@@ -337,9 +337,11 @@ bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* 
 	return true;
 }
 
-llong WtWritableIndex::searchExact(fstring key, DbContext* ctx) const {
+size_t
+WtWritableIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext* ctx)
+const {
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	llong id = -1;
+	recIdvec->erase_all();
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
 	item.size = key.size();
@@ -365,10 +367,12 @@ llong WtWritableIndex::searchExact(fstring key, DbContext* ctx) const {
 				, wiredtiger_strerror(err)
 				);
 		}
+		llong id = -1;
 		m_wtCursor->get_value(m_wtCursor, &id);
+		recIdvec->push_back(id);
 	}
 	else {
-		m_wtCursor->set_key(m_wtCursor, &item, id);
+		m_wtCursor->set_key(m_wtCursor, &item, llong(-1));
 		int cmp;
 		int err = m_wtCursor->search_near(m_wtCursor, &cmp);
 		if (err) {
@@ -379,20 +383,23 @@ llong WtWritableIndex::searchExact(fstring key, DbContext* ctx) const {
 				, wiredtiger_strerror(err)
 				);
 		}
-		if (cmp < 0) {
-			id = -1;
-		}
-		else {
+		if (cmp >= 0) {
 			WT_ITEM item2;
-			m_wtCursor->get_key(m_wtCursor, &item2, &id);
-			if (item2.size == item.size &&
-				memcmp(item2.data, item.data, item.size) == 0)
-			{}
-			else id = -1;
+			while (0 == err) {
+				llong id;
+				m_wtCursor->get_key(m_wtCursor, &item2, &id);
+				if (item2.size == item.size &&
+					memcmp(item2.data, item.data, item.size) == 0)
+				{
+					recIdvec->push_back(id);
+					m_wtCursor->next(m_wtCursor);
+				}
+				else break;
+			}
 		}
 	}
 	m_wtCursor->reset(m_wtCursor);
-	return id;
+	return recIdvec->size();
 }
 
 bool WtWritableIndex::remove(fstring key, llong id, DbContext* ctx) {

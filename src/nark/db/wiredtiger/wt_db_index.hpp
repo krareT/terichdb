@@ -42,7 +42,7 @@ public:
 	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
 	void clear() override;
 
-	llong searchExact(fstring key, DbContext*) const override;
+	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 	WritableIndex* getWritableIndex() override { return this; }
 };
 typedef boost::intrusive_ptr<WtWritableIndex> WtWritableIndexPtr;

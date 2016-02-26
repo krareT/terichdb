@@ -67,12 +67,13 @@ ZipIntKeyIndex::IntVecLowerBound(fstring binkey) const {
 	return std::make_pair(i, false);
 }
 
-llong ZipIntKeyIndex::searchExact(fstring key, DbContext*) const {
-	std::pair<size_t, bool> ib = searchLowerBound(key);
-	if (ib.second) {
-		return m_index.get(ib.first);
+size_t ZipIntKeyIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const {
+	std::pair<size_t, size_t> ib = searchEqualRange(key);
+	recIdvec->erase_all();
+	for (size_t j = ib.first; j < ib.second; ++j) {
+		recIdvec->push_back(m_index.get(j));
 	}
-	return -1LL;
+	return recIdvec->size();
 }
 
 std::pair<size_t, bool>
@@ -90,6 +91,80 @@ ZipIntKeyIndex::searchLowerBound(fstring key) const {
 	case ColumnType::Uint64 : return IntVecLowerBound<uint64_t>(key); break;
 	case ColumnType::VarSint: return IntVecLowerBound< int64_t>(key); break;
 	case ColumnType::VarUint: return IntVecLowerBound<uint64_t>(key); break;
+	}
+	abort();
+	return {};
+}
+
+template<class Int>
+std::pair<size_t, size_t>
+ZipIntKeyIndex::IntVecEqualRange(fstring binkey) const {
+	assert(binkey.size() == sizeof(Int));
+	Int rawkey = unaligned_load<Int>(binkey.data());
+	if (rawkey < Int(m_minKey)) {
+		return std::make_pair(0, false);
+	}
+	auto indexData = m_index.data();
+	auto indexBits = m_index.uintbits();
+	auto indexMask = m_index.uintmask();
+	auto keysData = m_keys.data();
+	auto keysBits = m_keys.uintbits();
+	auto keysMask = m_keys.uintmask();
+	size_t key = size_t(rawkey - Int(m_minKey));
+	size_t i = 0, j = m_index.size();
+	size_t mid = 0;
+	while (i < j) {
+		mid = (i + j) / 2;
+		size_t hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid);
+		size_t hitKey = UintVecMin0::fast_get(keysData, keysBits, keysMask, hitPos);
+		if (hitKey < key)
+			i = mid + 1;
+		else if (hitKey > key)
+			j = mid;
+		else
+			goto Found;
+	}
+	return std::make_pair(i, i);
+Found:
+	size_t lo = i, hi = mid;
+	while (lo < hi) {
+		size_t mid2 = (lo + hi) / 2;
+		size_t hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid2);
+		size_t hitKey = UintVecMin0::fast_get(keysData, keysBits, keysMask, hitPos);
+		if (hitKey < key) // for lower_bound
+			lo = mid2 + 1;
+		else
+			hi = mid2;
+	}
+	i = lo;
+	lo = mid + 1, hi = j;
+	while (lo < hi) {
+		size_t mid2 = (lo + hi) / 2;
+		size_t hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid2);
+		size_t hitKey = UintVecMin0::fast_get(keysData, keysBits, keysMask, hitPos);
+		if (hitKey <= key) // for upper_bound
+			lo = mid2 + 1;
+		else
+			hi = mid2;
+	}
+	return std::make_pair(i, hi);
+}
+
+std::pair<size_t, size_t>
+ZipIntKeyIndex::searchEqualRange(fstring key) const {
+	switch (m_keyType) {
+	default:
+		THROW_STD(invalid_argument, "Bad m_keyType=%s", Schema::columnTypeStr(m_keyType));
+	case ColumnType::Sint08 : return IntVecEqualRange< int8_t >(key); break;
+	case ColumnType::Uint08 : return IntVecEqualRange<uint8_t >(key); break;
+	case ColumnType::Sint16 : return IntVecEqualRange< int16_t>(key); break;
+	case ColumnType::Uint16 : return IntVecEqualRange<uint16_t>(key); break;
+	case ColumnType::Sint32 : return IntVecEqualRange< int32_t>(key); break;
+	case ColumnType::Uint32 : return IntVecEqualRange<uint32_t>(key); break;
+	case ColumnType::Sint64 : return IntVecEqualRange< int64_t>(key); break;
+	case ColumnType::Uint64 : return IntVecEqualRange<uint64_t>(key); break;
+	case ColumnType::VarSint: return IntVecEqualRange< int64_t>(key); break;
+	case ColumnType::VarUint: return IntVecEqualRange<uint64_t>(key); break;
 	}
 	abort();
 	return {};

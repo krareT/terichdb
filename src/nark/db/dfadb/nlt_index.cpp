@@ -33,16 +33,18 @@ llong NestLoudsTrieIndex::indexStorageSize() const {
 	return m_dfa->mem_size() + m_keyToId.mem_size();
 }
 
-llong NestLoudsTrieIndex::searchExact(fstring key, DbContext*) const {
+size_t NestLoudsTrieIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const {
 	auto dawg = m_dfa->get_dawg();
 	assert(dawg);
 	size_t dawgNum = dawg->num_words();
 	size_t dawgIdx = dawg->index(key);
 	assert(dawgIdx < dawgNum || size_t(-1) == dawgIdx);
+	recIdvec->erase_all();
 	if (m_isUnique) {
 		assert(m_recBits.size() == 0);
 		if (dawgIdx < dawgNum) {
-			return m_keyToId.get(dawgIdx);
+			recIdvec->push_back(m_keyToId.get(dawgIdx));
+			return 1;
 		}
 	}
 	else {
@@ -50,10 +52,14 @@ llong NestLoudsTrieIndex::searchExact(fstring key, DbContext*) const {
 		if (dawgIdx < dawgNum) {
 			size_t bitpos = m_recBits.select1(dawgIdx);
 			assert(bitpos < m_recBits.size());
-			return m_keyToId.get(bitpos);
+			size_t dupcnt = m_recBits.zero_seq_len(bitpos+1) + 1;
+			for (size_t i = 0; i < dupcnt; ++i) {
+				recIdvec->push_back(m_keyToId.get(bitpos+i));
+			}
+			return dupcnt;
 		}
 	}
-	return -1;
+	return 0;
 }
 ///@}
 
@@ -165,15 +171,17 @@ void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 		assert(m_keyToId[i] == keyToId[i]);
 	}
 	valvec<byte> rec;
+	valvec<llong> recIdvec;
 //	DfaDbContext ctx;
 	for(intptr_t id = 0; id < intptr_t(backup.size()); ++id) {
 	//	size_t keyIdx = m_dfa->index(backup[id]);
 		fstring key = backup[id];
 		this->getValue(id, &rec, NULL);
 		assert(rec == key);
-		intptr_t id2 = searchExact(backup[id], NULL);
-		if (keys == rows)
-			assert(id2 == id);
+		searchExact(backup[id], &recIdvec, NULL);
+		size_t nth = std::find(recIdvec.begin(), recIdvec.end(), id)
+				   - recIdvec.begin();
+		assert(nth < recIdvec.size());
 	}
 #endif
 }

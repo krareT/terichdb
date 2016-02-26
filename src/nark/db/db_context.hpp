@@ -48,6 +48,7 @@ public:
 	valvec<uint32_t> offsets;
 	valvec<fstring> cols1;
 	valvec<fstring> cols2;
+	valvec<llong> exactMatchRecIdvec;
 	bool syncIndex;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;

@@ -36,9 +36,23 @@ llong FixedLenKeyIndex::indexStorageSize() const {
 	return m_index.mem_size();
 }
 
-llong FixedLenKeyIndex::searchExact(fstring key, DbContext*) const {
+size_t
+FixedLenKeyIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*)
+const {
+	recIdvec->erase_all();
 	std::pair<size_t, bool> ib = searchLowerBound(key);
-	return ib.second ? llong(ib.first) : -1LL;
+	if (!ib.second)
+		return 0;
+	size_t j = ib.first;
+	size_t f = m_fixedLen;
+	size_t id;
+	auto keysData = m_keys.data();
+	while (j < m_index.size() &&
+		   memcmp(keysData + f*(id=m_index[j]), key.p, f) == 0)
+	{
+		recIdvec->push_back(id);
+	}
+	return recIdvec->size();
 }
 
 std::pair<size_t, bool>

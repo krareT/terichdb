@@ -758,8 +758,8 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) 
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			llong physicId = rIndex->searchExact(txn->key1, txn);
-			if (physicId >= 0) {
+			rIndex->searchExact(txn->key1, &txn->exactMatchRecIdvec, txn);
+			for(llong physicId : txn->exactMatchRecIdvec) {
 				llong logicId = seg->getLogicId(physicId);
 				if (!seg->m_isDel[logicId]) {
 					// std::move makes it no temps
@@ -914,8 +914,8 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn)
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			llong physicId = rIndex->searchExact(txn->key1, txn);
-			if (physicId >= 0) {
+			rIndex->searchExact(txn->key1, &txn->exactMatchRecIdvec, txn);
+			for(llong physicId : txn->exactMatchRecIdvec) {
 				llong logicId = seg->getLogicId(physicId);
 				if (!seg->m_isDel[logicId]) {
 					// std::move makes it no temps
@@ -1067,8 +1067,8 @@ const {
 	for (size_t i = m_segments.size(); i > 0; ) {
 		auto seg = m_segments[--i].get();
 		auto index = seg->m_indices[indexId];
-		llong physicId = index->searchExact(key, ctx);
-		if (physicId >= 0) {
+		index->searchExact(key, &ctx->exactMatchRecIdvec, ctx);
+		for(llong physicId : ctx->exactMatchRecIdvec) {
 			llong logicId = seg->getLogicId(physicId);
 			if (!seg->m_isDel[logicId])
 				return true;
@@ -1084,8 +1084,8 @@ const {
 	for (size_t i = m_segments.size(); i > 0; ) {
 		auto seg = m_segments[--i].get();
 		auto index = seg->m_indices[indexId];
-		llong physicId = index->searchExact(key, ctx);
-		if (physicId >= 0) {
+		index->searchExact(key, &ctx->exactMatchRecIdvec, ctx);
+		for(llong physicId : ctx->exactMatchRecIdvec) {
 			llong logicId = seg->getLogicId(physicId);
 			if (!seg->m_isDel[logicId])
 				return m_rowNumVec[i] + logicId;

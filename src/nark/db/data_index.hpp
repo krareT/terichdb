@@ -42,7 +42,8 @@ public:
 	///@{ ordered and unordered index
 	virtual llong indexStorageSize() const = 0;
 
-	virtual llong searchExact(fstring key, DbContext*) const = 0;
+	///@returns same as recIdvec->size()
+	virtual size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const = 0;
 	///@}
 
 	///@{ ordered index only

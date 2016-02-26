@@ -419,12 +419,29 @@ const {
 	}
 }
 
-llong MockReadonlyIndex::searchExact(fstring key, DbContext*) const {
+size_t
+MockReadonlyIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*)
+const {
+	recIdvec->erase_all();
 	size_t lower;
-	if (forwardLowerBound(key, &lower) >= 0) {
-		return m_ids[lower];
+	if (forwardLowerBound(key, &lower) != 0) {
+		return 0;
 	}
-	return -1; // not found
+	size_t f = m_fixedLen;
+	if (f) {
+		auto sp = m_keys.strpool.data();
+		size_t i = lower;
+		while (i < m_ids.size() && memcmp(key.p, sp + f*i, f) == 0) {
+			recIdvec->push_back(m_ids[i]);
+			i++;
+		}
+	}
+	else {
+		for (size_t i = lower; i < m_ids.size() && m_keys[i] == key; ++i) {
+			recIdvec->push_back(m_ids[i]);
+		}
+	}
+	return m_ids[lower];
 }
 
 IndexIterator* MockReadonlyIndex::createIndexIterForward(DbContext*) const {
@@ -733,13 +750,17 @@ bool MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, DbCo
 }
 
 template<class Key>
-llong MockWritableIndex<Key>::searchExact(fstring key, DbContext*) const {
+size_t
+MockWritableIndex<Key>::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*)
+const {
 	auto kx = makeKey<Key>(key);
 	auto iter = m_kv.lower_bound(std::make_pair(kx, 0LL));
-	if (m_kv.end() != iter && iter->first == kx) {
-		return iter->second;
+	recIdvec->erase_all();
+	while (m_kv.end() != iter && iter->first == kx) {
+		recIdvec->push_back(iter->second);
+		++iter;
 	}
-	return -1;
+	return recIdvec->size();
 }
 
 template<class Key>

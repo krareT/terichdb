@@ -53,7 +53,7 @@ public:
 	llong dataInflateSize() const override;
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
 
-	llong searchExact(fstring key, DbContext*) const override;
+	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
@@ -107,7 +107,7 @@ public:
 	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
 	void clear() override;
 
-	llong searchExact(fstring key, DbContext*) const override;
+	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 	WritableIndex* getWritableIndex() override { return this; }
 };
 

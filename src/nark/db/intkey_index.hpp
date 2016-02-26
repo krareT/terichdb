@@ -16,7 +16,7 @@ public:
 	///@{ ordered and unordered index
 	llong indexStorageSize() const override;
 
-	llong searchExact(fstring key, DbContext*) const override;
+	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 	///@}
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
@@ -47,6 +47,10 @@ protected:
 	template<class Int>
 	std::pair<size_t, bool> IntVecLowerBound(fstring binkey) const;
 	std::pair<size_t, bool> searchLowerBound(fstring binkey) const;
+
+	template<class Int>
+	std::pair<size_t, size_t> IntVecEqualRange(fstring binkey) const;
+	std::pair<size_t, size_t> searchEqualRange(fstring binkey) const;
 
 	template<class Int>
 	void keyAppend(size_t recIdx, valvec<byte>* res) const;
