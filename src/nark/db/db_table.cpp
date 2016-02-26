@@ -16,8 +16,8 @@
 #include <tbb/tbb_thread.h>
 #include <nark/util/concurrent_queue.hpp>
 
-//#undef min
-//#undef max
+#undef min
+#undef max
 
 namespace nark { namespace db {
 
@@ -690,17 +690,12 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 	DebugCheckRowNumVecNoLock(this);
 	bool isWriteLocked = maybeCreateNewSegment(lock);
 	if (txn->syncIndex) {
-		const size_t old_newWrSegNum = m_newWrSegNum;
-	//	lock.release(); // seg[0, oldSegNum-1) need read lock?
 		if (!insertCheckSegDup(0, m_segments.size()-1, txn))
 			return -1;
-	//	lock.acquire(m_rwMutex, true); // write lock
 		if (!isWriteLocked && !lock.upgrade_to_writer()) {
-			// check for segment changes(should be very rare)
-			if (old_newWrSegNum != m_newWrSegNum) {
-				if (!insertCheckSegDup(m_segments.size()-2, 1, txn))
-					return -1;
-			}
+			// check again(should be very rare)
+			if (!insertCheckSegDup(0, m_segments.size()-1, txn))
+				return -1;
 		}
 	}
 	else {
@@ -763,14 +758,22 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) 
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			llong exRecId = rIndex->searchExact(txn->key1, txn);
-			if (exRecId >= 0 && !seg->m_isDel[exRecId]) {
-				// std::move makes it no temps
-				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
-							+ ", in freezen seg: " + seg->m_segDir.string();
-			//	txn->errMsg += ", rowData=";
-			//	txn->errMsg += sconf.m_rowSchema->toJsonStr(row);
-				return false;
+			llong physicId = rIndex->searchExact(txn->key1, txn);
+			if (physicId >= 0) {
+				llong logicId = seg->getLogicId(physicId);
+				if (!seg->m_isDel[logicId]) {
+					// std::move makes it no temps
+					char szIdstr[96];
+					snprintf(szIdstr, sizeof(szIdstr)
+						, "logicId = %lld , physicId = %lld"
+						, logicId, physicId);
+					txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
+								+ ", " + szIdstr
+								+ ", in freezen seg: " + seg->m_segDir.string();
+				//	txn->errMsg += ", rowData=";
+				//	txn->errMsg += sconf.m_rowSchema->toJsonStr(row);
+					return false;
+				}
 			}
 		}
 	}
@@ -911,14 +914,22 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn)
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			llong exRecId = rIndex->searchExact(txn->key1, txn);
-			if (exRecId >= 0 && !seg->m_isDel[exRecId]) {
-				// std::move makes it no temps
-				txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
-							+ ", in freezen seg: " + seg->m_segDir.string();
-			//	txn->errMsg += ", rowData=";
-			//	txn->errMsg += m_rowSchema->toJsonStr(row);
-				return false;
+			llong physicId = rIndex->searchExact(txn->key1, txn);
+			if (physicId >= 0) {
+				llong logicId = seg->getLogicId(physicId);
+				if (!seg->m_isDel[logicId]) {
+					// std::move makes it no temps
+					char szIdstr[96];
+					snprintf(szIdstr, sizeof(szIdstr)
+						, "logicId = %lld , physicId = %lld"
+						, logicId, physicId);
+					txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
+								+ ", " + szIdstr
+								+ ", in freezen seg: " + seg->m_segDir.string();
+				//	txn->errMsg += ", rowData=";
+				//	txn->errMsg += m_rowSchema->toJsonStr(row);
+					return false;
+				}
 			}
 		}
 	}
@@ -1011,6 +1022,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		return false;
 	}
 	if (j == m_rowNumVec.size()-1) {
+		assert(!m_wrSeg->m_bookDeletion);
 		if (txn->syncIndex) {
 			valvec<byte> &row = txn->row1, &key = txn->key1;
 			valvec<fstring>& columns = txn->cols1;
@@ -1053,11 +1065,13 @@ CompositeTable::indexKeyExists(size_t indexId, fstring key, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
 	for (size_t i = m_segments.size(); i > 0; ) {
-		auto& seg = m_segments[--i];
+		auto seg = m_segments[--i].get();
 		auto index = seg->m_indices[indexId];
-		llong rId = index->searchExact(key, ctx);
-		if (rId >= 0 && !seg->m_isDel[rId]) {
-			return true;
+		llong physicId = index->searchExact(key, ctx);
+		if (physicId >= 0) {
+			llong logicId = seg->getLogicId(physicId);
+			if (!seg->m_isDel[logicId])
+				return true;
 		}
 	}
 	return false;
@@ -1068,10 +1082,14 @@ CompositeTable::indexSearchExact(size_t indexId, fstring key, DbContext* ctx)
 const {
 	MyRwLock lock(m_rwMutex, false);
 	for (size_t i = m_segments.size(); i > 0; ) {
-		auto index = m_segments[--i]->m_indices[indexId];
-		llong recId = index->searchExact(key, ctx);
-		if (recId >= 0)
-			return recId;
+		auto seg = m_segments[--i].get();
+		auto index = seg->m_indices[indexId];
+		llong physicId = index->searchExact(key, ctx);
+		if (physicId >= 0) {
+			llong logicId = seg->getLogicId(physicId);
+			if (!seg->m_isDel[logicId])
+				return m_rowNumVec[i] + logicId;
+		}
 	}
 	return -1;
 }
@@ -1222,7 +1240,6 @@ class TableIndexIter : public IndexIterator {
 	const size_t m_indexId;
 	struct OneSeg {
 		ReadableSegmentPtr seg;
-		ReadonlySegment const* rdseg = NULL;
 		IndexIteratorPtr   iter;
 		valvec<byte>       data;
 		llong              subId = -1;
@@ -1288,7 +1305,6 @@ class TableIndexIter : public IndexIterator {
 					cur.subId = -2; // need re-seek position??
 				}
 				cur.seg  = m_tab->m_segments[i];
-				cur.rdseg = m_tab->m_segments[i]->getReadonlySegment();
 				cur.iter = nullptr;
 				cur.data.erase_all();
 				cur.baseId = m_tab->m_rowNumVec[i];
@@ -1338,8 +1354,7 @@ public:
 				auto& cur = m_segs[i];
 				if (cur.iter->increment(&cur.subId, &cur.data)) {
 					m_heap.push_back(i);
-					if (cur.rdseg)
-						cur.subId = cur.rdseg->getLogicId(cur.subId);
+					cur.subId = cur.seg->getLogicId(cur.subId);
 				}
 			}
 			std::make_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
@@ -1370,8 +1385,7 @@ public:
 		if (cur.iter->increment(&cur.subId, &cur.data)) {
 			assert(m_heap.back() == segIdx);
 			std::push_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
-			if (cur.rdseg)
-				cur.subId = cur.rdseg->getLogicId(cur.subId);
+			cur.subId = cur.seg->getLogicId(cur.subId);
 		}
 		else {
 			m_heap.pop_back();
@@ -1425,8 +1439,7 @@ public:
 			int ret = cur.iter->seekLowerBound(key, &cur.subId, &cur.data);
 			if (ret >= 0) {
 				m_heap.push_back(i);
-				if (cur.rdseg)
-					cur.subId = cur.rdseg->getLogicId(cur.subId);
+				cur.subId = cur.seg->getLogicId(cur.subId);
 			}
 		}
 		m_isHeapBuilt = true;
@@ -1780,6 +1793,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	SortableStrVec strVec;
 	const Schema& schema = this->p[0].seg->m_schema->getIndexSchema(indexId);
 	const size_t fixedIndexRowLen = schema.getFixedRowLen();
+	hash_strmap<size_t> key2id;
 	for (auto& e : *this) {
 		auto seg = e.seg;
 		auto indexStore = seg->m_indices[indexId]->getReadableStore();
@@ -1798,12 +1812,51 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 					} else {
 						strVec.push_back(rec);
 					}
+					auto& cnt = key2id[rec];
+					if (++cnt > 1) {
+						physicId = physicId;
+					}
 				}
 				physicId++;
 			}
 		}
+		assert(!oldpurgeBits || seg->m_isPurged.max_rank0() == physicId);
 	}
-	return dseg->buildIndex(schema, strVec);
+	ReadableIndex* index = dseg->buildIndex(schema, strVec);
+#if !defined(NDEBUG)
+	valvec<byte> rec2;
+	size_t newBasePhysicId = 0;
+	for (auto& e : *this) {
+		auto seg = e.seg;
+		auto subStore = seg->m_indices[indexId]->getReadableStore();
+		assert(nullptr != subStore);
+		size_t logicRows = seg->m_isDel.size();
+		size_t oldPhysicId = 0;
+		size_t newPhysicId = 0;
+		const bm_uint_t* oldpurgeBits = seg->m_isPurged.bldata();
+		const bm_uint_t* newpurgeBits = e.newIsPurged.bldata();
+		for (size_t logicId = 0; logicId < logicRows; ++logicId) {
+			if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
+				if (!newpurgeBits || !nark_bit_test(newpurgeBits, logicId)) {
+					subStore->getValue(oldPhysicId, &rec, ctx);
+					index->getReadableStore()->getValue(newBasePhysicId + newPhysicId, &rec2, ctx);
+					assert(rec.size() == rec2.size());
+					if (memcmp(rec.data(), rec2.data(), rec.size()) != 0) {
+						std::string js1 = schema.toJsonStr(rec);
+						std::string js2 = schema.toJsonStr(rec2);
+						fprintf(stderr, "%s  %s\n", js1.c_str(), js2.c_str());
+					}
+				//	assert(memcmp(rec.data(), rec2.data(), rec.size()) == 0);
+					newPhysicId++;
+				}
+				oldPhysicId++;
+			}
+		}
+		newBasePhysicId += newPhysicId;
+		assert(!oldpurgeBits || seg->m_isPurged.max_rank0() == oldPhysicId);
+	}
+#endif
+	return index;
 }
 
 bool CompositeTable::MergeParam::needsPurgeBits() const {
@@ -1918,6 +1971,7 @@ try{
 	}
 	if (toMerge.needsPurgeBits()) {
 		assert(dseg->m_isPurged.size() == 0);
+		dseg->m_isPurged.reserve(rows);
 		for (auto& e : toMerge) {
 			if (e.newIsPurged.empty()) {
 				dseg->m_isPurged.grow(e.seg->m_isDel.size(), false);
@@ -1927,6 +1981,7 @@ try{
 			}
 		}
 		dseg->m_isPurged.build_cache(true, false);
+		assert(dseg->m_isPurged.size() == rows);
 		assert(dseg->m_isPurged.size() == toMerge.m_newSegRows);
 	}
 	assert(rows == toMerge.m_newSegRows);
@@ -2063,6 +2118,32 @@ try{
 		m_rowNumVec.back() = newRowNumVec.back();
 		m_mergeSeqNum++;
 		m_isMerging = false;
+#if !defined(NDEBUG)
+		valvec<byte> r1, r2;
+		rows = dseg->m_isDel.size();
+		size_t baseLogicId = 0;
+		for(size_t i = 0; i < toMerge.size(); ++i) {
+			auto sseg = toMerge[i].seg;
+			for(size_t subLogicId = 0; subLogicId < sseg->m_isDel.size(); ++subLogicId) {
+				size_t logicId = baseLogicId + subLogicId;
+				if (!sseg->m_isDel[subLogicId]) {
+					assert(!dseg->m_isDel[logicId]);
+					dseg->getValue(logicId, &r1, ctx.get());
+					sseg->getValue(subLogicId, &r2, ctx.get());
+					assert(r1.size() == r2.size());
+					if (memcmp(r1.data(), r2.data(), r1.size()) != 0) {
+						std::string js1 = this->toJsonStr(r1);
+						std::string js2 = this->toJsonStr(r2);
+					}
+					assert(memcmp(r1.data(), r2.data(), r1.size()) == 0);
+					assert(dseg->m_isPurged.empty() || !dseg->m_isPurged[logicId]);
+				} else {
+					assert(dseg->m_isDel[logicId]);
+				}
+			}
+			baseLogicId += sseg->m_isDel.size();
+		}
+#endif
 		// m_wrSeg == NULL indicate writing is stopped
 		if (m_wrSeg && m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
 			doCreateNewSegmentInLock();
@@ -2317,7 +2398,7 @@ void CompositeTable::runPurgeDelete() {
 		m_bgTaskNum--;
 	} BOOST_SCOPE_EXIT_END;
 	for (;;) {
-		double threshold = m_schema->m_purgeDeleteThreshold;
+		double threshold = std::max(m_schema->m_purgeDeleteThreshold, 0.001);
 		size_t segIdx = size_t(-1);
 		ReadonlySegmentPtr srcSeg;
 		{
@@ -2328,7 +2409,8 @@ void CompositeTable::runPurgeDelete() {
 				if (r) {
 					size_t newDelcnt = r->m_delcnt - r->m_isPurged.max_rank1();
 					size_t physicNum = r->m_isPurged.max_rank0();
-					if (newDelcnt >= physicNum * threshold) {
+					if (newDelcnt > physicNum * threshold) {
+						assert(newDelcnt > 0);
 						segIdx = i;
 						srcSeg = r;
 						break;

@@ -18,7 +18,7 @@ class NARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
 	ReadableSegment();
 	~ReadableSegment();
-	virtual class ReadonlySegment* getReadonlySegment();
+	virtual class ReadonlySegment* getReadonlySegment() const;
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
@@ -48,11 +48,16 @@ public:
 	void load(PathRef segDir) override;
 	void save(PathRef segDir) const override;
 
+	size_t getPhysicId(size_t logicId) const;
+	size_t getLogicId(size_t physicId) const;
+
 	SchemaConfigPtr         m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
 	size_t      m_delcnt;
 	febitvec    m_isDel;
 	byte*       m_isDelMmap = nullptr;
+	rank_select_se m_isPurged; // just for ReadonlySegment
+	byte*          m_isPurgedMmap;
 	boost::filesystem::path m_segDir;
 	valvec<uint32_t> m_deletionList;
 	bool        m_tobeDel;
@@ -79,7 +84,7 @@ public:
 	ReadonlySegment();
 	~ReadonlySegment();
 
-	ReadonlySegment* getReadonlySegment() override;
+	ReadonlySegment* getReadonlySegment() const override;
 
 	llong dataInflateSize() const override;
 	llong dataStorageSize() const override;
@@ -135,9 +140,6 @@ protected:
 	void removePurgeBitsForCompactIdspace(PathRef segDir);
 	void savePurgeBits(PathRef segDir) const;
 
-	size_t getPhysicId(size_t logicId) const;
-	size_t getLogicId(size_t physicId) const;
-
 protected:
 	friend class CompositeTable;
 	friend class TableIndexIter;
@@ -147,8 +149,6 @@ protected:
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
 	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
-	rank_select_se m_isPurged;
-	byte*          m_isPurgedMmap;
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
