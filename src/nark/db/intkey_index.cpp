@@ -69,7 +69,10 @@ ZipIntKeyIndex::IntVecLowerBound(fstring binkey) const {
 
 llong ZipIntKeyIndex::searchExact(fstring key, DbContext*) const {
 	std::pair<size_t, bool> ib = searchLowerBound(key);
-	return ib.second ? llong(ib.first) : -1LL;
+	if (ib.second) {
+		return m_index.get(ib.first);
+	}
+	return -1LL;
 }
 
 std::pair<size_t, bool>
