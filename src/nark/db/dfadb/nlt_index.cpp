@@ -1,4 +1,5 @@
 #include "nlt_index.hpp"
+#include "dfadb_table.hpp"
 #include <nark/io/FileStream.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/util/mmap.hpp>
@@ -80,22 +81,15 @@ llong NestLoudsTrieIndex::numDataRows() const {
 void
 NestLoudsTrieIndex::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx)
 const {
+//	assert(dynamic_cast<DfaDbContext*>(ctx) != nullptr);
+//	DfaDbContext* ctx1 = static_cast<DfaDbContext*>(ctx);
 	auto dawg = m_dfa->get_dawg();
 	assert(dawg);
 	std::string buf;
-	if (m_isUnique) {
-		assert(m_recBits.size() == 0);
-		size_t dawgIdx = m_idToKey.get(id);
-		assert(dawgIdx < dawg->num_words());
-		dawg->nth_word(dawgIdx, &buf);
-	}
-	else {
-		assert(m_recBits.size() >= dawg->num_words()+2);
-		size_t bitpos = m_idToKey.get(id);
-		size_t dawgIdx = m_recBits.rank1(bitpos);
-		assert(dawgIdx < dawg->num_words());
-		dawg->nth_word(dawgIdx, &buf);
-	}
+//	std::string& buf = ctx1->m_nltRecBuf;
+	size_t dawgIdx = m_idToKey.get(id);
+	assert(dawgIdx < dawg->num_words());
+	dawg->nth_word(dawgIdx, &buf);
 	val->append(buf);
 }
 
@@ -170,9 +164,13 @@ void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 		assert(m_idToKey[i] == idToKey[i]);
 		assert(m_keyToId[i] == keyToId[i]);
 	}
+	valvec<byte> rec;
+//	DfaDbContext ctx;
 	for(intptr_t id = 0; id < intptr_t(backup.size()); ++id) {
 	//	size_t keyIdx = m_dfa->index(backup[id]);
-		std::string key = backup[id].str();
+		fstring key = backup[id];
+		this->getValue(id, &rec, NULL);
+		assert(rec == key);
 		intptr_t id2 = searchExact(backup[id], NULL);
 		if (keys == rows)
 			assert(id2 == id);

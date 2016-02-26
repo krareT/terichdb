@@ -16,6 +16,7 @@ class NARK_DB_DLL DfaDbContext : public DbContext {
 public:
 	explicit DfaDbContext(const CompositeTable* tab);
 	~DfaDbContext();
+	std::string m_nltRecBuf;
 };
 class NARK_DB_DLL DfaDbTable : public CompositeTable {
 public:
