@@ -52,21 +52,29 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		rowBuilder << recRow;
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
 		if (bits[recRow.id]) {
+			if (!tab->indexKeyExists(0, fstring((char*)&recRow.id, 8), &*ctx)) {
+				i = i;
+			}
 			printf("dupkey: %s\n", tab->rowSchema().toJsonStr(binRow).c_str());
 		}
-		if (1067 == i)
+		if (600 == i)
 			i = i;
 		llong recId = ctx->insertRow(binRow);
 		if (recId < 0) {
-		//	assert(bits.is1(recRow.id));
+			assert(bits.is1(recRow.id));
 			printf("Insert failed: %s\n", ctx->errMsg.c_str());
 		} else {
 			printf("Insert recId = %lld: %s\n", recId, tab->toJsonStr(binRow).c_str());
 			insertedRows++;
-		//	assert(bits.is0(recRow.id));
+			if (bits.is1(recRow.id)) {
+				ctx->removeRow(recId);
+				llong recId2 = ctx->insertRow(binRow);
+			}
+			assert(tab->exists(recId));
+			assert(bits.is0(recRow.id));
 		}
 		bits.set1(recRow.id);
-
+#if 1
 		if (rand() < RAND_MAX*0.3) {
 			llong randomRecordId = rand() % tab->numDataRows();
 			uint64_t keyId = 0;
@@ -77,6 +85,8 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 				assert(indexId < tab->getIndexNum());
 				tab->selectOneColumn(randomRecordId, indexId, &recBuf, &*ctx);
 				keyId = unaligned_load<uint64_t>(recBuf.data());
+				if (keyId == 27754)
+					keyId = keyId;
 				ctx->getValue(randomRecordId, &recBuf);
 				jstr = tab->toJsonStr(recBuf);
 				assert(keyId > 0);
@@ -95,10 +105,12 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 			if (isDeleted && keyId > 0) {
 				printf("delete success: recId = %lld: %s\n"
 					, randomRecordId, jstr.c_str());
+				assert(!tab->exists(randomRecordId));
 				bits.set0(keyId);
 				deletedRows++;
 			}
 		}
+#endif
 	}
 
 //	NativeDataInput<RangeStream<MemIO> > decoder;
