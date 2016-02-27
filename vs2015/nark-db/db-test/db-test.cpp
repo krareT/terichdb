@@ -14,6 +14,7 @@ struct TestRow {
 	std::string str0;
 	std::string str1;
 	std::string str2;
+	std::string str3;
 	DATA_IO_LOAD_SAVE(TestRow,
 		&id
 		&fix
@@ -22,7 +23,8 @@ struct TestRow {
 		&nark::db::Schema::StrZero(str0)
 
 		&str1
-		&nark::RestAll(str2)
+		&str2
+		&nark::RestAll(str3)
 		)
 };
 
@@ -48,6 +50,7 @@ void doTest(nark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		recRow.str0 = std::string("s0:") + recRow.fix.data;
 		recRow.str1 = std::string("s1:") + recRow.fix.data;
 		recRow.str2 = std::string("s2:") + recRow.fix.data;
+		recRow.str3 = std::string("s3:") + recRow.fix.data;
 		rowBuilder.rewind();
 		rowBuilder << recRow;
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
