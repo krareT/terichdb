@@ -109,6 +109,7 @@ const unsigned int DEFAULT_nltNestLevel = 4;
 Schema::Schema() {
 	m_fixedLen = size_t(-1);
 	m_parent = nullptr;
+	m_isCompiled = false;
 	m_isOrdered = false;
 //	m_isPrimary = false;
 	m_isUnique  = false;
@@ -131,6 +132,9 @@ Schema::~Schema() {
 
 void Schema::compile(const Schema* parent) {
 	assert(!m_columnsMeta.empty());
+	if (m_isCompiled)
+		return;
+	m_isCompiled = true;
 	m_fixedLen = computeFixedRowLen();
 	if (parent) {
 		compileProject(parent);
@@ -1674,7 +1678,6 @@ void SchemaConfig::compileSchema() {
 		if (!schema->m_columnsMeta.empty())
 			m_colgroupSchemaSet->m_nested.insert_i(schema);
 	}
-	m_colgroupSchemaSet->compileSchemaSet(m_rowSchema.get());
 
 	SchemaPtr restAll(new Schema());
 	for (size_t i = 0; i < hasIndex.size(); ++i) {
@@ -1685,11 +1688,13 @@ void SchemaConfig::compileSchema() {
 		}
 	}
 	if (restAll->columnNum() > 0) {
-		restAll->m_name = ".RestAll";
-		restAll->compile(m_rowSchema.get());
-		restAll->m_keepCols.fill(true);
+		if (restAll->columnNum() > 1) {
+			restAll->m_name = ".RestAll";
+		}
 		m_colgroupSchemaSet->m_nested.insert_i(restAll);
 	}
+	m_colgroupSchemaSet->compileSchemaSet(m_rowSchema.get());
+
 	m_colproject.resize(m_rowSchema->columnNum(), {UINT32_MAX, UINT32_MAX});
 	size_t colgroupNum = m_colgroupSchemaSet->m_nested.end_i();
 	for (size_t i = 0; i < colgroupNum; ++i) {

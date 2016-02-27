@@ -162,6 +162,7 @@ namespace nark { namespace db {
 		float  m_dictZipSampleRatio;
 		byte   m_nltNestLevel;
 
+		bool   m_isCompiled: 1;
 		bool   m_isOrdered : 1; // just for index schema
 //		bool   m_isPrimary : 1;
 		bool   m_isUnique  : 1;
