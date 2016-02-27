@@ -1955,7 +1955,7 @@ try{
 				dseg->m_isDel.swap(e.newIsPurged);
 				auto store = dseg->purgeColgroup(i, e.seg, ctx.get(), tmpDir1);
 				dseg->m_isDel.swap(e.newIsPurged);
-				store->save(tmpDir1);
+				store->save(tmpDir1 / prefix);
 				moveStoreFiles(tmpDir1, destSegDir, prefix, newPartIdx);
 				fs::remove_all(tmpDir1);
 			} else {
