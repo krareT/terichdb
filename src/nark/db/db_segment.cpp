@@ -249,7 +249,8 @@ const {
 	// getValueAppend to ctx->buf1
 	ctx->offsets.risk_set_size(0);
 	ctx->offsets.push_back(0);
-	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+	const size_t colgroupNum = m_colgroups.size();
+	for (size_t i = 0; i < colgroupNum; ++i) {
 		const Schema& iSchema = m_schema->getColgroupSchema(i);
 		if (iSchema.m_keepCols.has_any1()) {
 			m_colgroups[i]->getValueAppend(id, &ctx->buf1, ctx);
@@ -259,7 +260,7 @@ const {
 
 	// parseRowAppend to ctx->cols1
 	ctx->cols1.risk_set_size(0);
-	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+	for (size_t i = 0; i < colgroupNum; ++i) {
 		const Schema& iSchema = m_schema->getColgroupSchema(i);
 		size_t off0 = ctx->offsets[i], off1 = ctx->offsets[i+1];
 		if (iSchema.m_keepCols.has_any1()) {
@@ -276,7 +277,7 @@ const {
 	// combine columns to ctx->cols2
 	size_t baseColumnId = 0;
 	ctx->cols2.resize_fill(m_schema->columnNum());
-	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+	for (size_t i = 0; i < colgroupNum; ++i) {
 		const Schema& iSchema = m_schema->getColgroupSchema(i);
 		for (size_t j = 0; j < iSchema.columnNum(); ++j) {
 			if (iSchema.m_keepCols[j]) {
@@ -842,19 +843,15 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 
 static inline
 void pushRecord(SortableStrVec& strVec, const ReadableStore& store,
-				const bm_uint_t* isDel, llong logicId, llong physicId,
-				size_t fixlen, DbContext* ctx) {
-	assert(physicId <= logicId);
-	if (!nark_bit_test(isDel, logicId)) {
-		size_t oldsize = strVec.str_size();
-		store.getValueAppend(physicId, &strVec.m_strpool, ctx);
-		if (!fixlen) {
-			SortableStrVec::SEntry ent;
-			ent.offset = oldsize;
-			ent.length = strVec.str_size() - oldsize;
-			ent.seq_id = uint32_t(strVec.m_index.size());
-			strVec.m_index.push_back(ent);
-		}
+				llong physicId, size_t fixlen, DbContext* ctx) {
+	size_t oldsize = strVec.str_size();
+	store.getValueAppend(physicId, &strVec.m_strpool, ctx);
+	if (!fixlen) {
+		SortableStrVec::SEntry ent;
+		ent.offset = oldsize;
+		ent.length = strVec.str_size() - oldsize;
+		ent.seq_id = uint32_t(strVec.m_index.size());
+		strVec.m_index.push_back(ent);
 	}
 }
 static
@@ -955,7 +952,9 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 		llong physicId = 0;
 		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
 			if (!purgeBits || !nark_bit_test(purgeBits, logicId)) {
-				pushRecord(strVec, store, isDel, logicId, physicId, fixlen, ctx);
+				if (!nark_bit_test(isDel, logicId)) {
+					pushRecord(strVec, store, physicId, fixlen, ctx);
+				}
 				physicId++;
 			}
 		}
@@ -985,39 +984,40 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	size_t fixlen = schema.getFixedRowLen();
 	size_t maxMem = size_t(m_schema->m_readonlyDataMemSize);
 	valvec<ReadableStorePtr> parts;
-	auto partsPushRecord = [&](const ReadableStore& store, llong logicId, llong physicId) {
+	auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
 		if (nark_unlikely(strVec.mem_size() >= maxMem)) {
 			parts.push_back(this->buildStore(schema, strVec));
 			strVec.clear();
 		}
-		pushRecord(strVec, store, isDel, logicId, physicId, fixlen, ctx);
+		pushRecord(strVec, store, physicId, fixlen, ctx);
 	};
 	const bm_uint_t* oldpurgeBits = input->m_isPurged.bldata();
 	assert(!oldpurgeBits || input->m_isPurged.size() == m_isDel.size());
 	if (auto cgparts = dynamic_cast<const MultiPartStore*>(&colgroup)) {
 		llong logicId = 0;
-		llong basePhysicId = 0;
 		for (size_t j = 0; j < cgparts->numParts(); ++j) {
 			auto& partStore = cgparts->getPart(j);
 			llong partRows = partStore.numDataRows();
 			llong subPhysicId = 0;
 			while (logicId < inputRowNum && subPhysicId < partRows) {
 				if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
-					llong physicId = basePhysicId + subPhysicId;
-					partsPushRecord(partStore, logicId, physicId);
+					if (!nark_bit_test(isDel, logicId)) {
+						partsPushRecord(partStore, subPhysicId);
+					}
 					subPhysicId++;
 				}
 				logicId++;
 			}
 			assert(subPhysicId == partRows);
-			basePhysicId += partRows;
 		}
 	}
 	else {
 		llong physicId = 0;
 		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
 			if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
-				partsPushRecord(colgroup, logicId, physicId);
+				if (!nark_bit_test(isDel, logicId)) {
+					partsPushRecord(colgroup, physicId);
+				}
 				physicId++;
 			}
 		}
