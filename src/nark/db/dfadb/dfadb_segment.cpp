@@ -72,7 +72,7 @@ DfaDbReadonlySegment::buildDictZipStore(const Schema& schema,
 										const febitvec* isPurged)
 const {
 	std::unique_ptr<NestLoudsTrieStore> nlt(new NestLoudsTrieStore());
-	auto fpath = dir / (schema.m_name + ".nlt");
+	auto fpath = dir / ("colgroup-" + schema.m_name + ".nlt");
 	nlt->build_by_iter(schema, fpath, inputIter, isDel, isPurged);
 	return nlt.release();
 }
