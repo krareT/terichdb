@@ -172,7 +172,7 @@ void FixedLenKeyIndex::load(PathRef path) {
 	m_isUnique = h->uniqKeys == h->rows;
 	m_uniqKeys = h->uniqKeys;
 	m_fixedLen = h->fixlen;
-	size_t rbits = nark_bsr_u32(h->rows) + 1;
+	size_t rbits = nark_bsr_u32(h->rows-1) + 1;
 	size_t keyMemSize = h->fixlen * h->rows;
 	m_keys .risk_set_data((byte*)(h+1) , keyMemSize);
 	keyMemSize = (keyMemSize + 15) & ~15;
