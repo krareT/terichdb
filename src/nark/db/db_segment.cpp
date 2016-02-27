@@ -527,7 +527,12 @@ namespace {
 			size_t flen = m_fixedLen;
 			if (flen) {
 				byte* p = rec->grow_no_init(flen);
-				intptr_t nRead = pread(fileno(m_fp), p, flen, flen*id);
+				ssize_t nRead = pread(fileno(m_fp), p, flen, flen*id);
+				if (size_t(nRead) != flen) {
+					THROW_STD(logic_error
+						, "FATAL: pread(len = %zd, pos = %lld) = %zd : %s"
+						, flen, flen*id, nRead, strerror(errno));
+				}
 				return;
 			}
 #endif
@@ -1022,8 +1027,8 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 			}
 		}
 #if !defined(NDEBUG)
-		if (oldpurgeBits) { assert(physicId == input->m_isPurged.max_rank0()); }
-		else			  { assert(physicId == m_isDel.size()); }
+		if (oldpurgeBits) { assert(size_t(physicId) == input->m_isPurged.max_rank0()); }
+		else			  { assert(size_t(physicId) == m_isDel.size()); }
 #endif
 	}
 	if (strVec.str_size() > 0) {
