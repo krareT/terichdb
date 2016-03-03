@@ -562,7 +562,7 @@ llong MockWritableStore::append(fstring row, DbContext*) {
 	m_rows.back().assign(row);
 	return id;
 }
-void MockWritableStore::replace(llong id, fstring row, DbContext*) {
+void MockWritableStore::update(llong id, fstring row, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
 	m_rows[id].assign(row);
@@ -885,7 +885,7 @@ llong MockWritableSegment::append(fstring row, DbContext*) {
 	return id;
 }
 
-void MockWritableSegment::replace(llong id, fstring row, DbContext* ctx) {
+void MockWritableSegment::update(llong id, fstring row, DbContext* ctx) {
 	assert(id >= 0);
 	assert(id <= llong(m_rows.size()));
 	if (llong(m_rows.size()) == id) {

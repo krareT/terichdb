@@ -710,7 +710,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		//assert(subId == (llong)ws.m_isDel.size());
 		ws.m_isDirty = true;
 		subId = (llong)ws.m_isDel.size();
-		ws.replace(subId, row, txn);
+		ws.update(subId, row, txn);
 		ws.pushIsDel(false);
 		m_rowNumVec.back() = wrBaseId + subId + 1;
 		if (txn->syncIndex) {
@@ -733,7 +733,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 			}
 		}
 		ws.m_deletedWrIdSet.pop_back();
-		ws.replace(subId, row, txn);
+		ws.update(subId, row, txn);
 		ws.m_isDel.set0(subId);
 		ws.m_delcnt--;
 		ws.m_isDirty = true;
@@ -819,7 +819,7 @@ Fail:
 }
 
 llong
-CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
+CompositeTable::updateRow(llong id, fstring row, DbContext* txn) {
 	m_schema->m_rowSchema->parseRow(row, &txn->cols1); // new row
 	MyRwLock lock(m_rwMutex, false);
 	DebugCheckRowNumVecNoLock(this);
@@ -878,7 +878,7 @@ CompositeTable::replaceRow(llong id, fstring row, DbContext* txn) {
 			replaceSyncIndex(subId, txn, lock);
 		}
 		m_wrSeg->m_isDirty = true;
-		m_wrSeg->replace(subId, row, txn);
+		m_wrSeg->update(subId, row, txn);
 		return id; // id is not changed
 	}
 	else {

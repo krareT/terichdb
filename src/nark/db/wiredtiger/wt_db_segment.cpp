@@ -107,12 +107,12 @@ llong WtWritableSegment::append(fstring row, DbContext* ctx) {
 	return m_wrRowStore->append(row, ctx);
 }
 
-void WtWritableSegment::replace(llong id, fstring row, DbContext* ctx) {
+void WtWritableSegment::update(llong id, fstring row, DbContext* ctx) {
 #if !defined(NDEBUG) && 0
 	llong rows = m_rowStore->numDataRows();
 	assert(id <= rows);
 #endif
-	m_wrRowStore->replace(id, row, ctx);
+	m_wrRowStore->update(id, row, ctx);
 }
 
 void WtWritableSegment::remove(llong id, DbContext* ctx) {

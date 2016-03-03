@@ -37,7 +37,7 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	llong append(fstring row, DbContext*) override;
-	void  replace(llong id, fstring row, DbContext*) override;
+	void  update(llong id, fstring row, DbContext*) override;
 	void  remove(llong id, DbContext*) override;
 
 	void clear() override;

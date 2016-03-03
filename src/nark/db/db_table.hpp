@@ -56,11 +56,8 @@ public:
 	bool exists(llong id) const;
 
 	llong insertRow(fstring row, DbContext*);
-	llong replaceRow(llong id, fstring row, DbContext*);
+	llong updateRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
-
-	size_t removeByIndex(size_t indexId, fstring indexKey, DbContext*);
-	llong  replaceRow(size_t indexId, fstring indexKey, DbContext*);
 
 	const Schema& rowSchema() const { return *m_schema->m_rowSchema; }
 	const Schema& getIndexSchema(size_t indexId) const {
@@ -230,9 +227,9 @@ llong DbContext::insertRow(fstring row) {
 	return m_tab->insertRow(row, this);
 }
 inline
-llong DbContext::replaceRow(llong id, fstring row) {
+llong DbContext::updateRow(llong id, fstring row) {
 	assert(this != nullptr);
-	return m_tab->replaceRow(id, row, this);
+	return m_tab->updateRow(id, row, this);
 }
 inline
 void  DbContext::removeRow(llong id) {

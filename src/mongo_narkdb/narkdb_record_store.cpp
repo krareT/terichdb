@@ -401,7 +401,7 @@ NarkDbRecordStore::updateRecord(OperationContext* txn,
     auto& td = getMyThreadData();
     BSONObj bson(data);
     td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
-	llong newIdx = m_table->replaceRow(id.repr()-1, td.m_recData, &*td.m_dbCtx);
+	llong newIdx = m_table->updateRow(id.repr()-1, td.m_recData, &*td.m_dbCtx);
 	return StatusWith<RecordId>(RecordId(newIdx + 1));
 }
 

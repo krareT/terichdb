@@ -47,6 +47,7 @@ public:
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
+class NARK_DB_DLL UpdatableStore;
 class NARK_DB_DLL WritableStore;
 class NARK_DB_DLL ReadableIndex;
 class NARK_DB_DLL ReadableStore : virtual public Permanentable {
@@ -71,6 +72,7 @@ public:
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
 	virtual ReadableIndex* getReadableIndex();
+	virtual UpdatableStore* getUpdatableStore();
 
 	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {
 		val->risk_set_size(0);
@@ -81,11 +83,16 @@ public:
 	StoreIterator* createDefaultStoreIterBackward(DbContext*) const;
 };
 
-class NARK_DB_DLL WritableStore {
+class NARK_DB_DLL UpdatableStore {
+public:
+	virtual ~UpdatableStore();
+	virtual void update(llong id, fstring row, DbContext*) = 0;
+};
+
+class NARK_DB_DLL WritableStore : public UpdatableStore {
 public:
 	virtual ~WritableStore();
 	virtual llong append(fstring row, DbContext*) = 0;
-	virtual void  replace(llong id, fstring row, DbContext*) = 0;
 	virtual void  remove(llong id, DbContext*) = 0;
 	virtual void  clear() = 0;
 };

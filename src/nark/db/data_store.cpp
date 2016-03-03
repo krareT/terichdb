@@ -73,6 +73,10 @@ ReadableIndex* ReadableStore::getReadableIndex() {
 	return nullptr;
 }
 
+UpdatableStore* ReadableStore::getUpdatableStore() {
+	return nullptr;
+}
+
 namespace {
 	class DefaultStoreIterForward : public StoreIterator {
 		DbContextPtr m_ctx;
@@ -145,6 +149,11 @@ ReadableStore::createDefaultStoreIterForward(DbContext* ctx) const {
 StoreIterator*
 ReadableStore::createDefaultStoreIterBackward(DbContext* ctx) const {
 	return new DefaultStoreIterBackward(const_cast<ReadableStore*>(this), ctx);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+UpdatableStore::~UpdatableStore() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////

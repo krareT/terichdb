@@ -29,7 +29,7 @@ public:
 	void getValue(llong id, valvec<byte>* val);
 
 	llong insertRow(fstring row);
-	llong replaceRow(llong id, fstring row);
+	llong updateRow(llong id, fstring row);
 	void  removeRow(llong id);
 
 	void indexInsert(size_t indexId, fstring indexKey, llong id);

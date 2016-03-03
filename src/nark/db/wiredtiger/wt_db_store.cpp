@@ -244,7 +244,7 @@ llong WtWritableStore::append(fstring row, DbContext* ctx0) {
 	return recId;
 }
 
-void WtWritableStore::replace(llong id, fstring row, DbContext* ctx0) {
+void WtWritableStore::update(llong id, fstring row, DbContext* ctx0) {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
@@ -274,7 +274,7 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 //	FEBIRD_RT_assert(NULL != ctx, std::invalid_argument);
 #if 1
 	fstring emptyValue("");
-	replace(id, emptyValue, ctx0);
+	update(id, emptyValue, ctx0);
 #else
 	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
