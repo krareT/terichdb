@@ -12,5 +12,5 @@ TerarkDB, an open source database based on terark storage engine.
 
 
 ## Documentation
-- User Guide([中文]() | [英文]())
-- API Reference([中文]() | [英文]())
+- User Guide([中文]() | [English]())
+- API Reference([中文]() | [English]())
