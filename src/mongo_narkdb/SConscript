@@ -5,26 +5,26 @@ nkEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
 nkEnv.InjectThirdPartyIncludePaths(libraries=['zlib'])
 nkEnv.InjectThirdPartyIncludePaths(libraries=['valgrind'])
 
-narkLib = ''
+terarkLib = ''
 if GetOption('dbg') == 'on':
-    narkLib = ['nark-NarkDB-d', 'nark-d']
+    terarkLib = ['terark-NarkDB-d', 'nark-d']
 else:
-    narkLib = ['nark-NarkDB-r', 'nark-r']
+    terarkLib = ['terark-NarkDB-r', 'nark-r']
 
 nkEnv.Library(
-	target='storage_narkdb',
+	target='storage_terarkdb',
 	source= [
-        'narkdb_customization_hooks.cpp',
-		'narkdb_global_options.cpp',
-		'narkdb_init.cpp',
-		'narkdb_index.cpp',
-		'narkdb_kv_engine.cpp',
-		'narkdb_record_store.cpp',
-		'narkdb_recovery_unit.cpp',
-		'narkdb_size_storer.cpp',
-		'narkdb_server_status.cpp',
-		'narkdb_recovery_unit.cpp',
-		'narkdb_parameters.cpp',
+        'terarkdb_customization_hooks.cpp',
+		'terarkdb_global_options.cpp',
+		'terarkdb_init.cpp',
+		'terarkdb_index.cpp',
+		'terarkdb_kv_engine.cpp',
+		'terarkdb_record_store.cpp',
+		'terarkdb_recovery_unit.cpp',
+		'terarkdb_size_storer.cpp',
+		'terarkdb_server_status.cpp',
+		'terarkdb_recovery_unit.cpp',
+		'terarkdb_parameters.cpp',
 		'record_codec.cpp',
 		],
 	LIBDEPS= [
@@ -51,6 +51,6 @@ nkEnv.Library(
 		],
     LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/serveronly'],
 
-	SYSLIBDEPS= narkLib
+	SYSLIBDEPS= terarkLib
 	)
 
