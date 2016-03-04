@@ -59,6 +59,20 @@ public:
 	llong updateRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
 
+	void updateColumn(llong recordId, size_t columnId, fstring newColumnData);
+	void updateColumn(llong recordId, fstring colname, fstring newColumnData);
+
+	void updateColumnInteger(llong recordId, size_t columnId, const std::function<bool(llong&val)>&);
+	void updateColumnInteger(llong recordId, fstring colname, const std::function<bool(llong&val)>&);
+	void updateColumnDouble(llong recordId, size_t columnId, const std::function<bool(double&val)>&);
+	void updateColumnDouble(llong recordId, fstring colname, const std::function<bool(double&val)>&);
+
+	void incrementColumnValue(llong recordId, size_t columnId, llong incVal);
+	void incrementColumnValue(llong recordId, fstring columnName, llong incVal);
+
+	void incrementColumnValue(llong recordId, size_t columnId, double incVal);
+	void incrementColumnValue(llong recordId, fstring colname, double incVal);
+
 	const Schema& rowSchema() const { return *m_schema->m_rowSchema; }
 	const Schema& getIndexSchema(size_t indexId) const {
 		assert(indexId < m_schema->getIndexNum());

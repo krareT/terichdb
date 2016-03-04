@@ -575,6 +575,9 @@ void MockWritableStore::remove(llong id, DbContext*) {
 void MockWritableStore::clear() {
 	m_rows.clear();
 }
+AppendableStore* MockWritableStore::getAppendableStore() { return this; }
+UpdatableStore* MockWritableStore::getUpdatableStore() { return this; }
+WritableStore* MockWritableStore::getWritableStore() { return this; }
 
 //////////////////////////////////////////////////////////////////
 

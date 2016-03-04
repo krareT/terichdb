@@ -84,6 +84,10 @@ public:
 	void  remove(llong id, DbContext*) override;
 
 	void clear() override;
+
+	AppendableStore* getAppendableStore() override;
+	UpdatableStore* getUpdatableStore() override;
+	WritableStore* getWritableStore() override;
 };
 typedef boost::intrusive_ptr<MockWritableStore> MockWritableStorePtr;
 

@@ -1301,9 +1301,9 @@ void WritableSegment::pushIsDel(bool val) {
 	((uint64_t*)m_isDelMmap)[0] = m_isDel.size();
 }
 
-WritableStore* WritableSegment::getWritableStore() {
-	return this;
-}
+AppendableStore* WritableSegment::getAppendableStore() { return this; }
+UpdatableStore* WritableSegment::getUpdatableStore() { return this; }
+WritableStore* WritableSegment::getWritableStore() { return this; }
 
 void WritableSegment::selectColumns(llong recId,
 									const size_t* colsId, size_t colsNum,

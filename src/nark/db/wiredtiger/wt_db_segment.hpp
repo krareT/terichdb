@@ -38,8 +38,6 @@ public:
 
 	void clear() override;
 
-	WritableStore* getWritableStore() override;
-
 	void save(PathRef path) const override;
 	void load(PathRef path) override;
 

@@ -47,6 +47,7 @@ public:
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
+class NARK_DB_DLL AppendableStore;
 class NARK_DB_DLL UpdatableStore;
 class NARK_DB_DLL WritableStore;
 class NARK_DB_DLL ReadableIndex;
@@ -72,6 +73,7 @@ public:
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
 	virtual ReadableIndex* getReadableIndex();
+	virtual AppendableStore* getAppendableStore();
 	virtual UpdatableStore* getUpdatableStore();
 
 	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {
@@ -83,20 +85,25 @@ public:
 	StoreIterator* createDefaultStoreIterBackward(DbContext*) const;
 };
 
+class NARK_DB_DLL AppendableStore {
+public:
+	virtual ~AppendableStore();
+	virtual llong append(fstring row, DbContext*) = 0;
+};
+
 class NARK_DB_DLL UpdatableStore {
 public:
 	virtual ~UpdatableStore();
 	virtual void update(llong id, fstring row, DbContext*) = 0;
+	virtual byte* getRawDataBasePtr();
 };
 
-class NARK_DB_DLL WritableStore : public UpdatableStore {
+class NARK_DB_DLL WritableStore : public AppendableStore, public UpdatableStore {
 public:
 	virtual ~WritableStore();
-	virtual llong append(fstring row, DbContext*) = 0;
-	virtual void  remove(llong id, DbContext*) = 0;
-	virtual void  clear() = 0;
+	virtual void remove(llong id, DbContext*) = 0;
+	virtual void clear() = 0;
 };
-//typedef boost::intrusive_ptr<WritableStore> WritableStorePtr;
 
 class NARK_DB_DLL MultiPartStore : public ReadableStore {
 	class MyStoreIterForward;	friend class MyStoreIterForward;

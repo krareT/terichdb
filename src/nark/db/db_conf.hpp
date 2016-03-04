@@ -81,6 +81,8 @@ namespace nark { namespace db {
 
 	struct NARK_DB_DLL ColumnMeta {
 		uint32_t fixedLen;
+		uint32_t fixedOffset;
+		uint32_t reserved0;
 	//	static_bitmap<16, uint16_t> flags;
 		unsigned char reserved1;
 		unsigned char reserved2;
@@ -170,6 +172,7 @@ namespace nark { namespace db {
 		bool   m_canEncodeToLexByteComparable  : 1;
 		bool   m_useFastZip : 1;
 		bool   m_dictZipLocalMatch : 1;
+		bool   m_isInplaceUpdatable: 1;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
 		// used for ordered index, m_indexOrder.is1(i) means i'th column

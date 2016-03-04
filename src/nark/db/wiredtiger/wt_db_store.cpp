@@ -300,8 +300,8 @@ void WtWritableStore::clear() {
 	m_wtSession->truncate(m_wtSession, g_dataStoreUri, NULL, NULL, NULL);
 }
 
-WritableStore* WtWritableStore::getWritableStore() {
-	return this;
-}
+AppendableStore* WtWritableStore::getAppendableStore() { return this; }
+UpdatableStore* WtWritableStore::getUpdatableStore() { return this; }
+WritableStore* WtWritableStore::getWritableStore() { return this; }
 
 }}} // namespace nark::db::wt

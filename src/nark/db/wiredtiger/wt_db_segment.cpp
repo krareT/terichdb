@@ -123,10 +123,6 @@ void WtWritableSegment::clear() {
 	m_wrRowStore->clear();
 }
 
-WritableStore* WtWritableSegment::getWritableStore() {
-	return this;
-}
-
 void WtWritableSegment::save(PathRef path) const {
 	m_wtConn->async_flush(m_wtConn);
 	WritableSegment::save(path);

@@ -1060,6 +1060,172 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 	return true;
 }
 
+///! Can inplace update column in ReadonlySegment
+void CompositeTable::updateColumn(llong recordId, size_t columnId, fstring newColumnData) {
+#include "update_column_impl.hpp"
+	if (newColumnData.size() != rowSchema.getColumnMeta(columnId).fixedLen) {
+		THROW_STD(invalid_argument
+			, "Invalid column(id=%zd, name=%s) which columnType=%s fixedLen=%zd newLen=%zd"
+			, columnId, rowSchema.getColumnName(columnId).c_str()
+			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
+			, size_t(rowSchema.getColumnMeta(columnId).fixedLen)
+			, newColumnData.size()
+			);
+	}
+	if (cgSchema.columnNum() == 1) {
+		updatable->update(physicId, newColumnData, NULL);
+	}
+	else {
+		byte* rawDataBasePtr = updatable->getRawDataBasePtr();
+		assert(nullptr != rawDataBasePtr);
+		size_t cgLen   = cgSchema.getFixedRowLen();
+		size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
+		byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
+		memcpy(coldata, newColumnData.data(), newColumnData.size());
+	}
+}
+
+void CompositeTable::updateColumn(llong recordId, fstring colname, fstring newColumnData) {
+	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
+	if (columnId >= m_schema->columnNum()) {
+		THROW_STD(invalid_argument, "colname = %.*s is not existed"
+			, colname.ilen(), colname.data());
+	}
+	updateColumn(recordId, columnId, newColumnData);
+}
+
+namespace {
+	template<class WireType, class LlongOrFloat, class OP>
+	bool updateValueByOp(byte& byteRef, const OP& op) {
+		LlongOrFloat val = reinterpret_cast<WireType&>(byteRef);
+		if (op(val)) {
+			reinterpret_cast<WireType&>(byteRef) = val;
+			return true;
+		}
+		return false;
+	}
+}
+
+void CompositeTable::updateColumnInteger(llong recordId, size_t columnId, const std::function<bool(llong&val)>& op) {
+#include "update_column_impl.hpp"
+	byte* rawDataBasePtr = updatable->getRawDataBasePtr();
+	assert(nullptr != rawDataBasePtr);
+	size_t cgLen   = cgSchema.getFixedRowLen();
+	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
+	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
+	switch (rowSchema.getColumnType(columnId)) {
+	case ColumnType::Uint08:  updateValueByOp<uint8_t , llong>(*coldata, op); break;
+	case ColumnType::Sint08:  updateValueByOp< int8_t , llong>(*coldata, op); break;
+	case ColumnType::Uint16:  updateValueByOp<uint16_t, llong>(*coldata, op); break;
+	case ColumnType::Sint16:  updateValueByOp< int16_t, llong>(*coldata, op); break;
+	case ColumnType::Uint32:  updateValueByOp<uint32_t, llong>(*coldata, op); break;
+	case ColumnType::Sint32:  updateValueByOp< int32_t, llong>(*coldata, op); break;
+	case ColumnType::Uint64:  updateValueByOp<uint64_t, llong>(*coldata, op); break;
+	case ColumnType::Sint64:  updateValueByOp< int64_t, llong>(*coldata, op); break;
+	case ColumnType::Float32: updateValueByOp<   float, llong>(*coldata, op); break;
+	case ColumnType::Float64: updateValueByOp<  double, llong>(*coldata, op); break;
+	}
+}
+
+void CompositeTable::updateColumnInteger(llong recordId, fstring colname, const std::function<bool(llong&val)>& op) {
+	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
+	if (columnId >= m_schema->columnNum()) {
+		THROW_STD(invalid_argument, "colname = %.*s is not existed"
+			, colname.ilen(), colname.data());
+	}
+	updateColumnInteger(recordId, colname, op);
+}
+
+void CompositeTable::updateColumnDouble(llong recordId, size_t columnId, const std::function<bool(double&val)>& op) {
+#include "update_column_impl.hpp"
+	byte* rawDataBasePtr = updatable->getRawDataBasePtr();
+	assert(nullptr != rawDataBasePtr);
+	size_t cgLen   = cgSchema.getFixedRowLen();
+	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
+	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
+	switch (rowSchema.getColumnType(columnId)) {
+	case ColumnType::Uint08:  updateValueByOp<uint8_t , double>(*coldata, op); break;
+	case ColumnType::Sint08:  updateValueByOp< int8_t , double>(*coldata, op); break;
+	case ColumnType::Uint16:  updateValueByOp<uint16_t, double>(*coldata, op); break;
+	case ColumnType::Sint16:  updateValueByOp< int16_t, double>(*coldata, op); break;
+	case ColumnType::Uint32:  updateValueByOp<uint32_t, double>(*coldata, op); break;
+	case ColumnType::Sint32:  updateValueByOp< int32_t, double>(*coldata, op); break;
+	case ColumnType::Uint64:  updateValueByOp<uint64_t, double>(*coldata, op); break;
+	case ColumnType::Sint64:  updateValueByOp< int64_t, double>(*coldata, op); break;
+	case ColumnType::Float32: updateValueByOp<   float, double>(*coldata, op); break;
+	case ColumnType::Float64: updateValueByOp<  double, double>(*coldata, op); break;
+	}
+}
+
+void CompositeTable::updateColumnDouble(llong recordId, fstring colname, const std::function<bool(double&val)>& op) {
+	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
+	if (columnId >= m_schema->columnNum()) {
+		THROW_STD(invalid_argument, "colname = %.*s is not existed"
+			, colname.ilen(), colname.data());
+	}
+	updateColumnDouble(recordId, colname, op);
+}
+
+void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, llong incVal) {
+#include "update_column_impl.hpp"
+	byte* rawDataBasePtr = updatable->getRawDataBasePtr();
+	assert(nullptr != rawDataBasePtr);
+	size_t cgLen   = cgSchema.getFixedRowLen();
+	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
+	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
+	switch (rowSchema.getColumnType(columnId)) {
+	case ColumnType::Uint08:
+	case ColumnType::Sint08: *(int8_t*)coldata += incVal; break;
+	case ColumnType::Uint16:
+	case ColumnType::Sint16: *(int16_t*)coldata += incVal; break;
+	case ColumnType::Uint32:
+	case ColumnType::Sint32: *(int32_t*)coldata += incVal; break;
+	case ColumnType::Uint64:
+	case ColumnType::Sint64: *(int64_t*)coldata += incVal; break;
+	case ColumnType::Float32: *(float *)coldata += incVal; break;
+	case ColumnType::Float64: *(double*)coldata += incVal; break;
+	}
+}
+
+void CompositeTable::incrementColumnValue(llong recordId, fstring colname, llong incVal) {
+	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
+	if (columnId >= m_schema->columnNum()) {
+		THROW_STD(invalid_argument, "colname = %.*s is not existed"
+			, colname.ilen(), colname.data());
+	}
+	incrementColumnValue(recordId, colname, incVal);
+}
+
+void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, double incVal) {
+#include "update_column_impl.hpp"
+	byte* rawDataBasePtr = updatable->getRawDataBasePtr();
+	assert(nullptr != rawDataBasePtr);
+	size_t cgLen   = cgSchema.getFixedRowLen();
+	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
+	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
+	switch (rowSchema.getColumnType(columnId)) {
+	case ColumnType::Uint08:
+	case ColumnType::Sint08: *(int8_t*)coldata += incVal; break;
+	case ColumnType::Uint16:
+	case ColumnType::Sint16: *(int16_t*)coldata += incVal; break;
+	case ColumnType::Uint32:
+	case ColumnType::Sint32: *(int32_t*)coldata += incVal; break;
+	case ColumnType::Uint64:
+	case ColumnType::Sint64: *(int64_t*)coldata += incVal; break;
+	case ColumnType::Float32: *(float *)coldata += incVal; break;
+	case ColumnType::Float64: *(double*)coldata += incVal; break;
+	}
+}
+
+void CompositeTable::incrementColumnValue(llong recordId, fstring colname, double incVal) {
+	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
+	if (columnId >= m_schema->columnNum()) {
+		THROW_STD(invalid_argument, "colname = %.*s is not existed"
+			, colname.ilen(), colname.data());
+	}
+	incrementColumnValue(recordId, colname, incVal);
+}
+
 bool
 CompositeTable::indexKeyExists(size_t indexId, fstring key, DbContext* ctx)
 const {

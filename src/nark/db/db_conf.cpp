@@ -15,6 +15,8 @@ namespace nark { namespace db {
 
 ColumnMeta::ColumnMeta() {
 	fixedLen = 0;
+	fixedOffset = UINT32_MAX;
+	reserved0 = 0;
 	reserved1 = 0;
 	reserved2 = 0;
 	type = ColumnType::Any;
@@ -118,6 +120,7 @@ Schema::Schema() {
 	m_needEncodeToLexByteComparable = false;
 	m_useFastZip = false;
 	m_dictZipLocalMatch = true;
+	m_isInplaceUpdatable = false;
 	m_keepCols.fill(true);
 	m_minFragLen = 0;
 	m_maxFragLen = 0;

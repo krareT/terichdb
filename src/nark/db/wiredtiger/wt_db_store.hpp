@@ -42,6 +42,8 @@ public:
 
 	void clear() override;
 
+	AppendableStore* getAppendableStore() override;
+	UpdatableStore* getUpdatableStore() override;
 	WritableStore* getWritableStore() override;
 };
 typedef boost::intrusive_ptr<WtWritableStore> WtWritableStorePtr;

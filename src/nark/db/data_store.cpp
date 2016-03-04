@@ -73,6 +73,10 @@ ReadableIndex* ReadableStore::getReadableIndex() {
 	return nullptr;
 }
 
+AppendableStore* ReadableStore::getAppendableStore() {
+	return nullptr;
+}
+
 UpdatableStore* ReadableStore::getUpdatableStore() {
 	return nullptr;
 }
@@ -153,7 +157,16 @@ ReadableStore::createDefaultStoreIterBackward(DbContext* ctx) const {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+AppendableStore::~AppendableStore() {
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 UpdatableStore::~UpdatableStore() {
+}
+
+byte* UpdatableStore::getRawDataBasePtr() {
+	return NULL;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

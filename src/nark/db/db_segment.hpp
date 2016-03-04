@@ -53,6 +53,7 @@ public:
 
 	SchemaConfigPtr         m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
+	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
 	size_t      m_delcnt;
 	febitvec    m_isDel;
 	byte*       m_isDelMmap = nullptr;
@@ -148,7 +149,6 @@ protected:
 	llong  m_dataInflateSize;
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
-	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
@@ -161,6 +161,8 @@ public:
 
 	void pushIsDel(bool val);
 
+	AppendableStore* getAppendableStore() override;
+	UpdatableStore* getUpdatableStore() override;
 	WritableStore* getWritableStore() override;
 
 	// Index can use different implementation for different
