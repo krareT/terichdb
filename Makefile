@@ -168,20 +168,25 @@ ifeq (, ${prefix})
 	endif
 endif
 
-#$(warning prefix=${prefix} BDB_HOME=${BDB_HOME}: LIBS=${LIBS})
-
-#obsoleted_src =  \
-#	$(wildcard src/obsoleted/nark/thread/*.cpp) \
-#	$(wildcard src/obsoleted/nark/thread/posix/*.cpp) \
-#	$(wildcard src/obsoleted/wordseg/*.cpp)
-#LIBS += -liconv
-
 TerarkDB_src := $(wildcard src/terark/db/*.cpp)
 TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 
 ifeq (1,${WITH_DFA_DB})
-TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
-override INCS += -I../nark/src
+  TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
+  override INCS += -I../nark/src
+  TerarkDB_lib := libTerarkDB
+else
+  zip_src := \
+    src/nark/io/BzipStream.cpp \
+	src/nark/io/GzipStream.cpp
+  TerarkDB_src += $(wildcard src/nark/*.cpp)
+  TerarkDB_src += $(wildcard src/nark/io/*.cpp)
+  TerarkDB_src += $(wildcard src/nark/util/*.cpp)
+  TerarkDB_src += $(wildcard src/nark/thread/*.cpp)
+  TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
+  TerarkDB_lib := libTerarkDB-no-zip
+  LIB_NARK_D := -L../nark/lib -lnark-${COMPILER}-d
+  LIB_NARK_R := -L../nark/lib -lnark-${COMPILER}-r
 endif
 
 #function definition
@@ -191,10 +196,10 @@ objs = $(addprefix ${${2}dir}/, $(addsuffix .o, $(basename ${${1}_src})))
 
 TerarkDB_d_o := $(call objs,TerarkDB,d)
 TerarkDB_r_o := $(call objs,TerarkDB,r)
-TerarkDB_d := lib/libTerarkDB-${COMPILER}-d${DLL_SUFFIX}
-TerarkDB_r := lib/libTerarkDB-${COMPILER}-r${DLL_SUFFIX}
-static_TerarkDB_d := lib/libTerarkDB-${COMPILER}-d.a
-static_TerarkDB_r := lib/libTerarkDB-${COMPILER}-r.a
+TerarkDB_d := lib/${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX}
+TerarkDB_r := lib/${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_TerarkDB_d := lib/${TerarkDB_lib}-${COMPILER}-d.a
+static_TerarkDB_r := lib/${TerarkDB_lib}-${COMPILER}-r.a
 
 ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} TerarkDB
 DBG_TARGETS = ${MAYBE_DBB_DBG} ${TerarkDB_d}
@@ -218,9 +223,9 @@ ifneq (${UNAME_System},Darwin)
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lrt
 endif
 
-#${TerarkDB_d} : LIBS += -L../nark/lib -lnark-${COMPILER}-d -ltbb_debug
-${TerarkDB_d} : LIBS += -L../nark/lib -lnark-${COMPILER}-d -ltbb
-${TerarkDB_r} : LIBS += -L../nark/lib -lnark-${COMPILER}-r -ltbb
+#${TerarkDB_d} : LIBS += ${LIB_NARK_D} -ltbb_debug
+${TerarkDB_d} : LIBS += ${LIB_NARK_D} -ltbb
+${TerarkDB_r} : LIBS += ${LIB_NARK_R} -ltbb
 
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 
@@ -229,17 +234,17 @@ ${TerarkDB_r} : $(call objs,TerarkDB,r)
 ${static_TerarkDB_d} : $(call objs,TerarkDB,d)
 ${static_TerarkDB_r} : $(call objs,TerarkDB,r)
 
-TarBall := pkg/narkdb-${UNAME_MachineSystem}-${COMPILER}
+TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}
 .PHONY : pkg
 pkg: ${TerarkDB_d} ${TerarkDB_r}
 	rm -rf ${TarBall}
 	mkdir -p ${TarBall}/lib
 ifeq (${PKG_WITH_DBG},1)
 	cp    ${TerarkDB_d} ${TarBall}/lib
-	ln -s libTerarkDB-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/libTerarkDB-d${DLL_SUFFIX}
+	ln -s ${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/${TerarkDB_lib}-d${DLL_SUFFIX}
 endif
 	cp    ${TerarkDB_r} ${TarBall}/lib
-	ln -s libTerarkDB-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/libTerarkDB-r${DLL_SUFFIX}
+	ln -s ${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/${TerarkDB_lib}-r${DLL_SUFFIX}
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
 	tar czf ${TarBall}.tgz ${TarBall}
@@ -277,7 +282,7 @@ install : TerarkDB
 
 .PHONY : clean
 clean:
-	-rm -rf lib/libnark* ${BUILD_ROOT} ${PRECOMPILED_HEADER_GCH}
+	-rm -rf lib ${BUILD_ROOT} ${PRECOMPILED_HEADER_GCH}
 
 .PHONY : depends
 depends : ${alldep}
