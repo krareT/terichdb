@@ -25,16 +25,16 @@
     <Filter Include="Source Files\nark\db">
       <UniqueIdentifier>{63670d04-8922-42d1-af12-dee2f8216179}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\nark\db\dfadb">
+    <Filter Include="Header Files\terark\db\dfadb">
       <UniqueIdentifier>{1d57f46c-a5d8-4e33-bcbd-0e7672f538d4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\nark\db\dfadb">
+    <Filter Include="Source Files\terark\db\dfadb">
       <UniqueIdentifier>{b3e152ed-9c13-4179-a49d-def608127e08}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\nark\db\wiredtiger">
+    <Filter Include="Source Files\terark\db\wiredtiger">
       <UniqueIdentifier>{049bcc4e-ec4b-4eda-8574-9254215d2fc2}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\nark\db\wiredtiger">
+    <Filter Include="Header Files\terark\db\wiredtiger">
       <UniqueIdentifier>{9ccc3533-34cb-4a28-ac27-33b20ca154f4}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\nlohmann">
@@ -51,77 +51,77 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\db_index.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\db_index.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\db_store.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\db_store.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\db_conf.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\db_conf.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\db_table.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\db_table.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\mock_db_engine.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\mock_db_engine.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\record_data.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\record_data.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\seg_db.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\seg_db.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\db_segment.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\db_segment.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\seq_num_index.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\seq_num_index.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\json.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\json.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\db_context.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\db_context.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\dfadb\nlt_index.hpp">
-      <Filter>Header Files\nark\db\dfadb</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_index.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\dfadb\nlt_store.hpp">
-      <Filter>Header Files\nark\db\dfadb</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_store.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\dfadb\dfadb_segment.hpp">
-      <Filter>Header Files\nark\db\dfadb</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_segment.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\intkey_index.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\intkey_index.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\dfadb\dfadb_table.hpp">
-      <Filter>Header Files\nark\db\dfadb</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_table.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\wiredtiger\wt_db_index.hpp">
-      <Filter>Header Files\nark\db\wiredtiger</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\wiredtiger\wt_db_store.hpp">
-      <Filter>Header Files\nark\db\wiredtiger</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\nlohmann\json.hpp">
       <Filter>Header Files\nlohmann</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\zip_int_store.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\zip_int_store.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\fixed_len_key_index.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\fixed_len_key_index.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\fixed_len_store.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\fixed_len_store.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\wiredtiger\wt_db_context.hpp">
-      <Filter>Header Files\nark\db\wiredtiger</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\wiredtiger\wt_db_segment.hpp">
-      <Filter>Header Files\nark\db\wiredtiger</Filter>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -131,65 +131,65 @@
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\db_index.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\db_index.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\db_store.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\db_store.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\db_conf.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\db_conf.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\db_table.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\db_table.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\mock_db_engine.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\mock_db_engine.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\db_segment.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\db_segment.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\seq_num_index.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\seq_num_index.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\db_context.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\db_context.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\dfadb\nlt_index.cpp">
-      <Filter>Source Files\nark\db\dfadb</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_index.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\dfadb\nlt_store.cpp">
-      <Filter>Source Files\nark\db\dfadb</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_store.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\dfadb\dfadb_segment.cpp">
-      <Filter>Source Files\nark\db\dfadb</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_segment.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\intkey_index.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\intkey_index.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\dfadb\dfadb_table.cpp">
-      <Filter>Source Files\nark\db\dfadb</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_table.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_index.cpp">
-      <Filter>Source Files\nark\db\wiredtiger</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_store.cpp">
-      <Filter>Source Files\nark\db\wiredtiger</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\zip_int_store.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\zip_int_store.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\fixed_len_key_index.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\fixed_len_key_index.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\fixed_len_store.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\fixed_len_store.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_context.cpp">
-      <Filter>Source Files\nark\db\wiredtiger</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\wiredtiger\wt_db_segment.cpp">
-      <Filter>Source Files\nark\db\wiredtiger</Filter>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
