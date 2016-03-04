@@ -31,9 +31,9 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
-#include "narkdb_size_storer.h"
+#include "terarkdb_size_storer.h"
 
-#include <nark/db/db_table.hpp>
+#include <terark/db/db_table.hpp>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
@@ -47,9 +47,9 @@
 #include <nark/io/MemStream.hpp>
 #include <nark/io/StreamBuffer.hpp>
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
-using namespace nark;
+using namespace terark;
 
 using std::string;
 
@@ -123,7 +123,7 @@ void NarkDbSizeStorer::fillCache() {
 }
 
 void NarkDbSizeStorer::syncCache(bool syncToDisk) {
-	using namespace nark;
+	using namespace terark;
 	NativeDataOutput<AutoGrownMemIO> buf;
 	{
 		stdx::lock_guard<stdx::mutex> lk(m_mutex);

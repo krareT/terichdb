@@ -1,4 +1,4 @@
-// narkdb_record_store_mock.cpp
+// terarkdb_record_store_mock.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -35,10 +35,10 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_noop.h"
-#include "narkdb_kv_engine.h"
+#include "terarkdb_kv_engine.h"
 #include "mongo/stdx/memory.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 // static
 bool NarkDbKVEngine::initRsOplogBackgroundThread(StringData ns) {
@@ -49,4 +49,4 @@ MONGO_INITIALIZER(SetGlobalEnvironment)(InitializerContext* context) {
     setGlobalServiceContext(stdx::make_unique<ServiceContextNoop>());
     return Status::OK();
 }
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

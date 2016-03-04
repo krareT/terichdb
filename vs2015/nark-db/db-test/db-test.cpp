@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include <nark/db/db_table.hpp>
+#include <terark/db/db_table.hpp>
 #include <nark/io/MemStream.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/io/RangeStream.hpp>

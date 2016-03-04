@@ -2,7 +2,7 @@
 #include <nark/util/autoclose.hpp>
 #include <nark/util/linebuf.hpp>
 #include <nark/util/profiling.hpp>
-#include <nark/db/db_table.hpp>
+#include <terark/db/db_table.hpp>
 #include <getopt.h>
 
 void usage(const char* prog) {

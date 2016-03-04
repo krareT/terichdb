@@ -32,14 +32,14 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/base/checked_cast.h"
-#include "narkdb_record_store.h"
-#include "narkdb_recovery_unit.h"
-#include "narkdb_session_cache.h"
-#include "narkdb_snapshot_manager.h"
+#include "terarkdb_record_store.h"
+#include "terarkdb_recovery_unit.h"
+#include "terarkdb_session_cache.h"
+#include "terarkdb_snapshot_manager.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 Status NarkDbSnapshotManager::prepareForCreateSnapshot(OperationContext* txn) {
     NarkDbRecoveryUnit::get(txn)->prepareForCreateSnapshot(txn);
@@ -105,4 +105,4 @@ SnapshotName NarkDbSnapshotManager::beginTransactionOnCommittedSnapshot(
     return *_committedSnapshot;
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

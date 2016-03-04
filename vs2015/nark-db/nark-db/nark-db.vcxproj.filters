@@ -51,10 +51,10 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\data_index.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\db_index.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\nark\db\data_store.hpp">
+    <ClInclude Include="..\..\..\src\nark\db\db_store.hpp">
       <Filter>Header Files\nark\db</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\nark\db\db_conf.hpp">
@@ -131,10 +131,10 @@
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\data_index.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\db_index.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\nark\db\data_store.cpp">
+    <ClCompile Include="..\..\..\src\nark\db\db_store.cpp">
       <Filter>Source Files\nark\db</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\nark\db\db_conf.cpp">

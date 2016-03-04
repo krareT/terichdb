@@ -1,4 +1,4 @@
-// narkdb_record_store_test.cpp
+// terarkdb_record_store_test.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -40,15 +40,15 @@
 #include "mongo/db/json.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/record_store_test_harness.h"
-#include "narkdb_recovery_unit.h"
-#include "narkdb_record_store.h"
-#include "narkdb_record_store_oplog_stones.h"
-#include "narkdb_session_cache.h"
-#include "narkdb_size_storer.h"
+#include "terarkdb_recovery_unit.h"
+#include "terarkdb_record_store.h"
+#include "terarkdb_record_store_oplog_stones.h"
+#include "terarkdb_session_cache.h"
+#include "terarkdb_size_storer.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 using std::unique_ptr;
 using std::string;
@@ -64,7 +64,7 @@ public:
         ss << "statistics=(all),";
         ss << extraStrings;
         string config = ss.str();
-        int ret = narkdb_open(dbpath.toString().c_str(), NULL, config.c_str(), &conn);
+        int ret = terarkdb_open(dbpath.toString().c_str(), NULL, config.c_str(), &conn);
         ASSERT_OK(narkDbRCToStatus(ret));
         ASSERT(conn);
 
@@ -1442,4 +1442,4 @@ TEST(NarkDbRecordStoreTest, OplogStones_AscendingOrder) {
     }
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

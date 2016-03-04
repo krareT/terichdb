@@ -1,4 +1,4 @@
-// narkdb_kv_engine.cpp
+// terarkdb_kv_engine.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -40,8 +40,8 @@
 #pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
 #endif
 
-#include "narkdb_kv_engine.h"
-#include <nark/db/dfadb/dfadb_table.hpp>
+#include "terarkdb_kv_engine.h"
+#include <terark/db/dfadb/dfadb_table.hpp>
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -54,14 +54,14 @@
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/service_context.h"
-#include "narkdb_customization_hooks.h"
-#include "narkdb_global_options.h"
-#include "narkdb_index.h"
-#include "narkdb_record_store.h"
-#include "narkdb_record_store_capped.h"
-#include "narkdb_recovery_unit.h"
-//#include "narkdb_session_cache.h"
-#include "narkdb_size_storer.h"
+#include "terarkdb_customization_hooks.h"
+#include "terarkdb_global_options.h"
+#include "terarkdb_index.h"
+#include "terarkdb_record_store.h"
+#include "terarkdb_record_store_capped.h"
+#include "terarkdb_recovery_unit.h"
+//#include "terarkdb_session_cache.h"
+#include "terarkdb_size_storer.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/util/log.h"
 #include "mongo/util/background.h"
@@ -78,7 +78,7 @@
 #define __has_feature(x) 0
 #endif
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 using std::set;
 using std::string;
@@ -111,7 +111,7 @@ NarkDbKVEngine::NarkDbKVEngine(const std::string& path,
 
     _previousCheckedDropsQueued = Date_t::now();
 /*
-    log() << "narkdb_open : " << path;
+    log() << "terarkdb_open : " << path;
     for (auto& tabDir : fs::directory_iterator(m_pathNark / "tables")) {
     //	std::string strTabDir = tabDir.path().string();
     	// CompositeTablePtr tab = CompositeTable::createTable(g_narkTableClass);

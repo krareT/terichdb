@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include <nark/db/json.hpp>
+#include <terark/db/json.hpp>
 #include <nark/lcast.hpp>
 #include <boost/filesystem.hpp>
 
@@ -16,7 +16,7 @@ int main()
 //	using nlohmann::json;
 //	using nlohmann::_json;
 //	using namespace nlohmann;
-	using nark::json;
+	using terark::json;
 	std::string str = "{ ";
 	for (int i = 0; i < 20; ++i) {
 		char buf[64];

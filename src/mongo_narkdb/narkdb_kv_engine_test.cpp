@@ -1,4 +1,4 @@
-// narkdb_kv_engine_test.cpp
+// terarkdb_kv_engine_test.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -31,11 +31,11 @@
 
 #include "mongo/db/storage/kv/kv_engine_test_harness.h"
 
-#include "narkdb_kv_engine.h"
-#include "narkdb_record_store.h"
+#include "terarkdb_kv_engine.h"
+#include "terarkdb_record_store.h"
 #include "mongo/unittest/temp_dir.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 class NarkDbKVHarnessHelper : public KVHarnessHelper {
 public:

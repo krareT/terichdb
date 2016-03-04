@@ -1,4 +1,4 @@
-// narkdb_index_test.cpp
+// terarkdb_index_test.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -37,15 +37,15 @@
 #include "mongo/db/json.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/sorted_data_interface_test_harness.h"
-#include "narkdb_index.h"
-#include "narkdb_record_store.h"
-#include "narkdb_recovery_unit.h"
-#include "narkdb_session_cache.h"
+#include "terarkdb_index.h"
+#include "terarkdb_record_store.h"
+#include "terarkdb_recovery_unit.h"
+#include "terarkdb_session_cache.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 using std::string;
 
@@ -53,7 +53,7 @@ class MyHarnessHelper final : public HarnessHelper {
 public:
     MyHarnessHelper() : _dbpath("wt_test"), _conn(NULL) {
         const char* config = "create,cache_size=1G,";
-        int ret = narkdb_open(_dbpath.path().c_str(), NULL, config, &_conn);
+        int ret = terarkdb_open(_dbpath.path().c_str(), NULL, config, &_conn);
         invariantNarkDbOK(ret);
 
         _sessionCache = new NarkDbSessionCache(_conn);
@@ -140,4 +140,4 @@ TEST(NarkDbIndexTest, GenerateCreateStringValidConfigStringOption) {
     ASSERT_EQ(NarkDbIndex::parseIndexOptions(spec), std::string("prefix_compression=true,"));
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

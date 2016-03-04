@@ -3,7 +3,7 @@
 
 #include "stdafx.h"
 #include <mongo_narkdb/record_codec.h>
-#include <nark/db/db_table.hpp>
+#include <terark/db/db_table.hpp>
 
 int main(int argc, char* argv[])
 {

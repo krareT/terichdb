@@ -1,4 +1,4 @@
-// narkdb_record_store.cpp
+// terarkdb_record_store.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -38,9 +38,9 @@
 
 #include "mongo/platform/basic.h"
 
-#include "narkdb_record_store.h"
+#include "terarkdb_record_store.h"
 
-#include "mongo_narkdb_common.hpp"
+#include "mongo_terarkdb_common.hpp"
 
 #include "mongo/base/checked_cast.h"
 #include "mongo/bson/util/builder.h"
@@ -50,14 +50,14 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/oplog_hack.h"
-#include "narkdb_customization_hooks.h"
-#include "narkdb_global_options.h"
-//#include "narkdb_kv_engine.h"
-//#include "narkdb_record_store_oplog_stones.h"
-//#include "narkdb_recovery_unit.h"
-//#include "narkdb_session_cache.h"
-#include "narkdb_size_storer.h"
-//#include "narkdb_util.h"
+#include "terarkdb_customization_hooks.h"
+#include "terarkdb_global_options.h"
+//#include "terarkdb_kv_engine.h"
+//#include "terarkdb_record_store_oplog_stones.h"
+//#include "terarkdb_recovery_unit.h"
+//#include "terarkdb_session_cache.h"
+#include "terarkdb_size_storer.h"
+//#include "terarkdb_util.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
@@ -69,7 +69,7 @@
 //#define RS_ITERATOR_TRACE(x) log() << "NarkDbRS::Iterator " << x
 #define RS_ITERATOR_TRACE(x)
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 using std::unique_ptr;
 using std::string;
@@ -487,4 +487,4 @@ void NarkDbRecordStore::temp_cappedTruncateAfter(OperationContext* txn,
 	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, not implemented now";
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

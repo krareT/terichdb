@@ -1,4 +1,4 @@
-// narkdb_util_test.cpp
+// terarkdb_util_test.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -35,13 +35,13 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/db/operation_context_noop.h"
-#include "narkdb_recovery_unit.h"
-#include "narkdb_session_cache.h"
-#include "narkdb_util.h"
+#include "terarkdb_recovery_unit.h"
+#include "terarkdb_session_cache.h"
+#include "terarkdb_util.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 using std::string;
 using std::stringstream;
@@ -53,7 +53,7 @@ public:
         ss << "create,";
         ss << extraStrings;
         string config = ss.str();
-        int ret = narkdb_open(dbpath.toString().c_str(), NULL, config.c_str(), &_conn);
+        int ret = terarkdb_open(dbpath.toString().c_str(), NULL, config.c_str(), &_conn);
         ASSERT_OK(narkDbRCToStatus(ret));
         ASSERT(_conn);
     }
@@ -336,4 +336,4 @@ TEST(NarkDbUtilTest, GetStatisticsValueAsUInt8) {
     ASSERT_EQUALS(static_cast<uint8_t>(100), resultInt16.getValue());
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

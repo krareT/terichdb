@@ -42,15 +42,15 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/service_context.h"
-#include "narkdb_kv_engine.h"
-#include "narkdb_record_store.h"
-#include "narkdb_recovery_unit.h"
+#include "terarkdb_kv_engine.h"
+#include "terarkdb_record_store.h"
+#include "terarkdb_recovery_unit.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/background.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 namespace {
 
@@ -156,4 +156,4 @@ bool NarkDbKVEngine::initRsOplogBackgroundThread(StringData ns) {
     return true;
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

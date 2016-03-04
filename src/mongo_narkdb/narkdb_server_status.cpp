@@ -1,4 +1,4 @@
-// narkdb_server_status.cpp
+// terarkdb_server_status.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -36,19 +36,19 @@
 
 #include "mongo/platform/basic.h"
 
-#include "narkdb_server_status.h"
+#include "terarkdb_server_status.h"
 
 #include "mongo/base/checked_cast.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "narkdb_kv_engine.h"
-#include "narkdb_record_store.h"
-#include "narkdb_recovery_unit.h"
-//#include "narkdb_session_cache.h"
-//#include "narkdb_util.h"
+#include "terarkdb_kv_engine.h"
+#include "terarkdb_record_store.h"
+#include "terarkdb_recovery_unit.h"
+//#include "terarkdb_session_cache.h"
+//#include "terarkdb_util.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/scopeguard.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 using std::string;
 
@@ -69,4 +69,4 @@ NarkDbServerStatusSection::generateSection(OperationContext* txn,
     return bob.obj();
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

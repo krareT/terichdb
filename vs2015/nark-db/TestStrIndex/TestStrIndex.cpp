@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include <nark/db/dfadb/nlt_index.hpp>
+#include <terark/db/dfadb/nlt_index.hpp>
 
 int main(int argc, char* argv[])
 {

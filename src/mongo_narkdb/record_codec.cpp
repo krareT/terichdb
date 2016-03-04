@@ -14,12 +14,12 @@
 #include <nark/io/MemStream.hpp>
 #include <nark/lcast.hpp>
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 // all non-schema fields packed into this field as ColumnType::CarBin
 const char G_schemaLessFieldName[] = "$$";
 
-using namespace nark;
+using namespace terark;
 using nark::db::ColumnType;
 
 static void narkEncodeBsonArray(const BSONObj& arr, valvec<char>& encoded);
@@ -1330,5 +1330,5 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 	return SharedBuffer::takeOwnership((char*)bb.release());
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb
 

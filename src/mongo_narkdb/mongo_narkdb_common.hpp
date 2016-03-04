@@ -1,5 +1,5 @@
 /*
- * narkdb_as_wiredtiger.hpp
+ * terarkdb_as_wiredtiger.hpp
  *
  *  Created on: 2015Äê12ÔÂ1ÈÕ
  *      Author: leipeng
@@ -12,8 +12,8 @@
 #pragma warning(disable: 4800)
 #endif
 
-#include <nark/db/db_table.hpp>
-#include <nark/db/mock_db_engine.hpp>
+#include <terark/db/db_table.hpp>
+#include <terark/db/mock_db_engine.hpp>
 
 #include <mongo/db/operation_context.h>
 #include <mongo/db/record_id.h>
@@ -24,11 +24,11 @@
 #include "record_codec.h"
 #include <thread>
 
-namespace nark { namespace db {
+namespace terark { namespace db {
 
-} } // namespace nark::db
+} } // namespace terark::db
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 namespace fs = boost::filesystem;
 using nark::db::CompositeTable;

@@ -36,12 +36,12 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/base/status.h"
-#include "narkdb_global_options.h"
-#include "narkdb_record_store.h"
+#include "terarkdb_global_options.h"
+#include "terarkdb_record_store.h"
 #include "mongo/util/log.h"
 #include "mongo/util/options_parser/constraints.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 NarkDbGlobalOptions narkDbGlobalOptions;
 
@@ -161,4 +161,4 @@ Status NarkDbGlobalOptions::store(const moe::Environment& params,
     return Status::OK();
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

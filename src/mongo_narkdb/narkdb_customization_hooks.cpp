@@ -34,7 +34,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "narkdb_customization_hooks.h"
+#include "terarkdb_customization_hooks.h"
 
 #include <boost/filesystem/path.hpp>
 
@@ -44,7 +44,7 @@
 #include "mongo/db/storage/data_protector.h"
 #include "mongo/stdx/memory.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 /* Make a NarkDbCustomizationHooks pointer a decoration on the global ServiceContext */
 MONGO_INITIALIZER_WITH_PREREQUISITES(SetNarkDbCustomizationHooks, ("SetGlobalEnvironment"))
@@ -103,4 +103,4 @@ Status EmptyNarkDbCustomizationHooks::unprotectTmpData(
     return Status(ErrorCodes::InternalError,
                   "Customization hooks must be enabled to use postprocessTmpData.");
 }
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb

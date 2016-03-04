@@ -176,11 +176,11 @@ endif
 #	$(wildcard src/obsoleted/wordseg/*.cpp)
 #LIBS += -liconv
 
-NarkDB_src := $(wildcard src/nark/db/*.cpp)
-NarkDB_src += $(wildcard src/nark/db/wiredtiger/*.cpp)
+TerarkDB_src := $(wildcard src/terark/db/*.cpp)
+TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 
 ifeq (1,${WITH_DFA_DB})
-NarkDB_src += $(wildcard src/nark/db/dfadb/*.cpp)
+TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
 endif
 
 #function definition
@@ -188,24 +188,24 @@ endif
 #@param:${2} -- build type: d | r
 objs = $(addprefix ${${2}dir}/, $(addsuffix .o, $(basename ${${1}_src})))
 
-NarkDB_d_o := $(call objs,NarkDB,d)
-NarkDB_r_o := $(call objs,NarkDB,r)
-NarkDB_d := lib/libnark-NarkDB-${COMPILER}-d${DLL_SUFFIX}
-NarkDB_r := lib/libnark-NarkDB-${COMPILER}-r${DLL_SUFFIX}
-static_NarkDB_d := lib/libnark-NarkDB-${COMPILER}-d.a
-static_NarkDB_r := lib/libnark-NarkDB-${COMPILER}-r.a
+TerarkDB_d_o := $(call objs,TerarkDB,d)
+TerarkDB_r_o := $(call objs,TerarkDB,r)
+TerarkDB_d := lib/libTerarkDB-${COMPILER}-d${DLL_SUFFIX}
+TerarkDB_r := lib/libTerarkDB-${COMPILER}-r${DLL_SUFFIX}
+static_TerarkDB_d := lib/libTerarkDB-${COMPILER}-d.a
+static_TerarkDB_r := lib/libTerarkDB-${COMPILER}-r.a
 
-ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} NarkDB
-DBG_TARGETS = ${MAYBE_DBB_DBG} ${NarkDB_d}
-RLS_TARGETS = ${MAYBE_DBB_RLS} ${NarkDB_r}
+ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} TerarkDB
+DBG_TARGETS = ${MAYBE_DBB_DBG} ${TerarkDB_d}
+RLS_TARGETS = ${MAYBE_DBB_RLS} ${TerarkDB_r}
 
-.PHONY : default all NarkDB
+.PHONY : default all TerarkDB
 
-default : NarkDB
+default : TerarkDB
 all : ${ALL_TARGETS}
-NarkDB: ${NarkDB_d} ${NarkDB_r} ${static_NarkDB_d} ${static_NarkDB_r}
+TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
 
-allsrc = ${NarkDB_src}
+allsrc = ${TerarkDB_src}
 alldep = $(addprefix ${rdir}/, $(addsuffix .dep, $(basename ${allsrc}))) \
          $(addprefix ${ddir}/, $(addsuffix .dep, $(basename ${allsrc})))
 
@@ -214,30 +214,31 @@ dbg: ${DBG_TARGETS}
 rls: ${RLS_TARGETS}
 
 ifneq (${UNAME_System},Darwin)
-${NarkDB_d} ${NarkDB_r} : LIBS += -lrt
+${TerarkDB_d} ${TerarkDB_r} : LIBS += -lrt
 endif
 
-${NarkDB_d} : LIBS += -L../nark/lib -lnark-${COMPILER}-d -ltbb_debug
-${NarkDB_r} : LIBS += -L../nark/lib -lnark-${COMPILER}-r -ltbb
+#${TerarkDB_d} : LIBS += -L../nark/lib -lnark-${COMPILER}-d -ltbb_debug
+${TerarkDB_d} : LIBS += -L../nark/lib -lnark-${COMPILER}-d -ltbb
+${TerarkDB_r} : LIBS += -L../nark/lib -lnark-${COMPILER}-r -ltbb
 
-${NarkDB_d} ${NarkDB_r} : LIBS += -lpthread
+${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 
-${NarkDB_d} : $(call objs,NarkDB,d)
-${NarkDB_r} : $(call objs,NarkDB,r)
-${static_NarkDB_d} : $(call objs,NarkDB,d)
-${static_NarkDB_r} : $(call objs,NarkDB,r)
+${TerarkDB_d} : $(call objs,TerarkDB,d)
+${TerarkDB_r} : $(call objs,TerarkDB,r)
+${static_TerarkDB_d} : $(call objs,TerarkDB,d)
+${static_TerarkDB_r} : $(call objs,TerarkDB,r)
 
 TarBall := pkg/narkdb-${UNAME_MachineSystem}-${COMPILER}
 .PHONY : pkg
-pkg: ${NarkDB_d} ${NarkDB_r}
+pkg: ${TerarkDB_d} ${TerarkDB_r}
 	rm -rf ${TarBall}
 	mkdir -p ${TarBall}/lib
 ifeq (${PKG_WITH_DBG},1)
-	cp    ${NarkDB_d} ${TarBall}/lib
-	ln -s libnark-NarkDB-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/libnark-NarkDB-d${DLL_SUFFIX}
+	cp    ${TerarkDB_d} ${TarBall}/lib
+	ln -s libTerarkDB-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/libTerarkDB-d${DLL_SUFFIX}
 endif
-	cp    ${NarkDB_r} ${TarBall}/lib
-	ln -s libnark-NarkDB-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/libnark-NarkDB-r${DLL_SUFFIX}
+	cp    ${TerarkDB_r} ${TarBall}/lib
+	ln -s libTerarkDB-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/libTerarkDB-r${DLL_SUFFIX}
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
 	tar czf ${TarBall}.tgz ${TarBall}
@@ -270,7 +271,7 @@ endif
 	@${AR} rcs $@ $(filter %.o,$^)
 
 .PHONY : install
-install : NarkDB
+install : TerarkDB
 	cp lib/* ${prefix}/lib/
 
 .PHONY : clean
@@ -281,8 +282,8 @@ clean:
 depends : ${alldep}
 
 .PHONY : samples
-samples : NarkDB
-	${MAKE} -C samples/NarkDB/abstract_api
+samples : TerarkDB
+	${MAKE} -C samples/TerarkDB/abstract_api
 
 -include ${alldep}
 

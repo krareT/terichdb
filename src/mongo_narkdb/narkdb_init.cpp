@@ -45,16 +45,16 @@
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/storage_engine_lock_file.h"
 #include "mongo/db/storage/storage_engine_metadata.h"
-#include "narkdb_kv_engine.h"
-#include "narkdb_global_options.h"
-#include "narkdb_index.h"
-#include "narkdb_parameters.h"
-#include "narkdb_record_store.h"
-#include "narkdb_server_status.h"
+#include "terarkdb_kv_engine.h"
+#include "terarkdb_global_options.h"
+#include "terarkdb_index.h"
+#include "terarkdb_parameters.h"
+#include "terarkdb_record_store.h"
+#include "terarkdb_server_status.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/util/log.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 const std::string kNarkDbEngineName = "NarkSegDB";
 
@@ -108,7 +108,7 @@ public:
 
     virtual Status validateCollectionStorageOptions(const BSONObj& options) const {
 		// return NarkDbRecordStore::parseOptionsField(options).getStatus();
-		// TODO: parse narkdb schema definition
+		// TODO: parse terarkdb schema definition
 		return Status::OK();
     }
 

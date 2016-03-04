@@ -1,4 +1,4 @@
-// narkdb_options_init.cpp
+// terarkdb_options_init.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -33,9 +33,9 @@
 #include <iostream>
 
 #include "mongo/util/options_parser/startup_options.h"
-#include "narkdb_global_options.h"
+#include "terarkdb_global_options.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 MONGO_MODULE_STARTUP_OPTIONS_REGISTER(NarkDbOptions)(InitializerContext* context) {
     return narkDbGlobalOptions.add(&moe::startupOptions);

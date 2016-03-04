@@ -34,13 +34,13 @@
 
 #include "mongo/platform/basic.h"
 
-#include "narkdb_parameters.h"
+#include "terarkdb_parameters.h"
 
 #include "mongo/logger/parse_log_component_settings.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 using std::string;
 

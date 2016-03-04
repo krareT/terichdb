@@ -1,4 +1,4 @@
-// narkdb_recovery_unit.cpp
+// terarkdb_recovery_unit.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -40,9 +40,9 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/server_parameters.h"
-#include "narkdb_recovery_unit.h"
-//#include "narkdb_session_cache.h"
-//#include "narkdb_util.h"
+#include "terarkdb_recovery_unit.h"
+//#include "terarkdb_session_cache.h"
+//#include "terarkdb_util.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/concurrency/ticketholder.h"
@@ -50,7 +50,7 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/stacktrace.h"
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 
 NarkDbRecoveryUnit::NarkDbRecoveryUnit()
     :
@@ -252,7 +252,7 @@ void NarkDbRecoveryUnit::_txnClose(bool commit) {
 }
 
 SnapshotId NarkDbRecoveryUnit::getSnapshotId() const {
-    // TODO: use actual narkdb txn id
+    // TODO: use actual terarkdb txn id
     return SnapshotId(_myTransactionCount);
 }
 

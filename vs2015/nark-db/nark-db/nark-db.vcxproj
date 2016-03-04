@@ -167,8 +167,8 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\src\nark\db\data_index.hpp" />
-    <ClInclude Include="..\..\..\src\nark\db\data_store.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\db_index.hpp" />
+    <ClInclude Include="..\..\..\src\nark\db\db_store.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\db_conf.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\db_context.hpp" />
     <ClInclude Include="..\..\..\src\nark\db\db_segment.hpp" />
@@ -195,8 +195,8 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\nark\db\data_index.cpp" />
-    <ClCompile Include="..\..\..\src\nark\db\data_store.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\db_index.cpp" />
+    <ClCompile Include="..\..\..\src\nark\db\db_store.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\db_conf.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\db_context.cpp" />
     <ClCompile Include="..\..\..\src\nark\db\db_segment.cpp" />

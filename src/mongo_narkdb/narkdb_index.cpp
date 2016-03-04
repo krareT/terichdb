@@ -1,4 +1,4 @@
-// narkdb_index.cpp
+// terarkdb_index.cpp
 
 /**
  *    Copyright (C) 2014 MongoDB Inc.
@@ -32,7 +32,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "narkdb_index.h"
+#include "terarkdb_index.h"
 
 #include <set>
 
@@ -43,10 +43,10 @@
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/key_string.h"
-#include "narkdb_customization_hooks.h"
-#include "narkdb_global_options.h"
-#include "narkdb_record_store.h"
-//#include "narkdb_session_cache.h"
+#include "terarkdb_customization_hooks.h"
+#include "terarkdb_global_options.h"
+#include "terarkdb_record_store.h"
+//#include "terarkdb_session_cache.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
@@ -68,7 +68,7 @@
     log()
 #endif
 
-namespace mongo { namespace narkdb {
+namespace mongo { namespace terarkdb {
 namespace {
 
 using std::string;
@@ -491,7 +491,7 @@ protected:
     nark::db::IndexIteratorPtr  _cursor;
 	nark::valvec<unsigned char> m_curKey;
 	nark::valvec<         char> m_qryKey;
-//	mongo::narkdb::SchemaRecordCoder m_coder;
+//	mongo::terarkdb::SchemaRecordCoder m_coder;
 
     // These are where this cursor instance is. They are not changed in the face of a failing
     // next().
@@ -603,4 +603,4 @@ bool NarkDbIndexStandard::unique() const {
 	return false;
 }
 
-} } // namespace mongo::narkdb
+} } // namespace mongo::terarkdb
