@@ -134,7 +134,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
 			if (!nark_bit_test(isPurgedptr, logicId)) {
 				bool hasData = iter.seekExact(physicId, &rec);
-				FEBIRD_RT_assert(hasData, std::logic_error);
+				NARK_RT_assert(hasData, std::logic_error);
 				if (NULL == isDel || !nark_bit_test(isDel, logicId)) {
 					if (rand() < RAND_MAX * sampleRatio) {
 						builder->addSample(rec);
@@ -149,7 +149,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
 			if (!nark_bit_test(isPurgedptr, logicId)) {
 				bool hasData = iter.increment(&physicId, &rec);
-				FEBIRD_RT_assert(hasData, std::logic_error);
+				NARK_RT_assert(hasData, std::logic_error);
 				if (NULL == isDel || !nark_bit_test(isDel, logicId)) {
 					builder->addRecord(rec);
 				}

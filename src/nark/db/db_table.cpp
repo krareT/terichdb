@@ -64,8 +64,8 @@ CompositeTable::~CompositeTable() {
 //		m_wrSeg->flushSegment();
 /*
 	// list must be empty: has only the dummy head
-	FEBIRD_RT_assert(m_ctxListHead->m_next == m_ctxListHead, std::logic_error);
-	FEBIRD_RT_assert(m_ctxListHead->m_prev == m_ctxListHead, std::logic_error);
+	NARK_RT_assert(m_ctxListHead->m_next == m_ctxListHead, std::logic_error);
+	NARK_RT_assert(m_ctxListHead->m_prev == m_ctxListHead, std::logic_error);
 	delete m_ctxListHead;
 */
 }
@@ -2329,7 +2329,7 @@ catch (const std::exception& ex) {
 	fprintf(stderr
 		, "ERROR: merge segments: ex.what = %s\n%sTo\t%s failed, rollback!\n"
 		, ex.what(), segPathList.c_str(), destSegDir.string().c_str());
-	FEBIRD_IF_DEBUG(throw,;);
+	NARK_IF_DEBUG(throw,;);
 	fs::remove_all(destMergeDir);
 }
 }

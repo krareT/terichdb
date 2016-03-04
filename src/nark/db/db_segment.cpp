@@ -63,7 +63,7 @@ ReadableSegment::~ReadableSegment() {
 				, ex.what());
 		// windows can not delete a hardlink when another hardlink
 		// to the same file is in use
-		//	FEBIRD_IF_DEBUG(abort(),;);
+		//	NARK_IF_DEBUG(abort(),;);
 		}
 	}
 }
@@ -1252,7 +1252,7 @@ WritableSegment::~WritableSegment() {
 }
 
 void WritableSegment::pushIsDel(bool val) {
-	const size_t ChunkBits = FEBIRD_IF_DEBUG(4*1024, 1*1024*1024);
+	const size_t ChunkBits = NARK_IF_DEBUG(4*1024, 1*1024*1024);
 	if (nark_unlikely(nullptr == m_isDelMmap)) {
 		assert(m_isDel.size() == 0);
 		assert(m_isDel.capacity() == 0);

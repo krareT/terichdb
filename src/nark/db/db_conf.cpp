@@ -146,7 +146,7 @@ void Schema::compile(const Schema* parent) {
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		if (ColumnType::Fixed == colmeta.type) {
-			FEBIRD_RT_assert(colmeta.fixedLen > 0, std::invalid_argument);
+			NARK_RT_assert(colmeta.fixedLen > 0, std::invalid_argument);
 		}
 	}
 #if 0 // TODO:
@@ -1634,7 +1634,7 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 
 const llong  DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
 const llong  DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
-const size_t DEFAULT_minMergeSegNum      = FEBIRD_IF_DEBUG(2, 5);
+const size_t DEFAULT_minMergeSegNum      = NARK_IF_DEBUG(2, 5);
 const double DEFAULT_purgeDeleteThreshold = 0.20;
 
 SchemaConfig::SchemaConfig() {

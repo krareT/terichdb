@@ -109,7 +109,7 @@ StoreIterator* NestLoudsTrieIndex::createStoreIterBackward(DbContext*) const {
 
 void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 	m_dataInflateSize = strVec.str_size();
-	FEBIRD_IF_DEBUG(SortableStrVec backup = strVec, ;);
+	NARK_IF_DEBUG(SortableStrVec backup = strVec, ;);
 	const size_t rows = strVec.size();
 	NestLoudsTrieConfig conf;
 	conf.initFromEnv();

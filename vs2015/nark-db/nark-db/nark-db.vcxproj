@@ -99,7 +99,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;FEBIRD_USE_DLL;WIN32;_CRT_SECURE_NO_WARNINGS
+      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;NARK_USE_DLL;WIN32;_CRT_SECURE_NO_WARNINGS
 ;_SCL_SECURE_NO_WARNINGS;_DEBUG;_WINDOWS;_USRDLL;NARKDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
     </ClCompile>
@@ -115,7 +115,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;FEBIRD_USE_DLL;_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;_DEBUG;_WINDOWS;_USRDLL;NARKDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;NARK_USE_DLL;_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;_DEBUG;_WINDOWS;_USRDLL;NARKDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
     </ClCompile>
     <Link>
@@ -132,7 +132,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;FEBIRD_USE_DLL;WIN32;_CRT_SECURE_NO_WARNINGS
+      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;NARK_USE_DLL;WIN32;_CRT_SECURE_NO_WARNINGS
 ;_SCL_SECURE_NO_WARNINGS;NDEBUG;_WINDOWS;_USRDLL;NARKDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
     </ClCompile>
@@ -152,7 +152,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;FEBIRD_USE_DLL;_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;NDEBUG;_WINDOWS;_USRDLL;NARKDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NARK_DB_CREATE_DLL;NARK_USE_DLL;_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;NDEBUG;_WINDOWS;_USRDLL;NARKDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
     </ClCompile>
     <Link>

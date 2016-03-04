@@ -59,7 +59,7 @@ GetoptDone:
 		}
 		while (skippedRows < existedRows && line.getline(fp) > 0) {
 			skippedRows++;
-			if (skippedRows % FEBIRD_IF_DEBUG(100000, 1000000) == 0) {
+			if (skippedRows % NARK_IF_DEBUG(100000, 1000000) == 0) {
 				fprintf(stderr, "skipped %zd rows\n", skippedRows);
 			}
 		}
@@ -71,7 +71,7 @@ GetoptDone:
 			if (parsed == colnum) {
 				ctx->insertRow(row);
 				rows++;
-				if (lines % FEBIRD_IF_DEBUG(10000, 1000000) == 0) {
+				if (lines % NARK_IF_DEBUG(10000, 1000000) == 0) {
 					printf("lines=%zd rows=%zd bytes=%zd currRow: %s\n",
 						lines, rows, bytes,
 						tab->rowSchema().toJsonStr(row).c_str());
@@ -80,7 +80,7 @@ GetoptDone:
 						std::this_thread::sleep_for(std::chrono::seconds(10));
 					}
 					else {
-						FEBIRD_IF_DEBUG(std::this_thread::sleep_for(std::chrono::seconds(2)),;);
+						NARK_IF_DEBUG(std::this_thread::sleep_for(std::chrono::seconds(2)),;);
 					}
 				}
 			}
