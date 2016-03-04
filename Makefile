@@ -24,7 +24,7 @@ endif
 
 BRAIN_DEAD_RE2_INC = -I3rdparty/re2/re2 -I3rdparty/re2/util
 
-NARK_INC := -Isrc -I3rdparty/re2 ${BRAIN_DEAD_RE2_INC} -I../nark/src
+NARK_INC := -Isrc -I3rdparty/re2 ${BRAIN_DEAD_RE2_INC}
 
 include ${BUILD_ROOT}/env.mk
 
@@ -181,6 +181,7 @@ TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 
 ifeq (1,${WITH_DFA_DB})
 TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
+override INCS += -I../nark/src
 endif
 
 #function definition

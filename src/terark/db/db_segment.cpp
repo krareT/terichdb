@@ -9,12 +9,11 @@
 #include <nark/io/StreamBuffer.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/io/MemStream.hpp>
-#include <nark/fsa/fsa.hpp>
 #include <nark/lcast.hpp>
 #include <nark/util/mmap.hpp>
 #include <nark/util/sortable_strvec.hpp>
 
-#define NARK_DB_ENABLE_DFA_META
+//#define NARK_DB_ENABLE_DFA_META
 #if defined(NARK_DB_ENABLE_DFA_META)
 #include <nark/fsa/nest_trie_dawg.hpp>
 #endif

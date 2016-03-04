@@ -1,10 +1,9 @@
 #pragma once
 
 #include <terark/db/db_index.hpp>
-#include <nark/fsa/fsa.hpp>
 #include <nark/int_vector.hpp>
 #include <nark/rank_select.hpp>
-#include <nark/fsa/nest_trie_dawg.hpp>
+#include <nark/util/sortable_strvec.hpp>
 
 namespace terark { namespace db {
 

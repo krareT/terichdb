@@ -1,5 +1,5 @@
 #include "intkey_index.hpp"
-#include <nark/fsa/nest_trie_dawg.hpp>
+#include <nark/util/sortable_strvec.hpp>
 #include <nark/io/FileStream.hpp>
 #include <nark/io/DataIO.hpp>
 #include <nark/util/mmap.hpp>
