@@ -579,28 +579,5 @@ size_t SortableStrVec::upper_bound(fstring key) const {
 	return upper_bound_0<const SortableStrVec&>(*this, m_index.size(), key);
 }
 
-/////////////////////////////////////////////////////////////////////
-
-DataStore::DataStore() {
-	m_numRecords = 0;
-}
-DataStore::~DataStore() {
-}
-
-void DataStore::risk_swap(DataStore& y) {
-	std::swap(m_numRecords, y.m_numRecords);
-}
-
-void DataStore::get_record(size_t recID, valvec<byte_t>* recData) const {
-	recData->erase_all();
-	get_record_append(recID, recData);
-}
-
-valvec<byte_t> DataStore::get_record(size_t recID) const {
-	valvec<byte_t> data;
-	get_record(recID, &data);
-	return data;
-}
-
 } // namespace terark
 

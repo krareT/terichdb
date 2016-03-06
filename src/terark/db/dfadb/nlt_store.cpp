@@ -1,6 +1,6 @@
 #include "nlt_store.hpp"
 #include <terark/int_vector.hpp>
-#include <terark/fast_zip_data_store.hpp>
+#include <terark/fast_zip_blob_store.hpp>
 #include <typeinfo>
 #include <float.h>
 
@@ -65,31 +65,31 @@ void initConfigFromSchema(NestLoudsTrieConfig& conf, const Schema& schema) {
 }
 
 static
-DataStore* nltBuild(const Schema& schema, SortableStrVec& strVec) {
+BlobStore* nltBuild(const Schema& schema, SortableStrVec& strVec) {
 	NestLoudsTrieConfig conf;
 	initConfigFromSchema(conf, schema);
 	switch (schema.m_rankSelectClass) {
 	case -256:
-		return doBuild<NestLoudsTrieDataStore_IL>(conf, schema, strVec);
+		return doBuild<NestLoudsTrieBlobStore_IL>(conf, schema, strVec);
 	case +256:
-		return doBuild<NestLoudsTrieDataStore_SE>(conf, schema, strVec);
+		return doBuild<NestLoudsTrieBlobStore_SE>(conf, schema, strVec);
 	case +512:
-		return doBuild<NestLoudsTrieDataStore_SE_512>(conf, schema, strVec);
+		return doBuild<NestLoudsTrieBlobStore_SE_512>(conf, schema, strVec);
 	default:
 		fprintf(stderr, "WARN: invalid schema(%s).rs = %d, use default: se_512\n"
 					  , schema.m_name.c_str(), schema.m_rankSelectClass);
-		return doBuild<NestLoudsTrieDataStore_SE_512>(conf, schema, strVec);
+		return doBuild<NestLoudsTrieBlobStore_SE_512>(conf, schema, strVec);
 	}
 }
 
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	if (schema.m_dictZipSampleRatio > 0) {
-		std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
+		std::unique_ptr<DictZipBlobStore> zds(new DictZipBlobStore());
 		zds->build_none_local_match(strVec, schema.m_dictZipSampleRatio);
 		m_store.reset(zds.release());
 	}
 	else if (schema.m_useFastZip) {
-		std::unique_ptr<FastZipDataStore> fzds(new FastZipDataStore());
+		std::unique_ptr<FastZipBlobStore> fzds(new FastZipBlobStore());
 		NestLoudsTrieConfig  conf;
 		initConfigFromSchema(conf, schema);
 		fzds->build_from(strVec, conf);
@@ -105,8 +105,8 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 								  StoreIterator& iter,
 								  const bm_uint_t* isDel,
 								  const febitvec* isPurged) {
-	std::unique_ptr<DictZipDataStore> zds(new DictZipDataStore());
-	std::unique_ptr<DictZipDataStore::ZipBuilder> builder(zds->createZipBuilder());
+	std::unique_ptr<DictZipBlobStore> zds(new DictZipBlobStore());
+	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder(zds->createZipBuilder());
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
 					   ? schema.m_dictZipSampleRatio : 0.05;
 	valvec<byte> rec;
@@ -165,7 +165,7 @@ void NestLoudsTrieStore::load(PathRef path) {
 	std::string fpath = fstring(path.string()).endsWith(".nlt")
 					  ? path.string()
 					  : path.string() + ".nlt";
-	m_store.reset(DataStore::load_from(fpath));
+	m_store.reset(BlobStore::load_from(fpath));
 }
 
 void NestLoudsTrieStore::save(PathRef path) const {
@@ -175,10 +175,10 @@ void NestLoudsTrieStore::save(PathRef path) const {
 	if (BaseDFA* dfa = dynamic_cast<BaseDFA*>(&*m_store)) {
 		dfa->save_mmap(fpath.c_str());
 	}
-	else if (auto zds = dynamic_cast<FastZipDataStore*>(&*m_store)) {
+	else if (auto zds = dynamic_cast<FastZipBlobStore*>(&*m_store)) {
 		zds->save_mmap(fpath);
 	}
-	else if (auto zds = dynamic_cast<DictZipDataStore*>(&*m_store)) {
+	else if (auto zds = dynamic_cast<DictZipBlobStore*>(&*m_store)) {
 		zds->save_mmap(fpath);
 	}
 	else {

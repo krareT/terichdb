@@ -10,7 +10,7 @@ namespace terark { namespace db { namespace wt {
 
 namespace fs = boost::filesystem;
 
-static const char g_dataStoreUri[] = "table:__DataStore__";
+static const char g_dataStoreUri[] = "table:__BlobStore__";
 
 //////////////////////////////////////////////////////////////////
 class WtWritableStoreIterBase : public StoreIterator {
@@ -144,7 +144,7 @@ void WtWritableStore::save(PathRef path1) const {
 void WtWritableStore::load(PathRef path1) {
 	WT_CONNECTION* conn = m_wtSession->connection;
 	boost::filesystem::path segDir = conn->get_home(conn);
-	auto dataFile = segDir / "__DataStore__.wt";
+	auto dataFile = segDir / "__BlobStore__.wt";
 	m_dataSize = boost::filesystem::file_size(dataFile);
 }
 

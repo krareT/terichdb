@@ -28,7 +28,7 @@ public:
 	void save(PathRef path) const override;
 
 protected:
-	std::unique_ptr<DataStore> m_store;
+	std::unique_ptr<BlobStore> m_store;
 };
 
 }}} // namespace terark::db::dfadb
