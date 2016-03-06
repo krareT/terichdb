@@ -1113,6 +1113,12 @@ void CompositeTable::updateColumnInteger(llong recordId, size_t columnId, const 
 	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
 	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
 	switch (rowSchema.getColumnType(columnId)) {
+	default:
+		THROW_STD(invalid_argument
+			, "Invalid column(id=%zd, name=%s) which columnType=%s"
+			, columnId, rowSchema.getColumnName(columnId).c_str()
+			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
+			);
 	case ColumnType::Uint08:  updateValueByOp<uint8_t , llong>(*coldata, op); break;
 	case ColumnType::Sint08:  updateValueByOp< int8_t , llong>(*coldata, op); break;
 	case ColumnType::Uint16:  updateValueByOp<uint16_t, llong>(*coldata, op); break;
@@ -1143,6 +1149,12 @@ void CompositeTable::updateColumnDouble(llong recordId, size_t columnId, const s
 	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
 	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
 	switch (rowSchema.getColumnType(columnId)) {
+	default:
+		THROW_STD(invalid_argument
+			, "Invalid column(id=%zd, name=%s) which columnType=%s"
+			, columnId, rowSchema.getColumnName(columnId).c_str()
+			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
+			);
 	case ColumnType::Uint08:  updateValueByOp<uint8_t , double>(*coldata, op); break;
 	case ColumnType::Sint08:  updateValueByOp< int8_t , double>(*coldata, op); break;
 	case ColumnType::Uint16:  updateValueByOp<uint16_t, double>(*coldata, op); break;
@@ -1173,6 +1185,12 @@ void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, llong
 	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
 	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
 	switch (rowSchema.getColumnType(columnId)) {
+	default:
+		THROW_STD(invalid_argument
+			, "Invalid column(id=%zd, name=%s) which columnType=%s"
+			, columnId, rowSchema.getColumnName(columnId).c_str()
+			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
+			);
 	case ColumnType::Uint08:
 	case ColumnType::Sint08: *(int8_t*)coldata += incVal; break;
 	case ColumnType::Uint16:
@@ -1203,6 +1221,12 @@ void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, doubl
 	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
 	byte * coldata = rawDataBasePtr + cgLen * physicId + offset;
 	switch (rowSchema.getColumnType(columnId)) {
+	default:
+		THROW_STD(invalid_argument
+			, "Invalid column(id=%zd, name=%s) which columnType=%s"
+			, columnId, rowSchema.getColumnName(columnId).c_str()
+			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
+			);
 	case ColumnType::Uint08:
 	case ColumnType::Sint08: *(int8_t*)coldata += incVal; break;
 	case ColumnType::Uint16:
