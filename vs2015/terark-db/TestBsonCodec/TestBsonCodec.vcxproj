@@ -71,22 +71,22 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\osc\terark\src;C:\osc\terark-db\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\osc\terark\src;C:\osc\terark-db\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\boost-home\stage\lib;C:\osc\mongo\src\third_party\IntelRDFPMathLib20U1\LIBRARY;C:\osc\tbb\build\vs2010\intel64\Debug-MT;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\osc\terark\src;C:\osc\terark-db\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\osc\terark\src;C:\osc\terark-db\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\boost-home;C:\osc\mongo\src;C:\osc\tbb\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\boost-home\stage\lib;C:\osc\mongo\src\third_party\IntelRDFPMathLib20U1\LIBRARY;C:\osc\tbb\build\vs2010\intel64\Release-MT;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
