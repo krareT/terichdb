@@ -1,5 +1,5 @@
-#ifndef __nark_db_db_index_hpp__
-#define __nark_db_db_index_hpp__
+#ifndef __terark_db_db_index_hpp__
+#define __terark_db_db_index_hpp__
 
 #include "db_store.hpp"
 
@@ -7,7 +7,7 @@ namespace terark { namespace db {
 
 typedef boost::intrusive_ptr<class ReadableIndex> ReadableIndexPtr;
 
-class NARK_DB_DLL IndexIterator : public RefCounter {
+class TERARK_DB_DLL IndexIterator : public RefCounter {
 public:
 	virtual ~IndexIterator();
 	virtual void reset() = 0;
@@ -27,8 +27,8 @@ public:
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
-class NARK_DB_DLL ReadableIndex : virtual public Permanentable {
-	NARK_DB_NON_COPYABLE_CLASS(ReadableIndex);
+class TERARK_DB_DLL ReadableIndex : virtual public Permanentable {
+	TERARK_DB_NON_COPYABLE_CLASS(ReadableIndex);
 protected:
 	bool m_isOrdered;
 	bool m_isUnique;
@@ -66,7 +66,7 @@ public:
 typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 
 /// both ordered and unordered index can be writable
-class NARK_DB_DLL WritableIndex {
+class TERARK_DB_DLL WritableIndex {
 public:
 	virtual bool remove(fstring key, llong id, DbContext*) = 0;
 	virtual bool insert(fstring key, llong id, DbContext*) = 0;
@@ -76,4 +76,4 @@ public:
 
 } } // namespace terark::db
 
-#endif // __nark_db_db_index_hpp__
+#endif // __terark_db_db_index_hpp__

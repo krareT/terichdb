@@ -47,8 +47,8 @@ WT_CURSOR* WtContext::getStoreReplace(fstring uri) {
 }
 
 WT_CURSOR* WtContext::getIndexCursor(size_t indexId, fstring indexUri) {
-	NARK_RT_assert(wtIndexCursor.size() == m_tab->indexNum(), std::invalid_argument);
-	NARK_RT_assert(indexId < wtIndexCursor.size(), std::invalid_argument);
+	TERARK_RT_assert(wtIndexCursor.size() == m_tab->indexNum(), std::invalid_argument);
+	TERARK_RT_assert(indexId < wtIndexCursor.size(), std::invalid_argument);
 	auto& cursor = wtIndexCursor[indexId];
 	if (!cursor) {
 		int err = wtSession->open_cursor(wtSession, indexUri.c_str(), NULL, NULL, &cursor);

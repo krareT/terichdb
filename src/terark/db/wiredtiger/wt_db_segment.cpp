@@ -9,7 +9,7 @@ WtWritableSegment::WtWritableSegment() {
 	m_wtConn = NULL;
 	m_wrRowStore = NULL;
 	m_cacheSize = 1*(1ul << 30); // 1GB
-	if (const char* env = getenv("NarkDb_WrSegCacheSizeMB")) {
+	if (const char* env = getenv("TerarkDb_WrSegCacheSizeMB")) {
 		m_cacheSize = (size_t)strtoull(env, NULL, 10) * 1024 * 1024;
 	}
 }

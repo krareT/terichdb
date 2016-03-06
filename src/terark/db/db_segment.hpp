@@ -1,12 +1,12 @@
-#ifndef __nark_db_segment_hpp__
-#define __nark_db_segment_hpp__
+#ifndef __terark_db_segment_hpp__
+#define __terark_db_segment_hpp__
 
 #include "db_index.hpp"
 #include "db_store.hpp"
-#include <nark/bitmap.hpp>
-#include <nark/rank_select.hpp>
+#include <terark/bitmap.hpp>
+#include <terark/rank_select.hpp>
 
-namespace nark {
+namespace terark {
 	class SortableStrVec;
 }
 
@@ -14,7 +14,7 @@ namespace terark { namespace db {
 
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
-class NARK_DB_DLL ReadableSegment : public ReadableStore {
+class TERARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
 	ReadableSegment();
 	~ReadableSegment();
@@ -80,7 +80,7 @@ typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 // The <<index>> is single-part, because index is much smaller
 // than the whole <<store>> data.
 //
-class NARK_DB_DLL ReadonlySegment : public ReadableSegment {
+class TERARK_DB_DLL ReadonlySegment : public ReadableSegment {
 public:
 	ReadonlySegment();
 	~ReadonlySegment();
@@ -154,7 +154,7 @@ typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
 // Concrete WritableSegment should not implement this class,
 // should implement PlainWritableSegment or SmartWritableSegment
-class NARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
+class TERARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
 public:
 	WritableSegment();
 	~WritableSegment();
@@ -180,7 +180,7 @@ public:
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
-class NARK_DB_DLL PlainWritableSegment : public WritableSegment {
+class TERARK_DB_DLL PlainWritableSegment : public WritableSegment {
 public:
 protected:
 };
@@ -188,7 +188,7 @@ typedef boost::intrusive_ptr<PlainWritableSegment> PlainWritableSegmentPtr;
 
 // Every index is a WritableIndexStore
 // But the <<store>> is not multi-part(such as ReadonlySegment)
-class NARK_DB_DLL SmartWritableSegment : public WritableSegment {
+class TERARK_DB_DLL SmartWritableSegment : public WritableSegment {
 public:
 protected:
 	~SmartWritableSegment();
@@ -212,4 +212,4 @@ typedef boost::intrusive_ptr<SmartWritableSegment> SmartWritableSegmentPtr;
 
 } } // namespace terark::db
 
-#endif // __nark_db_segment_hpp__
+#endif // __terark_db_segment_hpp__

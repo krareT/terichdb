@@ -1,9 +1,9 @@
 #include "wt_db_store.hpp"
 #include "wt_db_context.hpp"
-#include <nark/io/FileStream.hpp>
-#include <nark/io/StreamBuffer.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/sortable_strvec.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
 
 namespace terark { namespace db { namespace wt {
@@ -179,7 +179,7 @@ void WtWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx
 const {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
-//	NARK_RT_assert(NULL != ctx, std::invalid_argument);
+//	TERARK_RT_assert(NULL != ctx, std::invalid_argument);
 	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	auto cursor = getReplaceCursor();
@@ -222,7 +222,7 @@ StoreIterator* WtWritableStore::createStoreIterBackward(DbContext*) const {
 
 llong WtWritableStore::append(fstring row, DbContext* ctx0) {
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
-//	NARK_RT_assert(NULL != ctx, std::invalid_argument);
+//	TERARK_RT_assert(NULL != ctx, std::invalid_argument);
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	auto cursor = getAppendCursor();
 	WT_ITEM item;
@@ -247,7 +247,7 @@ llong WtWritableStore::append(fstring row, DbContext* ctx0) {
 void WtWritableStore::update(llong id, fstring row, DbContext* ctx0) {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
-//	NARK_RT_assert(NULL != ctx, std::invalid_argument);
+//	TERARK_RT_assert(NULL != ctx, std::invalid_argument);
 	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	auto cursor = getReplaceCursor();
@@ -271,7 +271,7 @@ void WtWritableStore::update(llong id, fstring row, DbContext* ctx0) {
 void WtWritableStore::remove(llong id, DbContext* ctx0) {
 	assert(id >= 0);
 //	WtContext* ctx = dynamic_cast<WtContext*>(ctx0);
-//	NARK_RT_assert(NULL != ctx, std::invalid_argument);
+//	TERARK_RT_assert(NULL != ctx, std::invalid_argument);
 #if 1
 	fstring emptyValue("");
 	update(id, emptyValue, ctx0);

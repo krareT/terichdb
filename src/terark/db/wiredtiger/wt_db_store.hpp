@@ -1,14 +1,14 @@
 #pragma once
 
 #include <terark/db/db_table.hpp>
-#include <nark/util/fstrvec.hpp>
+#include <terark/util/fstrvec.hpp>
 #include <set>
 #include <tbb/mutex.h>
 #include <wiredtiger.h>
 
 namespace terark { namespace db { namespace wt {
 
-class NARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore {
+class TERARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore {
 
 	// brain dead wiredtiger api makes multi-thread code hard to write
 	// use mutex to protect wiredtiger objects

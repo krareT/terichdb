@@ -1,8 +1,8 @@
 #include "nlt_index.hpp"
 #include "dfadb_table.hpp"
-#include <nark/io/FileStream.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/mmap.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/util/mmap.hpp>
 
 namespace terark { namespace db { namespace dfadb {
 
@@ -109,7 +109,7 @@ StoreIterator* NestLoudsTrieIndex::createStoreIterBackward(DbContext*) const {
 
 void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 	m_dataInflateSize = strVec.str_size();
-	NARK_IF_DEBUG(SortableStrVec backup = strVec, ;);
+	TERARK_IF_DEBUG(SortableStrVec backup = strVec, ;);
 	const size_t rows = strVec.size();
 	NestLoudsTrieConfig conf;
 	conf.initFromEnv();
@@ -212,8 +212,8 @@ void NestLoudsTrieIndex::load(PathRef path) {
 	size_t keys  = m_idmapBase->keys;
 	size_t bytes = m_idmapBase->idToKeyBytesDiv16;
 	size_t rslen = m_idmapBase->recBitsMemSize;
-	size_t rbits = nark_bsr_u64(rows-1) + 1;
-	size_t kbits = nark_bsr_u64(keys-1) + 1;
+	size_t rbits = terark_bsr_u64(rows-1) + 1;
+	size_t kbits = terark_bsr_u64(keys-1) + 1;
 	bytes *= 16; // large rows will overflow m_idToKeys.mem_size() as uint32
 	if (m_dfa->num_words() != keys) {
 		THROW_STD(invalid_argument,

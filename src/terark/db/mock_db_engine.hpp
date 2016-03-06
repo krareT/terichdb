@@ -1,14 +1,14 @@
-#ifndef __nark_db_mock_db_index_hpp__
-#define __nark_db_mock_db_index_hpp__
+#ifndef __terark_db_mock_db_index_hpp__
+#define __terark_db_mock_db_index_hpp__
 
 #include <terark/db/db_table.hpp>
 #include <terark/db/db_segment.hpp>
-#include <nark/util/fstrvec.hpp>
+#include <terark/util/fstrvec.hpp>
 #include <set>
 
 namespace terark { namespace db {
 
-class NARK_DB_DLL MockReadonlyStore : public ReadableStore {
+class TERARK_DB_DLL MockReadonlyStore : public ReadableStore {
 	size_t    m_fixedLen;
 	SchemaPtr m_schema;
 public:
@@ -28,7 +28,7 @@ public:
 };
 typedef boost::intrusive_ptr<MockReadonlyStore> MockReadonlyStorePtr;
 
-class NARK_DB_DLL MockReadonlyIndex : public ReadableIndex, public ReadableStore {
+class TERARK_DB_DLL MockReadonlyIndex : public ReadableIndex, public ReadableStore {
 	friend class MockReadonlyIndexIterator;
 	friend class MockReadonlyIndexIterBackward;
 	fstrvec          m_keys; // keys[recId] is the key
@@ -64,7 +64,7 @@ public:
 };
 typedef boost::intrusive_ptr<MockReadonlyIndex> MockReadonlyIndexPtr;
 
-class NARK_DB_DLL MockWritableStore : public ReadableStore, public WritableStore {
+class TERARK_DB_DLL MockWritableStore : public ReadableStore, public WritableStore {
 public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
@@ -92,7 +92,7 @@ public:
 typedef boost::intrusive_ptr<MockWritableStore> MockWritableStorePtr;
 
 template<class Key>
-class NARK_DB_DLL MockWritableIndex : public ReadableIndex, public WritableIndex {
+class TERARK_DB_DLL MockWritableIndex : public ReadableIndex, public WritableIndex {
 	class MyIndexIterForward;  friend class MyIndexIterForward;
 	class MyIndexIterBackward; friend class MyIndexIterBackward;
 	typedef std::pair<Key, llong> kv_t;
@@ -115,7 +115,7 @@ public:
 	WritableIndex* getWritableIndex() override { return this; }
 };
 
-class NARK_DB_DLL MockReadonlySegment : public ReadonlySegment {
+class TERARK_DB_DLL MockReadonlySegment : public ReadonlySegment {
 public:
 	MockReadonlySegment();
 	~MockReadonlySegment();
@@ -126,7 +126,7 @@ protected:
 	ReadableStore* buildStore(const Schema&, SortableStrVec& storeData) const override;
 };
 
-class NARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
+class TERARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
 public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
@@ -152,12 +152,12 @@ protected:
 	void saveRecordStore(PathRef segDir) const override;
 };
 
-class NARK_DB_DLL MockDbContext : public DbContext {
+class TERARK_DB_DLL MockDbContext : public DbContext {
 public:
 	explicit MockDbContext(const CompositeTable* tab);
 	~MockDbContext();
 };
-class NARK_DB_DLL MockCompositeTable : public CompositeTable {
+class TERARK_DB_DLL MockCompositeTable : public CompositeTable {
 public:
 	DbContext* createDbContext() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;
@@ -167,4 +167,4 @@ public:
 
 } } // namespace terark::db
 
-#endif // __nark_db_mock_db_index_hpp__
+#endif // __terark_db_mock_db_index_hpp__

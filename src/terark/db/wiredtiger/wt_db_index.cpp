@@ -1,10 +1,10 @@
 #include "wt_db_index.hpp"
 #include "wt_db_context.hpp"
-#include <nark/io/FileStream.hpp>
-#include <nark/io/StreamBuffer.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/lcast.hpp>
-#include <nark/util/sortable_strvec.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/lcast.hpp>
+#include <terark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
 
 namespace terark { namespace db { namespace wt {

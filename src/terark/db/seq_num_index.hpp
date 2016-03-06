@@ -1,5 +1,5 @@
-#ifndef __nark_db_seq_num_index_hpp__
-#define __nark_db_seq_num_index_hpp__
+#ifndef __terark_db_seq_num_index_hpp__
+#define __terark_db_seq_num_index_hpp__
 
 #include "db_index.hpp"
 
@@ -7,7 +7,7 @@ namespace terark { namespace db {
 
 // SeqNumIndex can be used as a primary key of Id
 template<class Int>
-class NARK_DB_DLL SeqNumIndex :
+class TERARK_DB_DLL SeqNumIndex :
 	public ReadableIndex, public ReadableStore, public WritableIndex
 {
 	Int m_min;
@@ -43,4 +43,4 @@ public:
 
 } } // namespace terark::db
 
-#endif // __nark_db_seq_num_index_hpp__
+#endif // __terark_db_seq_num_index_hpp__

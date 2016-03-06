@@ -1,10 +1,10 @@
 #pragma once
 
 #include <terark/db/db_table.hpp>
-#include <nark/fsa/fsa.hpp>
-#include <nark/int_vector.hpp>
-#include <nark/rank_select.hpp>
-#include <nark/fsa/nest_trie_dawg.hpp>
+#include <terark/fsa/fsa.hpp>
+#include <terark/int_vector.hpp>
+#include <terark/rank_select.hpp>
+#include <terark/fsa/nest_trie_dawg.hpp>
 
 namespace terark {
 //	class Nest
@@ -12,13 +12,13 @@ namespace terark {
 
 namespace terark { namespace db { namespace dfadb {
 
-class NARK_DB_DLL DfaDbContext : public DbContext {
+class TERARK_DB_DLL DfaDbContext : public DbContext {
 public:
 	explicit DfaDbContext(const CompositeTable* tab);
 	~DfaDbContext();
 	std::string m_nltRecBuf;
 };
-class NARK_DB_DLL DfaDbTable : public CompositeTable {
+class TERARK_DB_DLL DfaDbTable : public CompositeTable {
 public:
 	DbContext* createDbContext() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;

@@ -1,12 +1,12 @@
 #pragma once
-#ifndef __nark_db_json_hpp__
-#define __nark_db_json_hpp__
+#ifndef __terark_db_json_hpp__
+#define __terark_db_json_hpp__
 
 #include <nlohmann/json.hpp>
-#include <nark/gold_hash_map.hpp>
+#include <terark/gold_hash_map.hpp>
 
 namespace terark {
-	using namespace nark;
+	using namespace terark;
 	template<class Key, class Val, class IgnoreLess, class IgnoreAlloc>
 	class JsonStrMap : public gold_hash_map<Key, Val
 		, std::hash<Key>
@@ -29,4 +29,4 @@ namespace terark {
 //	using nlohmann::_json;
 }
 
-#endif // __nark_db_json_hpp__
+#endif // __terark_db_json_hpp__

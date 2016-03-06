@@ -1,12 +1,12 @@
 #include "nlt_store.hpp"
-#include <nark/int_vector.hpp>
-#include <nark/fast_zip_data_store.hpp>
+#include <terark/int_vector.hpp>
+#include <terark/fast_zip_data_store.hpp>
 #include <typeinfo>
 #include <float.h>
 
 namespace terark { namespace db { namespace dfadb {
 
-NARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
+TERARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
 
 NestLoudsTrieStore::NestLoudsTrieStore() {
 }
@@ -113,7 +113,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 	if (NULL == isPurged || isPurged->size() == 0) {
 		llong recId;
 		while (iter.increment(&recId, &rec)) {
-			if (NULL == isDel || !nark_bit_test(isDel, recId)) {
+			if (NULL == isDel || !terark_bit_test(isDel, recId)) {
 				if (rand() < RAND_MAX * sampleRatio ) {
 					builder->addSample(rec);
 				}
@@ -122,7 +122,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		builder->prepare(recId + 1, fpath.string());
 		iter.reset();
 		while (iter.increment(&recId, &rec)) {
-			if (NULL == isDel || !nark_bit_test(isDel, recId)) {
+			if (NULL == isDel || !terark_bit_test(isDel, recId)) {
 				builder->addRecord(rec);
 			}
 		}
@@ -132,10 +132,10 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		size_t logicNum = isPurged->size();
 		const bm_uint_t* isPurgedptr = isPurged->bldata();
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
-			if (!nark_bit_test(isPurgedptr, logicId)) {
+			if (!terark_bit_test(isPurgedptr, logicId)) {
 				bool hasData = iter.seekExact(physicId, &rec);
-				NARK_RT_assert(hasData, std::logic_error);
-				if (NULL == isDel || !nark_bit_test(isDel, logicId)) {
+				TERARK_RT_assert(hasData, std::logic_error);
+				if (NULL == isDel || !terark_bit_test(isDel, logicId)) {
 					if (rand() < RAND_MAX * sampleRatio) {
 						builder->addSample(rec);
 					}
@@ -147,10 +147,10 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		iter.reset();
 		physicId = 0;
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
-			if (!nark_bit_test(isPurgedptr, logicId)) {
+			if (!terark_bit_test(isPurgedptr, logicId)) {
 				bool hasData = iter.increment(&physicId, &rec);
-				NARK_RT_assert(hasData, std::logic_error);
-				if (NULL == isDel || !nark_bit_test(isDel, logicId)) {
+				TERARK_RT_assert(hasData, std::logic_error);
+				if (NULL == isDel || !terark_bit_test(isDel, logicId)) {
 					builder->addRecord(rec);
 				}
 				physicId++;

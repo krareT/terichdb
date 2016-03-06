@@ -1,8 +1,8 @@
-#ifndef __nark_db_record_data_hpp__
-#define __nark_db_record_data_hpp__
+#ifndef __terark_db_record_data_hpp__
+#define __terark_db_record_data_hpp__
 
 namespace terark { namespace db {
 
 } } // namespace terark::db
 
-#endif // __nark_db_record_data_hpp__
+#endif // __terark_db_record_data_hpp__

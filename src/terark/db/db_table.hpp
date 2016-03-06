@@ -1,11 +1,11 @@
-#ifndef __nark_db_table_store_hpp__
-#define __nark_db_table_store_hpp__
+#ifndef __terark_db_table_store_hpp__
+#define __terark_db_table_store_hpp__
 
 #include "db_store.hpp"
 #include "db_index.hpp"
 #include <tbb/queuing_rw_mutex.h>
 
-namespace nark {
+namespace terark {
 	class BaseDFA; // forward declaration
 } // namespace terark
 
@@ -14,14 +14,14 @@ namespace terark { namespace db {
 typedef tbb::queuing_rw_mutex              MyRwMutex;
 typedef tbb::queuing_rw_mutex::scoped_lock MyRwLock;
 
-class NARK_DB_DLL ReadableSegment;
-class NARK_DB_DLL ReadonlySegment;
-class NARK_DB_DLL WritableSegment;
+class TERARK_DB_DLL ReadableSegment;
+class TERARK_DB_DLL ReadonlySegment;
+class TERARK_DB_DLL WritableSegment;
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
 // is not a WritableStore
-class NARK_DB_DLL CompositeTable : public ReadableStore {
+class TERARK_DB_DLL CompositeTable : public ReadableStore {
 	class MyStoreIterBase;	    friend class MyStoreIterBase;
 	class MyStoreIterForward;	friend class MyStoreIterForward;
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
@@ -32,7 +32,7 @@ public:
 	struct RegisterTableClass {
 		RegisterTableClass(fstring clazz, const std::function<CompositeTable*()>& f);
 	};
-#define NARK_DB_REGISTER_TABLE_CLASS(TableClass) \
+#define TERARK_DB_REGISTER_TABLE_CLASS(TableClass) \
 	static CompositeTable::RegisterTableClass \
 		regTable_##TableClass(#TableClass, [](){ return new TableClass(); });
 
@@ -271,4 +271,4 @@ DbContext::indexReplace(size_t indexId, fstring indexKey, llong oldId, llong new
 
 } } // namespace terark::db
 
-#endif // __nark_db_table_store_hpp__
+#endif // __terark_db_table_store_hpp__

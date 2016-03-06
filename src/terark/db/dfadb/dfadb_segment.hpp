@@ -8,7 +8,7 @@ namespace terark {
 
 namespace terark { namespace db { namespace dfadb {
 
-class NARK_DB_DLL DfaDbReadonlySegment : public ReadonlySegment {
+class TERARK_DB_DLL DfaDbReadonlySegment : public ReadonlySegment {
 public:
 	DfaDbReadonlySegment();
 	~DfaDbReadonlySegment();

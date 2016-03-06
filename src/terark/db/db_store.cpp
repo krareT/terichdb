@@ -227,7 +227,7 @@ public:
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const MultiPartStore*>(m_store.get());
 		assert(m_partIdx < owner->m_parts.size());
-		if (nark_likely(m_id < owner->m_rowNumVec[m_partIdx + 1])) {
+		if (terark_likely(m_id < owner->m_rowNumVec[m_partIdx + 1])) {
 			// do nothing
 		}
 		else if (m_partIdx + 1 < owner->m_parts.size()) {
@@ -278,7 +278,7 @@ public:
 			return false;
 		}
 		assert(m_partIdx > 0);
-		if (nark_likely(m_id > owner->m_rowNumVec[m_partIdx-1])) {
+		if (terark_likely(m_id > owner->m_rowNumVec[m_partIdx-1])) {
 			// do nothing
 		}
 		else if (m_partIdx > 1) {

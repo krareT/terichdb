@@ -1,19 +1,19 @@
 #include "db_table.hpp"
 #include "db_segment.hpp"
-#include <nark/util/autoclose.hpp>
-#include <nark/util/linebuf.hpp>
-#include <nark/io/FileStream.hpp>
-#include <nark/io/StreamBuffer.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/io/MemStream.hpp>
-#include <nark/lcast.hpp>
-#include <nark/util/fstrvec.hpp>
-#include <nark/util/sortable_strvec.hpp>
+#include <terark/util/autoclose.hpp>
+#include <terark/util/linebuf.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/io/MemStream.hpp>
+#include <terark/lcast.hpp>
+#include <terark/util/fstrvec.hpp>
+#include <terark/util/sortable_strvec.hpp>
 #include <boost/scope_exit.hpp>
 #include <thread> // for std::this_thread::sleep_for
 #include <tbb/task.h>
 #include <tbb/tbb_thread.h>
-#include <nark/util/concurrent_queue.hpp>
+#include <terark/util/concurrent_queue.hpp>
 
 #undef min
 #undef max
@@ -63,8 +63,8 @@ CompositeTable::~CompositeTable() {
 //		m_wrSeg->flushSegment();
 /*
 	// list must be empty: has only the dummy head
-	NARK_RT_assert(m_ctxListHead->m_next == m_ctxListHead, std::logic_error);
-	NARK_RT_assert(m_ctxListHead->m_prev == m_ctxListHead, std::logic_error);
+	TERARK_RT_assert(m_ctxListHead->m_next == m_ctxListHead, std::logic_error);
+	TERARK_RT_assert(m_ctxListHead->m_prev == m_ctxListHead, std::logic_error);
 	delete m_ctxListHead;
 */
 }
@@ -424,7 +424,7 @@ public:
 	}
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
 		auto cur = &m_segs[m_segIdx];
-		if (nark_unlikely(!cur->iter))
+		if (terark_unlikely(!cur->iter))
 			 cur->iter = cur->seg->createStoreIterForward(m_ctx.get());
 		if (!cur->iter->increment(subId, val)) {
 			syncTabSegs();
@@ -494,7 +494,7 @@ public:
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
 	//	auto tab = static_cast<const CompositeTable*>(m_store.get());
 		auto cur = &m_segs[m_segIdx-1];
-		if (nark_unlikely(!cur->iter))
+		if (terark_unlikely(!cur->iter))
 			 cur->iter = cur->seg->createStoreIterBackward(m_ctx.get());
 		if (!cur->iter->increment(subId, val)) {
 		//	syncTabSegs(); // don't need to sync, because new segs are appended
@@ -658,7 +658,7 @@ CompositeTable::myCreateWritableSegment(PathRef segDir) const {
 bool CompositeTable::exists(llong id) const {
 	assert(id >= 0);
 	MyRwLock lock(m_rwMutex, false);
-	if (nark_unlikely(id >= llong(m_rowNumVec.back()))) {
+	if (terark_unlikely(id >= llong(m_rowNumVec.back()))) {
 		return false;
 	}
 	size_t upp = upper_bound_a(m_rowNumVec, id);
@@ -1446,7 +1446,7 @@ class TableIndexIter : public IndexIterator {
 	};
 	friend class HeapKeyCompare;
 	valvec<byte> m_keyBuf;
-	nark::valvec<size_t> m_heap;
+	terark::valvec<size_t> m_heap;
 	const bool m_forward;
 	bool m_isHeapBuilt;
 
@@ -1504,7 +1504,7 @@ public:
 		m_isHeapBuilt = false;
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
-		if (nark_unlikely(!m_isHeapBuilt)) {
+		if (terark_unlikely(!m_isHeapBuilt)) {
 			if (syncSegPtr()) {
 				for (auto& cur : m_segs) {
 					if (cur.iter == nullptr)
@@ -1968,8 +1968,8 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 		const bm_uint_t* oldpurgeBits = seg->m_isPurged.bldata();
 		const bm_uint_t* newpurgeBits = e.newIsPurged.bldata();
 		for (size_t logicId = 0; logicId < logicRows; ++logicId) {
-			if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
-				if (!newpurgeBits || !nark_bit_test(newpurgeBits, logicId)) {
+			if (!oldpurgeBits || !terark_bit_test(oldpurgeBits, logicId)) {
+				if (!newpurgeBits || !terark_bit_test(newpurgeBits, logicId)) {
 					indexStore->getValue(physicId, &rec, ctx);
 					if (fixedIndexRowLen) {
 						assert(rec.size() == fixedIndexRowLen);
@@ -2001,8 +2001,8 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 		const bm_uint_t* oldpurgeBits = seg->m_isPurged.bldata();
 		const bm_uint_t* newpurgeBits = e.newIsPurged.bldata();
 		for (size_t logicId = 0; logicId < logicRows; ++logicId) {
-			if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
-				if (!newpurgeBits || !nark_bit_test(newpurgeBits, logicId)) {
+			if (!oldpurgeBits || !terark_bit_test(oldpurgeBits, logicId)) {
+				if (!newpurgeBits || !terark_bit_test(newpurgeBits, logicId)) {
 					subStore->getValue(oldPhysicId, &rec, ctx);
 					index->getReadableStore()->getValue(newBasePhysicId + newPhysicId, &rec2, ctx);
 					assert(rec.size() == rec2.size());
@@ -2328,7 +2328,7 @@ catch (const std::exception& ex) {
 	fprintf(stderr
 		, "ERROR: merge segments: ex.what = %s\n%sTo\t%s failed, rollback!\n"
 		, ex.what(), segPathList.c_str(), destSegDir.string().c_str());
-	NARK_IF_DEBUG(throw,;);
+	TERARK_IF_DEBUG(throw,;);
 	fs::remove_all(destMergeDir);
 }
 }
@@ -2600,8 +2600,8 @@ public:
 	virtual void execute() = 0;
 };
 typedef boost::intrusive_ptr<MyTask> MyTaskPtr;
-nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_flushQueue;
-nark::util::concurrent_queue<std::deque<MyTaskPtr> > g_compressQueue;
+terark::util::concurrent_queue<std::deque<MyTaskPtr> > g_flushQueue;
+terark::util::concurrent_queue<std::deque<MyTaskPtr> > g_compressQueue;
 
 volatile bool g_stopCompress = false;
 volatile bool g_flushStopped = false;

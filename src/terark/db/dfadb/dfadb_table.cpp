@@ -1,9 +1,9 @@
 #include "dfadb_table.hpp"
 #include "dfadb_segment.hpp"
-#include <nark/fsa/nest_trie_dawg.hpp>
-#include <nark/io/FileStream.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/mmap.hpp>
+#include <terark/fsa/nest_trie_dawg.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/util/mmap.hpp>
 #include <terark/db/mock_db_engine.hpp>
 #include <terark/db/wiredtiger/wt_db_segment.hpp>
 #include <boost/filesystem.hpp>
@@ -28,7 +28,7 @@ DfaDbTable::createReadonlySegment(PathRef dir) const {
 
 WritableSegment*
 DfaDbTable::createWritableSegment(PathRef dir) const {
-	const char* dfaWritableSeg = getenv("NarkDB_DfaWritableSegment");
+	const char* dfaWritableSeg = getenv("TerarkDB_DfaWritableSegment");
 	if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock") == 0) {
 		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 		seg->m_schema = this->m_schema;
@@ -47,7 +47,7 @@ WritableSegment*
 DfaDbTable::openWritableSegment(PathRef dir) const {
 	auto isDelPath = dir / "isDel";
 	if (boost::filesystem::exists(isDelPath)) {
-		const char* dfaWritableSeg = getenv("NarkDB_DfaWritableSegment");
+		const char* dfaWritableSeg = getenv("TerarkDB_DfaWritableSegment");
 		if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock") == 0) {
 			std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 			seg->m_schema = this->m_schema;
@@ -67,6 +67,6 @@ DfaDbTable::openWritableSegment(PathRef dir) const {
 	}
 }
 
-NARK_DB_REGISTER_TABLE_CLASS(DfaDbTable);
+TERARK_DB_REGISTER_TABLE_CLASS(DfaDbTable);
 
 }}} // namespace terark::db::dfadb

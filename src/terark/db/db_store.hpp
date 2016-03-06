@@ -1,12 +1,12 @@
-#ifndef __nark_db_db_store_hpp__
-#define __nark_db_db_store_hpp__
+#ifndef __terark_db_db_store_hpp__
+#define __terark_db_db_store_hpp__
 
 #include "db_conf.hpp"
 #include "db_context.hpp"
 #include <boost/filesystem.hpp>
 
 namespace boost { namespace filesystem {
-	inline path operator+(const path& x, nark::fstring y) {
+	inline path operator+(const path& x, terark::fstring y) {
 		path z = x;
 		z.concat(y.begin(), y.end());
 		return z;
@@ -23,8 +23,8 @@ namespace terark { namespace db {
 
 typedef const boost::filesystem::path& PathRef;
 
-class NARK_DB_DLL Permanentable : public RefCounter {
-	NARK_DB_NON_COPYABLE_CLASS(Permanentable);
+class TERARK_DB_DLL Permanentable : public RefCounter {
+	TERARK_DB_NON_COPYABLE_CLASS(Permanentable);
 public:
 	Permanentable();
 	~Permanentable();
@@ -47,17 +47,17 @@ public:
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
-class NARK_DB_DLL AppendableStore;
-class NARK_DB_DLL UpdatableStore;
-class NARK_DB_DLL WritableStore;
-class NARK_DB_DLL ReadableIndex;
-class NARK_DB_DLL ReadableStore : virtual public Permanentable {
-	NARK_DB_NON_COPYABLE_CLASS(ReadableStore);
+class TERARK_DB_DLL AppendableStore;
+class TERARK_DB_DLL UpdatableStore;
+class TERARK_DB_DLL WritableStore;
+class TERARK_DB_DLL ReadableIndex;
+class TERARK_DB_DLL ReadableStore : virtual public Permanentable {
+	TERARK_DB_NON_COPYABLE_CLASS(ReadableStore);
 public:
 	struct RegisterStoreFactory {
 		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*()>& f);
 	};
-#define NARK_DB_REGISTER_STORE(suffix, StoreClass) \
+#define TERARK_DB_REGISTER_STORE(suffix, StoreClass) \
 	static ReadableStore::RegisterStoreFactory \
 		regStore_##StoreClass(suffix, [](){ return new StoreClass(); });
 
@@ -85,27 +85,27 @@ public:
 	StoreIterator* createDefaultStoreIterBackward(DbContext*) const;
 };
 
-class NARK_DB_DLL AppendableStore {
+class TERARK_DB_DLL AppendableStore {
 public:
 	virtual ~AppendableStore();
 	virtual llong append(fstring row, DbContext*) = 0;
 };
 
-class NARK_DB_DLL UpdatableStore {
+class TERARK_DB_DLL UpdatableStore {
 public:
 	virtual ~UpdatableStore();
 	virtual void update(llong id, fstring row, DbContext*) = 0;
 	virtual byte* getRawDataBasePtr();
 };
 
-class NARK_DB_DLL WritableStore : public AppendableStore, public UpdatableStore {
+class TERARK_DB_DLL WritableStore : public AppendableStore, public UpdatableStore {
 public:
 	virtual ~WritableStore();
 	virtual void remove(llong id, DbContext*) = 0;
 	virtual void clear() = 0;
 };
 
-class NARK_DB_DLL MultiPartStore : public ReadableStore {
+class TERARK_DB_DLL MultiPartStore : public ReadableStore {
 	class MyStoreIterForward;	friend class MyStoreIterForward;
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 
@@ -137,4 +137,4 @@ private:
 
 } } // namespace terark::db
 
-#endif // __nark_db_db_store_hpp__
+#endif // __terark_db_db_store_hpp__

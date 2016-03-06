@@ -148,7 +148,7 @@ EOF
 rm -f src/terark/my_auto_config.hpp
 touch src/terark/my_auto_config.hpp
 if $CXX -std=c++11 has_inheriting_cons.cpp > /dev/null 2>&1; then
-	echo '#define NARK_HAS_INHERITING_CONSTRUCTORS' >> src/terark/my_auto_config.hpp
+	echo '#define TERARK_HAS_INHERITING_CONSTRUCTORS' >> src/terark/my_auto_config.hpp
 fi
 rm -f has_inheriting_cons.cpp
 

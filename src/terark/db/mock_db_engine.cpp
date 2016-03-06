@@ -1,14 +1,14 @@
 #include "mock_db_engine.hpp"
-#include <nark/io/FileStream.hpp>
-#include <nark/io/StreamBuffer.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/sortable_strvec.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/util/sortable_strvec.hpp>
 
 namespace terark { namespace db {
 
 namespace fs = boost::filesystem;
 
-NARK_DB_REGISTER_STORE("mock", MockReadonlyStore);
+TERARK_DB_REGISTER_STORE("mock", MockReadonlyStore);
 
 llong MockReadonlyStore::dataStorageSize() const {
 	return m_rows.used_mem_size();
@@ -160,7 +160,7 @@ public:
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
 		assert(nullptr != id);
-		if (nark_likely(m_pos < m_index->m_ids.size())) {
+		if (terark_likely(m_pos < m_index->m_ids.size())) {
 			owner->getIndexKey(id, key, m_pos);
 			m_pos++;
 			return true;
@@ -193,7 +193,7 @@ public:
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const MockReadonlyIndex*>(m_index.get());
 		assert(nullptr != id);
-		if (nark_likely(m_pos > 0)) {
+		if (terark_likely(m_pos > 0)) {
 			owner->getIndexKey(id, key, --m_pos);
 			return true;
 		}
@@ -228,7 +228,7 @@ int MockReadonlyIndex::forwardLowerBound(fstring key, size_t* pLower) const {
 		cmp.fixedLen = fixlen;
 		cmp.strpool = m_keys.strpool.data();
 		cmp.schema = m_schema;
-		size_t lo = nark::lower_bound_0(index, rows, key, cmp);
+		size_t lo = terark::lower_bound_0(index, rows, key, cmp);
 		*pLower = lo;
 		if (lo < rows) {
 			size_t jj = m_ids[lo];
@@ -243,7 +243,7 @@ int MockReadonlyIndex::forwardLowerBound(fstring key, size_t* pLower) const {
 		cmp.offsets = m_keys.offsets.data();
 		cmp.strpool = m_keys.strpool.data();
 		cmp.schema = m_schema;
-		size_t lo = nark::lower_bound_0(index, rows, key, cmp);
+		size_t lo = terark::lower_bound_0(index, rows, key, cmp);
 		*pLower = lo;
 		if (lo < rows) {
 			size_t jj = m_ids[lo];
@@ -616,7 +616,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
-		if (nark_likely(owner->m_kv.end() != m_iter)) {
+		if (terark_likely(owner->m_kv.end() != m_iter)) {
 			*id = m_iter->second;
 			copyKey(m_iter->first, key);
 			++m_iter;
@@ -657,7 +657,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
-		if (nark_likely(owner->m_kv.begin() != m_iter)) {
+		if (terark_likely(owner->m_kv.begin() != m_iter)) {
 			--m_iter;
 			*id = m_iter->second;
 			copyKey(m_iter->first, key);
@@ -980,6 +980,6 @@ MockCompositeTable::openWritableSegment(PathRef dir) const {
 	}
 }
 
-NARK_DB_REGISTER_TABLE_CLASS(MockCompositeTable);
+TERARK_DB_REGISTER_TABLE_CLASS(MockCompositeTable);
 
 } } // namespace terark::db

@@ -1,14 +1,14 @@
 #pragma once
 
 #include <terark/db/db_table.hpp>
-#include <nark/util/fstrvec.hpp>
+#include <terark/util/fstrvec.hpp>
 #include <set>
 #include <wiredtiger.h>
 #include <tbb/mutex.h>
 
 namespace terark { namespace db { namespace wt {
 
-class NARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
+class TERARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
 	class MyIndexIterForward;  friend class MyIndexIterForward;
 	class MyIndexIterBackward; friend class MyIndexIterBackward;
 

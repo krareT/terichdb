@@ -1,8 +1,8 @@
 #include "zip_int_store.hpp"
-#include <nark/io/FileStream.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/mmap.hpp>
-#include <nark/util/sortable_strvec.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/util/mmap.hpp>
+#include <terark/util/sortable_strvec.hpp>
 
 namespace terark { namespace db {
 
@@ -110,7 +110,7 @@ void ZipIntStore::zipValues(const void* data, size_t size) {
 		m_minValue = m_dedup.build_from(dedup);
 	}
 
-	size_t indexBits = nark_bsr_u32(dedup.size()-1) + 1;
+	size_t indexBits = terark_bsr_u32(dedup.size()-1) + 1;
 	size_t indexSize = (indexBits      * rows         + 7) / 8;
 	size_t dedupSize = (dup.uintbits() * dedup.size() + 7) / 8;
 	if (dedupSize + indexSize < dup.mem_size()) {
@@ -185,7 +185,7 @@ namespace {
 	BOOST_STATIC_ASSERT(sizeof(ZipIntStoreHeader) == 32);
 }
 
-NARK_DB_REGISTER_STORE("zint", ZipIntStore);
+TERARK_DB_REGISTER_STORE("zint", ZipIntStore);
 
 void ZipIntStore::load(PathRef fpath) {
 	assert(fstring(fpath.string()).endsWith(".zint"));
@@ -197,7 +197,7 @@ void ZipIntStore::load(PathRef fpath) {
 	m_dedup.risk_set_data((byte*)(header+1), header->uniqNum, header->intBits);
 	if (header->uniqNum != rows) {
 		assert(header->uniqNum < rows);
-		size_t indexBits = nark_bsr_u32(header->uniqNum - 1) + 1;
+		size_t indexBits = terark_bsr_u32(header->uniqNum - 1) + 1;
 		auto   indexData = (byte*)(header+1) + m_dedup.mem_size();
 		m_index.risk_set_data(indexData, rows, indexBits);
 	}

@@ -1,0 +1,282 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{DD4CC6F3-7D80-4531-86AA-88A4C710522B}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>mongoterarkdb</RootNamespace>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;C:\osc\terark\src;C:\osc\tbb\include;C:\osc\terark-db\src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;C:\osc\terark\src;C:\osc\tbb\include;C:\osc\terark-db\src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;C:\osc\terark\src;C:\osc\tbb\include;C:\osc\terark-db\src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;C:\osc\terark\src;C:\osc\tbb\include;C:\osc\terark-db\src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\counter_test.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_range.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_range_cursor.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_type.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_type_string_data.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_type_terminated.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\error_codes.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\global_initializer.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\global_initializer_registerer.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\init.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer_context.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer_dependency_graph.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\initializer_test.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\make_string_vector.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\parse_number.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\secure_allocator.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\status.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\string_data.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\system_error.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\validate_locale.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonelement.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonmisc.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonobj.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsonobjbuilder.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bsontypes.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\bson_validate.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\json.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\oid.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\bson\timestamp.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\component_message_log_domain.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\console.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\logger.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\logstream_builder.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_component.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_component_settings.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_manager.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\log_severity.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\message_event_utf8_encoder.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\message_log_domain.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\parse_log_component_settings.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\ramlog.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\rotatable_file_manager.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\rotatable_file_writer.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\platform\decimal128.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\platform\random.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\allocator.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\assert_util.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\base64.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\concurrency\thread_name.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\debugger.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\elapsed_tracker.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\exception_filter_win32.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\file.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\hex.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\intrusive_counter.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\itoa.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\log.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\md5.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\md5main.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\ntservice.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\password.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\password_digest.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\platform_init.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\processinfo.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\processinfo_windows.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\progress_meter.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\quick_exit.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\safe_num.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\secure_zero_memory.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\signal_handlers.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\signal_handlers_synchronous.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\signal_win32.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\stacktrace.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\stacktrace_windows.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\static_observer.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\stringutils.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\system_tick_source.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\text.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\thread_safe_string.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\tick_source_mock.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\timer.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\time_support.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\util\touch_pages.cpp" />
+    <ClCompile Include="..\..\..\..\mongo\src\third_party\murmurhash3\MurmurHash3.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_customization_hooks.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_global_options.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_index.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_init.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_kv_engine.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_parameters.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_record_store.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_record_store_capped.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_recovery_unit.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_server_status.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\terarkdb_size_storer.cpp" />
+    <ClCompile Include="..\..\..\src\mongo_terarkdb\record_codec.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonelement.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonmisc.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonobj.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsonobjbuilder.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bsontypes.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bson_field.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\bson_validate.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\inline_decls.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\json.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\oid.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\ordering.h" />
+    <ClInclude Include="..\..\..\..\mongo\src\mongo\bson\timestamp.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\mongo_terarkdb_common.hpp" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_customization_hooks.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_global_options.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_index.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_kv_engine.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_parameters.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_record_store.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_record_store_capped.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_record_store_oplog_stones.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_recovery_unit.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_server_status.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_size_storer.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\terarkdb_snapshot_manager.h" />
+    <ClInclude Include="..\..\..\src\mongo_terarkdb\record_codec.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\terark-db\terark-db.vcxproj">
+      <Project>{9261644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

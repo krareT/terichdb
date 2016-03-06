@@ -16,7 +16,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const SeqNumIndex*>(m_index.get());
-		if (nark_likely(m_curr < owner->m_cnt)) {
+		if (terark_likely(m_curr < owner->m_cnt)) {
 			getIndexKey(id, key, owner, m_curr++);
 			return true;
 		}
@@ -72,7 +72,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const SeqNumIndex*>(m_index.get());
-		if (nark_likely(m_curr < owner->m_cnt)) {
+		if (terark_likely(m_curr < owner->m_cnt)) {
 			getIndexKey(id, key, owner, --m_curr);
 			return true;
 		}

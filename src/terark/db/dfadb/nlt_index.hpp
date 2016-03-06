@@ -1,9 +1,9 @@
 #pragma once
 
 #include <terark/db/db_index.hpp>
-#include <nark/int_vector.hpp>
-#include <nark/rank_select.hpp>
-#include <nark/fsa/nest_trie_dawg.hpp>
+#include <terark/int_vector.hpp>
+#include <terark/rank_select.hpp>
+#include <terark/fsa/nest_trie_dawg.hpp>
 
 namespace terark {
 //	class Nest
@@ -11,7 +11,7 @@ namespace terark {
 
 namespace terark { namespace db { namespace dfadb {
 
-class NARK_DB_DLL NestLoudsTrieIndex : public ReadableIndex, public ReadableStore {
+class TERARK_DB_DLL NestLoudsTrieIndex : public ReadableIndex, public ReadableStore {
 public:
 	NestLoudsTrieIndex();
 	~NestLoudsTrieIndex();

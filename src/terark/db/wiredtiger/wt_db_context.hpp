@@ -6,7 +6,7 @@
 namespace terark { namespace db { namespace wt {
 
 /*
-class NARK_DB_DLL WtContext : public DbContext {
+class TERARK_DB_DLL WtContext : public DbContext {
 public:
 	WT_SESSION*        wtSession;
 	WT_CURSOR*         wtStoreCursor;

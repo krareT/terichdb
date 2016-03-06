@@ -1,13 +1,13 @@
 #pragma once
 
 #include <terark/db/db_index.hpp>
-#include <nark/int_vector.hpp>
-#include <nark/rank_select.hpp>
-#include <nark/util/sortable_strvec.hpp>
+#include <terark/int_vector.hpp>
+#include <terark/rank_select.hpp>
+#include <terark/util/sortable_strvec.hpp>
 
 namespace terark { namespace db {
 
-class NARK_DB_DLL FixedLenStore : public ReadableStore {
+class TERARK_DB_DLL FixedLenStore : public ReadableStore {
 public:
 	FixedLenStore();
 	~FixedLenStore();

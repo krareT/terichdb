@@ -4,18 +4,18 @@
 #include "zip_int_store.hpp"
 #include "fixed_len_key_index.hpp"
 #include "fixed_len_store.hpp"
-#include <nark/util/autoclose.hpp>
-#include <nark/io/FileStream.hpp>
-#include <nark/io/StreamBuffer.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/io/MemStream.hpp>
-#include <nark/lcast.hpp>
-#include <nark/util/mmap.hpp>
-#include <nark/util/sortable_strvec.hpp>
+#include <terark/util/autoclose.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/io/MemStream.hpp>
+#include <terark/lcast.hpp>
+#include <terark/util/mmap.hpp>
+#include <terark/util/sortable_strvec.hpp>
 
-//#define NARK_DB_ENABLE_DFA_META
-#if defined(NARK_DB_ENABLE_DFA_META)
-#include <nark/fsa/nest_trie_dawg.hpp>
+//#define TERARK_DB_ENABLE_DFA_META
+#if defined(TERARK_DB_ENABLE_DFA_META)
+#include <terark/fsa/nest_trie_dawg.hpp>
 #endif
 
 #if defined(_MSC_VER)
@@ -62,7 +62,7 @@ ReadableSegment::~ReadableSegment() {
 				, ex.what());
 		// windows can not delete a hardlink when another hardlink
 		// to the same file is in use
-		//	NARK_IF_DEBUG(abort(),;);
+		//	TERARK_IF_DEBUG(abort(),;);
 		}
 	}
 }
@@ -796,7 +796,7 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 			size_t dlistSize = input->m_deletionList.size();
 			for (size_t i = dlistStartPos; i < dlistSize; ++i) {
 				assert(dlist[i] < m_isDel.size());
-				nark_bit_set1(isDel, dlist[i]);
+				terark_bit_set1(isDel, dlist[i]);
 			}
 #if !defined(NDEBUG)
 			size_t computed_delcnt1 = this->m_isDel.popcnt();
@@ -941,7 +941,7 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 		llong physicId;
 		while (iter->increment(&physicId, &rec)) {
 			size_t logicId = input->getLogicId(size_t(physicId));
-			if (!nark_bit_test(isDel, logicId)) {
+			if (!terark_bit_test(isDel, logicId)) {
 				if (fixlen)
 					strVec.m_strpool.append(rec);
 				else
@@ -955,8 +955,8 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 		const bm_uint_t* purgeBits = input->m_isPurged.bldata();
 		llong physicId = 0;
 		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
-			if (!purgeBits || !nark_bit_test(purgeBits, logicId)) {
-				if (!nark_bit_test(isDel, logicId)) {
+			if (!purgeBits || !terark_bit_test(purgeBits, logicId)) {
+				if (!terark_bit_test(isDel, logicId)) {
 					pushRecord(strVec, store, physicId, fixlen, ctx);
 				}
 				physicId++;
@@ -989,7 +989,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	size_t maxMem = size_t(m_schema->m_readonlyDataMemSize);
 	valvec<ReadableStorePtr> parts;
 	auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
-		if (nark_unlikely(strVec.mem_size() >= maxMem)) {
+		if (terark_unlikely(strVec.mem_size() >= maxMem)) {
 			parts.push_back(this->buildStore(schema, strVec));
 			strVec.clear();
 		}
@@ -1004,8 +1004,8 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 			llong partRows = partStore.numDataRows();
 			llong subPhysicId = 0;
 			while (logicId < inputRowNum && subPhysicId < partRows) {
-				if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
-					if (!nark_bit_test(isDel, logicId)) {
+				if (!oldpurgeBits || !terark_bit_test(oldpurgeBits, logicId)) {
+					if (!terark_bit_test(isDel, logicId)) {
 						partsPushRecord(partStore, subPhysicId);
 					}
 					subPhysicId++;
@@ -1018,8 +1018,8 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	else {
 		llong physicId = 0;
 		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
-			if (!oldpurgeBits || !nark_bit_test(oldpurgeBits, logicId)) {
-				if (!nark_bit_test(isDel, logicId)) {
+			if (!oldpurgeBits || !terark_bit_test(oldpurgeBits, logicId)) {
+				if (!terark_bit_test(isDel, logicId)) {
 					partsPushRecord(colgroup, physicId);
 				}
 				physicId++;
@@ -1251,8 +1251,8 @@ WritableSegment::~WritableSegment() {
 }
 
 void WritableSegment::pushIsDel(bool val) {
-	const size_t ChunkBits = NARK_IF_DEBUG(4*1024, 1*1024*1024);
-	if (nark_unlikely(nullptr == m_isDelMmap)) {
+	const size_t ChunkBits = TERARK_IF_DEBUG(4*1024, 1*1024*1024);
+	if (terark_unlikely(nullptr == m_isDelMmap)) {
 		assert(m_isDel.size() == 0);
 		assert(m_isDel.capacity() == 0);
 		m_isDel.resize_fill(ChunkBits - 64, 0); // 64 is for uint64 header
@@ -1263,7 +1263,7 @@ void WritableSegment::pushIsDel(bool val) {
 		m_isDel.risk_set_size(0);
 		m_delcnt = 0;
 	}
-	else if (nark_unlikely(m_isDel.size() == m_isDel.capacity())) {
+	else if (terark_unlikely(m_isDel.size() == m_isDel.capacity())) {
 		assert((64 + m_isDel.size()) % ChunkBits == 0);
 		size_t newCap = ((64+m_isDel.size()+2*ChunkBits-1) & ~(ChunkBits-1));
 		mmap_close(m_isDelMmap, sizeof(uint64_t) + m_isDel.mem_size());

@@ -1,5 +1,5 @@
-#ifndef __nark_db_db_context_hpp__
-#define __nark_db_db_context_hpp__
+#ifndef __terark_db_db_context_hpp__
+#define __terark_db_db_context_hpp__
 
 #include "db_conf.hpp"
 
@@ -8,14 +8,14 @@ namespace terark { namespace db {
 typedef boost::intrusive_ptr<class CompositeTable> CompositeTablePtr;
 typedef boost::intrusive_ptr<class StoreIterator> StoreIteratorPtr;
 
-class NARK_DB_DLL DbContextLink : public RefCounter {
+class TERARK_DB_DLL DbContextLink : public RefCounter {
 	friend class CompositeTable;
 protected:
 	DbContextLink();
 	~DbContextLink();
 //	DbContextLink *m_prev, *m_next;
 };
-class NARK_DB_DLL DbContext : public DbContextLink {
+class TERARK_DB_DLL DbContext : public DbContextLink {
 	friend class CompositeTable;
 public:
 	explicit DbContext(const CompositeTable* tab);
@@ -57,4 +57,4 @@ typedef boost::intrusive_ptr<DbContext> DbContextPtr;
 
 } } // namespace terark::db
 
-#endif // __nark_db_db_context_hpp__
+#endif // __terark_db_db_context_hpp__

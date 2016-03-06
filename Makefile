@@ -24,7 +24,7 @@ endif
 
 BRAIN_DEAD_RE2_INC = -I3rdparty/re2/re2 -I3rdparty/re2/util
 
-NARK_INC := -Isrc -I3rdparty/re2 ${BRAIN_DEAD_RE2_INC}
+TERARK_INC := -Isrc -I3rdparty/re2 ${BRAIN_DEAD_RE2_INC}
 
 include ${BUILD_ROOT}/env.mk
 
@@ -110,7 +110,7 @@ DEFS := -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE
 override CFLAGS   += ${DEFS}
 override CXXFLAGS += ${DEFS}
 
-override INCS := ${NARK_INC} ${INCS}
+override INCS := ${TERARK_INC} ${INCS}
 
 ifeq (, $(findstring ${BOOST_INC}, ${INCS} /usr/include /usr/local/include))
   override INCS += -I${BOOST_INC}
@@ -173,20 +173,20 @@ TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 
 ifeq (1,${WITH_DFA_DB})
   TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
-  override INCS += -I../nark/src
+  override INCS += -I../terark/src
   TerarkDB_lib := libTerarkDB
 else
   zip_src := \
-    src/nark/io/BzipStream.cpp \
-	src/nark/io/GzipStream.cpp
-  TerarkDB_src += $(wildcard src/nark/*.cpp)
-  TerarkDB_src += $(wildcard src/nark/io/*.cpp)
-  TerarkDB_src += $(wildcard src/nark/util/*.cpp)
-  TerarkDB_src += $(wildcard src/nark/thread/*.cpp)
+    src/terark/io/BzipStream.cpp \
+	src/terark/io/GzipStream.cpp
+  TerarkDB_src += $(wildcard src/terark/*.cpp)
+  TerarkDB_src += $(wildcard src/terark/io/*.cpp)
+  TerarkDB_src += $(wildcard src/terark/util/*.cpp)
+  TerarkDB_src += $(wildcard src/terark/thread/*.cpp)
   TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
   TerarkDB_lib := libTerarkDB-no-zip
-  LIB_NARK_D := -L../nark/lib -lnark-${COMPILER}-d
-  LIB_NARK_R := -L../nark/lib -lnark-${COMPILER}-r
+  LIB_TERARK_D := -L../terark/lib -lterark-${COMPILER}-d
+  LIB_TERARK_R := -L../terark/lib -lterark-${COMPILER}-r
 endif
 
 #function definition
@@ -223,9 +223,9 @@ ifneq (${UNAME_System},Darwin)
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lrt
 endif
 
-#${TerarkDB_d} : LIBS += ${LIB_NARK_D} -ltbb_debug
-${TerarkDB_d} : LIBS += ${LIB_NARK_D} -ltbb
-${TerarkDB_r} : LIBS += ${LIB_NARK_R} -ltbb
+#${TerarkDB_d} : LIBS += ${LIB_TERARK_D} -ltbb_debug
+${TerarkDB_d} : LIBS += ${LIB_TERARK_D} -ltbb
+${TerarkDB_r} : LIBS += ${LIB_TERARK_R} -ltbb
 
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 
@@ -295,28 +295,28 @@ samples : TerarkDB
 
 ${ddir}/%.o: %.cpp
 	@echo file: $< "->" $@
-	@echo NARK_INC=${NARK_INC}
+	@echo TERARK_INC=${TERARK_INC}
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	mkdir -p $(dir $@)
 	${CXX} ${CXX_STD} ${CPU} -c ${DBG_FLAGS} ${CXXFLAGS} ${INCS} $< -o $@
 
 ${rdir}/%.o: %.cpp
 	@echo file: $< "->" $@
-	@echo NARK_INC=${NARK_INC}
+	@echo TERARK_INC=${TERARK_INC}
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	mkdir -p $(dir $@)
 	${CXX} ${CXX_STD} ${CPU} -c ${RLS_FLAGS} ${CXXFLAGS} ${INCS} $< -o $@
 
 ${ddir}/%.o: %.cc
 	@echo file: $< "->" $@
-	@echo NARK_INC=${NARK_INC}
+	@echo TERARK_INC=${TERARK_INC}
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	mkdir -p $(dir $@)
 	${CXX} ${CXX_STD} ${CPU} -c ${DBG_FLAGS} ${CXXFLAGS} ${INCS} $< -o $@
 
 ${rdir}/%.o: %.cc
 	@echo file: $< "->" $@
-	@echo NARK_INC=${NARK_INC}
+	@echo TERARK_INC=${TERARK_INC}
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	mkdir -p $(dir $@)
 	${CXX} ${CXX_STD} ${CPU} -c ${RLS_FLAGS} ${CXXFLAGS} ${INCS} $< -o $@

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <terark/db/db_index.hpp>
-#include <nark/fsa/nest_louds_trie.hpp>
+#include <terark/fsa/nest_louds_trie.hpp>
 
 namespace terark {
 //	class Nest
@@ -9,7 +9,7 @@ namespace terark {
 
 namespace terark { namespace db { namespace dfadb {
 
-class NARK_DB_DLL NestLoudsTrieStore : public ReadableStore {
+class TERARK_DB_DLL NestLoudsTrieStore : public ReadableStore {
 public:
 	NestLoudsTrieStore();
 	~NestLoudsTrieStore();

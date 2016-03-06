@@ -1,11 +1,11 @@
 #include "fixed_len_store.hpp"
-#include <nark/io/FileStream.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/mmap.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/util/mmap.hpp>
 
 namespace terark { namespace db {
 
-NARK_DB_REGISTER_STORE("fixlen", FixedLenStore);
+TERARK_DB_REGISTER_STORE("fixlen", FixedLenStore);
 
 FixedLenStore::FixedLenStore() {
 	m_mmapBase = nullptr;

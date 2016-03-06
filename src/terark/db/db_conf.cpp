@@ -1,13 +1,13 @@
 #include "db_conf.hpp"
-#include <nark/io/DataIO_Basic.hpp>
-#include <nark/io/FileStream.hpp>
-//#include <nark/io/DataIO.hpp>
-//#include <nark/io/MemStream.hpp>
-//#include <nark/io/StreamBuffer.hpp>
-#include <nark/io/var_int.hpp>
-#include <nark/num_to_str.hpp>
-//#include <nark/util/sortable_strvec.hpp>
-#include <nark/util/linebuf.hpp>
+#include <terark/io/DataIO_Basic.hpp>
+#include <terark/io/FileStream.hpp>
+//#include <terark/io/DataIO.hpp>
+//#include <terark/io/MemStream.hpp>
+//#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/var_int.hpp>
+#include <terark/num_to_str.hpp>
+//#include <terark/util/sortable_strvec.hpp>
+#include <terark/util/linebuf.hpp>
 #include <string.h>
 #include "json.hpp"
 
@@ -146,7 +146,7 @@ void Schema::compile(const Schema* parent) {
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		if (ColumnType::Fixed == colmeta.type) {
-			NARK_RT_assert(colmeta.fixedLen > 0, std::invalid_argument);
+			TERARK_RT_assert(colmeta.fixedLen > 0, std::invalid_argument);
 		}
 	}
 #if 0 // TODO:
@@ -200,7 +200,7 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 	const byte* last = row.size() + curr;
 
 #define CHECK_CURR_LAST3(curr, last, len) \
-	if (nark_unlikely(curr + (len) > last)) { \
+	if (terark_unlikely(curr + (len) > last)) { \
 		THROW_STD(out_of_range, "len=%ld remain=%ld", \
 			long(len), long(last-curr)); \
 	}
@@ -1143,7 +1143,7 @@ void Schema::compileProject(const Schema* parent) {
 	for (size_t i = 0; i < myColsNum; ++i) {
 		fstring colname = m_columnsMeta.key(i);
 		size_t j = parent->m_columnsMeta.find_i(colname);
-		if (nark_unlikely(j >= parentColsNum)) {
+		if (terark_unlikely(j >= parentColsNum)) {
 			THROW_STD(invalid_argument,
 				"colname=%s is not in parent schema.cols=%s",
 				colname.c_str(), parent->joinColumnNames(',').c_str());
@@ -1634,7 +1634,7 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 
 const llong  DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
 const llong  DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
-const size_t DEFAULT_minMergeSegNum      = NARK_IF_DEBUG(2, 5);
+const size_t DEFAULT_minMergeSegNum      = TERARK_IF_DEBUG(2, 5);
 const double DEFAULT_purgeDeleteThreshold = 0.20;
 
 SchemaConfig::SchemaConfig() {
@@ -1904,7 +1904,7 @@ void SchemaConfig::saveJsonFile(fstring jsonFile) const {
 	fp.ensureWrite(jsonStr.data(), jsonStr.size());
 }
 
-#if defined(NARK_DB_ENABLE_DFA_META)
+#if defined(TERARK_DB_ENABLE_DFA_META)
 void SchemaConfig::loadMetaDFA(fstring metaFile) {
 	std::unique_ptr<MatchingDFA> metaConf(MatchingDFA::load_from(metaFile));
 	std::string val;
@@ -2019,7 +2019,7 @@ public:
 	}
 	bool operator[](size_t i) const {
 		assert(i < m_bitsNum);
-		return nark_bit_test(m_bitsPtr, i);
+		return terark_bit_test(m_bitsPtr, i);
 	}
 	size_t size() const { return m_bitsNum; }
 };

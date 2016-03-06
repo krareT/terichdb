@@ -1,49 +1,49 @@
-#ifndef __nark_db_db_conf_hpp__
-#define __nark_db_db_conf_hpp__
+#ifndef __terark_db_db_conf_hpp__
+#define __terark_db_db_conf_hpp__
 
-#include <nark/hash_strmap.hpp>
-#include <nark/gold_hash_map.hpp>
-#include <nark/bitmap.hpp>
-#include <nark/pass_by_value.hpp>
-#include <nark/util/refcount.hpp>
+#include <terark/hash_strmap.hpp>
+#include <terark/gold_hash_map.hpp>
+#include <terark/bitmap.hpp>
+#include <terark/pass_by_value.hpp>
+#include <terark/util/refcount.hpp>
 #include <boost/intrusive_ptr.hpp>
 
 #if defined(_MSC_VER)
 
-#  if defined(NARK_DB_CREATE_DLL)
+#  if defined(TERARK_DB_CREATE_DLL)
 #    pragma warning(disable: 4251)
-#    define NARK_DB_DLL __declspec(dllexport)      // creator of dll
+#    define TERARK_DB_DLL __declspec(dllexport)      // creator of dll
 #    if defined(_DEBUG) || !defined(NDEBUG)
-#//	   pragma message("creating nark-db-d.lib")
+#//	   pragma message("creating terark-db-d.lib")
 #    else
-#//	   pragma message("creating nark-db-r.lib")
+#//	   pragma message("creating terark-db-r.lib")
 #    endif
-#  elif defined(NARK_DB_USE_DLL)
+#  elif defined(TERARK_DB_USE_DLL)
 #    pragma warning(disable: 4251)
-#    define NARK_DB_DLL __declspec(dllimport)      // user of dll
+#    define TERARK_DB_DLL __declspec(dllimport)      // user of dll
 #    if defined(_DEBUG) || !defined(NDEBUG)
-//#	   pragma comment(lib, "nark-db-d.lib")
+//#	   pragma comment(lib, "terark-db-d.lib")
 #    else
-//#	   pragma comment(lib, "nark-db-r.lib")
+//#	   pragma comment(lib, "terark-db-r.lib")
 #    endif
 #  else
-#    define NARK_DB_DLL                            // static lib creator or user
+#    define TERARK_DB_DLL                            // static lib creator or user
 #  endif
 
 #else /* _MSC_VER */
 
-#  define NARK_DB_DLL
+#  define TERARK_DB_DLL
 
 #endif /* _MSC_VER */
 
-#define NARK_DB_NON_COPYABLE_CLASS(Class) \
+#define TERARK_DB_NON_COPYABLE_CLASS(Class) \
 	Class(const Class&) = delete; \
 	Class(Class&&) = delete; \
 	Class& operator=(const Class&) = delete; \
 	Class& operator=(Class&&) = delete
 
 namespace terark {
-	using namespace nark;
+	using namespace terark;
 }
 
 namespace terark { namespace db {
@@ -83,7 +83,7 @@ namespace terark { namespace db {
 		CarBin,  // Cardinal Binary, prefixed by uint32 length
 	};
 
-	struct NARK_DB_DLL ColumnMeta {
+	struct TERARK_DB_DLL ColumnMeta {
 		uint32_t fixedLen;
 		uint32_t fixedOffset;
 		uint32_t reserved0;
@@ -98,7 +98,7 @@ namespace terark { namespace db {
 		explicit ColumnMeta(ColumnType);
 	};
 
-	class NARK_DB_DLL Schema : public RefCounter {
+	class TERARK_DB_DLL Schema : public RefCounter {
 		friend class SchemaSet;
 	public:
 		static const size_t MaxProjColumns = 64;
@@ -262,7 +262,7 @@ namespace terark { namespace db {
 
 	// a set of schema, could be all indices of a table
 	// or all column groups of a table
-	class NARK_DB_DLL SchemaSet : public RefCounter {
+	class TERARK_DB_DLL SchemaSet : public RefCounter {
 		struct Hash {
 			size_t operator()(const SchemaPtr& x) const;
 			size_t operator()(fstring x) const;
@@ -288,7 +288,7 @@ namespace terark { namespace db {
 	};
 	typedef boost::intrusive_ptr<SchemaSet> SchemaSetPtr;
 
-	class NARK_DB_DLL SchemaConfig : public RefCounter {
+	class TERARK_DB_DLL SchemaConfig : public RefCounter {
 	public:
 		struct Colproject {
 			uint32_t colgroupId;
@@ -343,10 +343,10 @@ namespace terark { namespace db {
 	};
 	typedef boost::intrusive_ptr<SchemaConfig> SchemaConfigPtr;
 
-	struct NARK_DB_DLL DbConf {
+	struct TERARK_DB_DLL DbConf {
 		std::string dir;
 	};
 
 } } // namespace terark::db
 
-#endif //__nark_db_db_conf_hpp__
+#endif //__terark_db_db_conf_hpp__

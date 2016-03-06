@@ -1,8 +1,8 @@
 #include "intkey_index.hpp"
-#include <nark/util/sortable_strvec.hpp>
-#include <nark/io/FileStream.hpp>
-#include <nark/io/DataIO.hpp>
-#include <nark/util/mmap.hpp>
+#include <terark/util/sortable_strvec.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/util/mmap.hpp>
 
 namespace terark { namespace db {
 
@@ -335,7 +335,7 @@ void ZipIntKeyIndex::load(PathRef path) {
 	m_isUnique   = h->isUnique ? true : false;
 	m_keyType    = ColumnType(h->keyType);
 	m_minKey     = h->minKey;
-	size_t indexBits = nark_bsr_u64(h->rows - 1) + 1;
+	size_t indexBits = terark_bsr_u64(h->rows - 1) + 1;
 	m_keys .risk_set_data((byte*)(h+1)                    , h->rows, h->keyBits);
 	m_index.risk_set_data((byte*)(h+1) + m_keys.mem_size(), h->rows,  indexBits);
 }

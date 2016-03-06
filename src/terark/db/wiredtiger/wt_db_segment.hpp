@@ -5,7 +5,7 @@
 
 namespace terark { namespace db { namespace wt {
 
-class NARK_DB_DLL WtWritableSegment : public PlainWritableSegment {
+class TERARK_DB_DLL WtWritableSegment : public PlainWritableSegment {
 public:
 	WtWritableSegment();
 	~WtWritableSegment();
