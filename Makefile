@@ -185,8 +185,8 @@ else
   TerarkDB_src += $(wildcard src/terark/thread/*.cpp)
   TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
   TerarkDB_lib := libTerarkDB-no-zip
-  LIB_TERARK_D := -L../terark/lib -lterark-${COMPILER}-d
-  LIB_TERARK_R := -L../terark/lib -lterark-${COMPILER}-r
+  LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
+  LIB_TERARK_R := -L../terark/lib -lterark-fsa_all-${COMPILER}-r
 endif
 
 #function definition
