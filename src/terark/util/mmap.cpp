@@ -36,9 +36,9 @@ mmap_load(const char* fname, size_t* fsize, bool writable, bool populate) {
 	LARGE_INTEGER lsize;
 	HANDLE hFile = CreateFileA(fname
 		, GENERIC_READ |(writable ? GENERIC_WRITE : 0)
-		, FILE_SHARE_DELETE | FILE_SHARE_READ
+		, FILE_SHARE_DELETE | FILE_SHARE_READ | (writable ? FILE_SHARE_WRITE : 0)
 		, NULL // lpSecurityAttributes
-		, OPEN_EXISTING
+		, writable ? OPEN_ALWAYS : OPEN_EXISTING
 		, FILE_ATTRIBUTE_NORMAL
 		, NULL // hTemplateFile 
 		);
@@ -46,6 +46,15 @@ mmap_load(const char* fname, size_t* fsize, bool writable, bool populate) {
 		DWORD err = GetLastError();
 		THROW_STD(logic_error, "CreateFile(fname=%s).Err=%d(%X)"
 			, fname, err, err);
+	}
+	if (writable) {
+	//	bool isNewFile = GetLastError() != ERROR_ALREADY_EXISTS;
+		bool isNewFile = GetLastError() == 0;
+		if (isNewFile) {
+			SetFilePointer(hFile, 8*1024, NULL, SEEK_SET);
+			SetEndOfFile(hFile);
+			SetFilePointer(hFile, 0, NULL, SEEK_SET);
+		}
 	}
 	if (!GetFileSizeEx(hFile, &lsize)) {
 		DWORD err = GetLastError();
