@@ -263,11 +263,11 @@ namespace terark { namespace db {
 	// a set of schema, could be all indices of a table
 	// or all column groups of a table
 	class TERARK_DB_DLL SchemaSet : public RefCounter {
-		struct Hash {
+		struct TERARK_DB_DLL Hash {
 			size_t operator()(const SchemaPtr& x) const;
 			size_t operator()(fstring x) const;
 		};
-		struct Equal {
+		struct TERARK_DB_DLL Equal {
 			bool operator()(const SchemaPtr& x, const SchemaPtr& y) const;
 			bool operator()(const SchemaPtr& x, fstring y) const;
 			bool operator()(fstring x, const SchemaPtr& y) const
