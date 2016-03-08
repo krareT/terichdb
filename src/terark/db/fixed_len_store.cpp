@@ -130,8 +130,9 @@ llong FixedLenStore::append(fstring row, DbContext*) {
 	Header* h = m_mmapBase;
 	if (nullptr == h || h->rows == h->capacity) {
 		assert(m_mmapSize % ChunkBytes == 0);
+		using std::max;
 		ullong minBytes = sizeof(Header) + m_fixlen * 1;
-		ullong newBytes = std::max({ChunkBytes, m_mmapSize, minBytes});
+		ullong newBytes = max(max(ChunkBytes, m_mmapSize), minBytes);
 		newBytes = ullong((newBytes+ChunkBytes-1)*1.618) & ~(ChunkBytes-1);
 		if (h) {
 			mmap_close(h, m_mmapSize);
