@@ -3,6 +3,8 @@
 #include <terark/io/DataIO.hpp>
 #include <terark/util/mmap.hpp>
 #include <terark/util/autoclose.hpp>
+#include <functional>
+#include <terark/num_to_str.hpp>
 
 #if defined(_MSC_VER)
 	#include <io.h>
@@ -132,7 +134,7 @@ llong FixedLenStore::append(fstring row, DbContext*) {
 		assert(m_mmapSize % ChunkBytes == 0);
 		using std::max;
 		ullong minBytes = sizeof(Header) + m_fixlen * 1;
-		ullong newBytes = max(max(ChunkBytes, m_mmapSize), minBytes);
+		ullong newBytes = max(max<ullong>(ChunkBytes, m_mmapSize), minBytes);
 		newBytes = ullong((newBytes+ChunkBytes-1)*1.618) & ~(ChunkBytes-1);
 		if (h) {
 			mmap_close(h, m_mmapSize);
@@ -222,14 +224,14 @@ void FixedLenStore::shrinkToFit() {
 	}
 	int err = ::_chsize_s(fd, realSize);
 	if (err) {
-		THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %zd) = %s"
+		THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %lld) = %s"
 			, m_fpath.c_str(), realSize, strerror(errno));
 	}
 }
 #else
 	int err = ::truncate(m_fpath.c_str(), realSize);
 	if (err) {
-		THROW_STD(logic_error, "FATAL: ::truncate(%s, %zd) = %s"
+		THROW_STD(logic_error, "FATAL: ::truncate(%s, %lld) = %s"
 			, m_fpath.c_str(), realSize, strerror(errno));
 	}
 #endif
