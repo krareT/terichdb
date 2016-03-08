@@ -11,6 +11,7 @@
 struct TestRow {
 	uint64_t id;
 	terark::db::Schema::Fixed<9> fix;
+	terark::db::Schema::Fixed<10> fix2;
 	std::string str0;
 	std::string str1;
 	std::string str2;
@@ -18,6 +19,7 @@ struct TestRow {
 	DATA_IO_LOAD_SAVE(TestRow,
 		&id
 		&fix
+		&fix2
 
 		// StrZero would never be serialized as LastColumn/RestAll
 		&terark::db::Schema::StrZero(str0)
@@ -46,7 +48,8 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 	for (size_t i = 0; i < maxRowNum; ++i) {
 		TestRow recRow;
 		recRow.id = rand() % maxRowNum + 1;
-		sprintf(recRow.fix.data, "%06lld", recRow.id);
+		int len = sprintf(recRow.fix.data, "%06lld", recRow.id);
+		memcpy(recRow.fix2.data, &recRow.fix.data, len+1);
 		recRow.str0 = std::string("s0:") + recRow.fix.data;
 		recRow.str1 = std::string("s1:") + recRow.fix.data;
 		recRow.str2 = std::string("s2:") + recRow.fix.data;

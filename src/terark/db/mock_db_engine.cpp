@@ -572,8 +572,8 @@ void MockWritableStore::remove(llong id, DbContext*) {
 	assert(id < llong(m_rows.size()));
 	m_rows[id].clear();
 }
-void MockWritableStore::clear() {
-	m_rows.clear();
+void MockWritableStore::shrinkToFit() {
+	m_rows.shrink_to_fit();
 }
 AppendableStore* MockWritableStore::getAppendableStore() { return this; }
 UpdatableStore* MockWritableStore::getUpdatableStore() { return this; }
@@ -913,9 +913,9 @@ void MockWritableSegment::remove(llong id, DbContext*) {
 	}
 }
 
-void MockWritableSegment::clear() {
-	m_rows.clear();
-	m_dataSize = 0;
+void MockWritableSegment::shrinkToFit() {
+//	m_rows.clear();
+//	m_dataSize = 0;
 }
 
 ReadableIndex*

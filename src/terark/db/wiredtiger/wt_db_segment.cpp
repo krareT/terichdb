@@ -76,10 +76,12 @@ llong WtWritableSegment::totalStorageSize() const {
 }
 
 void WtWritableSegment::loadRecordStore(PathRef segDir) {
+	PlainWritableSegment::loadRecordStore(segDir);
 	m_rowStore->load(segDir);
 }
 
 void WtWritableSegment::saveRecordStore(PathRef segDir) const {
+	PlainWritableSegment::saveRecordStore(segDir);
 	m_rowStore->save(segDir);
 }
 
@@ -119,19 +121,19 @@ void WtWritableSegment::remove(llong id, DbContext* ctx) {
 	m_wrRowStore->remove(id, ctx);
 }
 
-void WtWritableSegment::clear() {
-	m_wrRowStore->clear();
+void WtWritableSegment::shrinkToFit() {
+	m_wrRowStore->shrinkToFit();
 }
 
 void WtWritableSegment::save(PathRef path) const {
 	m_wtConn->async_flush(m_wtConn);
-	WritableSegment::save(path);
+	PlainWritableSegment::save(path);
 }
 
 void WtWritableSegment::load(PathRef path) {
 	init(path);
 	if (boost::filesystem::exists(path / "isDel")) {
-		WritableSegment::load(path);
+		PlainWritableSegment::load(path);
 		size_t rows = (size_t)m_rowStore->numDataRows();
 		if (rows+1 < m_isDel.size() || (rows+1 == m_isDel.size() && !m_isDel[rows])) {
 			fprintf(stderr

@@ -435,7 +435,7 @@ StoreIterator* ReadonlySegment::createStoreIterBackward(DbContext* ctx) const {
 }
 
 namespace {
-	class FileDataIO : public ReadableStore {
+	class FileDataIO : public ReadableStore, public AppendableStore {
 		class FileStoreIter;
 		FileStream m_fp;
 		NativeDataOutput<OutputBuffer> m_obuf;
@@ -454,7 +454,7 @@ namespace {
 			m_dataSize = 0;
 			m_rows = 0;
 		}
-		void dioWrite(const valvec<byte>& rowData) {
+		llong append(fstring rowData, DbContext*) override {
 		//	assert(rowData.size() > 0); // can be empty
 			if (0 == m_fixedLen) {
 				m_obuf << var_size_t(rowData.size());
@@ -465,8 +465,11 @@ namespace {
 						, rowData.size(), m_fixedLen);
 			}
 			m_obuf.ensureWrite(rowData.data(), rowData.size());
-			m_rows++;
 			m_dataSize += rowData.size();
+			return m_rows++;
+		}
+		void shrinkToFit() override {
+			completeWrite();
 		}
 		void completeWrite() {
 			m_obuf.flush();
@@ -584,17 +587,28 @@ namespace {
 
 	StoreIterator* FileDataIO::createStoreIterForward(DbContext*) const {
 		return new FileStoreIter(const_cast<FileDataIO*>(this));
-	}	
+	}
 
 	class TempFileList : public valvec<FileDataIO> {
 		const SchemaSet& m_schemaSet;
 		valvec<byte> m_projRowBuf;
 	public:
-		TempFileList(const SchemaSet& schemaSet) : m_schemaSet(schemaSet) {
+		valvec<FixedLenStorePtr> m_fixlenStore;
+		TempFileList(PathRef segDir, size_t indexNum, const SchemaSet& schemaSet)
+			: m_schemaSet(schemaSet)
+		{
 			this->reserve(schemaSet.m_nested.end_i());
 			for (size_t i = 0; i < schemaSet.m_nested.end_i(); ++i) {
-				SchemaPtr schema = schemaSet.m_nested.elem_at(i);
-				this->unchecked_emplace_back(schema->getFixedRowLen());
+				const Schema& schema = *schemaSet.m_nested.elem_at(i);
+				this->unchecked_emplace_back(schema.getFixedRowLen());
+			}
+			m_fixlenStore.resize(schemaSet.m_nested.end_i());
+			for (size_t i = indexNum; i < schemaSet.m_nested.end_i(); ++i) {
+				const Schema& schema = *schemaSet.m_nested.elem_at(i);
+				size_t fixlen = schema.getFixedRowLen();
+				if (fixlen && fixlen <= 16) {
+					m_fixlenStore[i] = new FixedLenStore(segDir, schema);
+				}
 			}
 		}
 		void writeColgroups(const valvec<fstring>& columns) {
@@ -602,13 +616,21 @@ namespace {
 			for (size_t i = 0; i < colgroupNum; ++i) {
 				const Schema& schema = *m_schemaSet.m_nested.elem_at(i);
 				schema.selectParent(columns, &m_projRowBuf);
-				this->p[i].dioWrite(m_projRowBuf);
+				if (auto fstore = m_fixlenStore[i].get()) {
+					fstore->append(m_projRowBuf, NULL);
+				}
+				else {
+					this->p[i].append(m_projRowBuf, NULL);
+				}
 			}
 		}
 		void completeWrite() {
 			size_t colgroupNum = this->size();
 			for (size_t i = 0; i < colgroupNum; ++i) {
-				this->p[i].completeWrite();
+				if (auto flstore = m_fixlenStore[i].get())
+					flstore->shrinkToFit();
+				else
+					this->p[i].completeWrite();
 			}
 		}
 	};
@@ -683,7 +705,8 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	llong newRowNum = 0;
 	assert(logicRowNum > 0);
 	size_t indexNum = m_schema->getIndexNum();
-	TempFileList colgroupTempFiles(*m_schema->m_colgroupSchemaSet);
+{
+	TempFileList colgroupTempFiles(tmpDir, indexNum, *m_schema->m_colgroupSchemaSet);
 {
 	valvec<fstring> columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf;
@@ -726,6 +749,10 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	}
 	for (size_t i = indexNum; i < colgroupTempFiles.size(); ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
+		if (auto flstore = colgroupTempFiles.m_fixlenStore[i]) {
+			m_colgroups[i] = flstore;
+			continue;
+		}
 		// dictZipLocalMatch is true by default
 		// dictZipLocalMatch == false is just for experiment
 		// dictZipLocalMatch should always be true in production
@@ -752,7 +779,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		}
 		m_colgroups[i] = parts.size()==1 ? parts[0] : new MultiPartStore(parts);
 	}
-
+}
 	completeAndReload(tab, segIdx, &*input);
 
 	fs::rename(tmpDir, m_segDir);
@@ -839,6 +866,15 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 			assert(m_isPurged.empty() || !m_isPurged[i]);
 		} else {
 			assert(this->m_isDel[i]);
+		}
+	}
+	if (m_isPurged.size() > 0) {
+		assert(m_isDel.size() == m_isPurged.size());
+		for(size_t i = 0, rows = m_isDel.size(); i < rows; ++i) {
+			if (m_isPurged[i]) {
+				assert(m_isDel[i]);
+				assert(input->m_isDel[i]);
+			}
 		}
 	}
 #endif
@@ -969,11 +1005,28 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 ReadableStorePtr
 ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir) {
 	assert(m_isDel.size() == input->m_isDel.size());
-	SortableStrVec strVec;
 	const bm_uint_t* isDel = m_isDel.bldata();
 	const llong inputRowNum = input->m_isDel.size();
 	const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 	const auto& colgroup = *input->m_colgroups[colgroupId];
+	if (schema.getFixedRowLen() && schema.getFixedRowLen() <= 16) {
+		FixedLenStorePtr store = new FixedLenStore(tmpSegDir, schema);
+		llong physicId = 0;
+		const bm_uint_t* isPurged = input->m_isPurged.bldata();
+		valvec<byte> buf;
+		for (llong logicId = 0; logicId < inputRowNum; logicId++) {
+			if (!isPurged || !terark_bit_test(isPurged, logicId)) {
+				if (!terark_bit_test(isDel, logicId)) {
+					colgroup.getValue(physicId, &buf, ctx);
+					assert(buf.size() == schema.getFixedRowLen());
+					store->append(buf, ctx);
+				}
+				physicId++;
+			}
+		}
+		assert(!isPurged || input->m_isPurged.max_rank0() == physicId);
+		return store;
+	}
 	if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
 		double sRatio = schema.m_dictZipSampleRatio;
 		double avgLen = 1.0 * colgroup.dataInflateSize() / colgroup.numDataRows();
@@ -985,6 +1038,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 			return buildDictZipStore(schema, tmpSegDir, *iter, isDel, &input->m_isPurged);
 		}
 	}
+	SortableStrVec strVec;
 	size_t fixlen = schema.getFixedRowLen();
 	size_t maxMem = size_t(m_schema->m_readonlyDataMemSize);
 	valvec<ReadableStorePtr> parts;
@@ -1052,7 +1106,7 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 	m_isPurgedMmap = (byte*)mmap_load(purgeFpath.string(), &bytes);
 	m_isPurged.risk_mmap_from(m_isPurgedMmap, bytes);
 	assert(m_isPurged.size() == m_isDel.size());
-	assert(m_withPurgeBits); // for self test debug
+//	assert(m_withPurgeBits); // for self test debug
 	if (m_withPurgeBits) {
 		// logical record id will be m_isPurged.select0(physical id)
 		return;
@@ -1063,7 +1117,7 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 	size_t newId = 0;
 	febitvec newIsDel(newRows, false);
 	for (size_t oldId = 0; oldId < oldRows; ++oldId) {
-		if (!m_isPurged[newId]) {
+		if (!m_isPurged[oldId]) {
 			if (m_isDel[oldId])
 				newIsDel.set1(newId);
 			++newId;
@@ -1234,8 +1288,9 @@ const {
 		}
 	}
 	if (fixlen && fixlen <= 16) {
-		std::unique_ptr<FixedLenStore> store(new FixedLenStore());
-		store->build(schema, storeData);
+		abort(); // should not goes here
+		std::unique_ptr<FixedLenStore> store(new FixedLenStore(m_segDir, schema));
+		store->build(storeData);
 		return store.release();
 	}
 	return nullptr;
@@ -1272,7 +1327,7 @@ void WritableSegment::pushIsDel(bool val) {
 		std::string fpath = (m_segDir / "isDel").string();
 #ifdef _MSC_VER
 	{
-		Auto_close_fd fd(::_open(fpath.c_str(), O_CREAT|O_BINARY|O_RDWR));
+		Auto_close_fd fd(::_open(fpath.c_str(), O_CREAT|O_BINARY|O_RDWR, 0644));
 		if (fd < 0) {
 			THROW_STD(logic_error
 				, "FATAL: ::_open(%s, O_CREAT|O_BINARY|O_RDWR) = %s"
@@ -1340,6 +1395,25 @@ void WritableSegment::flushSegment() {
 	if (m_isDirty) {
 		save(m_segDir);
 		m_isDirty = false;
+	}
+}
+
+void WritableSegment::saveRecordStore(PathRef segDir) const {
+	fprintf(stderr, "INFO: calling empty WritableSegment::saveRecordStore\n");
+}
+
+void WritableSegment::loadRecordStore(PathRef segDir) {
+	assert(m_colgroups.size() == 0);
+	m_colgroups.resize(m_schema->getColgroupNum());
+	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+		const Schema& schema = m_schema->getColgroupSchema(i);
+		if (schema.m_isInplaceUpdatable) {
+			assert(schema.getFixedRowLen() > 0);
+		//	std::unique_ptr<FixedLenStore> store(new FixedLenStore(segDir, schema));
+			auto store(std::make_unique<FixedLenStore>(segDir, schema));
+			store->openStore();
+			m_colgroups[i] = store.release();
+		}
 	}
 }
 
@@ -1435,6 +1509,7 @@ void SmartWritableSegment::saveRecordStore(PathRef dir) const {
 }
 
 void SmartWritableSegment::loadRecordStore(PathRef dir) {
+	abort();
 }
 
 llong SmartWritableSegment::dataStorageSize() const {

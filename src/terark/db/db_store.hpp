@@ -89,6 +89,7 @@ class TERARK_DB_DLL AppendableStore {
 public:
 	virtual ~AppendableStore();
 	virtual llong append(fstring row, DbContext*) = 0;
+	virtual void  shrinkToFit() = 0;
 };
 
 class TERARK_DB_DLL UpdatableStore {
@@ -102,7 +103,6 @@ class TERARK_DB_DLL WritableStore : public AppendableStore, public UpdatableStor
 public:
 	virtual ~WritableStore();
 	virtual void remove(llong id, DbContext*) = 0;
-	virtual void clear() = 0;
 };
 
 class TERARK_DB_DLL MultiPartStore : public ReadableStore {

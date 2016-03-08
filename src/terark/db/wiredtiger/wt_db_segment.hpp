@@ -36,7 +36,7 @@ public:
 	void  update(llong id, fstring row, DbContext*) override;
 	void  remove(llong id, DbContext*) override;
 
-	void clear() override;
+	void shrinkToFit() override;
 
 	void save(PathRef path) const override;
 	void load(PathRef path) override;

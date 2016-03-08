@@ -176,6 +176,9 @@ public:
 
 	void flushSegment();
 
+	void loadRecordStore(PathRef segDir) override;
+	void saveRecordStore(PathRef segDir) const override;
+
 	valvec<uint32_t>  m_deletedWrIdSet;
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;

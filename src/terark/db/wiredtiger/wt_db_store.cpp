@@ -295,10 +295,15 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 #endif
 }
 
+void WtWritableStore::shrinkToFit() {
+	// do nothing
+}
+/*
 void WtWritableStore::clear() {
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	m_wtSession->truncate(m_wtSession, g_dataStoreUri, NULL, NULL, NULL);
 }
+*/
 
 AppendableStore* WtWritableStore::getAppendableStore() { return this; }
 UpdatableStore* WtWritableStore::getUpdatableStore() { return this; }

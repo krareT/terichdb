@@ -40,7 +40,7 @@ public:
 	void  update(llong id, fstring row, DbContext*) override;
 	void  remove(llong id, DbContext*) override;
 
-	void clear() override;
+	void shrinkToFit() override;
 
 	AppendableStore* getAppendableStore() override;
 	UpdatableStore* getUpdatableStore() override;
