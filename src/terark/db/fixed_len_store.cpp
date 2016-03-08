@@ -148,14 +148,14 @@ llong FixedLenStore::append(fstring row, DbContext*) {
 		}
 		int err = ::_chsize_s(fd, newBytes);
 		if (err) {
-			THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %zd) = %s"
+			THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %lld) = %s"
 				, m_fpath.c_str(), newBytes, strerror(errno));
 		}
 	}
 #else
 		int err = ::truncate(m_fpath.c_str(), newBytes);
 		if (err) {
-			THROW_STD(logic_error, "FATAL: ::truncate(%s, %zd) = %s"
+			THROW_STD(logic_error, "FATAL: ::truncate(%s, %lld) = %s"
 				, m_fpath.c_str(), newBytes, strerror(errno));
 		}
 #endif
