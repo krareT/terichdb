@@ -177,12 +177,12 @@ ifeq (1,${WITH_DFA_DB})
   TerarkDB_lib := libTerarkDB
 else
   zip_src := \
-    src/terark/io/BzipStream.cpp \
-	src/terark/io/GzipStream.cpp
-  TerarkDB_src += $(wildcard src/terark/*.cpp)
-  TerarkDB_src += $(wildcard src/terark/io/*.cpp)
-  TerarkDB_src += $(wildcard src/terark/util/*.cpp)
-  TerarkDB_src += $(wildcard src/terark/thread/*.cpp)
+    terark-base/src/terark/io/BzipStream.cpp \
+	terark-base/src/terark/io/GzipStream.cpp
+  TerarkDB_src += $(wildcard terark-base/src/terark/*.cpp)
+  TerarkDB_src += $(wildcard terark-base/src/terark/io/*.cpp)
+  TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)
+  TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
   TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
   TerarkDB_lib := libTerarkDB-no-zip
   LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
