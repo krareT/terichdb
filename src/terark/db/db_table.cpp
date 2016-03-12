@@ -12,6 +12,7 @@
 #include <terark/util/sortable_strvec.hpp>
 #include <boost/scope_exit.hpp>
 #include <thread> // for std::this_thread::sleep_for
+#include <tbb/tbb_thread.h>
 #include <terark/util/concurrent_queue.hpp>
 
 #undef min
@@ -593,7 +594,7 @@ CompositeTable::doCreateNewSegmentInLock() {
 	auto oldwrseg = m_wrSeg.get();
 	while (oldwrseg->m_isDel.size() && oldwrseg->m_isDel.back()) {
 		assert(oldwrseg->m_delcnt > 0);
-		oldwrseg->m_isDel.pop_back();
+		oldwrseg->popIsDel();
 		oldwrseg->m_delcnt--;
 	}
 	if (oldwrseg->m_isDelMmap) {
@@ -708,7 +709,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		if (txn->syncIndex) {
 			if (!insertSyncIndex(subId, txn)) {
 				m_rowNumVec.back()--;
-				ws.m_isDel.pop_back();
+				ws.popIsDel();
 				return -1; // fail
 			}
 		}
@@ -2295,6 +2296,7 @@ try{
 			dseg->m_isDel.set1(baseLogicId + subId);
 		}
 		else {
+			assert(!dseg->m_isDel[baseLogicId + subId]);
 			dseg->syncUpdateRecordNoLock(baseLogicId, subId, sseg);
 		}
 	};
@@ -2310,16 +2312,18 @@ try{
 			}
 			else {
 				assert(sseg->m_updateBits.size() == sseg->m_isDel.size() + 1);
+				assert(sseg->m_updateList.empty());
 				size_t subId = sseg->m_updateBits.zero_seq_len(0);
-				size_t subRows = sseg->m_updateBits.size();
+				size_t subRows = sseg->m_isDel.size();
 				while (subId < subRows) {
 					syncOneRecord(dseg, sseg, baseLogicId, subId);
-					subId += 1 + sseg->m_updateBits.zero_seq_len(subId + 1);
+					size_t zeroSeqLen = sseg->m_updateBits.zero_seq_len(subId + 1);
+					subId += 1 + zeroSeqLen;
 				}
+				assert(subId == subRows);
 			}
 			baseLogicId += sseg->m_isDel.size();
 			// it is safe to change these 3 member in reader lock
-			sseg->m_bookUpdates = false;
 			sseg->m_updateList.erase_all();
 			sseg->m_updateBits.erase_all();
 		}
@@ -2331,6 +2335,9 @@ try{
 		syncUpdates(dseg.get());
 		if (!lock.upgrade_to_writer()) {
 			syncUpdates(dseg.get());
+		}
+		for (auto& e : toMerge) {
+			e.seg->m_bookUpdates = false;
 		}
 		for (size_t i = 0; i < newSegs.size()-1; ++i) {
 			auto&  seg = newSegs[i];
@@ -2704,13 +2711,13 @@ void CompressThreadFunc() {
 	g_compressQueue.clearQueue();
 }
 
-class CompressionThreadsList : private std::vector<std::thread*> {
+class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
 public:
 	CompressionThreadsList() {
-		size_t n = std::thread::hardware_concurrency();
+		size_t n = tbb::tbb_thread::hardware_concurrency();
 		this->resize(n);
 		for (size_t i = 0; i < n; ++i) {
-			(*this)[i] = new std::thread(&CompressThreadFunc);
+			(*this)[i] = new tbb::tbb_thread(&CompressThreadFunc);
 		}
 	}
 	~CompressionThreadsList() {
@@ -2721,7 +2728,7 @@ public:
 		if (size() < newSize) {
 			reserve(newSize);
 			for (size_t i = size(); i < newSize; ++i) {
-				push_back(new std::thread(&CompressThreadFunc));
+				push_back(new tbb::tbb_thread(&CompressThreadFunc));
 			}
 		} else {
 			fprintf(stderr
@@ -2738,7 +2745,7 @@ public:
 		this->clear();
 	}
 };
-std::thread g_flushThread(&FlushThreadFunc);
+tbb::tbb_thread g_flushThread(&FlushThreadFunc);
 CompressionThreadsList g_compressThreads;
 
 class SegWrToRdConvTask : public MyTask {

@@ -166,7 +166,7 @@ public:
 	~WritableSegment();
 
 	void pushIsDel(bool val);
-	void popIsDel(bool val);
+	void popIsDel();
 
 	llong totalStorageSize() const override;
 	llong dataStorageSize() const override;

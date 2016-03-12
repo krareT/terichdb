@@ -214,15 +214,15 @@ void Schema::compile(const Schema* parent) {
 void Schema::parseRow(fstring row, ColumnVec* columns) const {
 	assert(size_t(-1) != m_fixedLen);
 	columns->erase_all();
-	columns->m_base = row.udata();
-	parseRowAppend(row, columns);
+	parseRowAppend(row, 0, columns);
 }
 
-void Schema::parseRowAppend(fstring row, ColumnVec* columns) const {
+void Schema::parseRowAppend(fstring row, size_t start, ColumnVec* columns) const {
 	assert(size_t(-1) != m_fixedLen);
 	const byte* base = row.udata();
-	const byte* curr = row.udata();
-	const byte* last = row.size() + curr;
+	const byte* curr = row.udata() + start;
+	const byte* last = row.size() + base;
+	columns->m_base = base;
 
 #define CHECK_CURR_LAST3(curr, last, len) \
 	if (terark_unlikely(curr + (len) > last)) { \
@@ -1918,6 +1918,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 	if (colgroupsIter == meta.end()) {
 		colgroupsIter = meta.find("colgroup");
 	}
+if (colgroupsIter != meta.end()) {
 	const auto& colgroups = colgroupsIter.value();
 	for(auto  iter = colgroups.begin(); colgroups.end() != iter; ++iter) {
 		auto& cgname = iter.key();
@@ -1954,7 +1955,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		parseJsonColgroup(*schema, colgrp, sufarrMinFreq);
 		m_colgroupSchemaSet->m_nested.insert_i(schema);
 	}
-
+}
 	m_readonlyDataMemSize = getJsonValue(meta, "ReadonlyDataMemSize", DEFAULT_readonlyDataMemSize);
 	m_maxWrSegSize = getJsonValue(meta, "MaxWrSegSize", DEFAULT_maxWrSegSize);
 	m_minMergeSegNum = getJsonValue(
