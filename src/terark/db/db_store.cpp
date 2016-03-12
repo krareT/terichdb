@@ -35,6 +35,7 @@ ReadableStore::RegisterStoreFactory::RegisterStoreFactory
 }
 
 ReadableStore::ReadableStore() {
+	m_recordsBasePtr = nullptr;
 }
 ReadableStore::~ReadableStore() {
 }
@@ -163,10 +164,6 @@ AppendableStore::~AppendableStore() {
 ///////////////////////////////////////////////////////////////////////////////
 
 UpdatableStore::~UpdatableStore() {
-}
-
-byte* UpdatableStore::getRawDataBasePtr() {
-	return NULL;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

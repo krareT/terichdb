@@ -46,14 +46,12 @@ public:
 	valvec<byte> key1;
 	valvec<byte> key2;
 	valvec<uint32_t> offsets;
-	valvec<fstring> cols1;
-	valvec<fstring> cols2;
+	ColumnVec    cols1;
+	ColumnVec    cols2;
 	valvec<llong> exactMatchRecIdvec;
 	bool syncIndex;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;
-
-
 
 } } // namespace terark::db
 

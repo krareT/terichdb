@@ -14,6 +14,7 @@
 			);
 	}
 	auto colproj = m_schema->m_colproject[columnId];
+	assert(colproj.colgroupId < m_schema->getColgroupNum());
 	const Schema& cgSchema = m_schema->getColgroupSchema(colproj.colgroupId);
 	if (cgSchema.getFixedRowLen() == 0) {
 		THROW_STD(invalid_argument
@@ -39,13 +40,19 @@
 	llong baseId = m_rowNumVec[upp-1];
 	llong subId = recordId - baseId;
 	auto seg = m_segments[upp-1].get();
+	assert(subId < (llong)seg->m_isDel.size());
 	assert(seg->m_isDel.is0(subId));
 	if (seg->m_isDel.is1(size_t(subId))) {
 		THROW_STD(invalid_argument
 			, "Row has been deleted: id=%lld seg=%zd baseId=%lld subId=%lld"
 			, recordId, upp, baseId, subId);
 	}
+	assert(seg->m_colgroups.size() == m_schema->getColgroupNum());
+	assert(seg->m_colgroups[colproj.colgroupId] != nullptr);
 	auto store = seg->m_colgroups[colproj.colgroupId].get();
-	auto updatable = store->getUpdatableStore();
-	assert(NULL != updatable);
 	llong physicId = seg->getPhysicId(subId);
+	byte* recordsBasePtr = store->getRecordsBasePtr();
+	assert(nullptr != recordsBasePtr);
+	size_t cgLen   = cgSchema.getFixedRowLen();
+	size_t offset  = cgSchema.getColumnMeta(colproj.subColumnId).fixedOffset;
+	byte * coldata = recordsBasePtr + cgLen * physicId + offset;

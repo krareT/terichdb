@@ -36,13 +36,16 @@ public:
 	llong append(fstring row, DbContext*) override;
 
 	void  update(llong id, fstring row, DbContext*) override;
-	byte* getRawDataBasePtr() override;
 
 	void remove(llong id, DbContext*) override;
 	void shrinkToFit() override;
 
+	void setNumRows(size_t rows);
+	void reserveRows(size_t rows);
+
 protected:
 	struct  Header;
+	Header* allocFileSize(llong size);
 	Header* m_mmapBase;
 	size_t  m_mmapSize;
 	size_t  m_fixlen;

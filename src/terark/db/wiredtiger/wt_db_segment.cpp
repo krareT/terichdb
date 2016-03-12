@@ -15,7 +15,7 @@ WtWritableSegment::WtWritableSegment() {
 }
 WtWritableSegment::~WtWritableSegment() {
 	m_indices.clear();
-	m_rowStore.reset();
+	m_wrtStore.reset();
 	if (m_wtConn)
 		m_wtConn->close(m_wtConn, NULL);
 }
@@ -41,8 +41,8 @@ void WtWritableSegment::init(PathRef segDir) {
 			, strDir.c_str(), wiredtiger_strerror(err)
 			);
 	}
-	m_rowStore = new WtWritableStore(session, segDir);
-	m_wrRowStore = m_rowStore->getWritableStore();
+	m_wrtStore = new WtWritableStore(session, segDir);
+	m_wrRowStore = m_wrtStore->getWritableStore();
 }
 
 ReadableIndex*
@@ -71,70 +71,11 @@ WtWritableSegment::openIndex(const Schema& schema, PathRef segDir) const {
 	return new WtWritableIndex(schema, segDir, session);
 }
 
-llong WtWritableSegment::totalStorageSize() const {
-	return m_rowStore->dataStorageSize() + totalIndexSize();
-}
-
-void WtWritableSegment::loadRecordStore(PathRef segDir) {
-	PlainWritableSegment::loadRecordStore(segDir);
-	m_rowStore->load(segDir);
-}
-
-void WtWritableSegment::saveRecordStore(PathRef segDir) const {
-	PlainWritableSegment::saveRecordStore(segDir);
-	m_rowStore->save(segDir);
-}
-
-llong WtWritableSegment::dataInflateSize() const {
-	return m_rowStore->dataInflateSize();
-}
-
-llong WtWritableSegment::dataStorageSize() const {
-	return m_rowStore->dataStorageSize();
-}
-
-void WtWritableSegment::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx) const {
-	return m_rowStore->getValueAppend(id, val, ctx);
-}
-
-StoreIterator* WtWritableSegment::createStoreIterForward(DbContext* ctx) const {
-	return m_rowStore->createStoreIterForward(ctx);
-}
-
-StoreIterator* WtWritableSegment::createStoreIterBackward(DbContext* ctx) const {
-	return m_rowStore->createStoreIterBackward(ctx);
-}
-
-llong WtWritableSegment::append(fstring row, DbContext* ctx) {
-	return m_wrRowStore->append(row, ctx);
-}
-
-void WtWritableSegment::update(llong id, fstring row, DbContext* ctx) {
-#if !defined(NDEBUG) && 0
-	llong rows = m_rowStore->numDataRows();
-	assert(id <= rows);
-#endif
-	m_wrRowStore->update(id, row, ctx);
-}
-
-void WtWritableSegment::remove(llong id, DbContext* ctx) {
-	m_wrRowStore->remove(id, ctx);
-}
-
-void WtWritableSegment::shrinkToFit() {
-	m_wrRowStore->shrinkToFit();
-}
-
-void WtWritableSegment::save(PathRef path) const {
-	m_wtConn->async_flush(m_wtConn);
-	PlainWritableSegment::save(path);
-}
-
 void WtWritableSegment::load(PathRef path) {
 	init(path);
 	if (boost::filesystem::exists(path / "isDel")) {
 		PlainWritableSegment::load(path);
-		size_t rows = (size_t)m_rowStore->numDataRows();
+		size_t rows = (size_t)m_wrtStore->numDataRows();
 		if (rows+1 < m_isDel.size() || (rows+1 == m_isDel.size() && !m_isDel[rows])) {
 			fprintf(stderr
 				, "WARN: wiredtiger store: rows[saved=%zd real=%zd], some data may lossed\n"

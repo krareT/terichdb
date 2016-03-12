@@ -69,6 +69,9 @@ public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
 
+	MockWritableStore();
+	~MockWritableStore();
+
 	void save(PathRef) const override;
 	void load(PathRef) override;
 
@@ -128,28 +131,11 @@ protected:
 
 class TERARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
 public:
-	valvec<valvec<byte> > m_rows;
-	llong m_dataSize;
-
 	MockWritableSegment(PathRef dir);
 	~MockWritableSegment();
-
-	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
-
 protected:
+	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
 	ReadableIndex* openIndex(const Schema&, PathRef) const override;
-	llong dataStorageSize() const override;
-	llong dataInflateSize() const override;
-	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIterator* createStoreIterForward(DbContext*) const override;
-	StoreIterator* createStoreIterBackward(DbContext*) const override;
-	llong totalStorageSize() const override;
-	llong append(fstring row, DbContext*) override;
-	void update(llong id, fstring row, DbContext*) override;
-	void remove(llong id, DbContext*) override;
-	void shrinkToFit() override;
-	void loadRecordStore(PathRef segDir) override;
-	void saveRecordStore(PathRef segDir) const override;
 };
 
 class TERARK_DB_DLL MockDbContext : public DbContext {

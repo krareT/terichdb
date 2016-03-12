@@ -48,8 +48,11 @@ public:
 	void load(PathRef segDir) override;
 	void save(PathRef segDir) const override;
 
+	size_t getPhysicRows() const;
 	size_t getPhysicId(size_t logicId) const;
 	size_t getLogicId(size_t physicId) const;
+
+	void addtoUpdateList(size_t logicId);
 
 	SchemaConfigPtr         m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
@@ -60,10 +63,11 @@ public:
 	rank_select_se m_isPurged; // just for ReadonlySegment
 	byte*          m_isPurgedMmap;
 	boost::filesystem::path m_segDir;
-	valvec<uint32_t> m_deletionList;
+	valvec<uint32_t> m_updateList; // including deletions
+	febitvec    m_updateBits; // if m_updateList is too large, use updateBits
 	bool        m_tobeDel;
 	bool        m_isDirty;
-	bool        m_bookDeletion;
+	bool        m_bookUpdates;
 	bool        m_withPurgeBits;  // just for ReadonlySegment
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
@@ -130,6 +134,7 @@ protected:
 
 	void completeAndReload(class CompositeTable*, size_t segIdx,
 						   class ReadableSegment* input);
+	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId, ReadableSegment* input);
 
 	ReadableIndexPtr purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx);
 	ReadableStorePtr purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
@@ -155,11 +160,20 @@ typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 // Concrete WritableSegment should not implement this class,
 // should implement PlainWritableSegment or SmartWritableSegment
 class TERARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
+	class MyStoreIter;
 public:
 	WritableSegment();
 	~WritableSegment();
 
 	void pushIsDel(bool val);
+	void popIsDel(bool val);
+
+	llong totalStorageSize() const override;
+	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
+
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	AppendableStore* getAppendableStore() override;
 	UpdatableStore* getUpdatableStore() override;
@@ -169,16 +183,33 @@ public:
 	// index schema and index content features
 	virtual ReadableIndex* createIndex(const Schema&, PathRef path) const = 0;
 
+	virtual void getValueAppend(llong recId, valvec<byte>* val, DbContext*) const override;
+
+	virtual llong append(fstring row, DbContext*) override;
+	virtual void update(llong id, fstring row, DbContext*) override;
+	virtual void remove(llong id, DbContext* ctx) override;
+	virtual void shrinkToFit() override;
+
+	void getCombineAppend(llong recId, valvec<byte>* val, DbContext*) const;
+
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
 	void selectOneColumn(llong recId, size_t columnId,
 						 valvec<byte>* colsData, DbContext*) const override;
+
+	void selectColumnsByWhole(llong recId,
+							  const size_t* colsId, size_t colsNum,
+							  valvec<byte>* colsData, DbContext*) const;
+	void selectColumnsCombine(llong recId,
+							  const size_t* colsId, size_t colsNum,
+							  valvec<byte>* colsData, DbContext*) const;
 
 	void flushSegment();
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
 
+	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;

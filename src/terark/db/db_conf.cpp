@@ -105,6 +105,21 @@ bool ColumnMeta::isNumber() const {
 }
 
 /////////////////////////////////////////////////////////////////////////////
+ColumnVec::~ColumnVec() {
+}
+ColumnVec::ColumnVec() {
+	m_base = nullptr;
+}
+ColumnVec::ColumnVec(size_t cap, valvec_reserve) {
+	m_base = nullptr;
+	m_cols.reserve(cap);
+}
+ColumnVec::ColumnVec(const ColumnVec&) = default;
+ColumnVec::ColumnVec(ColumnVec&&) = default;
+ColumnVec& ColumnVec::operator=(const ColumnVec&) = default;
+ColumnVec& ColumnVec::operator=(ColumnVec&&) = default;
+
+/////////////////////////////////////////////////////////////////////////////
 
 const unsigned int DEFAULT_nltNestLevel = 4;
 
@@ -139,6 +154,14 @@ void Schema::compile(const Schema* parent) {
 		return;
 	m_isCompiled = true;
 	m_fixedLen = computeFixedRowLen();
+	if (m_fixedLen) {
+		uint32_t offset = 0;
+		for (size_t i = 0; i < m_columnsMeta.end_i(); ++i) {
+			auto& colmeta = m_columnsMeta.val(i);
+			colmeta.fixedOffset = offset;
+			offset += colmeta.fixedLen;
+		}
+	}
 	if (parent) {
 		compileProject(parent);
 	}
@@ -188,14 +211,16 @@ void Schema::compile(const Schema* parent) {
 	}
 }
 
-void Schema::parseRow(fstring row, valvec<fstring>* columns) const {
+void Schema::parseRow(fstring row, ColumnVec* columns) const {
 	assert(size_t(-1) != m_fixedLen);
-	columns->risk_set_size(0);
+	columns->erase_all();
+	columns->m_base = row.udata();
 	parseRowAppend(row, columns);
 }
 
-void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
+void Schema::parseRowAppend(fstring row, ColumnVec* columns) const {
 	assert(size_t(-1) != m_fixedLen);
+	const byte* base = row.udata();
 	const byte* curr = row.udata();
 	const byte* last = row.size() + curr;
 
@@ -211,8 +236,8 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 		const fstring colname = m_columnsMeta.key(i);
 #endif
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
-		fstring coldata;
-		coldata.p = (const char*)curr;
+		size_t collen = 0;
+		size_t colpos = curr - base;
 		switch (colmeta.type) {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
@@ -223,59 +248,59 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 		case ColumnType::Uint08:
 		case ColumnType::Sint08:
 			CHECK_CURR_LAST(1);
-			coldata.n = 1;
+			collen = 1;
 			curr += 1;
 			break;
 		case ColumnType::Uint16:
 		case ColumnType::Sint16:
 			CHECK_CURR_LAST(2);
-			coldata.n = 2;
+			collen = 2;
 			curr += 2;
 			break;
 		case ColumnType::Uint32:
 		case ColumnType::Sint32:
 			CHECK_CURR_LAST(4);
-			coldata.n = 4;
+			collen = 4;
 			curr += 4;
 			break;
 		case ColumnType::Uint64:
 		case ColumnType::Sint64:
 			CHECK_CURR_LAST(8);
-			coldata.n = 8;
+			collen = 8;
 			curr += 8;
 			break;
 		case ColumnType::Uint128:
 		case ColumnType::Sint128:
 			CHECK_CURR_LAST(16);
-			coldata.n = 16;
+			collen = 16;
 			curr += 16;
 			break;
 		case ColumnType::Float32:
 			CHECK_CURR_LAST(4);
-			coldata.n = 4;
+			collen = 4;
 			curr += 4;
 			break;
 		case ColumnType::Float64:
 			CHECK_CURR_LAST(8);
-			coldata.n = 8;
+			collen = 8;
 			curr += 8;
 			break;
 		case ColumnType::Float128:
 		case ColumnType::Uuid:    // 16 bytes(128 bits) binary
 			CHECK_CURR_LAST(16);
-			coldata.n = 16;
+			collen = 16;
 			curr += 16;
 			break;
 		case ColumnType::Fixed:   // Fixed length binary
 			CHECK_CURR_LAST(colmeta.fixedLen);
-			coldata.n = colmeta.fixedLen;
+			collen = colmeta.fixedLen;
 			curr += colmeta.fixedLen;
 			break;
 		case ColumnType::VarSint:
 			{
 				const byte* next = nullptr;
 				load_var_int64(curr, &next);
-				coldata.n = next - curr;
+				collen = next - curr;
 				curr = next;
 			}
 			break;
@@ -283,19 +308,19 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 			{
 				const byte* next = nullptr;
 				load_var_uint64(curr, &next);
-				coldata.n = next - curr;
+				collen = next - curr;
 				curr = next;
 			}
 			break;
 		case ColumnType::StrZero: // Zero ended string
-			coldata.n = strnlen((const char*)curr, last - curr);
+			collen = strnlen((const char*)curr, last - curr);
 			if (i < colnum - 1) {
-				CHECK_CURR_LAST(coldata.n + 1);
-				curr += coldata.n + 1;
+				CHECK_CURR_LAST(collen + 1);
+				curr += collen + 1;
 			}
 			else { // the last column
-			//	assert(coldata.n == last - curr);
-				if (coldata.n + 1 < last - curr) {
+			//	assert(collen == last - curr);
+				if (intptr_t(collen + 1) < last - curr) {
 					// '\0' is optional, if '\0' exists, it must at string end
 					THROW_STD(invalid_argument,
 						"'\\0' in StrZero is not at string end");
@@ -309,7 +334,7 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 					CHECK_CURR_LAST(n1+1);
 					intptr_t n2 = strnlen((char*)curr+n1+1, last-curr-n1-1);
 					CHECK_CURR_LAST(n1+1 + n2+1);
-					coldata.n = n1 + 1 + n2; // don't include 2nd '\0'
+					collen = n1 + 1 + n2; // don't include 2nd '\0'
 					curr += n1+1 + n2+1;
 				}
 				else { // the last column
@@ -320,9 +345,9 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 							THROW_STD(invalid_argument,
 								"'\\0' in TwoStrZero is not at string end");
 						}
-						coldata.n = n1 + 1 + n2; // don't include 2nd '\0'
+						collen = n1 + 1 + n2; // don't include 2nd '\0'
 					} else {
-						coldata.n = n1; // second string is empty/(not present)
+						collen = n1; // second string is empty/(not present)
 					}
 				}
 			}
@@ -330,45 +355,52 @@ void Schema::parseRowAppend(fstring row, valvec<fstring>* columns) const {
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			if (i < colnum - 1) {
 				const byte* next = nullptr;
-				coldata.n = load_var_uint64(curr, &next);
-				coldata.p = (const char*)next;
-				CHECK_CURR_LAST3(next, last, coldata.n);
-				curr = next + coldata.n;
+				collen = load_var_uint64(curr, &next);
+				colpos = next - base;
+				CHECK_CURR_LAST3(next, last, collen);
+				curr = next + collen;
 			}
 			else { // the last column
-				coldata.n = last - curr;
+				collen = last - curr;
 			}
 			break;
 		case ColumnType::CarBin: // Prefixed by uint32 len
 			if (i < colnum - 1) {
 			#if defined(BOOST_BIG_ENDIAN)
-				coldata.n = byte_swap(unaligned_load<uint32_t>(curr));
+				collen = byte_swap(unaligned_load<uint32_t>(curr));
 			#else
-				coldata.n = unaligned_load<uint32_t>(curr);
+				collen = unaligned_load<uint32_t>(curr);
 			#endif
-				coldata.p = (const char*)curr + 4;
-				CHECK_CURR_LAST3(curr+4, last, coldata.n);
-				curr += 4 + coldata.n;
+				colpos += 4;
+				CHECK_CURR_LAST3(curr+4, last, collen);
+				curr += 4 + collen;
 			}
 			else { // the last column
-				coldata.n = last - curr;
+				collen = last - curr;
 			}
 			break;
 		}
-		columns->push_back(coldata);
+		columns->push_back(colpos, collen);
 	}
 }
 
 void
-Schema::combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData)
+Schema::combineRow(const ColumnVec& myCols, valvec<byte>* myRowData)
 const {
 	assert(size_t(-1) != m_fixedLen);
 	assert(myCols.size() == m_columnsMeta.end_i());
 	myRowData->erase_all();
+	combineRowAppend(myCols, myRowData);
+}
+void
+Schema::combineRowAppend(const ColumnVec& myCols, valvec<byte>* myRowData)
+const {
+	assert(size_t(-1) != m_fixedLen);
+	assert(myCols.size() == m_columnsMeta.end_i());
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
-		const fstring& coldata = myCols[i];
+		const fstring coldata = myCols[i];
 		switch (colmeta.type) {
 		default:
 			THROW_STD(runtime_error, "Invalid data row");
@@ -555,7 +587,7 @@ const {
 }
 
 void
-Schema::selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData)
+Schema::selectParent(const ColumnVec& parentCols, valvec<byte>* myRowData)
 const {
 	assert(nullptr != m_parent);
 	assert(m_proj.size() == m_columnsMeta.end_i());
@@ -651,7 +683,7 @@ const {
 	}
 }
 
-void Schema::selectParent(const valvec<fstring>& parentCols, valvec<fstring>* myCols) const {
+void Schema::selectParent(const ColumnVec& parentCols, ColumnVec* myCols) const {
 	assert(nullptr != m_parent);
 	assert(m_proj.size() == m_columnsMeta.end_i());
 	assert(m_parent->columnNum() == parentCols.size());
@@ -659,8 +691,9 @@ void Schema::selectParent(const valvec<fstring>& parentCols, valvec<fstring>* my
 	for(size_t i = 0; i < m_proj.size(); ++i) {
 		size_t j = m_proj[i];
 		assert(j < parentCols.size());
-		myCols->push_back(parentCols[j]);
+		myCols->m_cols.push_back(parentCols.m_cols[j]);
 	}
+	myCols->m_base = parentCols.m_base;
 }
 
 void Schema::byteLexConvert(valvec<byte>& indexKey) const {
@@ -1156,10 +1189,12 @@ size_t Schema::computeFixedRowLen() const {
 	size_t rowLen = 0;
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
+		const fstring     colname = m_columnsMeta.key(i);
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		switch (colmeta.type) {
 		default:
-			THROW_STD(runtime_error, "Invalid data row");
+			THROW_STD(runtime_error, "Invalid column[name='%s' type=%d]"
+				, colname.c_str(), colmeta.type);
 			break;
 		case ColumnType::Any:
 			return 0;
@@ -1663,6 +1698,22 @@ void SchemaConfig::compileSchema() {
 	for (size_t i = 0; i < m_colgroupSchemaSet->m_nested.end_i(); ++i) {
 		colgroups[i] = m_colgroupSchemaSet->m_nested.elem_at(i);
 	}
+	for (size_t i = 0; i < colgroups.size(); ++i) {
+		Schema& schema = *colgroups[i];
+		if (!schema.m_isInplaceUpdatable)
+			continue;
+		for(size_t j = 0; j < schema.columnNum(); ++j) {
+			size_t f = m_rowSchema->getColumnId(schema.getColumnName(j));
+			assert(f < m_rowSchema->columnNum());
+			if (hasIndex[f]) {
+				THROW_STD(invalid_argument,
+"colgroup '%s' can not be inplaceUpdatable, because which column '%s' has index"
+					, schema.m_name.c_str()
+					, schema.getColumnName(j).c_str()
+					);
+			}
+		}
+	}
 	m_colgroupSchemaSet->m_nested.erase_all();
 	for (size_t i = 0; i < colgroups.size(); ++i) {
 		SchemaPtr& schema = colgroups[i];
@@ -1721,6 +1772,61 @@ void SchemaConfig::compileSchema() {
 		else
 			m_multIndices.push_back(i);
 	}
+	m_uniqIndices.shrink_to_fit_malloc_free();
+	m_multIndices.shrink_to_fit_malloc_free();
+
+	m_updatableColgroups.erase_all();
+	for (size_t i = indexNum; i < m_colgroupSchemaSet->indexNum(); ++i) {
+		auto& schema = *m_colgroupSchemaSet->getSchema(i);
+		if (schema.m_isInplaceUpdatable) {
+			if (schema.getFixedRowLen() == 0) {
+				THROW_STD(invalid_argument
+					, "colgroup '%s' is not fixed, can not be inplaceUpdatable"
+					, schema.m_name.c_str()
+					);
+			}
+			m_updatableColgroups.push_back(i);
+		}
+	}
+	m_updatableColgroups.shrink_to_fit_malloc_free();
+
+	if (m_updatableColgroups.empty()) {
+		m_wrtSchema = m_rowSchema;
+	}
+	else {
+		m_wrtSchema = new Schema;
+		for (size_t i = 0; i < m_rowSchema->columnNum(); ++i) {
+			if (!isInplaceUpdatableColumn(i)) {
+				auto colname = m_rowSchema->getColumnName(i);
+				auto colmeta = m_rowSchema->getColumnMeta(i);
+				m_wrtSchema->m_columnsMeta.insert_i(colname, colmeta);
+			}
+		}
+		m_wrtSchema->compile(m_rowSchema.get());
+		m_rowSchemaColToWrtCol.resize_fill(m_rowSchema->columnNum(), size_t(-1));
+		for(size_t i = 0; i < m_wrtSchema->columnNum(); ++i) {
+			size_t j = m_wrtSchema->parentColumnId(i);
+			m_rowSchemaColToWrtCol[j] = i;
+		}
+	}
+}
+
+bool SchemaConfig::isInplaceUpdatableColumn(size_t columnId) const {
+	TERARK_RT_assert(columnId < m_rowSchema->columnNum(), std::invalid_argument);
+	auto colproj = m_colproject[columnId];
+	auto& schema = *m_colgroupSchemaSet->getSchema(colproj.colgroupId);
+	return schema.m_isInplaceUpdatable;
+}
+
+bool SchemaConfig::isInplaceUpdatableColumn(fstring colname) const {
+	const size_t columnId = m_rowSchema->getColumnId(colname);
+	if (columnId >= m_rowSchema->columnNum()) {
+		THROW_STD(invalid_argument, "colname = '%.*s' is not defined"
+			, colname.ilen(), colname.data());
+	}
+	auto colproj = m_colproject[columnId];
+	auto& schema = *m_colgroupSchemaSet->getSchema(colproj.colgroupId);
+	return schema.m_isInplaceUpdatable;
 }
 
 void SchemaConfig::loadJsonFile(fstring fname) {
@@ -1743,6 +1849,24 @@ Int limitInBound(Int Val, Int Min, Int Max) {
 	if (Val < Min) return Min;
 	if (Val > Max) return Max;
 	return Val;
+}
+
+static void
+parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
+	schema.m_isInplaceUpdatable = getJsonValue(js, "inplaceUpdatable", false);
+	schema.m_dictZipSampleRatio = getJsonValue(js, "dictZipSampleRatio", float(0.0));
+	schema.m_dictZipLocalMatch  = getJsonValue(js, "dictZipLocalMatch", true);
+	schema.m_nltDelims  = getJsonValue(js, "nltDelims", std::string());
+	schema.m_maxFragLen = getJsonValue(js, "maxFragLen", 0);
+	schema.m_minFragLen = getJsonValue(js, "minFragLen", 0);
+	schema.m_sufarrMinFreq = getJsonValue(js, "sufarrMinFreq", sufarrMinFreq);
+	//  512: rank_select_se_512
+	//  256: rank_select_se_256
+	// -256: rank_select_il_256
+	schema.m_rankSelectClass = getJsonValue(js, "rs", 512);
+	schema.m_useFastZip = getJsonValue(js, "useFastZip", false);
+	schema.m_nltNestLevel = (byte)limitInBound(
+		getJsonValue(js, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
 }
 
 void SchemaConfig::loadJsonString(fstring jstr) {
@@ -1770,30 +1894,14 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		if (ColumnType::Fixed == colmeta.type) {
 			colmeta.fixedLen = col["length"];
 		}
-		auto found = col.find("uType");
-		if (col.end() != found) {
-			int uType = found.value();
-			colmeta.uType = byte(uType);
-		}
-		found = col.find("colstore");
-		if (col.end() != found && bool(found.value())) {
+		colmeta.uType = (byte)getJsonValue(col, "uType", (int)colmeta.uType);
+		auto colstoreIter = col.find("colstore");
+		if (col.end() != colstoreIter) {
 			// this colstore has the only-one 'name' field
 			SchemaPtr schema(new Schema());
 			schema->m_columnsMeta.insert_i(name, colmeta);
 			schema->m_name = name;
-			schema->m_dictZipSampleRatio = getJsonValue(col, "dictZipSampleRatio", float(0.0));
-			schema->m_dictZipLocalMatch  = getJsonValue(col, "dictZipLocalMatch", true);
-			schema->m_nltDelims  = getJsonValue(col, "nltDelims", std::string());
-			schema->m_maxFragLen = getJsonValue(col, "maxFragLen", 0);
-			schema->m_minFragLen = getJsonValue(col, "minFragLen", 0);
-			schema->m_sufarrMinFreq = getJsonValue(col, "sufarrMinFreq", sufarrMinFreq);
-			//  512: rank_select_se_512
-			//  256: rank_select_se_256
-			// -256: rank_select_il_256
-			schema->m_rankSelectClass = getJsonValue(col, "rs", 512);
-			schema->m_useFastZip = getJsonValue(col, "useFastZip", false);
-			schema->m_nltNestLevel = (byte)limitInBound(
-				getJsonValue(col, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
+			parseJsonColgroup(*schema, colstoreIter.value(), sufarrMinFreq);
 			m_colgroupSchemaSet->m_nested.insert_i(schema);
 		}
 		auto ib = m_rowSchema->m_columnsMeta.insert_i(name, colmeta);
@@ -1802,18 +1910,53 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		}
 	}
 	m_rowSchema->compile();
-	auto iter = meta.find("ReadonlyDataMemSize");
-	if (meta.end() == iter) {
-		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
-	} else {
-		m_readonlyDataMemSize = *iter;
+	
+	auto colgroupsIter = meta.find("ColumnGroups");
+	if (colgroupsIter == meta.end()) {
+		colgroupsIter = meta.find("ColumnGroup");
 	}
-	iter = meta.find("MaxWrSegSize");
-	if (meta.end() == iter) {
-		m_maxWrSegSize = DEFAULT_maxWrSegSize;
-	} else {
-		m_maxWrSegSize = *iter;
+	if (colgroupsIter == meta.end()) {
+		colgroupsIter = meta.find("colgroup");
 	}
+	const auto& colgroups = colgroupsIter.value();
+	for(auto  iter = colgroups.begin(); colgroups.end() != iter; ++iter) {
+		auto& cgname = iter.key();
+		auto& colgrp = iter.value();
+		if (m_rowSchema->m_columnsMeta.exists(cgname)) {
+			THROW_STD(invalid_argument
+				, "explicit colgroup name '%s' is dup with a column name"
+				, cgname.c_str());
+		}
+		SchemaPtr schema(new Schema());
+		auto fieldsIter = colgrp.find("fields");
+		if (colgrp.end() != fieldsIter) {
+			const json& fields = fieldsIter.value();
+			if (!fields.is_array()) {
+				THROW_STD(invalid_argument, "json colgroup fields must be an array");
+			}
+			for(auto j = fields.begin(); fields.end() != j; ++j) {
+				std::string colname = j.value();
+				size_t columnId = m_rowSchema->getColumnId(colname);
+				if (columnId >= m_rowSchema->columnNum()) {
+					THROW_STD(invalid_argument,
+						"colname=%s is not in RowSchema", colname.c_str());
+				}
+				auto& colmeta  = m_rowSchema->getColumnMeta(columnId);
+				auto ib = schema->m_columnsMeta.insert_i(colname, colmeta);
+				if (!ib.second) {
+					THROW_STD(invalid_argument
+						, "colname '%s' is dup in colgoup '%s'"
+						, colname.c_str(), cgname.c_str());
+				}
+			}
+		}
+		schema->m_name = cgname;
+		parseJsonColgroup(*schema, colgrp, sufarrMinFreq);
+		m_colgroupSchemaSet->m_nested.insert_i(schema);
+	}
+
+	m_readonlyDataMemSize = getJsonValue(meta, "ReadonlyDataMemSize", DEFAULT_readonlyDataMemSize);
+	m_maxWrSegSize = getJsonValue(meta, "MaxWrSegSize", DEFAULT_maxWrSegSize);
 	m_minMergeSegNum = getJsonValue(
 		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
 	m_purgeDeleteThreshold = getJsonValue(

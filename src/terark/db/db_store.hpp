@@ -53,6 +53,8 @@ class TERARK_DB_DLL WritableStore;
 class TERARK_DB_DLL ReadableIndex;
 class TERARK_DB_DLL ReadableStore : virtual public Permanentable {
 	TERARK_DB_NON_COPYABLE_CLASS(ReadableStore);
+protected:
+	byte_t* m_recordsBasePtr;
 public:
 	struct RegisterStoreFactory {
 		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*()>& f);
@@ -65,6 +67,7 @@ public:
 
 	ReadableStore();
 	~ReadableStore();
+	inline  byte* getRecordsBasePtr() const { return m_recordsBasePtr; }
 	virtual llong dataStorageSize() const = 0;
 	virtual llong dataInflateSize() const = 0;
 	virtual llong numDataRows() const = 0;
@@ -96,7 +99,6 @@ class TERARK_DB_DLL UpdatableStore {
 public:
 	virtual ~UpdatableStore();
 	virtual void update(llong id, fstring row, DbContext*) = 0;
-	virtual byte* getRawDataBasePtr();
 };
 
 class TERARK_DB_DLL WritableStore : public AppendableStore, public UpdatableStore {

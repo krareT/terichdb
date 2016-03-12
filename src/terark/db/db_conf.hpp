@@ -96,6 +96,50 @@ namespace terark { namespace db {
 		bool isInteger() const;
 		bool isNumber() const;
 		explicit ColumnMeta(ColumnType);
+		size_t fixedEndOffset() const { return fixedOffset + fixedLen; }
+	};
+
+	class TERARK_DB_DLL ColumnVec {
+	public:
+		struct Elem {
+			uint32_t pos;
+			uint32_t len;
+			Elem() : pos(UINT32_MAX), len(UINT32_MAX) {}
+			Elem(uint32_t p, uint32_t n) : pos(p), len(n) {}
+			bool isValid() const { return UINT32_MAX != pos; }
+		};
+		const  byte*  m_base;
+		valvec<Elem>  m_cols;
+
+		~ColumnVec();
+		ColumnVec();
+		ColumnVec(size_t cap, valvec_reserve);
+		ColumnVec(const ColumnVec&);
+		ColumnVec(ColumnVec&&);
+		ColumnVec& operator=(const ColumnVec&);
+		ColumnVec& operator=(ColumnVec&&);
+
+		bool empty() const { return m_cols.empty(); }
+		void erase_all() {
+			m_base = nullptr;
+			m_cols.erase_all();
+		}
+		size_t size() const { return m_cols.size(); }
+		fstring operator[](size_t idx) const {
+			assert(idx < m_cols.size());
+			Elem e = m_cols[idx];
+			return fstring(m_base + e.pos, e.len);
+		}
+		Elem get_elem(size_t idx) const {
+			assert(idx < m_cols.size());
+			return m_cols[idx];
+		}
+		void grow(size_t inc) { m_cols.grow(inc); }
+		void push_back(size_t pos, size_t len) {
+			m_cols.push_back({uint32_t(pos), uint32_t(len)});
+		}
+		void push_back(Elem e) { m_cols.push_back(e); }
+		void reserve(size_t cap) { m_cols.reserve(cap); }
 	};
 
 	class TERARK_DB_DLL Schema : public RefCounter {
@@ -106,15 +150,16 @@ namespace terark { namespace db {
 		~Schema();
 		void compile(const Schema* parent = nullptr);
 
-		void parseRow(fstring row, valvec<fstring>* columns) const;
-		void parseRowAppend(fstring row, valvec<fstring>* columns) const;
-		void combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const;
+		void parseRow(fstring row, ColumnVec* columns) const;
+		void parseRowAppend(fstring row, ColumnVec* columns) const;
+		void combineRow(const ColumnVec& myCols, valvec<byte>* myRowData) const;
+		void combineRowAppend(const ColumnVec& myCols, valvec<byte>* myRowData) const;
 
 		void projectToNorm(fstring col, size_t columnId, valvec<byte>* rowData) const;
 		void projectToLast(fstring col, size_t columnId, valvec<byte>* rowData) const;
 
-		void selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const;
-		void selectParent(const valvec<fstring>& parentCols, valvec<fstring>* myCols) const;
+		void selectParent(const ColumnVec& parentCols, valvec<byte>* myRowData) const;
+		void selectParent(const ColumnVec& parentCols, ColumnVec* myCols) const;
 
 		size_t parentColumnId(size_t myColumnId) const {
 			assert(m_proj.size() == m_columnsMeta.end_i());
@@ -294,16 +339,19 @@ namespace terark { namespace db {
 			uint32_t colgroupId;
 			uint32_t subColumnId;
 		};
-		SchemaPtr     m_rowSchema;
-		SchemaSetPtr  m_indexSchemaSet;
-		SchemaSetPtr  m_colgroupSchemaSet;
+		SchemaPtr      m_rowSchema;
+		SchemaPtr      m_wrtSchema;
+		SchemaSetPtr   m_indexSchemaSet;
+		SchemaSetPtr   m_colgroupSchemaSet;
 		valvec<size_t> m_uniqIndices;
 		valvec<size_t> m_multIndices;
+		valvec<size_t> m_updatableColgroups; // index of m_colgroupSchemaSet
+		valvec<size_t> m_rowSchemaColToWrtCol;
 		valvec<Colproject> m_colproject; // parallel with m_rowSchema
-		llong m_readonlyDataMemSize;
-		llong m_maxWrSegSize;
-		size_t m_minMergeSegNum;
-		double m_purgeDeleteThreshold;
+		llong    m_readonlyDataMemSize;
+		llong    m_maxWrSegSize;
+		size_t   m_minMergeSegNum;
+		double   m_purgeDeleteThreshold;
 
 		SchemaConfig();
 		~SchemaConfig();
@@ -330,6 +378,9 @@ namespace terark { namespace db {
 
 		const Schema& getRowSchema() const { return *m_rowSchema; }
 		size_t columnNum() const { return m_rowSchema->columnNum(); }
+
+		bool isInplaceUpdatableColumn(size_t columnId) const;
+		bool isInplaceUpdatableColumn(fstring colname) const;
 
 		void loadJsonString(fstring jstr);
 		void loadJsonFile(fstring fname);
