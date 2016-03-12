@@ -151,7 +151,7 @@ namespace terark { namespace db {
 		void compile(const Schema* parent = nullptr);
 
 		void parseRow(fstring row, ColumnVec* columns) const;
-		void parseRowAppend(fstring row, ColumnVec* columns) const;
+		void parseRowAppend(fstring row, size_t start, ColumnVec* columns) const;
 		void combineRow(const ColumnVec& myCols, valvec<byte>* myRowData) const;
 		void combineRowAppend(const ColumnVec& myCols, valvec<byte>* myRowData) const;
 

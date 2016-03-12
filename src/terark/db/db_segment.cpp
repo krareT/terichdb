@@ -213,8 +213,10 @@ void ReadableSegment::addtoUpdateList(size_t logicId) {
 		size_t    idnum = m_updateList.size();
 		for(size_t i = 0; i < idnum; ++i) {
 			size_t id = idvec[i];
+			assert(id < m_isDel.size());
 			terark_bit_set1(bits, id);
 		}
+		terark_bit_set1(bits, logicId);
 		// set the last bit to 1 as the guard
 		terark_bit_set1(bits, m_isDel.size());
 		m_updateList.clear();
@@ -271,6 +273,7 @@ ReadonlySegment::getValueByPhysicId(size_t id, valvec<byte>* val, DbContext* ctx
 const {
 	val->risk_set_size(0);
 	ctx->buf1.risk_set_size(0);
+	ctx->cols1.erase_all();
 
 	// getValueAppend to ctx->buf1
 	const size_t colgroupNum = m_colgroups.size();
@@ -279,14 +282,12 @@ const {
 		if (iSchema.m_keepCols.has_any1()) {
 			size_t oldsize = ctx->buf1.size();
 			m_colgroups[i]->getValueAppend(id, &ctx->buf1, ctx);
-			fstring indexData(ctx->buf1.data() + oldsize, ctx->buf1.size() - oldsize);
-			iSchema.parseRowAppend(indexData, &ctx->cols1);
+			iSchema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
 		}
 		else {
 			ctx->cols1.grow(iSchema.columnNum());
 		}
 	}
-	ctx->cols1.m_base = ctx->buf1.data();
 	assert(ctx->cols1.size() == m_schema->m_colgroupSchemaSet->m_flattenColumnNum);
 
 	// combine columns to ctx->cols2
@@ -298,7 +299,7 @@ const {
 		for (size_t j = 0; j < iSchema.columnNum(); ++j) {
 			if (iSchema.m_keepCols[j]) {
 				size_t parentColId = iSchema.parentColumnId(j);
-				ctx->cols2[parentColId] = ctx->cols1[baseColumnId + j];
+				ctx->cols2.m_cols[parentColId] = ctx->cols1.m_cols[baseColumnId + j];
 			}
 		}
 		baseColumnId += iSchema.columnNum();
@@ -306,7 +307,7 @@ const {
 
 #if !defined(NDEBUG)
 	for (size_t i = 0; i < ctx->cols2.size(); ++i) {
-		assert(!ctx->cols2.m_cols[i].isValid());
+		assert(ctx->cols2.m_cols[i].isValid());
 	}
 #endif
 
@@ -334,9 +335,7 @@ const {
 		if (offsets[colgroupId] == UINT32_MAX) {
 			offsets[colgroupId] = ctx->cols1.size();
 			m_colgroups[colgroupId]->getValueAppend(recId, &ctx->buf1, ctx);
-			ctx->cols1.m_base = ctx->buf1.data();
-			fstring cgData = fstring(ctx->buf1).substr(oldsize);
-			schema.parseRowAppend(cgData, &ctx->cols1);
+			schema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
 		}
 		fstring d = ctx->cols1[offsets[colgroupId] + cp.subColumnId];
 		if (i < colsNum-1)
@@ -905,7 +904,8 @@ void ReadonlySegment::syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId, R
 		auto&schema = m_schema->getColgroupSchema(colgroupId);
 		auto dstColstore = m_colgroups[colgroupId].get();
 		auto srcColstore = input->m_colgroups[colgroupId].get();
-		assert(nullptr == srcColstore);
+		assert(nullptr != dstColstore);
+		assert(nullptr != srcColstore);
 		auto fixlen = schema.getFixedRowLen();
 		auto dstPhysicId = this->getPhysicId(dstBaseId + logicId);
 		auto srcPhysicId = input->getPhysicId(logicId);
@@ -1389,7 +1389,7 @@ void WritableSegment::pushIsDel(bool val) {
 	((uint64_t*)m_isDelMmap)[0] = m_isDel.size();
 }
 
-void WritableSegment::popIsDel(bool val) {
+void WritableSegment::popIsDel() {
 	assert(m_isDel.size() >= 1);
 	assert(m_isDel.size() == size_t(((uint64_t*)m_isDelMmap)[0]));
 	assert(nullptr != m_isDelMmap);
@@ -1421,17 +1421,15 @@ const {
 	auto& sconf = *m_schema;
 	assert(m_colgroups.size() == sconf.getColgroupNum());
 	ctx->cols1.reserve(sconf.columnNum());
-	sconf.m_wrtSchema->parseRowAppend(ctx->buf1, &ctx->cols1);
+	sconf.m_wrtSchema->parseRowAppend(ctx->buf1, 0, &ctx->cols1);
 	for(size_t colgroupId : sconf.m_updatableColgroups) {
 		auto& schema = sconf.getColgroupSchema(colgroupId);
 		auto cg = m_colgroups[colgroupId].get();
 		assert(nullptr != cg);
 		size_t oldsize = ctx->cols1.size();
 		cg->getValueAppend(recId, &ctx->buf1, ctx);
-		fstring cgData = fstring(ctx->buf1).substr(oldsize);
-		schema.parseRowAppend(cgData, &ctx->cols1);
+		schema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
 	}
-	ctx->cols1.m_base = ctx->buf1.data();
 	ctx->cols2.m_base = ctx->buf1.data();
 	ctx->cols2.m_cols.resize_fill(sconf.columnNum());
 	auto  pCols1 = ctx->cols1.m_cols.data();
@@ -1549,6 +1547,7 @@ const {
 	}
 	else {
 		const Schema& wrtSchema = *m_schema->m_wrtSchema;
+		m_wrtStore->getValue(recId, &ctx->buf1, ctx);
 		wrtSchema.parseRow(ctx->buf1, &ctx->cols1);
 		assert(ctx->cols1.size() == wrtSchema.columnNum());
 		colsData->erase_all();

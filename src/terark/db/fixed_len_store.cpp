@@ -135,7 +135,7 @@ llong FixedLenStore::append(fstring row, DbContext*) {
 	Header* h = m_mmapBase;
 	if (nullptr == h || h->rows == h->capacity) {
 		assert(m_mmapSize % ChunkBytes == 0);
-		h = allocFileSize(llong(m_mmapSize * 1.618));
+		h = allocFileSize(llong(std::max(m_mmapSize, sizeof(Header)) * 1.618));
 	}
 	memcpy(h->get_data(h->rows), row.data(), row.size());
 	return h->rows++;
