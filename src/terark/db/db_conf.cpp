@@ -1618,7 +1618,9 @@ void SchemaSet::compileSchemaSet(const Schema* parent) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+//#define USE_SPLIT_FIELD_NAMES
 size_t SchemaSet::Hash::operator()(const SchemaPtr& x) const {
+#if defined(USE_SPLIT_FIELD_NAMES)
 	size_t h = 8789;
 	for (size_t i = 0; i < x->m_columnsMeta.end_i(); ++i) {
 		fstring colname = x->m_columnsMeta.key(i);
@@ -1626,8 +1628,12 @@ size_t SchemaSet::Hash::operator()(const SchemaPtr& x) const {
 		h = FaboHashCombine(h, h2);
 	}
 	return h;
+#else
+	return fstring_func::hash()(x->m_name);
+#endif
 }
 size_t SchemaSet::Hash::operator()(fstring x) const {
+#if defined(USE_SPLIT_FIELD_NAMES)
 	size_t h = 8789;
 	const char* cur = x.begin();
 	const char* end = x.end();
@@ -1640,13 +1646,21 @@ size_t SchemaSet::Hash::operator()(fstring x) const {
 		cur = next+1;
 	}
 	return h;
+#else
+	return fstring_func::hash()(x);
+#endif
 }
 bool SchemaSet::Equal::operator()(const SchemaPtr& x, const SchemaPtr& y) const {
+#if defined(USE_SPLIT_FIELD_NAMES)
 	fstring kx = x->m_columnsMeta.whole_strpool();
 	fstring ky = y->m_columnsMeta.whole_strpool();
 	return fstring_func::equal()(kx, ky);
+#else
+	return x->m_name == y->m_name;
+#endif
 }
 bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
+#if defined(USE_SPLIT_FIELD_NAMES)
 	const char* cur = y.begin();
 	const char* end = y.end();
 	while (end > cur && ',' == end[-1]) --end; // trim trailing ','
@@ -1662,19 +1676,22 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 		nth++;
 	}
 	return nth >= xCols && cur >= end;
+#else
+	return fstring(x->m_name) == y;
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
 
-const llong  DEFAULT_readonlyDataMemSize = 2LL * 1024 * 1024 * 1024;
-const llong  DEFAULT_maxWrSegSize        = 3LL * 1024 * 1024 * 1024;
+const llong  DEFAULT_compressingWorkMemSize = 2LL * 1024 * 1024 * 1024;
+const llong  DEFAULT_maxWritingSegmentSize        = 3LL * 1024 * 1024 * 1024;
 const size_t DEFAULT_minMergeSegNum      = TERARK_IF_DEBUG(2, 5);
 const double DEFAULT_purgeDeleteThreshold = 0.20;
 
 SchemaConfig::SchemaConfig() {
-	m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
-	m_maxWrSegSize = DEFAULT_maxWrSegSize;
+	m_compressingWorkMemSize = DEFAULT_compressingWorkMemSize;
+	m_maxWritingSegmentSize = DEFAULT_maxWritingSegmentSize;
 	m_minMergeSegNum = DEFAULT_minMergeSegNum;
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
 }
@@ -1920,6 +1937,15 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 	}
 if (colgroupsIter != meta.end()) {
 	const auto& colgroups = colgroupsIter.value();
+	valvec<size_t> colsToCgId(m_rowSchema->columnNum(), size_t(-1));
+	for (size_t cgId = 0; cgId < m_colgroupSchemaSet->indexNum(); ++cgId) {
+		const Schema* cgSchema = m_colgroupSchemaSet->getSchema(cgId);
+		for (size_t i = 0; i < cgSchema->columnNum(); ++i) {
+			fstring colname = cgSchema->getColumnName(i);
+			size_t columnId = m_rowSchema->getColumnId(colname);
+			colsToCgId[columnId] = cgId;
+		}
+	}
 	for(auto  iter = colgroups.begin(); colgroups.end() != iter; ++iter) {
 		auto& cgname = iter.key();
 		auto& colgrp = iter.value();
@@ -1949,15 +1975,32 @@ if (colgroupsIter != meta.end()) {
 						, "colname '%s' is dup in colgoup '%s'"
 						, colname.c_str(), cgname.c_str());
 				}
+				if (size_t(-1) != colsToCgId[columnId]) {
+					size_t cgId = colsToCgId[columnId];
+					auto& cgname1 = m_colgroupSchemaSet->getSchema(cgId)->m_name;
+					THROW_STD(invalid_argument
+						, "colname '%s' is dup in colgoup '%s' and colgroup '%s'"
+						, colname.c_str(), cgname1.c_str(), cgname.c_str());
+				}
+				// m_nested.end_i() will be the new colgroupId
+				colsToCgId[columnId] = m_colgroupSchemaSet->m_nested.end_i();
 			}
 		}
 		schema->m_name = cgname;
 		parseJsonColgroup(*schema, colgrp, sufarrMinFreq);
-		m_colgroupSchemaSet->m_nested.insert_i(schema);
+		auto ib = m_colgroupSchemaSet->m_nested.insert_i(schema);
+		if (!ib.second) {
+			THROW_STD(invalid_argument, "dup colgroup name '%s'", cgname.c_str());
+		}
 	}
 }
-	m_readonlyDataMemSize = getJsonValue(meta, "ReadonlyDataMemSize", DEFAULT_readonlyDataMemSize);
-	m_maxWrSegSize = getJsonValue(meta, "MaxWrSegSize", DEFAULT_maxWrSegSize);
+
+	// changed config key and compatible with old config key
+	m_compressingWorkMemSize = getJsonValue(meta, "ReadonlyDataMemSize", DEFAULT_compressingWorkMemSize);
+	m_compressingWorkMemSize = getJsonValue(meta, "CompressingWorkMemSize", m_compressingWorkMemSize);
+	m_maxWritingSegmentSize = getJsonValue(meta, "MaxWrSegSize", DEFAULT_maxWritingSegmentSize);
+	m_maxWritingSegmentSize = getJsonValue(meta, "MaxWritingSegmentSize", m_maxWritingSegmentSize);
+
 	m_minMergeSegNum = getJsonValue(
 		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
 	m_purgeDeleteThreshold = getJsonValue(
@@ -2065,15 +2108,15 @@ void SchemaConfig::loadMetaDFA(fstring metaFile) {
 	} else {
 		THROW_STD(invalid_argument, "metaconf dfa: MinWrSeg is missing");
 	}
-	if (metaConf->find_key_uniq_val("MaxWrSegSize", &val)) {
-		m_maxWrSegSize = lcast(val);
+	if (metaConf->find_key_uniq_val("MaxWritingSegmentSize", &val)) {
+		m_maxWritingSegmentSize = lcast(val);
 	} else {
-		m_maxWrSegSize = DEFAULT_maxWrSegSize;
+		m_maxWritingSegmentSize = DEFAULT_maxWritingSegmentSize;
 	}
-	if (metaConf->find_key_uniq_val("ReadonlyDataMemSize", &val)) {
-		m_readonlyDataMemSize = lcast(val);
+	if (metaConf->find_key_uniq_val("CompressingWorkMemSize", &val)) {
+		m_compressingWorkMemSize = lcast(val);
 	} else {
-		m_readonlyDataMemSize = DEFAULT_readonlyDataMemSize;
+		m_compressingWorkMemSize = DEFAULT_compressingWorkMemSize;
 	}
 
 	valvec<fstring> F;

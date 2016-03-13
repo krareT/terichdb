@@ -766,7 +766,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 				continue;
 			}
 		}
-		size_t maxMem = m_schema->m_readonlyDataMemSize;
+		size_t maxMem = m_schema->m_compressingWorkMemSize;
 		llong rows = 0;
 		valvec<ReadableStorePtr> parts;
 		colgroupTempFiles[i].prepairRead(dio);
@@ -1074,7 +1074,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	}
 	SortableStrVec strVec;
 	size_t fixlen = schema.getFixedRowLen();
-	size_t maxMem = size_t(m_schema->m_readonlyDataMemSize);
+	size_t maxMem = size_t(m_schema->m_compressingWorkMemSize);
 	valvec<ReadableStorePtr> parts;
 	auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
 		if (terark_unlikely(strVec.mem_size() >= maxMem)) {

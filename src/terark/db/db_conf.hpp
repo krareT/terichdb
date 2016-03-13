@@ -318,11 +318,20 @@ namespace terark { namespace db {
 			bool operator()(fstring x, const SchemaPtr& y) const
 			  { return (*this)(y, x); }
 		};
+		struct MyKeyExtractor {
+			const std::string&
+			operator()(const SchemaPtr& x) const { return x->m_name; }
+		};
+		typedef hash_and_equal< fstring
+							  , fstring_func::hash_align
+							  , fstring_func::equal_align
+							  > MyHashEqual;
 	public:
 		SchemaSet();
 		~SchemaSet();
 		SchemaPtr m_uniqIndexFields;
-		gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
+	//	gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
+		gold_hash_tab<std::string, SchemaPtr, MyHashEqual, MyKeyExtractor> m_nested;
 		size_t m_flattenColumnNum;
 		size_t indexNum() const { return m_nested.end_i(); }
 		const Schema* getSchema(size_t nth) const {
@@ -348,8 +357,8 @@ namespace terark { namespace db {
 		valvec<size_t> m_updatableColgroups; // index of m_colgroupSchemaSet
 		valvec<size_t> m_rowSchemaColToWrtCol;
 		valvec<Colproject> m_colproject; // parallel with m_rowSchema
-		llong    m_readonlyDataMemSize;
-		llong    m_maxWrSegSize;
+		llong    m_compressingWorkMemSize;
+		llong    m_maxWritingSegmentSize;
 		size_t   m_minMergeSegNum;
 		double   m_purgeDeleteThreshold;
 

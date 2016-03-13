@@ -16,6 +16,7 @@ struct TestRow {
 	std::string str1;
 	std::string str2;
 	std::string str3;
+	std::string str4;
 	DATA_IO_LOAD_SAVE(TestRow,
 		&id
 		&fix
@@ -26,7 +27,8 @@ struct TestRow {
 
 		&str1
 		&str2
-		&terark::RestAll(str3)
+		&str3
+		&terark::RestAll(str4)
 		)
 };
 
@@ -54,6 +56,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		recRow.str1 = std::string("s1:") + recRow.fix.data;
 		recRow.str2 = std::string("s2:") + recRow.fix.data;
 		recRow.str3 = std::string("s3:") + recRow.fix.data;
+		recRow.str4 = std::string("s4:") + recRow.fix.data;
 		rowBuilder.rewind();
 		rowBuilder << recRow;
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());

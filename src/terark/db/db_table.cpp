@@ -569,12 +569,12 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 	if (m_isMerging) {
 		return false;
 	}
-	if (m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
+	if (m_wrSeg->dataStorageSize() >= m_schema->m_maxWritingSegmentSize) {
 		if (lock.upgrade_to_writer() ||
 			// if upgrade_to_writer fails, it means the lock has been
 			// temporary released and re-acquired, so we need check
 			// the condition again
-			m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize)
+			m_wrSeg->dataStorageSize() >= m_schema->m_maxWritingSegmentSize)
 		{
 			doCreateNewSegmentInLock();
 		}
@@ -2388,7 +2388,7 @@ try{
 		}
 #endif
 		// m_wrSeg == NULL indicate writing is stopped
-		if (m_wrSeg && m_wrSeg->dataStorageSize() >= m_schema->m_maxWrSegSize) {
+		if (m_wrSeg && m_wrSeg->dataStorageSize() >= m_schema->m_maxWritingSegmentSize) {
 			doCreateNewSegmentInLock();
 		}
 		if (PurgeStatus::pending == m_purgeStatus) {
