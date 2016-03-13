@@ -10,6 +10,7 @@
 #include <terark/io/DataIO.hpp>
 #include <terark/io/MemStream.hpp>
 #include <terark/lcast.hpp>
+#include <terark/num_to_str.hpp>
 #include <terark/util/mmap.hpp>
 #include <terark/util/sortable_strvec.hpp>
 
@@ -1059,7 +1060,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 				physicId++;
 			}
 		}
-		assert(!isPurged || input->m_isPurged.max_rank0() == physicId);
+		assert(!isPurged || llong(input->m_isPurged.max_rank0()) == physicId);
 		return store;
 	}
 	if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
@@ -1720,7 +1721,7 @@ llong WritableSegment::append(fstring row, DbContext* ctx) {
 			const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 			schema.selectParent(ctx->cols1, &ctx->buf1);
 			llong id2 = store->append(ctx->buf1, ctx);
-			TERARK_RT_assert(id1 == id2, logic_error);
+			TERARK_RT_assert(id1 == id2, std::logic_error);
 		}
 		return id1;
 	}

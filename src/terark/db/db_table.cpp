@@ -2038,7 +2038,6 @@ mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 	FixedLenStorePtr store = new FixedLenStore(dseg->m_segDir, schema);
 	store->reserveRows(m_newSegRows);
 	byte_t* newBasePtr = store->getRecordsBasePtr();
-	size_t  newLogicId = 0;
 	size_t  newPhysicId = 0;
 	size_t  const fixlen = schema.getFixedRowLen();
 	for (auto& e : *this) {
@@ -2053,7 +2052,7 @@ mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 			size_t subPhysicId = 0;
 			for (size_t subLogicId = 0; subLogicId < subRows; ++subLogicId) {
 				if (!oldIsPurged || !terark_bit_test(oldIsPurged, subLogicId)) {
-					if (terark_bit_test(newIsPurged, subLogicId)) {
+					if (!terark_bit_test(newIsPurged, subLogicId)) {
 						memcpy(newBasePtr + fixlen*newPhysicId,
 							   subBasePtr + fixlen*subPhysicId, fixlen);
 						newPhysicId++;
@@ -2064,6 +2063,7 @@ mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 		}
 		else {
 			size_t physicSubRows = e.seg->getPhysicRows();
+			assert(physicSubRows == (size_t)store->numDataRows());
 			memcpy(newBasePtr + fixlen * newPhysicId,
 				   subBasePtr , fixlen * physicSubRows);
 			newPhysicId += physicSubRows;
