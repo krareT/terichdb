@@ -52,15 +52,15 @@ FixedLenStore::~FixedLenStore() {
 }
 
 llong FixedLenStore::dataInflateSize() const {
-	return m_mmapBase->mem_size();
+	return NULL == m_mmapBase ? 0 : m_mmapBase->mem_size();
 }
 
 llong FixedLenStore::dataStorageSize() const {
-	return m_mmapBase->mem_size();
+	return NULL == m_mmapBase ? 0 : m_mmapBase->mem_size();
 }
 
 llong FixedLenStore::numDataRows() const {
-	return m_mmapBase->rows;
+	return NULL == m_mmapBase ? 0 : m_mmapBase->rows;
 }
 
 void FixedLenStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
@@ -145,10 +145,10 @@ void FixedLenStore::update(llong id, fstring row, DbContext* ctx) {
 	Header* h = m_mmapBase;
 	assert(id >= 0);
 	TERARK_RT_assert(row.size() == m_fixlen, std::invalid_argument);
-	if (id < llong(h->rows)) {
+	if (h && id < llong(h->rows)) {
 		memcpy(h->get_data(id), row.data(), row.size());
 	} else {
-		TERARK_RT_assert(size_t(id) == h->rows, std::invalid_argument);
+		TERARK_RT_assert(!h || size_t(id) == h->rows, std::invalid_argument);
 		append(row, ctx);
 	}
 }

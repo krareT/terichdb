@@ -52,6 +52,7 @@ ReadableSegment::~ReadableSegment() {
 		saveIsDel(m_segDir);
 	}
 	m_indices.clear(); // destroy index objects
+	m_colgroups.clear();
 	assert(!m_segDir.empty());
 	if (m_tobeDel && !m_segDir.empty()) {
 		fprintf(stderr, "INFO: remove: %s\n", m_segDir.string().c_str());
@@ -1652,9 +1653,9 @@ public:
 			}
 			return false;
 		}
-		if (m_wrtIter->increment(id, val)) {
-			m_ctx->buf1.erase_all();
-			m_ctx->cols1.erase_all();
+		m_ctx->buf1.erase_all();
+		m_ctx->cols1.erase_all();
+		if (m_wrtIter->increment(id, &m_ctx->buf1)) {
 			val->erase_all();
 			m_wrtSeg->getCombineAppend(*id, val, m_ctx.get());
 			return true;
@@ -1665,9 +1666,9 @@ public:
 		if (m_sconf.m_updatableColgroups.empty()) {
 			return m_wrtIter->seekExact(id, val);
 		}
+		m_ctx->buf1.erase_all();
+		m_ctx->cols1.erase_all();
 		if (m_wrtIter->seekExact(id, &m_ctx->buf1)) {
-			m_ctx->buf1.erase_all();
-			m_ctx->cols1.erase_all();
 			val->erase_all();
 			m_wrtSeg->getCombineAppend(id, val, m_ctx.get());
 			return true;

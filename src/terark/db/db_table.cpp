@@ -2042,7 +2042,9 @@ mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 	size_t  newPhysicId = 0;
 	size_t  const fixlen = schema.getFixedRowLen();
 	for (auto& e : *this) {
-		const byte_t* subBasePtr = e.seg->getRecordsBasePtr();
+		auto store = e.seg->m_colgroups[colgroupId];
+		assert(nullptr != store);
+		const byte_t* subBasePtr = store->getRecordsBasePtr();
 		assert(nullptr != subBasePtr);
 		if (e.needsRePurge()) {
 			const bm_uint_t* oldIsPurged = e.seg->m_isPurged.bldata();
@@ -2323,7 +2325,7 @@ try{
 				assert(subId == subRows);
 			}
 			baseLogicId += sseg->m_isDel.size();
-			// it is safe to change these 3 member in reader lock
+			// it is safe to change these 2 member in reader lock
 			sseg->m_updateList.erase_all();
 			sseg->m_updateBits.erase_all();
 		}

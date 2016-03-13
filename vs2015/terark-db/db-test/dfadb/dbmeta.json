@@ -1,9 +1,15 @@
 ﻿{
 	"RowSchema": {
 		"columns" : {
-			"id"   : { "type" : "uint64" },
-			"fix"  : { "type" : "fixed", "length" : 9 },
-			"fix2" : { "type" : "fixed", "length" : 10, "colstore": true },
+			"id"  : { "type" : "uint64" },
+			"fix" : { "type" : "fixed", "length" : 9 },
+      "fix2": {
+        "type": "fixed",
+        "length": 10,
+        "colstore": {
+          "inplaceUpdatable": true
+        }
+      },
 			"str0" : { "type" : "strzero" },
 			"str1" : { "type" : "binary" },
 			"str2" : { "type" : "binary" },
