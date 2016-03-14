@@ -132,6 +132,12 @@ namespace terark {
 		_BitScanReverse64(&Index, x);
 		return Index;
 	}
+  #elif defined(__clang__)
+	inline unsigned long terark_bsr_u64(unsigned long x) {
+		unsigned long bsr;
+		asm ("bsrq\t%1, %0" : "=r" (bsr) : "rm" (x) );
+		return bsr;
+	}
   #elif defined(__GNUC__) && __GNUC__ * 1000 + __GNUC_MINOR__ >= 4005
 	#define terark_bsr_u64 __bsrq
   #endif

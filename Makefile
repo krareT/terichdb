@@ -22,9 +22,7 @@ ifneq "${err}" "0"
    $(error err = ${err} MAKEFILE_LIST = ${MAKEFILE_LIST}, PWD = ${PWD}, gen_sh = ${gen_sh} "${CXX}" ${COMPILER} ${BUILD_ROOT}/env.mk)
 endif
 
-BRAIN_DEAD_RE2_INC = -I3rdparty/re2/re2 -I3rdparty/re2/util
-
-TERARK_INC := -Isrc -I3rdparty/re2 ${BRAIN_DEAD_RE2_INC}
+TERARK_INC := -Isrc
 
 include ${BUILD_ROOT}/env.mk
 
@@ -86,8 +84,6 @@ COMMON_C_FLAGS  += -Wall -Wextra
 COMMON_C_FLAGS  += -Wno-unused-parameter
 COMMON_C_FLAGS  += -D_GNU_SOURCE # For cygwin
 
-COMMON_C_FLAGS  += -DNO_THREADS # Workaround re2
-
 #-v #-Wall -Wparentheses
 #COMMON_C_FLAGS  += ${COMMON_C_FLAGS} -Wpacked -Wpadded -v
 #COMMON_C_FLAGS	 += ${COMMON_C_FLAGS} -Winvalid-pch
@@ -123,28 +119,29 @@ endif
 #override INCS += -I/usr/include
 
 LIBBOOST ?= \
-	  -lboost_thread${BOOST_SUFFIX} \
+	  -lboost_filesystem${BOOST_SUFFIX} \
 	  -lboost_date_time${BOOST_SUFFIX} \
 	  -lboost_system${BOOST_SUFFIX}
 
 ifeq "1" "0"
 ifeq ($(shell test -d /usr/local/lib64 && echo 1),1)
-  LIBS += -L/usr/local/lib64
+  override LIBS += -L/usr/local/lib64
 endif
 ifeq ($(shell test -d /usr/local/lib && echo 1),1)
-  LIBS += -L/usr/local/lib
+  override LIBS += -L/usr/local/lib
 endif
 ifeq ($(shell test -d /usr/lib64 && echo 1),1)
-  LIBS += -L/usr/lib64
+  override LIBS += -L/usr/lib64
 endif
 ifeq ($(shell test -d /usr/lib && echo 1),1)
-  LIBS += -L/usr/lib
+  override LIBS += -L/usr/lib
 endif
 endif
 
 #LIBS += -ldl
 #LIBS += -lpthread
-#LIBS += ${LIBBOOST}
+override LIBS += ${LIBBOOST}
+override LIBS += -lwiredtiger
 
 #extf = -pie
 extf = -fno-stack-protector
@@ -157,8 +154,8 @@ override CXXFLAGS += ${extf}
 
 override INCS += -I${BDB_HOME}/include
 override INCS += -I/opt/include
-LIBS += -L${BDB_HOME}/lib
-LIBS += -L/opt/lib
+override LIBS += -L${BDB_HOME}/lib
+override LIBS += -L/opt/lib
 
 ifeq (, ${prefix})
 	ifeq (root, ${USER})
@@ -175,7 +172,10 @@ ifeq (1,${WITH_DFA_DB})
   TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
   override INCS += -I../terark/src
   TerarkDB_lib := libTerarkDB
+  LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
+  LIB_TERARK_R := -L../terark/lib -lterark-fsa_all-${COMPILER}-r
 else
+  override INCS += -Iterark-base/src
   zip_src := \
     terark-base/src/terark/io/BzipStream.cpp \
 	terark-base/src/terark/io/GzipStream.cpp
@@ -185,8 +185,6 @@ else
   TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
   TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
   TerarkDB_lib := libTerarkDB-no-zip
-  LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
-  LIB_TERARK_R := -L../terark/lib -lterark-fsa_all-${COMPILER}-r
 endif
 
 #function definition
@@ -223,9 +221,9 @@ ifneq (${UNAME_System},Darwin)
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lrt
 endif
 
-#${TerarkDB_d} : LIBS += ${LIB_TERARK_D} -ltbb_debug
-${TerarkDB_d} : LIBS += ${LIB_TERARK_D} -ltbb
-${TerarkDB_r} : LIBS += ${LIB_TERARK_R} -ltbb
+#${TerarkDB_d} : override LIBS += ${LIB_TERARK_D} -ltbb_debug
+${TerarkDB_d} : override LIBS += ${LIB_TERARK_D} -ltbb
+${TerarkDB_r} : override LIBS += ${LIB_TERARK_R} -ltbb
 
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 

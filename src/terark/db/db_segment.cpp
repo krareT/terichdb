@@ -179,7 +179,7 @@ size_t ReadableSegment::getPhysicRows() const {
 }
 
 // logic id is immutable
-inline
+// inline
 size_t ReadableSegment::getPhysicId(size_t logicId) const {
 	if (m_isPurged.empty()) {
 		return logicId;
@@ -1592,8 +1592,8 @@ void WritableSegment::loadRecordStore(PathRef segDir) {
 		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 		assert(schema.m_isInplaceUpdatable);
 		assert(schema.getFixedRowLen() > 0);
-	//	std::unique_ptr<FixedLenStore> store(new FixedLenStore(segDir, schema));
-		auto store(std::make_unique<FixedLenStore>(segDir, schema));
+		std::unique_ptr<FixedLenStore> store(new FixedLenStore(segDir, schema));
+	//	auto store(std::make_unique<FixedLenStore>(segDir, schema));
 		store->openStore();
 		m_colgroups[colgroupId] = store.release();
 	}
