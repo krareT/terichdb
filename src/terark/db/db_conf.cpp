@@ -1194,7 +1194,7 @@ size_t Schema::computeFixedRowLen() const {
 		switch (colmeta.type) {
 		default:
 			THROW_STD(runtime_error, "Invalid column[name='%s' type=%d]"
-				, colname.c_str(), colmeta.type);
+				, colname.c_str(), (int)colmeta.type);
 			break;
 		case ColumnType::Any:
 			return 0;
