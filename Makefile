@@ -1,5 +1,6 @@
 DBG_FLAGS ?= -g3 -D_DEBUG
 RLS_FLAGS ?= -O3 -DNDEBUG
+WITH_BMI2 ?= $(shell ./cpu_has_bmi2.sh)
 
 ifeq "$(origin LD)" "default"
   LD := ${CXX}
@@ -11,7 +12,7 @@ endif
 COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o a && ./a && rm -f a a.exe)
 #$(error COMPILER=${COMPILER})
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
-BUILD_ROOT := build/${COMPILER}-${UNAME_MachineSystem}
+BUILD_ROOT := build/${COMPILER}-${UNAME_MachineSystem}-bmi2-${WITH_BMI2}
 ddir:=${BUILD_ROOT}/dbg
 rdir:=${BUILD_ROOT}/rls
 
@@ -232,7 +233,7 @@ ${TerarkDB_r} : $(call objs,TerarkDB,r)
 ${static_TerarkDB_d} : $(call objs,TerarkDB,d)
 ${static_TerarkDB_r} : $(call objs,TerarkDB,r)
 
-TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}
+TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
 .PHONY : pkg
 pkg: ${TerarkDB_d} ${TerarkDB_r}
 	rm -rf ${TarBall}
@@ -361,11 +362,11 @@ ${rdir}/%.dep : %.cpp
 	@echo file: $< "->" $@
 	@echo INCS = ${INCS}
 	mkdir -p $(dir $@)
-	${CXX} -M -MT $(basename $@).o ${INCS} $< > $@
+	${CXX} ${CXX_STD} -M -MT $(basename $@).o ${INCS} $< > $@
 
 ${ddir}/%.dep : %.cpp
 	@echo file: $< "->" $@
 	@echo INCS = ${INCS}
 	mkdir -p $(dir $@)
-	${CXX} -M -MT $(basename $@).o ${INCS} $< > $@
+	${CXX} ${CXX_STD} -M -MT $(basename $@).o ${INCS} $< > $@
 
