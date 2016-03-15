@@ -1956,7 +1956,9 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	SortableStrVec strVec;
 	const Schema& schema = this->p[0].seg->m_schema->getIndexSchema(indexId);
 	const size_t fixedIndexRowLen = schema.getFixedRowLen();
+#if !defined(NDEBUG)
 	hash_strmap<size_t> key2id;
+#endif
 	for (auto& e : *this) {
 		auto seg = e.seg;
 		auto indexStore = seg->m_indices[indexId]->getReadableStore();
@@ -1975,10 +1977,12 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 					} else {
 						strVec.push_back(rec);
 					}
+#if !defined(NDEBUG)
 					auto& cnt = key2id[rec];
 					if (++cnt > 1) {
 						physicId = physicId;
 					}
+#endif
 				}
 				physicId++;
 			}
