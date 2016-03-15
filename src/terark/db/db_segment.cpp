@@ -204,6 +204,9 @@ size_t ReadableSegment::getLogicId(size_t physicId) const {
 }
 
 void ReadableSegment::addtoUpdateList(size_t logicId) {
+	if (!m_bookUpdates) {
+		return;
+	}
 	if (m_updateList.size() * 256 < m_isDel.size() && m_updateBits.empty()) {
 		m_updateList.push_back(uint32_t(logicId));
 	}
@@ -435,6 +438,25 @@ StoreIterator* ReadonlySegment::createStoreIterBackward(DbContext* ctx) const {
 	return new MyStoreIterBackward(this, ctx);
 }
 
+static bool should_use_FixedLenStore(const Schema& schema) {
+	if (schema.columnNum() == 1) {
+		auto colmeta = schema.getColumnMeta(0);
+		if (colmeta.isInteger() && !schema.m_isInplaceUpdatable) {
+			// should use ZipIntStore
+			return false;
+		}
+	}
+	size_t fixlen = schema.getFixedRowLen();
+	if (schema.m_isInplaceUpdatable) {
+		assert(fixlen > 0);
+		return true;
+	}
+	if (fixlen && fixlen <= 16) {
+		return true;
+	}
+	return false;
+}
+
 namespace {
 	class FileDataIO : public ReadableStore, public AppendableStore {
 		class FileStoreIter;
@@ -606,8 +628,7 @@ namespace {
 			m_fixlenStore.resize(schemaSet.m_nested.end_i());
 			for (size_t i = indexNum; i < schemaSet.m_nested.end_i(); ++i) {
 				const Schema& schema = *schemaSet.m_nested.elem_at(i);
-				size_t fixlen = schema.getFixedRowLen();
-				if (fixlen && fixlen <= 16) {
+				if (should_use_FixedLenStore(schema)) {
 					m_fixlenStore[i] = new FixedLenStore(segDir, schema);
 				}
 			}
@@ -880,6 +901,12 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 			assert(!this->m_isDel[i]);
 			this->getValue(i, &r1, ctx.get());
 			input->getValue(i, &r2, ctx.get());
+			if (fstring(r1) != r2) {
+				std::string js1 = m_schema->m_rowSchema->toJsonStr(r1);
+				std::string js2 = m_schema->m_rowSchema->toJsonStr(r2);
+				fprintf(stderr, "recId: %zd\n\tjs1=%s\n\tjs2=%s\n"
+					, i, js1.c_str(), js2.c_str());
+			}
 			assert(r1.size() == r2.size());
 			assert(memcmp(r1.data(), r2.data(), r1.size()) == 0);
 			assert(m_isPurged.empty() || !m_isPurged[i]);
@@ -902,17 +929,19 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 
 // dstBaseId is for merge update
 void ReadonlySegment::syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId, ReadableSegment* input) {
+	assert(input->m_isDel.is0(logicId));
+	assert(this->m_isDel.is0(dstBaseId + logicId));
+	auto dstPhysicId = this->getPhysicId(dstBaseId + logicId);
+	auto srcPhysicId = input->getPhysicId(logicId);
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
 		auto&schema = m_schema->getColgroupSchema(colgroupId);
-		auto dstColstore = m_colgroups[colgroupId].get();
+		auto dstColstore = this->m_colgroups[colgroupId].get();
 		auto srcColstore = input->m_colgroups[colgroupId].get();
 		assert(nullptr != dstColstore);
 		assert(nullptr != srcColstore);
 		auto fixlen = schema.getFixedRowLen();
-		auto dstPhysicId = this->getPhysicId(dstBaseId + logicId);
-		auto srcPhysicId = input->getPhysicId(logicId);
-		auto dstDataPtr = dstColstore->getRecordsBasePtr() + fixlen * srcPhysicId;
-		auto srcDataPtr = srcColstore->getRecordsBasePtr() + fixlen * dstPhysicId;
+		auto dstDataPtr = dstColstore->getRecordsBasePtr() + fixlen * dstPhysicId;
+		auto srcDataPtr = srcColstore->getRecordsBasePtr() + fixlen * srcPhysicId;
 		memcpy(dstDataPtr, srcDataPtr, fixlen);
 	}
 }
@@ -1323,7 +1352,7 @@ const {
 				schema.m_name.c_str());
 		}
 	}
-	if (fixlen && fixlen <= 16) {
+	if (should_use_FixedLenStore(schema)) {
 		abort(); // should not goes here
 		std::unique_ptr<FixedLenStore> store(new FixedLenStore(m_segDir, schema));
 		store->build(storeData);
@@ -1428,7 +1457,7 @@ const {
 		auto& schema = sconf.getColgroupSchema(colgroupId);
 		auto cg = m_colgroups[colgroupId].get();
 		assert(nullptr != cg);
-		size_t oldsize = ctx->cols1.size();
+		size_t oldsize = ctx->buf1.size();
 		cg->getValueAppend(recId, &ctx->buf1, ctx);
 		schema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
 	}

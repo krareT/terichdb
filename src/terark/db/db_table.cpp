@@ -885,10 +885,7 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* txn) {
 	}
 	else {
 		// mark old subId as deleted
-		if (seg->m_bookUpdates) {
-			assert(seg->getWritableStore() == nullptr); // must be readonly
-			seg->addtoUpdateList(size_t(subId));
-		}
+		seg->addtoUpdateList(size_t(subId));
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		assert(seg->m_isDel.popcnt() == seg->m_delcnt);
@@ -1046,10 +1043,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 		assert(m_wrSeg->m_isDel.popcnt() == m_wrSeg->m_delcnt);
 	}
 	else { // freezed segment, just set del mark
-		if (seg->m_bookUpdates) {
-		//	assert(seg->getWritableStore() == nullptr); // must be readonly??
-			seg->addtoUpdateList(size_t(subId));
-		}
+		seg->addtoUpdateList(size_t(subId));
 		seg->m_isDel.set1(subId);
 		seg->m_delcnt++;
 		seg->m_isDirty = true;
@@ -1075,6 +1069,7 @@ void CompositeTable::updateColumn(llong recordId, size_t columnId, fstring newCo
 			);
 	}
 	memcpy(coldata, newColumnData.data(), newColumnData.size());
+	seg->addtoUpdateList(subId);
 }
 
 void CompositeTable::updateColumn(llong recordId, fstring colname, fstring newColumnData) {
@@ -1118,6 +1113,7 @@ void CompositeTable::updateColumnInteger(llong recordId, size_t columnId, const 
 	case ColumnType::Float32: updateValueByOp<   float, llong>(*coldata, op); break;
 	case ColumnType::Float64: updateValueByOp<  double, llong>(*coldata, op); break;
 	}
+	seg->addtoUpdateList(subId);
 }
 
 void CompositeTable::updateColumnInteger(llong recordId, fstring colname, const std::function<bool(llong&val)>& op) {
@@ -1149,6 +1145,7 @@ void CompositeTable::updateColumnDouble(llong recordId, size_t columnId, const s
 	case ColumnType::Float32: updateValueByOp<   float, double>(*coldata, op); break;
 	case ColumnType::Float64: updateValueByOp<  double, double>(*coldata, op); break;
 	}
+	seg->addtoUpdateList(subId);
 }
 
 void CompositeTable::updateColumnDouble(llong recordId, fstring colname, const std::function<bool(double&val)>& op) {
@@ -1180,6 +1177,7 @@ void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, llong
 	case ColumnType::Float32: *(float *)coldata += incVal; break;
 	case ColumnType::Float64: *(double*)coldata += incVal; break;
 	}
+	seg->addtoUpdateList(subId);
 }
 
 void CompositeTable::incrementColumnValue(llong recordId, fstring colname, llong incVal) {
@@ -1211,6 +1209,7 @@ void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, doubl
 	case ColumnType::Float32: *(float *)coldata += incVal; break;
 	case ColumnType::Float64: *(double*)coldata += incVal; break;
 	}
+	seg->addtoUpdateList(subId);
 }
 
 void CompositeTable::incrementColumnValue(llong recordId, fstring colname, double incVal) {
@@ -2035,15 +2034,15 @@ void
 CompositeTable::MergeParam::
 mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
-	FixedLenStorePtr store = new FixedLenStore(dseg->m_segDir, schema);
-	store->reserveRows(m_newSegRows);
-	byte_t* newBasePtr = store->getRecordsBasePtr();
+	FixedLenStorePtr dstStore = new FixedLenStore(dseg->m_segDir, schema);
+	dstStore->reserveRows(m_newSegRows);
+	byte_t* newBasePtr = dstStore->getRecordsBasePtr();
 	size_t  newPhysicId = 0;
 	size_t  const fixlen = schema.getFixedRowLen();
 	for (auto& e : *this) {
-		auto store = e.seg->m_colgroups[colgroupId];
-		assert(nullptr != store);
-		const byte_t* subBasePtr = store->getRecordsBasePtr();
+		auto srcStore = e.seg->m_colgroups[colgroupId];
+		assert(nullptr != srcStore);
+		const byte_t* subBasePtr = srcStore->getRecordsBasePtr();
 		assert(nullptr != subBasePtr);
 		if (e.needsRePurge()) {
 			const bm_uint_t* oldIsPurged = e.seg->m_isPurged.bldata();
@@ -2063,14 +2062,15 @@ mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 		}
 		else {
 			size_t physicSubRows = e.seg->getPhysicRows();
-			assert(physicSubRows == (size_t)store->numDataRows());
+			assert(physicSubRows == (size_t)srcStore->numDataRows());
 			memcpy(newBasePtr + fixlen * newPhysicId,
 				   subBasePtr , fixlen * physicSubRows);
 			newPhysicId += physicSubRows;
 		}
 	}
-	store->setNumRows(newPhysicId);
-	store->shrinkToFit();
+	dstStore->setNumRows(newPhysicId);
+	dstStore->shrinkToFit();
+	dseg->m_colgroups[colgroupId] = dstStore;
 }
 
 static void

@@ -251,6 +251,7 @@ namespace terark { namespace db {
 		struct Fixed {
 			char data[N];
 			Fixed() { memset(data, 0, N); }
+			operator fstring() const { return fstring(data, N); }
 			template<class DIO> friend void
 			DataIO_loadObject(DIO& dio, Fixed& x) { dio.ensureRead(&x, N); }
 			template<class DIO> friend void
