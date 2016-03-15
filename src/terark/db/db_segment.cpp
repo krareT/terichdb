@@ -1338,9 +1338,9 @@ const {
 ReadableStore*
 ReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
 const {
-	const size_t fixlen = schema.getFixedRowLen();
+	assert(!should_use_FixedLenStore(schema));
 	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
-		assert(fixlen > 0);
+		assert(schema.getFixedRowLen() > 0);
 		try {
 			std::unique_ptr<ZipIntStore> store(new ZipIntStore());
 			store->build(schema.getColumnMeta(0).type, storeData);
@@ -1348,15 +1348,13 @@ const {
 		}
 		catch (const std::exception&) {
 			// ignore and fall through
-			fprintf(stderr, "try to build ZipIntStore: on %s failed, fallback to FixedLenStore\n",
+			fprintf(stderr,
+"try to build ZipIntStore: on %s failed, fallback to FixedLenStore\n",
 				schema.m_name.c_str());
+			std::unique_ptr<FixedLenStore> store(new FixedLenStore(m_segDir, schema));
+			store->build(storeData);
+			return store.release();
 		}
-	}
-	if (should_use_FixedLenStore(schema)) {
-		abort(); // should not goes here
-		std::unique_ptr<FixedLenStore> store(new FixedLenStore(m_segDir, schema));
-		store->build(storeData);
-		return store.release();
 	}
 	return nullptr;
 }
