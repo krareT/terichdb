@@ -206,7 +206,7 @@ void FixedLenStore::setNumRows(size_t rows) {
 }
 
 FixedLenStore::Header*
-FixedLenStore::allocFileSize(llong fileSize) {
+FixedLenStore::allocFileSize(ullong fileSize) {
 	using std::max;
 	assert(fileSize > sizeof(Header));
 	ullong minBytes = sizeof(Header) + m_fixlen * 1;

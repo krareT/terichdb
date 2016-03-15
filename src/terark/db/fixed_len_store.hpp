@@ -45,7 +45,7 @@ public:
 
 protected:
 	struct  Header;
-	Header* allocFileSize(llong size);
+	Header* allocFileSize(ullong size);
 	Header* m_mmapBase;
 	size_t  m_mmapSize;
 	size_t  m_fixlen;
