@@ -45,13 +45,12 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 	TestRow recRow;
 
 	size_t insertedRows = 0;
-	size_t deletedRows = 0;
 	febitvec bits(maxRowNum + 1);
 	for (size_t i = 0; i < maxRowNum; ++i) {
 		TestRow recRow;
 		recRow.id = rand() % maxRowNum + 1;
 		int len = sprintf(recRow.fix.data, "%06lld", recRow.id);
-		memcpy(recRow.fix2.data, &recRow.fix.data, len+1);
+		memcpy(recRow.fix2.data, recRow.fix.data, len);
 		recRow.str0 = std::string("s0:") + recRow.fix.data;
 		recRow.str1 = std::string("s1:") + recRow.fix.data;
 		recRow.str2 = std::string("s2:") + recRow.fix.data;
@@ -83,20 +82,20 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 			assert(bits.is0(recRow.id));
 		}
 		bits.set1(recRow.id);
-#if 1
+
 		if (rand() < RAND_MAX*0.3) {
-			llong randomRecordId = rand() % tab->numDataRows();
+			llong randomRecId = rand() % tab->numDataRows();
 			uint64_t keyId = 0;
 			recBuf.erase_all();
 			std::string jstr;
-			if (tab->exists(randomRecordId)) {
+			if (tab->exists(randomRecId)) {
 				size_t indexId = tab->getIndexId("id");
 				assert(indexId < tab->getIndexNum());
-				tab->selectOneColumn(randomRecordId, indexId, &recBuf, &*ctx);
+				tab->selectOneColumn(randomRecId, indexId, &recBuf, &*ctx);
 				keyId = unaligned_load<uint64_t>(recBuf.data());
 				if (keyId == 27754)
 					keyId = keyId;
-				ctx->getValue(randomRecordId, &recBuf);
+				ctx->getValue(randomRecId, &recBuf);
 				jstr = tab->toJsonStr(recBuf);
 				assert(keyId > 0);
 			//	assert(bits.is1(keyId));
@@ -104,29 +103,35 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 			bool isDeleted = false;
 			if (rand() < RAND_MAX*0.3) {
 				// may remove deleted record
-				ctx->removeRow(randomRecordId);
+				ctx->removeRow(randomRecId);
 				isDeleted = true;
 			}
-			else if (tab->exists(randomRecordId)) {
-				ctx->removeRow(randomRecordId);
+			else if (tab->exists(randomRecId)) {
+				ctx->removeRow(randomRecId);
 				isDeleted = true;
 			}
 			if (isDeleted && keyId > 0) {
 				printf("delete success: recId = %lld: %s\n"
-					, randomRecordId, jstr.c_str());
-				assert(!tab->exists(randomRecordId));
+					, randomRecId, jstr.c_str());
+				assert(!tab->exists(randomRecId));
 				bits.set0(keyId);
-				deletedRows++;
 			}
 		}
-#endif
-	}
 
-//	NativeDataInput<RangeStream<MemIO> > decoder;
-//	NativeDataInput<MemIO> decoder;
-//	decoder.set(rowBuilder.head());
-//	decoder.setRangeLen(decoder.remain());
-//	decoder >> recRow;
+		if (rand() < RAND_MAX*0.3) {
+			llong randomRecId = rand() % tab->numDataRows();
+			if (tab->exists(randomRecId)) {
+				size_t keyId_ColumnId = 0;
+				Schema::Fixed<10> fix2;
+				tab->selectOneColumn(randomRecId, keyId_ColumnId, &recBuf, &*ctx);
+				assert(recBuf.size() == sizeof(llong));
+				llong keyId = (llong&)recBuf[0];
+				int len = sprintf(fix2.data, "F-%lld", keyId);
+				TERARK_RT_assert(len < sizeof(fix2.data), std::out_of_range);
+				tab->updateColumn(randomRecId, "fix2", fix2);
+			}
+		}
+	}
 
 	{
 		valvec<byte> keyHit, val;
