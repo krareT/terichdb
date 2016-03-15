@@ -1,0 +1,195 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\terark">
+      <UniqueIdentifier>{f0b50340-b699-433f-8615-91506e6f51da}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\terark\db">
+      <UniqueIdentifier>{c3e366f4-e257-4477-b67b-5490e53f9e10}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark">
+      <UniqueIdentifier>{13635243-d206-43bb-bd92-31b2cc702bda}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark\db">
+      <UniqueIdentifier>{63670d04-8922-42d1-af12-dee2f8216179}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\terark\db\dfadb">
+      <UniqueIdentifier>{1d57f46c-a5d8-4e33-bcbd-0e7672f538d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark\db\dfadb">
+      <UniqueIdentifier>{b3e152ed-9c13-4179-a49d-def608127e08}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark\db\wiredtiger">
+      <UniqueIdentifier>{049bcc4e-ec4b-4eda-8574-9254215d2fc2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\terark\db\wiredtiger">
+      <UniqueIdentifier>{9ccc3533-34cb-4a28-ac27-33b20ca154f4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\nlohmann">
+      <UniqueIdentifier>{63c92b33-47f6-4eef-a698-02c8ec25e05a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stdafx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\db_index.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\db_store.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\db_conf.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\db_table.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\mock_db_engine.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\record_data.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\seg_db.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\db_segment.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\seq_num_index.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\json.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\db_context.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_index.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_store.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_segment.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\intkey_index.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_table.hpp">
+      <Filter>Header Files\terark\db\dfadb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nlohmann\json.hpp">
+      <Filter>Header Files\nlohmann</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\zip_int_store.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\fixed_len_key_index.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\fixed_len_store.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.hpp">
+      <Filter>Header Files\terark\db\wiredtiger</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="stdafx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dllmain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\db_index.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\db_store.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\db_conf.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\db_table.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\mock_db_engine.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\db_segment.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\seq_num_index.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\db_context.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_index.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_store.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_segment.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\intkey_index.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_table.cpp">
+      <Filter>Source Files\terark\db\dfadb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\zip_int_store.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\fixed_len_key_index.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\fixed_len_store.cpp">
+      <Filter>Source Files\terark\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.cpp">
+      <Filter>Source Files\terark\db\wiredtiger</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
