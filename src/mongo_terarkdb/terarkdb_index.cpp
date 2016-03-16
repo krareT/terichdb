@@ -194,7 +194,7 @@ void TerarkDbIndex::unindex(OperationContext* txn,
 void TerarkDbIndex::fullValidate(OperationContext* txn,
 							   bool full,
 							   long long* numKeysOut,
-							   BSONObjBuilder* output) const {
+							   ValidateResults* output) const {
 	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, Not supported now";
 }
 

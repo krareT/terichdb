@@ -72,7 +72,7 @@ public:
         return _durable;
     }
 
-    virtual bool isEphemeral() { return false; }
+    virtual bool isEphemeral() const override { return false; }
 
     virtual RecoveryUnit* newRecoveryUnit();
 
@@ -117,6 +117,8 @@ public:
     std::vector<std::string> getAllIdents(OperationContext* opCtx) const;
 
     virtual void cleanShutdown();
+
+    virtual void setJournalListener(JournalListener* jl) override;
 
     // terarkdb specific
     // Calls TerarkDb_CONNECTION::reconfigure on the underlying TerarkDb_CONNECTION

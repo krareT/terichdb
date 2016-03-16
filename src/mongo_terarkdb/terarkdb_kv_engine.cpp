@@ -107,7 +107,8 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 				cacheSizeGB,
 				durable,
 				false, // ephemeral
-				repair));
+				repair,
+				false));
 
     _previousCheckedDropsQueued = Date_t::now();
 /*
@@ -141,6 +142,10 @@ void TerarkDbKVEngine::cleanShutdown() {
 	std::lock_guard<std::mutex> lock(m_mutex);
     m_tables.clear();
 	CompositeTable::safeStopAndWaitForFlush();
+}
+
+void TerarkDbKVEngine::setJournalListener(JournalListener* jl) {
+	m_wtEngine->setJournalListener(jl);
 }
 
 Status
