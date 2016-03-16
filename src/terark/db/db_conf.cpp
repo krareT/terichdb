@@ -24,6 +24,8 @@ ColumnMeta::ColumnMeta() {
 }
 
 ColumnMeta::ColumnMeta(ColumnType t) {
+	fixedOffset = UINT32_MAX;
+	reserved0 = 0;
 	reserved1 = 0;
 	reserved2 = 0;
 	type = t;

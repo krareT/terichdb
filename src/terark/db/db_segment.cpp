@@ -42,6 +42,7 @@ ReadableSegment::ReadableSegment() {
 	m_isDirty = false;
 	m_bookUpdates = false;
 	m_withPurgeBits = false;
+	m_isPurgedMmap = nullptr;
 }
 ReadableSegment::~ReadableSegment() {
 	if (m_isDelMmap) {
@@ -552,7 +553,8 @@ namespace {
 			size_t flen = m_fixedLen;
 			if (flen) {
 				byte* p = rec->grow_no_init(flen);
-				ssize_t nRead = pread(fileno(m_fp), p, flen, flen*id);
+				int fd = ::fileno(m_fp);
+				ssize_t nRead = pread(fd, p, flen, flen*id);
 				if (size_t(nRead) != flen) {
 					THROW_STD(logic_error
 						, "FATAL: pread(len = %zd, pos = %lld) = %zd : %s"

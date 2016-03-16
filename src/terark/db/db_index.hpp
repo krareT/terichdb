@@ -68,6 +68,7 @@ typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 /// both ordered and unordered index can be writable
 class TERARK_DB_DLL WritableIndex {
 public:
+	virtual ~WritableIndex();
 	virtual bool remove(fstring key, llong id, DbContext*) = 0;
 	virtual bool insert(fstring key, llong id, DbContext*) = 0;
 	virtual bool replace(fstring key, llong id, llong newId, DbContext*) = 0;

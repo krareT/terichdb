@@ -81,6 +81,9 @@ WritableIndex* ReadableIndex::getWritableIndex() {
 	return nullptr;
 }
 
+WritableIndex::~WritableIndex() {
+}
+
 /////////////////////////////////////////////////////////////////////////////
 IndexIterator::~IndexIterator() {
 }

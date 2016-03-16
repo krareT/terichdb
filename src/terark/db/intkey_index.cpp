@@ -7,6 +7,8 @@
 namespace terark { namespace db {
 
 ZipIntKeyIndex::ZipIntKeyIndex() {
+	m_keyType = ColumnType::Any;
+	m_minKey = 0;
 	m_isOrdered = true;
 	m_mmapBase = nullptr;
 	m_mmapSize = 0;

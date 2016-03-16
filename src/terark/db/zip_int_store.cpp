@@ -7,6 +7,8 @@
 namespace terark { namespace db {
 
 ZipIntStore::ZipIntStore() {
+	m_intType = ColumnType::Any;
+	m_minValue = 0;
 	m_mmapBase = nullptr;
 	m_mmapSize = 0;
 }
