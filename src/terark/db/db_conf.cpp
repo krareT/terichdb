@@ -465,11 +465,9 @@ const {
 			break;
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			if (i < colnum - 1) {
-				size_t oldsize = myRowData->size();
-				myRowData->resize_no_init(oldsize + 10);
-				byte* p1 = myRowData->data() + oldsize;
+				byte* p1 = myRowData->grow_no_init(10);
 				byte* p2 = save_var_uint32(p1, uint32_t(coldata.size()));
-				myRowData->risk_set_size(oldsize + (p2 - p1));
+				myRowData->trim(p2);
 			}
 			myRowData->append(coldata.data(), coldata.size());
 			break;
@@ -552,11 +550,9 @@ doProject(fstring col, const ColumnMeta& colmeta, valvec<byte>* rowData) {
 		break;
 	case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 		if (!isLast) {
-			size_t oldsize = rowData->size();
-			rowData->resize_no_init(oldsize + 10);
-			byte* p1 = rowData->data() + oldsize;
+			byte* p1 = rowData->grow_no_init(10);
 			byte* p2 = save_var_uint32(p1, uint32_t(col.size()));
-			rowData->risk_set_size(oldsize + (p2 - p1));
+			rowData->trim(p2);
 		}
 		rowData->append(col.data(), col.size());
 		break;
@@ -663,11 +659,9 @@ const {
 			break;
 		case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
 			if (i < colnum - 1) {
-				size_t oldsize = myRowData->size();
-				myRowData->resize_no_init(oldsize + 10);
-				byte* p1 = myRowData->data() + oldsize;
+				byte* p1 = myRowData->grow_no_init(10);
 				byte* p2 = save_var_uint32(p1, uint32_t(coldata.size()));
-				myRowData->risk_set_size(oldsize + (p2 - p1));
+				myRowData->trim(p2);
 			}
 			myRowData->append(coldata.data(), coldata.size());
 			break;
