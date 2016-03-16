@@ -10,6 +10,11 @@ namespace fs = boost::filesystem;
 
 TERARK_DB_REGISTER_STORE("mock", MockReadonlyStore);
 
+MockReadonlyStore::MockReadonlyStore(const Schema& schema)
+  : m_schema(schema)
+{
+	m_fixedLen = schema.getFixedRowLen();
+}
 llong MockReadonlyStore::dataStorageSize() const {
 	return m_rows.used_mem_size();
 }
@@ -836,7 +841,7 @@ MockReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
 const {
 	std::unique_ptr<ReadableStore> store(ReadonlySegment::buildStore(schema, storeData));
 	if (!store) {
-		std::unique_ptr<MockReadonlyStore> mockStore(new MockReadonlyStore());
+		std::unique_ptr<MockReadonlyStore> mockStore(new MockReadonlyStore(schema));
 		mockStore->build(schema, storeData);
 		store = std::move(mockStore);
 	}

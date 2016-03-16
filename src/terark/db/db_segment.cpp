@@ -898,19 +898,20 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 #if !defined(NDEBUG)
 	valvec<byte> r1, r2;
 	DbContextPtr ctx = tab->createDbContext();
+	const Schema& rowSchema = *m_schema->m_rowSchema;
 	for(size_t i = 0, rows = m_isDel.size(); i < rows; ++i) {
 		if (!input->m_isDel[i]) {
 			assert(!this->m_isDel[i]);
 			this->getValue(i, &r1, ctx.get());
 			input->getValue(i, &r2, ctx.get());
-			if (fstring(r1) != r2) {
+			int cmp = rowSchema.compareData(r1, r2);
+			if (0 != cmp) {
 				std::string js1 = m_schema->m_rowSchema->toJsonStr(r1);
 				std::string js2 = m_schema->m_rowSchema->toJsonStr(r2);
-				fprintf(stderr, "recId: %zd\n\tjs1=%s\n\tjs2=%s\n"
-					, i, js1.c_str(), js2.c_str());
+				fprintf(stderr, "recId: %zd\n\tjs1[len=%zd]=%s\n\tjs2[len=%zd]=%s\n"
+					, i, r1.size(), js1.c_str(), r2.size(), js2.c_str());
 			}
-			assert(r1.size() == r2.size());
-			assert(memcmp(r1.data(), r2.data(), r1.size()) == 0);
+			assert(0 == cmp);
 			assert(m_isPurged.empty() || !m_isPurged[i]);
 		} else {
 			assert(this->m_isDel[i]);
@@ -1278,13 +1279,13 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 					THROW_STD(invalid_argument, "missing part: %s.%zd",
 						(segDir / prefix).string().c_str(), j - lo);
 				}
-				parts.push_back(ReadableStore::openStore(segDir, fname));
+				parts.push_back(ReadableStore::openStore(schema, segDir, fname));
 				++j;
 			}
 			m_colgroups[i] = new MultiPartStore(parts);
 		}
 		else {
-			m_colgroups[i] = ReadableStore::openStore(segDir, fname);
+			m_colgroups[i] = ReadableStore::openStore(schema, segDir, fname);
 		}
 	}
 }
@@ -1344,7 +1345,7 @@ const {
 	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
 		assert(schema.getFixedRowLen() > 0);
 		try {
-			std::unique_ptr<ZipIntStore> store(new ZipIntStore());
+			std::unique_ptr<ZipIntStore> store(new ZipIntStore(schema));
 			store->build(schema.getColumnMeta(0).type, storeData);
 			return store.release();
 		}

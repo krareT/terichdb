@@ -33,10 +33,10 @@ struct FixedLenStore::Header {
 
 //std::string makeFilePath(PathRef segDir, const Schema& schema);
 
-FixedLenStore::FixedLenStore() {
+FixedLenStore::FixedLenStore(const Schema& schema) {
 	m_mmapBase = nullptr;
 	m_mmapSize = 0;
-	m_fixlen = 0;
+	m_fixlen = schema.getFixedRowLen();
 }
 FixedLenStore::FixedLenStore(PathRef segDir, const Schema& schema) {
 	m_mmapBase = nullptr;
@@ -99,7 +99,8 @@ void FixedLenStore::load(PathRef fpath) {
 	assert(nullptr == m_mmapBase);
 	const bool writable = true;
 	m_mmapBase = (Header*)mmap_load(fpath.string(), &m_mmapSize, writable);
-	m_fixlen = m_mmapBase->fixlen;
+	assert(m_fixlen == m_mmapBase->fixlen);
+//	m_fixlen = m_mmapBase->fixlen;
 	m_recordsBasePtr = m_mmapBase->get_data(0);
 }
 
@@ -109,7 +110,8 @@ void FixedLenStore::openStore() {
 	assert(nullptr == m_mmapBase);
 	const bool writable = true;
 	m_mmapBase = (Header*)mmap_load(m_fpath, &m_mmapSize, writable);
-	m_fixlen = m_mmapBase->fixlen;
+	assert(m_fixlen == m_mmapBase->fixlen);
+//	m_fixlen = m_mmapBase->fixlen;
 	m_recordsBasePtr = m_mmapBase->get_data(0);
 }
 

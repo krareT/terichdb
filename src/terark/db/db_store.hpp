@@ -57,13 +57,13 @@ protected:
 	byte_t* m_recordsBasePtr;
 public:
 	struct RegisterStoreFactory {
-		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*()>& f);
+		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*(const Schema& schema)>& f);
 	};
 #define TERARK_DB_REGISTER_STORE(suffix, StoreClass) \
 	static ReadableStore::RegisterStoreFactory \
-		regStore_##StoreClass(suffix, [](){ return new StoreClass(); });
+		regStore_##StoreClass(suffix, [](const Schema& schema){ return new StoreClass(schema); });
 
-	static ReadableStore* openStore(PathRef segDir, fstring fname);
+	static ReadableStore* openStore(const Schema& schema, PathRef segDir, fstring fname);
 
 	ReadableStore();
 	~ReadableStore();

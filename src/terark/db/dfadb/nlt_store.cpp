@@ -8,7 +8,7 @@ namespace terark { namespace db { namespace dfadb {
 
 TERARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
 
-NestLoudsTrieStore::NestLoudsTrieStore() {
+NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema) {
 }
 NestLoudsTrieStore::~NestLoudsTrieStore() {
 }

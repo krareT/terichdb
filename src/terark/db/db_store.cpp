@@ -17,7 +17,7 @@ StoreIterator::~StoreIterator() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-typedef hash_strmap< std::function<ReadableStore*()>
+typedef hash_strmap< std::function<ReadableStore*(const Schema& schema)>
 					, fstring_func::hash_align
 					, fstring_func::equal_align
 					, ValueInline, SafeCopy
@@ -26,7 +26,7 @@ typedef hash_strmap< std::function<ReadableStore*()>
 static	StoreFactory s_storeFactory;
 
 ReadableStore::RegisterStoreFactory::RegisterStoreFactory
-(const char* fnameSuffix, const std::function<ReadableStore*()>& f)
+(const char* fnameSuffix, const std::function<ReadableStore*(const Schema& schema)>& f)
 {
 	auto ib = s_storeFactory.insert_i(fnameSuffix, f);
 	assert(ib.second);
@@ -40,14 +40,14 @@ ReadableStore::ReadableStore() {
 ReadableStore::~ReadableStore() {
 }
 
-ReadableStore* ReadableStore::openStore(PathRef segDir, fstring fname) {
+ReadableStore* ReadableStore::openStore(const Schema& schema, PathRef segDir, fstring fname) {
 	size_t sufpos = fname.size();
 	while (sufpos > 0 && fname[sufpos-1] != '.') --sufpos;
 	auto suffix = fname.substr(sufpos);
 	size_t idx = s_storeFactory.find_i(suffix);
 	if (idx < s_storeFactory.end_i()) {
 		const auto& factory = s_storeFactory.val(idx);
-		ReadableStore* store = factory();
+		ReadableStore* store = factory(schema);
 		assert(NULL != store);
 		if (NULL == store) {
 			THROW_STD(runtime_error, "store factory should not return NULL store");

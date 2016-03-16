@@ -6,7 +6,7 @@
 
 namespace terark { namespace db { namespace dfadb {
 
-NestLoudsTrieIndex::NestLoudsTrieIndex() {
+NestLoudsTrieIndex::NestLoudsTrieIndex(const Schema& schema) {
 	m_idmapBase = nullptr;
 	m_idmapSize = 0;
 	m_dataInflateSize = 0;

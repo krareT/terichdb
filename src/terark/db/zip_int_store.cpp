@@ -1,13 +1,15 @@
 #include "zip_int_store.hpp"
 #include <terark/io/FileStream.hpp>
 #include <terark/io/DataIO.hpp>
+#include <terark/num_to_str.hpp>
 #include <terark/util/mmap.hpp>
 #include <terark/util/sortable_strvec.hpp>
 
 namespace terark { namespace db {
 
-ZipIntStore::ZipIntStore() {
-	m_intType = ColumnType::Any;
+ZipIntStore::ZipIntStore(const Schema& schema) {
+	TERARK_RT_assert(schema.columnNum() == 1, std::invalid_argument);
+	m_intType = schema.getColumnMeta(0).type;
 	m_minValue = 0;
 	m_mmapBase = nullptr;
 	m_mmapSize = 0;

@@ -9,7 +9,7 @@ namespace terark { namespace db {
 
 class TERARK_DB_DLL FixedLenStore : public ReadableStore, public WritableStore {
 public:
-	FixedLenStore();
+	explicit FixedLenStore(const Schema& schema);
 	FixedLenStore(PathRef segDir, const Schema& schema);
 	~FixedLenStore();
 

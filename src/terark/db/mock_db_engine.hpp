@@ -10,9 +10,10 @@ namespace terark { namespace db {
 
 class TERARK_DB_DLL MockReadonlyStore : public ReadableStore {
 	size_t    m_fixedLen;
-	SchemaPtr m_schema;
+	const Schema& m_schema;
 public:
 	fstrvec m_rows;
+	explicit MockReadonlyStore(const Schema&);
 
 	void build(const Schema&, SortableStrVec& storeData);
 

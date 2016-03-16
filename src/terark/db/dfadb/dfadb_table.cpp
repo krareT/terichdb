@@ -3,6 +3,7 @@
 #include <terark/fsa/nest_trie_dawg.hpp>
 #include <terark/io/FileStream.hpp>
 #include <terark/io/DataIO.hpp>
+#include <terark/num_to_str.hpp>
 #include <terark/util/mmap.hpp>
 #include <terark/db/mock_db_engine.hpp>
 #include <terark/db/wiredtiger/wt_db_segment.hpp>
