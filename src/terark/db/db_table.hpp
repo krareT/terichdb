@@ -59,19 +59,19 @@ public:
 	llong updateRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
 
-	void updateColumn(llong recordId, size_t columnId, fstring newColumnData);
-	void updateColumn(llong recordId, fstring colname, fstring newColumnData);
+	void updateColumn(llong recordId, size_t columnId, fstring newColumnData, DbContext* = NULL);
+	void updateColumn(llong recordId, fstring colname, fstring newColumnData, DbContext* = NULL);
 
-	void updateColumnInteger(llong recordId, size_t columnId, const std::function<bool(llong&val)>&);
-	void updateColumnInteger(llong recordId, fstring colname, const std::function<bool(llong&val)>&);
-	void updateColumnDouble(llong recordId, size_t columnId, const std::function<bool(double&val)>&);
-	void updateColumnDouble(llong recordId, fstring colname, const std::function<bool(double&val)>&);
+	void updateColumnInteger(llong recordId, size_t columnId, const std::function<bool(llong&val)>&, DbContext* = NULL);
+	void updateColumnInteger(llong recordId, fstring colname, const std::function<bool(llong&val)>&, DbContext* = NULL);
+	void updateColumnDouble(llong recordId, size_t columnId, const std::function<bool(double&val)>&, DbContext* = NULL);
+	void updateColumnDouble(llong recordId, fstring colname, const std::function<bool(double&val)>&, DbContext* = NULL);
 
-	void incrementColumnValue(llong recordId, size_t columnId, llong incVal);
-	void incrementColumnValue(llong recordId, fstring columnName, llong incVal);
+	void incrementColumnValue(llong recordId, size_t columnId, llong incVal, DbContext* = NULL);
+	void incrementColumnValue(llong recordId, fstring columnName, llong incVal, DbContext* = NULL);
 
-	void incrementColumnValue(llong recordId, size_t columnId, double incVal);
-	void incrementColumnValue(llong recordId, fstring colname, double incVal);
+	void incrementColumnValue(llong recordId, size_t columnId, double incVal, DbContext* = NULL);
+	void incrementColumnValue(llong recordId, fstring colname, double incVal, DbContext* = NULL);
 
 	const Schema& rowSchema() const { return *m_schema->m_rowSchema; }
 	const Schema& getIndexSchema(size_t indexId) const {

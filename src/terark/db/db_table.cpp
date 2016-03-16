@@ -1057,7 +1057,9 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 }
 
 ///! Can inplace update column in ReadonlySegment
-void CompositeTable::updateColumn(llong recordId, size_t columnId, fstring newColumnData) {
+void
+CompositeTable::updateColumn(llong recordId, size_t columnId,
+							 fstring newColumnData, DbContext* ctx) {
 #include "update_column_impl.hpp"
 	if (newColumnData.size() != rowSchema.getColumnMeta(columnId).fixedLen) {
 		THROW_STD(invalid_argument
@@ -1072,7 +1074,9 @@ void CompositeTable::updateColumn(llong recordId, size_t columnId, fstring newCo
 	seg->addtoUpdateList(subId);
 }
 
-void CompositeTable::updateColumn(llong recordId, fstring colname, fstring newColumnData) {
+void
+CompositeTable::updateColumn(llong recordId, fstring colname,
+							 fstring newColumnData, DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
@@ -1093,7 +1097,10 @@ namespace {
 	}
 }
 
-void CompositeTable::updateColumnInteger(llong recordId, size_t columnId, const std::function<bool(llong&val)>& op) {
+void
+CompositeTable::updateColumnInteger(llong recordId, size_t columnId,
+									const std::function<bool(llong&val)>& op,
+									DbContext* ctx) {
 #include "update_column_impl.hpp"
 	switch (rowSchema.getColumnType(columnId)) {
 	default:
@@ -1116,7 +1123,10 @@ void CompositeTable::updateColumnInteger(llong recordId, size_t columnId, const 
 	seg->addtoUpdateList(subId);
 }
 
-void CompositeTable::updateColumnInteger(llong recordId, fstring colname, const std::function<bool(llong&val)>& op) {
+void
+CompositeTable::updateColumnInteger(llong recordId, fstring colname,
+									const std::function<bool(llong&val)>& op,
+									DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
@@ -1125,7 +1135,10 @@ void CompositeTable::updateColumnInteger(llong recordId, fstring colname, const 
 	updateColumnInteger(recordId, colname, op);
 }
 
-void CompositeTable::updateColumnDouble(llong recordId, size_t columnId, const std::function<bool(double&val)>& op) {
+void
+CompositeTable::updateColumnDouble(llong recordId, size_t columnId,
+								   const std::function<bool(double&val)>& op,
+								   DbContext* ctx) {
 #include "update_column_impl.hpp"
 	switch (rowSchema.getColumnType(columnId)) {
 	default:
@@ -1134,8 +1147,8 @@ void CompositeTable::updateColumnDouble(llong recordId, size_t columnId, const s
 			, columnId, rowSchema.getColumnName(columnId).c_str()
 			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
 			);
-	case ColumnType::Uint08:  updateValueByOp<uint8_t , double>(*coldata, op); break;
-	case ColumnType::Sint08:  updateValueByOp< int8_t , double>(*coldata, op); break;
+	case ColumnType::Uint08:  updateValueByOp<uint08_t, double>(*coldata, op); break;
+	case ColumnType::Sint08:  updateValueByOp< int08_t, double>(*coldata, op); break;
 	case ColumnType::Uint16:  updateValueByOp<uint16_t, double>(*coldata, op); break;
 	case ColumnType::Sint16:  updateValueByOp< int16_t, double>(*coldata, op); break;
 	case ColumnType::Uint32:  updateValueByOp<uint32_t, double>(*coldata, op); break;
@@ -1148,7 +1161,10 @@ void CompositeTable::updateColumnDouble(llong recordId, size_t columnId, const s
 	seg->addtoUpdateList(subId);
 }
 
-void CompositeTable::updateColumnDouble(llong recordId, fstring colname, const std::function<bool(double&val)>& op) {
+void
+CompositeTable::updateColumnDouble(llong recordId, fstring colname,
+								   const std::function<bool(double&val)>& op,
+								   DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
@@ -1157,7 +1173,9 @@ void CompositeTable::updateColumnDouble(llong recordId, fstring colname, const s
 	updateColumnDouble(recordId, colname, op);
 }
 
-void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, llong incVal) {
+void
+CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
+									 llong incVal, DbContext* ctx) {
 #include "update_column_impl.hpp"
 	switch (rowSchema.getColumnType(columnId)) {
 	default:
@@ -1180,7 +1198,9 @@ void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, llong
 	seg->addtoUpdateList(subId);
 }
 
-void CompositeTable::incrementColumnValue(llong recordId, fstring colname, llong incVal) {
+void
+CompositeTable::incrementColumnValue(llong recordId, fstring colname,
+									 llong incVal, DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
@@ -1189,7 +1209,9 @@ void CompositeTable::incrementColumnValue(llong recordId, fstring colname, llong
 	incrementColumnValue(recordId, colname, incVal);
 }
 
-void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, double incVal) {
+void
+CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
+									 double incVal, DbContext* ctx) {
 #include "update_column_impl.hpp"
 	switch (rowSchema.getColumnType(columnId)) {
 	default:
@@ -1212,7 +1234,9 @@ void CompositeTable::incrementColumnValue(llong recordId, size_t columnId, doubl
 	seg->addtoUpdateList(subId);
 }
 
-void CompositeTable::incrementColumnValue(llong recordId, fstring colname, double incVal) {
+void
+CompositeTable::incrementColumnValue(llong recordId, fstring colname,
+									 double incVal, DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
