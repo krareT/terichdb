@@ -209,9 +209,9 @@ public:
 		assert(i < m_size);
 		terark_bit_set1(m_lines[i/LineBits].words, i%LineBits);
 	}
-	void set0(size_t first, size_t last);
-	void set1(size_t first, size_t last);
-	void set (size_t first, size_t last, bool val);
+	void set0(size_t first, size_t num);
+	void set1(size_t first, size_t num);
+	void set (size_t first, size_t num, bool val);
 
 	void set_word(size_t word_idx, bm_uint_t bits) {
 		m_lines[word_idx/LineWords]

@@ -172,6 +172,9 @@ void febitvec::reserve(size_t newcap) {
 
 void febitvec::resize(size_t newsize, bool val) {
 	size_t oldsize = m_size;
+	if (oldsize == newsize) {
+		return;
+	}
 	resize_no_init(newsize);
 	if (oldsize < newsize)
 		bits_range_set(m_words, oldsize, newsize, val);
@@ -429,6 +432,27 @@ void febitvec::set(size_t i, size_t nbits, bool val) {
 	assert(i < m_size);
 	assert(i + nbits <= m_capacity);
 	bits_range_set(m_words, i, i + nbits, val);
+}
+
+void febitvec::beg_end_set0(size_t beg, size_t end) {
+	assert(beg <= end);
+	assert(beg <= m_size);
+	assert(end <= m_capacity);
+	bits_range_set0(m_words, beg, end);
+}
+
+void febitvec::beg_end_set1(size_t beg, size_t end) {
+	assert(beg <= end);
+	assert(beg <= m_size);
+	assert(end <= m_capacity);
+	bits_range_set1(m_words, beg, end);
+}
+
+void febitvec::beg_end_set(size_t beg, size_t end, bool val) {
+	assert(beg <= end);
+	assert(beg <= m_size);
+	assert(end <= m_capacity);
+	bits_range_set(m_words, beg, end, val);
 }
 
 void febitvec::risk_release_ownership() {

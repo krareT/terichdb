@@ -398,6 +398,8 @@ public:
 			n = 0;
 			return;
 		}
+		if (n == c)
+			return;
 		// malloc new and free old even if n==c
 		// because this may trigger the memory compaction
 		// of the malloc implementation and reduce memory fragment

@@ -49,6 +49,8 @@
 
 namespace terark {
 
+typedef unsigned char uint08_t;
+typedef   signed char  int08_t;
 typedef unsigned char   byte_t;
 typedef unsigned char   byte;
 typedef   signed char  sbyte_t;

@@ -7,7 +7,7 @@
 #include "config.hpp"
 
 #if defined(__GNUC__) && __GNUC__ * 1000 + __GNUC_MINOR__ >= 4005
-	#include <immintrin.h>
+	#include <x86intrin.h>
 #endif
 
 #if defined(_MSC_VER) && _MSC_VER >= 1500 || defined(__CYGWIN__)
