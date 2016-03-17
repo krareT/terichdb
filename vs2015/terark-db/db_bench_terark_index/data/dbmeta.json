@@ -5,8 +5,8 @@
 			"value" : { "type" : "strzero" }
 		}
 	},
-	"ReadonlyDataMemSize" : 1241024,
-	"MaxWrSegSize" : 2241024,
+	"ReadonlyDataMemSize" : 101024,
+	"MaxWrSegSize" : 201024,
 	"TableIndex" : [
 		{ "fields": "key"  , "ordered" : true }
 	]
