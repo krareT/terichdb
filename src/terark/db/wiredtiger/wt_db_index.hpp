@@ -9,6 +9,7 @@
 namespace terark { namespace db { namespace wt {
 
 class TERARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
+	class MyIndexIterBase;     friend class MyIndexIterBase;
 	class MyIndexIterForward;  friend class MyIndexIterForward;
 	class MyIndexIterBackward; friend class MyIndexIterBackward;
 
@@ -29,7 +30,7 @@ class TERARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex
 				   WT_ITEM* item, valvec<byte>* buf) const;
 
 public:
-	explicit WtWritableIndex(const Schema&, PathRef segDir, WT_SESSION* session);
+	explicit WtWritableIndex(const Schema&, WT_CONNECTION* conn);
 	~WtWritableIndex();
 	void save(PathRef) const override;
 	void load(PathRef) override;

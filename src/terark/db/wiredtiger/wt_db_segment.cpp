@@ -34,41 +34,18 @@ void WtWritableSegment::init(PathRef segDir) {
 			, strDir.c_str(), conf, wiredtiger_strerror(err)
 			);
 	}
-	WT_SESSION* session = NULL;
-	err = m_wtConn->open_session(m_wtConn, NULL, NULL, &session);
-	if (err) {
-		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
-			, strDir.c_str(), wiredtiger_strerror(err)
-			);
-	}
-	m_wrtStore = new WtWritableStore(session, segDir);
+	m_wrtStore = new WtWritableStore(m_wtConn);
 	m_wrRowStore = m_wrtStore->getWritableStore();
 }
 
 ReadableIndex*
 WtWritableSegment::createIndex(const Schema& schema, PathRef segDir) const {
-	std::string strDir = segDir.string();
-	WT_SESSION* session = NULL;
-	int err = m_wtConn->open_session(m_wtConn, NULL, NULL, &session);
-	if (err) {
-		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
-			, strDir.c_str(), wiredtiger_strerror(err)
-			);
-	}
-	return new WtWritableIndex(schema, segDir, session);
+	return new WtWritableIndex(schema, m_wtConn);
 }
 
 ReadableIndex*
 WtWritableSegment::openIndex(const Schema& schema, PathRef segDir) const {
-	std::string strDir = segDir.string();
-	WT_SESSION* session = NULL;
-	int err = m_wtConn->open_session(m_wtConn, NULL, NULL, &session);
-	if (err) {
-		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
-			, strDir.c_str(), wiredtiger_strerror(err)
-			);
-	}
-	return new WtWritableIndex(schema, segDir, session);
+	return new WtWritableIndex(schema, m_wtConn);
 }
 
 void WtWritableSegment::load(PathRef path) {

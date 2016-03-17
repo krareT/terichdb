@@ -11,24 +11,43 @@ namespace terark { namespace db { namespace wt {
 
 namespace fs = boost::filesystem;
 
-class WtWritableIndex::MyIndexIterForward : public IndexIterator {
+class WtWritableIndex::MyIndexIterBase : public IndexIterator {
+protected:
 	typedef boost::intrusive_ptr<WtWritableIndex> MockWritableIndexPtr;
 	WtWritableIndexPtr m_index;
 	WT_CURSOR* m_iter;
 	valvec<byte> m_buf;
-public:
-	MyIndexIterForward(const WtWritableIndex* owner) {
+	MyIndexIterBase(const WtWritableIndex* owner) {
 		m_index.reset(const_cast<WtWritableIndex*>(owner));
-		int err = m_index->m_wtSession->open_cursor(
-			m_index->m_wtSession, m_index->m_uri.c_str(), NULL, NULL, &m_iter);
+		WT_CONNECTION* conn = m_index->m_wtSession->connection;
+		WT_SESSION* session; // WT_SESSION is not thread safe
+		int err = conn->open_session(conn, NULL, NULL, &session);
 		if (err) {
+			THROW_STD(invalid_argument
+				, "FATAL: wiredtiger open session(dir=%s) = %s"
+				, conn->get_home(conn), wiredtiger_strerror(err)
+				);
+		}
+		const std::string& uri = m_index->m_uri;
+		err = session->open_cursor(session, uri.c_str(), NULL, NULL, &m_iter);
+		if (err) {
+			session->close(session, NULL);
 			THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
 		}
 	}
-	~MyIndexIterForward() {
-		if (m_iter)
-			m_iter->close(m_iter);
+	~MyIndexIterBase() {
+		WT_SESSION* session = m_iter->session;
+		m_iter->close(m_iter);
+		session->close(session, NULL);
 	}
+	void reset() override {
+		m_iter->reset(m_iter);
+	}
+};
+
+class WtWritableIndex::MyIndexIterForward : public MyIndexIterBase {
+public:
+	MyIndexIterForward(const WtWritableIndex* o) : MyIndexIterBase(o) {}
 	bool increment(llong* id, valvec<byte>* key) override {
 		assert(nullptr != m_iter);
 		int err = m_iter->next(m_iter);
@@ -40,9 +59,6 @@ public:
 			THROW_STD(logic_error, "cursor_next failed: %s", wiredtiger_strerror(err));
 		}
 		return false;
-	}
-	void reset() override {
-		m_iter->reset(m_iter);
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		int cmp = 0;
@@ -63,24 +79,9 @@ public:
 	}
 };
 
-class WtWritableIndex::MyIndexIterBackward : public IndexIterator {
-	typedef boost::intrusive_ptr<WtWritableIndex> MockWritableIndexPtr;
-	WtWritableIndexPtr m_index;
-	WT_CURSOR* m_iter;
-	valvec<byte> m_buf;
+class WtWritableIndex::MyIndexIterBackward : public MyIndexIterBase {
 public:
-	MyIndexIterBackward(const WtWritableIndex* owner) {
-		m_index.reset(const_cast<WtWritableIndex*>(owner));
-		int err = m_index->m_wtSession->open_cursor(
-			m_index->m_wtSession, m_index->m_uri.c_str(), NULL, NULL, &m_iter);
-		if (err != 0) {
-			THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
-		}
-	}
-	~MyIndexIterBackward() {
-		if (m_iter)
-			m_iter->close(m_iter);
-	}
+	MyIndexIterBackward(const WtWritableIndex* o) : MyIndexIterBase(o) {}
 	bool increment(llong* id, valvec<byte>* key) override {
 		assert(nullptr != m_iter);
 		int err = m_iter->prev(m_iter);
@@ -92,9 +93,6 @@ public:
 			THROW_STD(logic_error, "cursor_next failed: %s", wiredtiger_strerror(err));
 		}
 		return false;
-	}
-	void reset() override {
-		m_iter->reset(m_iter);
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		int cmp = 0;
@@ -213,26 +211,36 @@ const {
 	}
 }
 
-WtWritableIndex::WtWritableIndex(const Schema& schema, PathRef segDir, WT_SESSION* session) {
-	std::string strDir = segDir.parent_path().string();
+WtWritableIndex::WtWritableIndex(const Schema& schema, WT_CONNECTION* conn) {
+	WT_SESSION* session;
+	int err = conn->open_session(conn, NULL, NULL, &session);
+	if (err) {
+		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
+			, conn->get_home(conn), wiredtiger_strerror(err)
+			);
+	}
 	m_keyFmt = toWtSchema(schema);
 	m_uri = "table:" + schema.m_name;
 	std::replace(m_uri.begin(), m_uri.end(), ',', '.');
-	int err = session->create(session, m_uri.c_str(), m_keyFmt.c_str());
+	err = session->create(session, m_uri.c_str(), m_keyFmt.c_str());
 	if (err) {
+		session->close(session, NULL);
 		THROW_STD(invalid_argument, "FATAL: wiredtiger create(%s, dir=%s) = %s"
 			, m_keyFmt.c_str()
-			, strDir.c_str(), wiredtiger_strerror(err)
+			, conn->get_home(conn), wiredtiger_strerror(err)
 			);
 	}
 	err = session->open_cursor(session,
 			m_uri.c_str(), NULL, "overwrite=true", &m_wtReplace);
 	if (err) {
+		session->close(session, NULL);
 		THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
 	}
 	err = session->open_cursor(session,
 			m_uri.c_str(), NULL, "overwrite=false", &m_wtCursor);
 	if (err) {
+		m_wtReplace->close(m_wtReplace);
+		session->close(session, NULL);
 		THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
 	}
 	this->m_wtSession = session;

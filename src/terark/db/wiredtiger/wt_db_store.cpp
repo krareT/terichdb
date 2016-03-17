@@ -16,12 +16,30 @@ static const char g_dataStoreUri[] = "table:__BlobStore__";
 class WtWritableStoreIterBase : public StoreIterator {
 	WT_CURSOR* m_cursor;
 public:
-	WtWritableStoreIterBase(const WtWritableStore* store, WT_CURSOR* cursor) {
+	WtWritableStoreIterBase(const WtWritableStore* store, WT_CONNECTION* conn) {
+		WT_SESSION* ses; // WT_SESSION is not thread safe
+		int err = conn->open_session(conn, NULL, NULL, &ses);
+		if (err) {
+			THROW_STD(invalid_argument
+				, "FATAL: wiredtiger open session(dir=%s) = %s"
+				, conn->get_home(conn), wiredtiger_strerror(err)
+				);
+		}
+		WT_CURSOR* cursor;
+		err = ses->open_cursor(ses, g_dataStoreUri, NULL, NULL, &cursor);
+		if (err) {
+			std::string msg = ses->strerror(ses, err);
+			ses->close(ses, NULL);
+			THROW_STD(invalid_argument,
+				"ERROR: wiredtiger store open forward cursor: %s", msg.c_str());
+		}
 		m_store.reset(const_cast<WtWritableStore*>(store));
 		m_cursor = cursor;
 	}
 	~WtWritableStoreIterBase() {
+		WT_SESSION* session = m_cursor->session;
 		m_cursor->close(m_cursor);
+		session->close(session, NULL);
 	}
 	virtual int advance(WT_CURSOR*) = 0;
 
@@ -78,25 +96,33 @@ public:
 	virtual int advance(WT_CURSOR* cursor) override {
 		return cursor->next(cursor);
 	}
-	WtWritableStoreIterForward(const WtWritableStore* store, WT_CURSOR* cursor)
-		: WtWritableStoreIterBase(store, cursor) {}
+	WtWritableStoreIterForward(const WtWritableStore* store, WT_CONNECTION* conn)
+		: WtWritableStoreIterBase(store, conn) {}
 };
 class WtWritableStoreIterBackward : public WtWritableStoreIterBase {
 public:
 	virtual int advance(WT_CURSOR* cursor) override {
 		return cursor->prev(cursor);
 	}
-	WtWritableStoreIterBackward(const WtWritableStore* store, WT_CURSOR* cursor)
-		: WtWritableStoreIterBase(store, cursor) {}
+	WtWritableStoreIterBackward(const WtWritableStore* store, WT_CONNECTION* conn)
+		: WtWritableStoreIterBase(store, conn) {}
 };
 
-WtWritableStore::WtWritableStore(WT_SESSION* session, PathRef segDir) {
-	std::string strDir = segDir.string();
-	int err = session->create(session, g_dataStoreUri, "key_format=r,value_format=u");
+WtWritableStore::WtWritableStore(WT_CONNECTION* conn) {
+	WT_SESSION* session;
+	int err = conn->open_session(conn, NULL, NULL, &session);
 	if (err) {
+		THROW_STD(invalid_argument
+			, "FATAL: wiredtiger open session(dir=%s) = %s"
+			, conn->get_home(conn), wiredtiger_strerror(err)
+			);
+	}
+	err = session->create(session, g_dataStoreUri, "key_format=r,value_format=u");
+	if (err) {
+		session->close(session, NULL);
 		THROW_STD(invalid_argument, "FATAL: wiredtiger create(%s, dir=%s) = %s"
 			, g_dataStoreUri
-			, strDir.c_str(), wiredtiger_strerror(err)
+			, conn->get_home(conn), wiredtiger_strerror(err)
 			);
 	}
 	m_wtSession = session;
@@ -195,29 +221,11 @@ const {
 }
 
 StoreIterator* WtWritableStore::createStoreIterForward(DbContext*) const {
-	tbb::mutex::scoped_lock lock(m_wtMutex);
-	WT_CURSOR* cursor;
-	WT_SESSION* ses = m_wtSession;
-	int err = ses->open_cursor(ses, g_dataStoreUri, NULL, NULL, &cursor);
-	if (err) {
-		auto msg = ses->strerror(ses, err);
-		THROW_STD(invalid_argument,
-			"ERROR: wiredtiger store open forward cursor: %s", msg);
-	}
-	return new WtWritableStoreIterForward(this, cursor);
+	return new WtWritableStoreIterForward(this, m_wtSession->connection);
 }
 
 StoreIterator* WtWritableStore::createStoreIterBackward(DbContext*) const {
-	tbb::mutex::scoped_lock lock(m_wtMutex);
-	WT_CURSOR* cursor;
-	WT_SESSION* ses = m_wtSession;
-	int err = ses->open_cursor(ses, g_dataStoreUri, NULL, NULL, &cursor);
-	if (err) {
-		auto msg = ses->strerror(ses, err);
-		THROW_STD(invalid_argument,
-			"ERROR: wiredtiger store open backward cursor: %s", msg);
-	}
-	return new WtWritableStoreIterBackward(this, cursor);
+	return new WtWritableStoreIterBackward(this, m_wtSession->connection);
 }
 
 llong WtWritableStore::append(fstring row, DbContext* ctx0) {

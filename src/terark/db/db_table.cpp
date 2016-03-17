@@ -153,11 +153,34 @@ void CompositeTable::load(PathRef dir) {
 	}
 	long mergeSeq = -1;
 	for (auto& x : fs::directory_iterator(m_dir)) {
-		std::string mergeDir = x.path().filename().string();
+		fs::path    mergeDirPath = x.path();
+		std::string mergeDirName = mergeDirPath.filename().string();
 		long mergeSeq2 = -1;
-		if (sscanf(mergeDir.c_str(), "g-%04ld", &mergeSeq2) == 1) {
-			if (mergeSeq < mergeSeq2)
-				mergeSeq = mergeSeq2;
+		if (sscanf(mergeDirName.c_str(), "g-%04ld", &mergeSeq2) == 1) {
+			fs::path mergingLockFile = mergeDirPath / "merging.lock";
+			if (fs::exists(mergingLockFile)) {
+#if 1
+				THROW_STD(logic_error
+					, "ERROR: merging is not completed: '%s'\n"
+					  "\tit should caused by a process crash!\n"
+					  "\tto continue, remove dir: %s\n"
+					, mergingLockFile.string().c_str()
+					, mergeDirPath.string().c_str()
+					);
+#else
+				fs::remove_all(mergeDirPath);
+				fprintf(stderr
+					, "ERROR: merging is not completed: '%s'\n"
+					  "\tit should caused by a process crash, skipped and removed '%s'\n"
+					, mergingLockFile.string().c_str()
+					, mergeDirPath.string().c_str()
+					);
+#endif
+			}
+			else {
+				if (mergeSeq < mergeSeq2)
+					mergeSeq = mergeSeq2;
+			}
 		}
 	}
 	if (mergeSeq < 0) {
@@ -1489,8 +1512,8 @@ class TableIndexIter : public IndexIterator {
 				if (cur.seg) { // segment converted
 					cur.subId = -2; // need re-seek position??
 				}
-				cur.seg  = m_tab->m_segments[i];
 				cur.iter = nullptr;
+				cur.seg  = m_tab->m_segments[i];
 				cur.data.erase_all();
 				cur.baseId = m_tab->m_rowNumVec[i];
 				numChangedSegs++;
@@ -2160,6 +2183,8 @@ void CompositeTable::merge(MergeParam& toMerge) {
 		, segPathList.c_str(), destSegDir.string().c_str());
 try{
 	fs::create_directories(destSegDir);
+	fs::path   mergingLockFile = destMergeDir / "merging.lock";
+	FileStream mergingLockFp(mergingLockFile.string().c_str(), "wb");
 	ReadonlySegmentPtr dseg = this->myCreateReadonlySegment(destSegDir);
 	const size_t indexNum = m_schema->getIndexNum();
 	const size_t colgroupNum = m_schema->getColgroupNum();
@@ -2429,6 +2454,8 @@ try{
 	for (auto& tobeDel : toMerge) {
 		tobeDel.seg->deleteSegment();
 	}
+	mergingLockFp.close();
+	fs::remove(mergingLockFile);
 	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s done!\n"
 		, segPathList.c_str(), destSegDir.string().c_str());
 }

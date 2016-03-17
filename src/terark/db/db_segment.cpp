@@ -735,14 +735,18 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	ColumnVec columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf;
 	StoreIteratorPtr iter(input->createStoreIterForward(ctx.get()));
+	llong prevId = -1;
 	llong id = -1;
 	while (iter->increment(&id, &buf) && id < logicRowNum) {
 		assert(id >= 0);
 		assert(id < logicRowNum);
+		assert(prevId < id);
 		if (!m_isDel[id]) {
 			m_schema->m_rowSchema->parseRow(buf, &columns);
 			colgroupTempFiles.writeColgroups(columns);
 			newRowNum++;
+			m_isDel.beg_end_set1(prevId+1, id);
+			prevId = id;
 		}
 	}
 	llong inputRowNum = id + 1;
@@ -751,8 +755,8 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		fprintf(stderr
 			, "WARN: inputRows[real=%lld saved=%lld], some data have lost\n"
 			, inputRowNum, logicRowNum);
-		input->m_isDel.set1(inputRowNum, logicRowNum - inputRowNum);
-		this->m_isDel.set1(inputRowNum, logicRowNum - inputRowNum);
+		input->m_isDel.beg_end_set1(inputRowNum, logicRowNum);
+		this->m_isDel.beg_end_set1(inputRowNum, logicRowNum);
 	}
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	assert(newRowNum <= inputRowNum);
@@ -1597,6 +1601,9 @@ const {
 }
 
 void WritableSegment::flushSegment() {
+	if (m_tobeDel) {
+		return;
+	}
 	if (m_isDirty) {
 		save(m_segDir);
 		m_isDirty = false;
@@ -1612,7 +1619,7 @@ void WritableSegment::saveRecordStore(PathRef segDir) const {
 		assert(nullptr != store);
 		store->save(segDir / "colgroup-" + schema.m_name);
 	}
-	m_wrtStore->save(segDir);
+	m_wrtStore->save(segDir / "__wrtStore__");
 }
 
 void WritableSegment::loadRecordStore(PathRef segDir) {
@@ -1627,7 +1634,7 @@ void WritableSegment::loadRecordStore(PathRef segDir) {
 		store->openStore();
 		m_colgroups[colgroupId] = store.release();
 	}
-	m_wrtStore->load(segDir);
+	m_wrtStore->load(segDir / "__wrtStore__");
 }
 
 llong WritableSegment::totalStorageSize() const {

@@ -22,7 +22,7 @@ class TERARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore
 	WT_CURSOR* getAppendCursor() const;
 
 public:
-	WtWritableStore(WT_SESSION* session, PathRef segDir);
+	WtWritableStore(WT_CONNECTION* conn);
 	~WtWritableStore();
 
 	void save(PathRef) const override;
