@@ -1490,6 +1490,8 @@ class TableIndexIter : public IndexIterator {
 	friend class HeapKeyCompare;
 	valvec<byte> m_keyBuf;
 	terark::valvec<size_t> m_heap;
+	size_t m_oldmergeSeqNum;
+	size_t m_oldnewWrSegNum;
 	const bool m_forward;
 	bool m_isHeapBuilt;
 
@@ -1504,6 +1506,13 @@ class TableIndexIter : public IndexIterator {
 	size_t syncSegPtr() {
 		size_t numChangedSegs = 0;
 		MyRwLock lock(m_tab->m_rwMutex, false);
+		if (m_oldmergeSeqNum == m_tab->m_mergeSeqNum &&
+			m_oldnewWrSegNum == m_tab->m_newWrSegNum)
+		{
+			return 0;
+		}
+		m_oldmergeSeqNum = m_tab->m_mergeSeqNum;
+		m_oldnewWrSegNum = m_tab->m_newWrSegNum;
 		m_segs.resize(m_tab->m_segments.size());
 		for (size_t i = 0; i < m_segs.size(); ++i) {
 			auto& cur = m_segs[i];
@@ -1533,6 +1542,8 @@ public:
 		{
 			MyRwLock lock(tab->m_rwMutex);
 			tab->m_tableScanningRefCount++;
+			m_oldmergeSeqNum = tab->m_mergeSeqNum;
+			m_oldnewWrSegNum = tab->m_newWrSegNum;
 		}
 		m_isHeapBuilt = false;
 	}
@@ -2728,7 +2739,7 @@ void CompositeTable::runPurgeDelete() {
 
 /////////////////////////////////////////////////////////////////////
 
-namespace {
+namespace anonymousForDebugMSVC {
 
 class MyTask : public RefCounter {
 public:
@@ -2765,13 +2776,16 @@ void CompressThreadFunc() {
 			t->execute();
 		}
 	}
-	g_compressQueue.clearQueue();
 }
 
 class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
 public:
 	CompressionThreadsList() {
 		size_t n = tbb::tbb_thread::hardware_concurrency();
+		if (const char* env = getenv("TerarkDbCompressionThreadsNum")) {
+			size_t n2 = atoi(env);
+			n = std::min(n, n2);
+		}
 		this->resize(n);
 		for (size_t i = 0; i < n; ++i) {
 			(*this)[i] = new tbb::tbb_thread(&CompressThreadFunc);
@@ -2781,25 +2795,15 @@ public:
 		if (!this->empty())
 			CompositeTable::safeStopAndWaitForFlush();
 	}
-	void resize(size_t newSize) {
-		if (size() < newSize) {
-			reserve(newSize);
-			for (size_t i = size(); i < newSize; ++i) {
-				push_back(new tbb::tbb_thread(&CompressThreadFunc));
-			}
-		} else {
-			fprintf(stderr
-				, "WARN: CompressionThreadsList::resize: ignored newSize=%zd oldSize=%zd\n"
-				, newSize, size()
-				);
-		}
-	}
 	void join() {
-		for (auto th : *this) {
+		for (auto& th : *this) {
 			th->join();
 			delete th;
+			th = NULL;
 		}
+		fprintf(stderr, "INFO: compression threads(%zd) completed!\n", this->size());
 		this->clear();
+		g_compressQueue.clearQueue();
 	}
 };
 tbb::tbb_thread g_flushThread(&FlushThreadFunc);
@@ -2841,6 +2845,7 @@ public:
 };
 
 } // namespace
+using namespace anonymousForDebugMSVC;
 
 void CompositeTable::putToFlushQueue(size_t segIdx) {
 	assert(segIdx < m_segments.size());
@@ -2888,10 +2893,6 @@ void CompositeTable::inLockPutPurgeDeleteTaskToQueue() {
 	g_compressQueue.push_back(new PurgeDeleteTask(this));
 	m_purgeStatus = PurgeStatus::purging;
 	m_bgTaskNum++;
-}
-
-void CompositeTable::setCompressionThreadsNum(size_t threadsNum) {
-	g_compressThreads.resize(threadsNum);
 }
 
 // flush is the most urgent

@@ -147,7 +147,6 @@ public:
 	void putToCompressionQueue(size_t segIdx);
 	///@}
 
-	static void setCompressionThreadsNum(size_t threadsNum);
 	static void safeStopAndWaitForFlush();
 	static void safeStopAndWaitForCompress();
 
