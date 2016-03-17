@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.23107.0
+VisualStudioVersion = 14.0.24720.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "terark-db", "terark-db\terark-db.vcxproj", "{9261644E-D0AD-43C5-AD8F-280B92F26B4D}"
 EndProject
@@ -30,6 +30,10 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mongo-terarkdb", "mongo-terarkdb\mongo-terarkdb.vcxproj", "{DD4CC6F3-7D80-4531-86AA-88A4C710522B}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BinarySearchPerformance", "BinarySearchPerformance\BinarySearchPerformance.vcxproj", "{8EC27B02-6EE8-4F6D-8FED-D859ECFAD50B}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "db_bench_terark_index", "db_bench_terark_index\db_bench_terark_index.vcxproj", "{21D111D9-EE75-4799-AA22-AF14E404EF2B}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leveldb", "leveldb\leveldb.vcxproj", "{47291CA6-175C-4521-8FC9-BE694ADF792A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -235,6 +239,38 @@ Global
 		{8EC27B02-6EE8-4F6D-8FED-D859ECFAD50B}.RelWithDebInfo|x64.Build.0 = Release|x64
 		{8EC27B02-6EE8-4F6D-8FED-D859ECFAD50B}.RelWithDebInfo|x86.ActiveCfg = Release|Win32
 		{8EC27B02-6EE8-4F6D-8FED-D859ECFAD50B}.RelWithDebInfo|x86.Build.0 = Release|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Debug|x64.ActiveCfg = Debug|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Debug|x64.Build.0 = Debug|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Debug|x86.ActiveCfg = Debug|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Debug|x86.Build.0 = Debug|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.MinSizeRel|x64.ActiveCfg = Release|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.MinSizeRel|x64.Build.0 = Release|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.MinSizeRel|x86.ActiveCfg = Release|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.MinSizeRel|x86.Build.0 = Release|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Release|x64.ActiveCfg = Release|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Release|x64.Build.0 = Release|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Release|x86.ActiveCfg = Release|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.Release|x86.Build.0 = Release|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.RelWithDebInfo|x64.ActiveCfg = Release|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.RelWithDebInfo|x64.Build.0 = Release|x64
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.RelWithDebInfo|x86.ActiveCfg = Release|Win32
+		{21D111D9-EE75-4799-AA22-AF14E404EF2B}.RelWithDebInfo|x86.Build.0 = Release|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Debug|x64.ActiveCfg = Debug|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Debug|x64.Build.0 = Debug|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Debug|x86.ActiveCfg = Debug|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Debug|x86.Build.0 = Debug|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.MinSizeRel|x64.ActiveCfg = Release|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.MinSizeRel|x64.Build.0 = Release|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.MinSizeRel|x86.ActiveCfg = Release|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.MinSizeRel|x86.Build.0 = Release|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Release|x64.ActiveCfg = Release|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Release|x64.Build.0 = Release|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Release|x86.ActiveCfg = Release|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.Release|x86.Build.0 = Release|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.RelWithDebInfo|x64.ActiveCfg = Release|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.RelWithDebInfo|x64.Build.0 = Release|x64
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.RelWithDebInfo|x86.ActiveCfg = Release|Win32
+		{47291CA6-175C-4521-8FC9-BE694ADF792A}.RelWithDebInfo|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

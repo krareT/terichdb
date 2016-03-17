@@ -1,0 +1,198 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\util">
+      <UniqueIdentifier>{cd400d32-fe32-498b-9c92-8d3ab822045d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\util">
+      <UniqueIdentifier>{47f478ab-ffee-4dc4-a7c4-b4ed50e271c2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\port">
+      <UniqueIdentifier>{d30acf71-9e46-4b93-a539-0b7ce741e2a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\db">
+      <UniqueIdentifier>{5ee4b2f8-dae1-4c79-8d1f-0f2bbfa2cf0d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\port">
+      <UniqueIdentifier>{f0f4ebb9-d911-4ab8-96b4-7e73a9b11d26}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\table">
+      <UniqueIdentifier>{d5ff0f6a-fa27-4917-bf5d-252febe22fba}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\arena.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\bloom.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\cache.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\coding.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\comparator.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\crc32c.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\env.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\filter_policy.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\hash.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\histogram.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\logging.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\options.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\status.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\builder.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\c.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\db_impl.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\db_iter.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\dbformat.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\filename.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\log_reader.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\log_writer.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\memtable.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\repair.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\table_cache.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\version_edit.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\version_set.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\db\write_batch.cc">
+      <Filter>Source Files\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\port\port_win.cc">
+      <Filter>Source Files\port</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\block.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\block_builder.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\filter_block.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\format.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\iterator.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\merger.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\table.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\table_builder.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\table\two_level_iterator.cc">
+      <Filter>Source Files\table</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\testharness.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\testutil.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\env_boost.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\leveldb_terark\util\win_logger.cc">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\arena.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\coding.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\crc32c.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\hash.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\histogram.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\logging.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\mutexlock.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\posix_logger.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\util\random.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\port\atomic_pointer.h">
+      <Filter>Header Files\port</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\port\port.h">
+      <Filter>Header Files\port</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
