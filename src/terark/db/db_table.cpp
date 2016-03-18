@@ -1552,9 +1552,9 @@ public:
 		{
 			MyRwLock lock(tab->m_rwMutex);
 			tab->m_tableScanningRefCount++;
-			m_oldmergeSeqNum = tab->m_mergeSeqNum;
-			m_oldnewWrSegNum = tab->m_newWrSegNum;
 		}
+		m_oldmergeSeqNum = size_t(-1);
+		m_oldnewWrSegNum = size_t(-1);
 		m_isHeapBuilt = false;
 	}
 	~TableIndexIter() {
