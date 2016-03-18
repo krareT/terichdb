@@ -119,7 +119,25 @@ CompositeTable::init(PathRef dir, SchemaConfigPtr schema) {
 	m_rowNumVec.push_back(0);
 }
 
-static void removeStaleDir(PathRef root, size_t inUseMergeSeq) {
+static void tryReduceSymlink(PathRef segDir, PathRef mergeDir) {
+	if (fs::is_symlink(segDir)) {
+		std::string strDir = segDir.string();
+		fs::path target = fs::canonical(fs::read_symlink(segDir), mergeDir);
+		fprintf(stderr
+			, "WARN: writable segment: %s is symbol link to: %s, reduce it\n"
+			, strDir.c_str(), target.string().c_str());
+		fs::remove(segDir);
+		if (fs::exists(target))
+			fs::rename(target, segDir);
+	}
+}
+
+void CompositeTable::removeStaleDir(PathRef root, size_t inUseMergeSeq) const {
+	fs::path inUseMergeDir = getMergePath(root, inUseMergeSeq);
+	for (auto& x : fs::directory_iterator(inUseMergeDir)) {
+		PathRef segDir = x.path();
+		tryReduceSymlink(segDir, inUseMergeDir);
+	}
 	for (auto& x : fs::directory_iterator(root)) {
 		std::string mergeDir = x.path().filename().string();
 		size_t mergeSeq = -1;
@@ -188,6 +206,7 @@ void CompositeTable::load(PathRef dir) {
 		fs::create_directories(getMergePath(m_dir, 0));
 	}
 	else {
+		removeStaleDir(m_dir, mergeSeq);
 		m_mergeSeqNum = mergeSeq;
 	}
 	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
@@ -218,15 +237,7 @@ void CompositeTable::load(PathRef dir) {
 			if (segIdx < 0) {
 				THROW_STD(invalid_argument, "invalid segment: %s", fname.c_str());
 			}
-			if (fs::is_symlink(segDir)) {
-				fs::path target = fs::canonical(fs::read_symlink(segDir), mergeDir);
-				fprintf(stderr
-					, "WARN: writable segment: %s is symbol link to: %s, reduce it\n"
-					, strDir.c_str(), target.string().c_str());
-				fs::remove(segDir);
-				if (fs::exists(target))
-					fs::rename(target, segDir);
-			}
+			tryReduceSymlink(segDir, mergeDir);
 			auto rDir = getSegPath("rd", segIdx);
 			if (fs::exists(rDir)) {
 				fprintf(stdout, "INFO: readonly segment: %s existed for writable seg: %s, remove it\n"
@@ -269,7 +280,6 @@ void CompositeTable::load(PathRef dir) {
 	}
 	fprintf(stderr, "INFO: CompositeTable::load(%s): loaded %zd segs\n",
 		dir.string().c_str(), m_segments.size());
-	removeStaleDir(m_dir, m_mergeSeqNum);
 	if (m_segments.size() == 0 || !m_segments.back()->getWritableStore()) {
 		// THROW_STD(invalid_argument, "no any segment found");
 		// allow user create an table dir which just contains json meta file
@@ -2453,6 +2463,7 @@ try{
 			baseLogicId += sseg->m_isDel.size();
 		}
 #endif
+#if 0 // don't do this
 		// m_wrSeg == NULL indicate writing is stopped
 		if (m_wrSeg && m_wrSeg->dataStorageSize() >= m_schema->m_maxWritingSegmentSize) {
 			doCreateNewSegmentInLock();
@@ -2461,12 +2472,13 @@ try{
 			inLockPutPurgeDeleteTaskToQueue();
 			m_purgeStatus = PurgeStatus::inqueue;
 		}
-	}
-	for (auto& tobeDel : toMerge) {
-		tobeDel.seg->deleteSegment();
+#endif
 	}
 	mergingLockFp.close();
 	fs::remove(mergingLockFile);
+	for (auto& tobeDel : toMerge) {
+		tobeDel.seg->deleteSegment();
+	}
 	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s done!\n"
 		, segPathList.c_str(), destSegDir.string().c_str());
 }
@@ -2749,6 +2761,7 @@ typedef boost::intrusive_ptr<MyTask> MyTaskPtr;
 terark::util::concurrent_queue<std::deque<MyTaskPtr> > g_flushQueue;
 terark::util::concurrent_queue<std::deque<MyTaskPtr> > g_compressQueue;
 
+volatile bool g_stopPutToFlushQueue = false;
 volatile bool g_stopCompress = false;
 volatile bool g_flushStopped = false;
 
@@ -2848,6 +2861,10 @@ public:
 using namespace anonymousForDebugMSVC;
 
 void CompositeTable::putToFlushQueue(size_t segIdx) {
+	assert(!g_stopPutToFlushQueue);
+	if (g_stopPutToFlushQueue) {
+		return;
+	}
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
 	g_flushQueue.push_back(new WrSegFreezeFlushTask(this, segIdx));
@@ -2857,12 +2874,19 @@ void CompositeTable::putToFlushQueue(size_t segIdx) {
 void CompositeTable::putToCompressionQueue(size_t segIdx) {
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
+	if (g_stopCompress) {
+		return;
+	}
 	g_compressQueue.push_back(new SegWrToRdConvTask(this, segIdx));
 	m_bgTaskNum++;
 }
 
 inline
 bool CompositeTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
+	assert(!g_stopPutToFlushQueue);
+	if (g_stopPutToFlushQueue) {
+		return false;
+	}
 	auto maxDelcnt = seg->m_isDel.size() * m_schema->m_purgeDeleteThreshold;
 	if (seg->m_delcnt >= maxDelcnt) {
 		asyncPurgeDeleteInLock();
@@ -2890,6 +2914,10 @@ void CompositeTable::asyncPurgeDeleteInLock() {
 }
 
 void CompositeTable::inLockPutPurgeDeleteTaskToQueue() {
+	assert(!g_stopPutToFlushQueue);
+	if (g_stopPutToFlushQueue) {
+		return;
+	}
 	g_compressQueue.push_back(new PurgeDeleteTask(this));
 	m_purgeStatus = PurgeStatus::purging;
 	m_bgTaskNum++;
@@ -2897,16 +2925,22 @@ void CompositeTable::inLockPutPurgeDeleteTaskToQueue() {
 
 // flush is the most urgent
 void CompositeTable::safeStopAndWaitForFlush() {
+	g_stopPutToFlushQueue = true;
 	g_stopCompress = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
 	g_flushThread.join();
 	g_compressThreads.join();
+	assert(g_flushQueue.empty());
+	assert(g_compressQueue.empty());
 }
 
 void CompositeTable::safeStopAndWaitForCompress() {
+	g_stopPutToFlushQueue = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
 	g_flushThread.join();
 	g_compressThreads.join();
+	assert(g_flushQueue.empty());
+	assert(g_compressQueue.empty());
 }
 
 /*

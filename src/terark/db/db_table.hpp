@@ -168,6 +168,7 @@ protected:
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
 	boost::filesystem::path getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx) const;
+	void removeStaleDir(PathRef dir, size_t inUseMergeSeq) const;
 
 	virtual ReadonlySegment* createReadonlySegment(PathRef segDir) const = 0;
 	virtual WritableSegment* createWritableSegment(PathRef segDir) const = 0;
@@ -187,7 +188,7 @@ public:
 	mutable tbb::queuing_rw_mutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
 protected:
-	enum class PurgeStatus : unsigned char {
+	enum class PurgeStatus : unsigned {
 		none,
 		pending,
 		inqueue,
