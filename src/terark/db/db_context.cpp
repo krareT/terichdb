@@ -20,6 +20,7 @@ DbContext::DbContext(const CompositeTable* tab)
   : m_tab(const_cast<CompositeTable*>(tab))
 {
 //	tab->registerDbContext(this);
+	regexMatchMemLimit = 16*1024*1024; // 16MB
 	syncIndex = true;
 }
 

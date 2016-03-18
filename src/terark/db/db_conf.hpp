@@ -95,6 +95,7 @@ namespace terark { namespace db {
 		ColumnMeta();
 		bool isInteger() const;
 		bool isNumber() const;
+		bool isString() const;
 		explicit ColumnMeta(ColumnType);
 		size_t fixedEndOffset() const { return fixedOffset + fixedLen; }
 	};

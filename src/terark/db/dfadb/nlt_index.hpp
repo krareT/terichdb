@@ -39,6 +39,8 @@ public:
 	void load(PathRef path) override;
 	void save(PathRef path) const override;
 
+	bool matchRegexAppend(BaseDFA* regexDFA, valvec<llong>* recIdvec, DbContext*) const;
+
 protected:
 	struct FileHeader;
 	std::unique_ptr<NestLoudsTrieDAWG_SE_512> m_dfa;

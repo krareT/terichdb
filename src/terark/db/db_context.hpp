@@ -49,6 +49,7 @@ public:
 	ColumnVec    cols1;
 	ColumnVec    cols2;
 	valvec<llong> exactMatchRecIdvec;
+	size_t regexMatchMemLimit;
 	bool syncIndex;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;

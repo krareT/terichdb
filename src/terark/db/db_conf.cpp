@@ -106,6 +106,17 @@ bool ColumnMeta::isNumber() const {
 	}
 }
 
+bool ColumnMeta::isString() const {
+	switch (type) {
+	default:
+		return false;
+	case ColumnType::StrZero:
+	case ColumnType::Binary:
+	case ColumnType::CarBin:
+		return true;
+	}
+}
+
 /////////////////////////////////////////////////////////////////////////////
 ColumnVec::~ColumnVec() {
 }

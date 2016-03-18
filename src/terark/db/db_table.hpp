@@ -83,11 +83,11 @@ public:
 	}
 	size_t getIndexNum() const { return m_schema->getIndexNum(); }
 
-	llong indexSearchExact(size_t indexId, fstring key, DbContext*) const;
+	void indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext*) const;
 	bool indexKeyExists(size_t indexId, fstring key, DbContext*) const;
 	
 	virtual	bool indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec, DbContext*) const;
-	virtual	bool indexMatchRegex(size_t indexId, fstring  regexStr, valvec<llong>* recIdvec, DbContext*) const;
+	virtual	bool indexMatchRegex(size_t indexId, fstring  regexStr, fstring regexOptions, valvec<llong>* recIdvec, DbContext*) const;
 
 	bool indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);

@@ -1295,9 +1295,10 @@ const {
 	return false;
 }
 
-llong
-CompositeTable::indexSearchExact(size_t indexId, fstring key, DbContext* ctx)
+void
+CompositeTable::indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
+	recIdvec->erase_all();
 	MyRwLock lock(m_rwMutex, false);
 	for (size_t i = m_segments.size(); i > 0; ) {
 		auto seg = m_segments[--i].get();
@@ -1306,10 +1307,9 @@ const {
 		for(llong physicId : ctx->exactMatchRecIdvec) {
 			llong logicId = seg->getLogicId(physicId);
 			if (!seg->m_isDel[logicId])
-				return m_rowNumVec[i] + logicId;
+				recIdvec->push_back(m_rowNumVec[i] + logicId);
 		}
 	}
-	return -1;
 }
 
 // implemented in DfaDbTable
@@ -1322,7 +1322,8 @@ const {
 }
 
 bool
-CompositeTable::indexMatchRegex(size_t indexId, fstring  regexStr,
+CompositeTable::indexMatchRegex(size_t indexId,
+								fstring regexStr, fstring regexOpt,
 								valvec<llong>* recIdvec, DbContext*)
 const {
 	THROW_STD(invalid_argument, "Methed is not implemented");
