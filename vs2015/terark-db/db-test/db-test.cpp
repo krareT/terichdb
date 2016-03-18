@@ -50,7 +50,6 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		TestRow recRow;
 		recRow.id = rand() % maxRowNum + 1;
 		int len = sprintf(recRow.fix.data, "%06lld", recRow.id);
-		memcpy(recRow.fix2.data, recRow.fix.data, len);
 		recRow.str0 = std::string("s0:") + recRow.fix.data;
 		recRow.str1 = std::string("s1:") + recRow.fix.data;
 		recRow.str2 = std::string("s2:") + recRow.fix.data;
