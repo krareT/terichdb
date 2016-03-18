@@ -9,6 +9,8 @@
 #include <terark/lcast.hpp>
 #include <terark/util/autoclose.hpp>
 #include <terark/util/linebuf.hpp>
+#include <terark/util/profiling.hpp>
+#include <terark/fsa/create_regex_dfa.hpp>
 
 using namespace terark;
 using namespace terark::db;
@@ -65,6 +67,8 @@ void doTest(terark::fstring tableClass, PathRef tableDir, const char* textKeyFil
 	Auto_fclose fp(fopen(queryKeyFile, "r"));
 	size_t lineno = 0;
 	valvec<llong> recIdvec;
+	profiling pf;
+	llong tt = 0;
 	while (line.getline(fp) > 0) {
 		lineno++;
 		line.chomp();
@@ -72,7 +76,10 @@ void doTest(terark::fstring tableClass, PathRef tableDir, const char* textKeyFil
 			continue;
 		}
 		fstring regex(line);
-		tab->indexMatchRegex(0, regex, "i", &recIdvec, &*ctx);
+		std::unique_ptr<BaseDFA> regexDFA(create_regex_dfa(regex, "i"));
+		llong t0 = pf.now();
+		tab->indexMatchRegex(0, &*regexDFA, &recIdvec, &*ctx);
+		tt += pf.now() - t0;
 		printf("MatchRegex('%s') get %zd matches\n", regex.p, recIdvec.size());
 		for (llong recId : recIdvec) {
 			tab->getValue(recId, &recBuf, &*ctx);
@@ -80,6 +87,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, const char* textKeyFil
 			printf("recId=%lld, RecData: %s\n", recId, js.c_str());
 		}
 	}
+	printf("indexMatchRegex: time = %f milliseconds\n", pf.mf(0,tt));
 }
 
 int main(int argc, char* argv[]) {
