@@ -149,6 +149,7 @@ Schema::Schema() {
 	m_useFastZip = false;
 	m_dictZipLocalMatch = true;
 	m_isInplaceUpdatable = false;
+	m_enableLinearScan = false;
 	m_keepCols.fill(true);
 	m_minFragLen = 0;
 	m_maxFragLen = 0;
@@ -2046,6 +2047,7 @@ if (colgroupsIter != meta.end()) {
 		indexSchema->m_isOrdered = getJsonValue(index, "ordered", true);
 //		indexSchema->m_isPrimary = getJsonValue(index, "primary", false);
 		indexSchema->m_isUnique  = getJsonValue(index, "unique" , false);
+		indexSchema->m_enableLinearScan = getJsonValue(index, "enableLinearScan", false);
 /*
 		if (indexSchema->m_isPrimary) {
 			if (hasPrimaryIndex) {
