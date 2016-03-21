@@ -107,11 +107,17 @@ const {
 		size_t oldsize = recIdvec->size();
 		if (index->matchRegexAppend(regexDFA, recIdvec, ctx)) {
 			llong baseId = m_rowNumVec[i];
-			for (size_t j = oldsize; j < recIdvec->size(); ++j) {
-				(*recIdvec)[j] += baseId;
+			size_t i = oldsize;
+			for(size_t j = oldsize; j < recIdvec->size(); ++j) {
+				size_t subPhysicId = (*recIdvec)[j];
+				size_t subLogicId = seg->getLogicId(subPhysicId);
+				if (!seg->m_isDel[subLogicId])
+					(*recIdvec)[i++] = baseId + subLogicId;
 			}
+			recIdvec->risk_set_size(i);
 		}
 		else { // failed because exceeded memory limit
+			// should fallback to use linear scan?
 			fprintf(stderr
 				, "RegexMatch exceeded memory limit(%zd bytes) on index '%s' of segment: '%s'\n"
 				, ctx->regexMatchMemLimit
