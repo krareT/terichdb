@@ -167,6 +167,7 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\src\terark\db\appendonly.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_index.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_store.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_conf.hpp" />
@@ -195,6 +196,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\..\src\terark\db\appendonly.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_index.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_store.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_conf.cpp" />

@@ -1,5 +1,6 @@
 #include "db_table.hpp"
 #include "db_segment.hpp"
+#include "appendonly.hpp"
 #include <terark/db/fixed_len_store.hpp>
 #include <terark/util/autoclose.hpp>
 #include <terark/util/linebuf.hpp>
@@ -2025,6 +2026,10 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	SortableStrVec strVec;
 	const Schema& schema = this->p[0].seg->m_schema->getIndexSchema(indexId);
 	const size_t fixedIndexRowLen = schema.getFixedRowLen();
+	std::unique_ptr<SeqReadAppendonlyStore> seqStore;
+	if (schema.m_enableLinearScan) {
+		seqStore.reset(new SeqReadAppendonlyStore(dseg->m_segDir, schema));
+	}
 #if !defined(NDEBUG)
 	hash_strmap<size_t> key2id;
 #endif
@@ -2045,6 +2050,8 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 						strVec.m_strpool.append(rec);
 					} else {
 						strVec.push_back(rec);
+						if (seqStore)
+							seqStore->append(rec, ctx);
 					}
 #if !defined(NDEBUG)
 					auto& cnt = key2id[rec];

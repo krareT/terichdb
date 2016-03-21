@@ -4,6 +4,7 @@
 #include "zip_int_store.hpp"
 #include "fixed_len_key_index.hpp"
 #include "fixed_len_store.hpp"
+#include "appendonly.hpp"
 #include <terark/util/autoclose.hpp>
 #include <terark/io/FileStream.hpp>
 #include <terark/io/StreamBuffer.hpp>
@@ -459,202 +460,80 @@ static bool should_use_FixedLenStore(const Schema& schema) {
 }
 
 namespace {
-	class FileDataIO : public ReadableStore, public AppendableStore {
-		class FileStoreIter;
-		FileStream m_fp;
-		NativeDataOutput<OutputBuffer> m_obuf;
-		size_t m_fixedLen;
-		size_t m_fileSize;
-		size_t m_dataSize;
-		size_t m_rows;
-		FileDataIO(const FileDataIO&) = delete;
-	public:
-		FileDataIO(size_t fixedLen) {
-			intrusive_ptr_add_ref(this); // Trick: will never be deleted
-			m_fp.attach(tmpfile());
-			m_obuf.attach(&m_fp);
-			m_fixedLen = fixedLen;
-			m_fileSize = 0;
-			m_dataSize = 0;
-			m_rows = 0;
-		}
-		llong append(fstring rowData, DbContext*) override {
-		//	assert(rowData.size() > 0); // can be empty
-			if (0 == m_fixedLen) {
-				m_obuf << var_size_t(rowData.size());
-			} else {
-				assert(rowData.size() == m_fixedLen);
-				if (rowData.size() != m_fixedLen)
-					THROW_STD(runtime_error, "index RowLen=%zd != FixedRowLen=%zd"
-						, rowData.size(), m_fixedLen);
-			}
-			m_obuf.ensureWrite(rowData.data(), rowData.size());
-			m_dataSize += rowData.size();
-			return m_rows++;
-		}
-		void shrinkToFit() override {
-			completeWrite();
-		}
-		void completeWrite() {
-			m_obuf.flush();
-			m_fp.rewind();
-			m_fileSize = m_fp.size();
-		}
-		FileStream& fp() { return m_fp; }
-		size_t fixedLen() const { return m_fixedLen; }
-
-		void prepairRead(NativeDataInput<InputBuffer>& dio) {
-			m_fp.disbuf();
-			m_fp.rewind();
-			dio.resetbuf();
-			dio.attach(&m_fp);
-		}
-		size_t
-		collectData(NativeDataInput<InputBuffer>& dio,
-					size_t newRowNum, SortableStrVec& strVec,
-					size_t maxMemSize = size_t(-1)) {
-			if (m_fixedLen == 0) {
-				valvec<byte> buf;
-				size_t i = 0;
-				while (i < newRowNum && strVec.mem_size() < maxMemSize) {
-					dio >> buf;
-				//	assert(buf.size() > 0); // can be empty
-					strVec.push_back(buf);
-					i++;
-				}
-				return strVec.size();
-			}
-			else {
-				// ignore maxMemSize
-				assert(strVec.m_index.size() == 0);
-				size_t size = m_fixedLen * newRowNum;
-				strVec.m_strpool.resize_no_init(size);
-				m_fp.ensureRead(strVec.m_strpool.data(), size);
-				return newRowNum;
-			}
-		}
-
-		llong dataInflateSize() const override { return m_dataSize; }
-		llong dataStorageSize() const override { return m_fileSize; }
-		llong numDataRows() const override { return m_rows; }
-
-		double avgLen() const { return (m_fileSize + 0.1) / (m_rows + 0.1); }
-
-		StoreIterator* createStoreIterForward(DbContext*) const override;
-		StoreIterator* createStoreIterBackward(DbContext*) const override {
-			THROW_STD(invalid_argument, "Not Implemented");
-			return NULL;
-		}
-		void getValueAppend(llong id, valvec<byte>* rec, DbContext*)
-		const override {
-			assert(id >= 0);
-#ifdef _MSC_VER
-#else
-			size_t flen = m_fixedLen;
-			if (flen) {
-				byte* p = rec->grow_no_init(flen);
-				int fd = ::fileno(m_fp);
-				ssize_t nRead = pread(fd, p, flen, flen*id);
-				if (size_t(nRead) != flen) {
-					THROW_STD(logic_error
-						, "FATAL: pread(len = %zd, pos = %lld) = %zd : %s"
-						, flen, flen*id, nRead, strerror(errno));
-				}
-				return;
-			}
-#endif
-			THROW_STD(invalid_argument, "Not Implemented");
-		}
-		void save(PathRef) const {
-			THROW_STD(invalid_argument, "Not Implemented");
-		}
-		void load(PathRef) {
-			THROW_STD(invalid_argument, "Not Implemented");
-		}
-	};
-
-	class FileDataIO::FileStoreIter : public StoreIterator {
-		NativeDataInput<InputBuffer> m_ibuf;
-		llong m_id;
-		llong m_rows;
-		size_t m_fixedLen;
-	public:
-		explicit FileStoreIter(FileDataIO* store) {
-			m_store.reset(store);
-			store->prepairRead(m_ibuf);
-			m_id = 0;
-			m_rows = store->numDataRows();
-			m_fixedLen = store->fixedLen();
-		}
-		bool increment(llong* id, valvec<byte>* val) override {
-			if (m_id < m_rows) {
-				if (m_fixedLen) {
-					val->resize_no_init(m_fixedLen);
-					m_ibuf.ensureRead(val->data(), m_fixedLen);
-				}
-				else {
-					m_ibuf >> *val;
-				}
-				*id = m_id++;
-				return true;
-			}
-			return false;
-		}
-		bool seekExact(llong  id, valvec<byte>* val) override {
-			THROW_STD(invalid_argument, "Not Implemented");
-			return false;
-		}
-		void reset() override {
-			dynamic_cast<FileDataIO*>(m_store.get())->prepairRead(m_ibuf);
-			m_id = 0;
-		}
-	};
-
-	StoreIterator* FileDataIO::createStoreIterForward(DbContext*) const {
-		return new FileStoreIter(const_cast<FileDataIO*>(this));
-	}
-
-	class TempFileList : public valvec<FileDataIO> {
+	class TempFileList {
 		const SchemaSet& m_schemaSet;
 		valvec<byte> m_projRowBuf;
+		valvec<ReadableStorePtr> m_readers;
+		valvec<AppendableStore*> m_appenders;
+		TERARK_IF_DEBUG(ColumnVec m_debugCols;,;);
 	public:
-		valvec<FixedLenStorePtr> m_fixlenStore;
-		TempFileList(PathRef segDir, size_t indexNum, const SchemaSet& schemaSet)
+		TempFileList(PathRef segDir, const SchemaSet& schemaSet)
 			: m_schemaSet(schemaSet)
 		{
-			this->reserve(schemaSet.m_nested.end_i());
-			for (size_t i = 0; i < schemaSet.m_nested.end_i(); ++i) {
+			size_t cgNum = schemaSet.m_nested.end_i();
+			m_readers.resize(cgNum);
+			m_appenders.resize(cgNum);
+			for (size_t i = 0; i < cgNum; ++i) {
 				const Schema& schema = *schemaSet.m_nested.elem_at(i);
-				this->unchecked_emplace_back(schema.getFixedRowLen());
-			}
-			m_fixlenStore.resize(schemaSet.m_nested.end_i());
-			for (size_t i = indexNum; i < schemaSet.m_nested.end_i(); ++i) {
-				const Schema& schema = *schemaSet.m_nested.elem_at(i);
-				if (should_use_FixedLenStore(schema)) {
-					m_fixlenStore[i] = new FixedLenStore(segDir, schema);
+				if (schema.getFixedRowLen()) {
+					m_readers[i] = new FixedLenStore(segDir, schema);
 				}
+				else {
+					m_readers[i] = new SeqReadAppendonlyStore(segDir, schema);
+				}
+				m_appenders[i] = m_readers[i]->getAppendableStore();
 			}
 		}
 		void writeColgroups(const ColumnVec& columns) {
-			size_t colgroupNum = this->size();
+			size_t colgroupNum = m_readers.size();
 			for (size_t i = 0; i < colgroupNum; ++i) {
 				const Schema& schema = *m_schemaSet.m_nested.elem_at(i);
 				schema.selectParent(columns, &m_projRowBuf);
-				if (auto fstore = m_fixlenStore[i].get()) {
-					fstore->append(m_projRowBuf, NULL);
+#if !defined(NDEBUG)
+				schema.parseRow(m_projRowBuf, &m_debugCols);
+				assert(m_debugCols.size() == schema.columnNum());
+				for(size_t j = 0; j < m_debugCols.size(); ++j) {
+					size_t k = schema.parentColumnId(j);
+					assert(k < columns.size());
+					assert(m_debugCols[j] == columns[k]);
 				}
-				else {
-					this->p[i].append(m_projRowBuf, NULL);
-				}
+#endif
+				m_appenders[i]->append(m_projRowBuf, NULL);
 			}
 		}
 		void completeWrite() {
-			size_t colgroupNum = this->size();
+			size_t colgroupNum = m_readers.size();
 			for (size_t i = 0; i < colgroupNum; ++i) {
-				if (auto flstore = m_fixlenStore[i].get())
-					flstore->shrinkToFit();
-				else
-					this->p[i].completeWrite();
+				m_appenders[i]->shrinkToFit();
+			}
+		}
+		ReadableStore* getStore(size_t cgId) const {
+			return m_readers[cgId].get();
+		}
+		size_t size() const { return m_readers.size(); }
+		size_t
+		collectData(size_t cgId, StoreIterator* iter, SortableStrVec& strVec,
+					size_t maxMemSize = size_t(-1)) const {
+			assert(strVec.m_index.size() == 0);
+			assert(strVec.m_strpool.size() == 0);
+			const Schema& schema = *m_schemaSet.getSchema(cgId);
+			const llong   rows = iter->getStore()->numDataRows();
+			const size_t  fixlen = schema.getFixedRowLen();
+			if (fixlen == 0) {
+				valvec<byte> buf;
+				llong  recId = INT_MAX; // for fail fast
+				while (strVec.mem_size() < maxMemSize && iter->increment(&recId, &buf)) {
+					assert(recId < rows);
+					strVec.push_back(buf);
+				}
+				return strVec.size();
+			}
+			else { // ignore maxMemSize
+				size_t size = fixlen * rows;
+				strVec.m_strpool.resize_no_init(size);
+				byte_t* basePtr = iter->getStore()->getRecordsBasePtr();
+				memcpy(strVec.m_strpool.data(), basePtr, size);
+				return rows;
 			}
 		}
 	};
@@ -730,7 +609,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	assert(logicRowNum > 0);
 	size_t indexNum = m_schema->getIndexNum();
 {
-	TempFileList colgroupTempFiles(tmpDir, indexNum, *m_schema->m_colgroupSchemaSet);
+	TempFileList colgroupTempFiles(tmpDir, *m_schema->m_colgroupSchemaSet);
 {
 	ColumnVec columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf;
@@ -766,19 +645,24 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	colgroupTempFiles.completeWrite();
 	m_indices.resize(indexNum);
 	m_colgroups.resize(m_schema->getColgroupNum());
-	NativeDataInput<InputBuffer> dio;
 	for (size_t i = 0; i < indexNum; ++i) {
 		SortableStrVec strVec;
 		const Schema& schema = m_schema->getIndexSchema(i);
-		colgroupTempFiles[i].prepairRead(dio);
-		colgroupTempFiles[i].collectData(dio, newRowNum, strVec);
+		auto tmpStore = colgroupTempFiles.getStore(i);
+		StoreIteratorPtr iter = tmpStore->ensureStoreIterForward(NULL);
+		colgroupTempFiles.collectData(i, iter.get(), strVec);
 		m_indices[i] = this->buildIndex(schema, strVec);
 		m_colgroups[i] = m_indices[i]->getReadableStore();
+		if (!schema.m_enableLinearScan) {
+			iter.reset();
+			tmpStore->deleteFiles();
+		}
 	}
 	for (size_t i = indexNum; i < colgroupTempFiles.size(); ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
-		if (auto flstore = colgroupTempFiles.m_fixlenStore[i]) {
-			m_colgroups[i] = flstore;
+		auto tmpStore = colgroupTempFiles.getStore(i);
+		if (should_use_FixedLenStore(schema)) {
+			m_colgroups[i] = tmpStore;
 			continue;
 		}
 		// dictZipLocalMatch is true by default
@@ -787,10 +671,9 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		// dictZipSampleRatio < 0 indicate don't use dictZip
 		if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
 			double sRatio = schema.m_dictZipSampleRatio;
-			double avgLen = colgroupTempFiles[i].avgLen();
+			double avgLen = double(tmpStore->dataInflateSize()) / newRowNum;
 			if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
-				StoreIteratorPtr
-				iter = colgroupTempFiles[i].createStoreIterForward(NULL);
+				StoreIteratorPtr iter = tmpStore->ensureStoreIterForward(NULL);
 				m_colgroups[i] = buildDictZipStore(schema, tmpDir, *iter, NULL, NULL);
 				continue;
 			}
@@ -798,14 +681,15 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		size_t maxMem = m_schema->m_compressingWorkMemSize;
 		llong rows = 0;
 		valvec<ReadableStorePtr> parts;
-		colgroupTempFiles[i].prepairRead(dio);
+		StoreIteratorPtr iter = tmpStore->ensureStoreIterForward(NULL);
 		while (rows < newRowNum) {
-			size_t rest = size_t(newRowNum - rows);
 			SortableStrVec strVec;
-			rows += colgroupTempFiles[i].collectData(dio, rest, strVec, maxMem);
+			rows += colgroupTempFiles.collectData(i, iter.get(), strVec, maxMem);
 			parts.push_back(this->buildStore(schema, strVec));
 		}
 		m_colgroups[i] = parts.size()==1 ? parts[0] : new MultiPartStore(parts);
+		iter.reset();
+		tmpStore->deleteFiles();
 	}
 }
 	completeAndReload(tab, segIdx, &*input);
@@ -910,8 +794,8 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 			input->getValue(i, &r2, ctx.get());
 			int cmp = rowSchema.compareData(r1, r2);
 			if (0 != cmp) {
-				std::string js1 = m_schema->m_rowSchema->toJsonStr(r1);
-				std::string js2 = m_schema->m_rowSchema->toJsonStr(r2);
+				std::string js1 = rowSchema.toJsonStr(r1);
+				std::string js2 = rowSchema.toJsonStr(r2);
 				fprintf(stderr, "recId: %zd\n\tjs1[len=%zd]=%s\n\tjs2[len=%zd]=%s\n"
 					, i, r1.size(), js1.c_str(), r2.size(), js2.c_str());
 			}
@@ -1041,25 +925,24 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 	SortableStrVec strVec;
 	const Schema& schema = m_schema->getIndexSchema(indexId);
 	const size_t  fixlen = schema.getFixedRowLen();
-	const auto& store = *input->m_indices[indexId]->getReadableStore();
-#if 0 // for performance, don't use iter
-	StoreIteratorPtr iter = store.createStoreIterForward(ctx);
-	if (iter) {
+	if (0 == fixlen && schema.m_enableLinearScan) {
+		ReadableStorePtr store = new SeqReadAppendonlyStore(input->m_segDir, schema);
+		StoreIteratorPtr iter = store->createStoreIterForward(ctx);
+		const bm_uint_t* purgeBits = input->m_isPurged.bldata();
 		valvec<byte_t> rec;
-		llong physicId;
-		while (iter->increment(&physicId, &rec)) {
-			size_t logicId = input->getLogicId(size_t(physicId));
-			if (!terark_bit_test(isDel, logicId)) {
-				if (fixlen)
-					strVec.m_strpool.append(rec);
-				else
-					strVec.push_back(rec);
+		llong physicId = 0;
+		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
+			if (!purgeBits || !terark_bit_test(purgeBits, logicId)) {
+				bool hasRow = iter->increment(&physicId, &rec);
+				TERARK_RT_assert(hasRow, std::logic_error);
+				TERARK_RT_assert(physicId <= logicId, std::logic_error);
+				strVec.push_back(rec);
 			}
 		}
 	}
 	else
-#endif
 	{
+		const auto& store = *input->m_indices[indexId]->getReadableStore();
 		const bm_uint_t* purgeBits = input->m_isPurged.bldata();
 		llong physicId = 0;
 		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
@@ -1103,12 +986,13 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 		double sRatio = schema.m_dictZipSampleRatio;
 		double avgLen = 1.0 * colgroup.dataInflateSize() / colgroup.numDataRows();
 		if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
-			StoreIteratorPtr iter = colgroup.createStoreIterForward(ctx);
-			if (!iter) {
-				iter = colgroup.createDefaultStoreIterForward(ctx);
-			}
+			StoreIteratorPtr iter = colgroup.ensureStoreIterForward(ctx);
 			return buildDictZipStore(schema, tmpSegDir, *iter, isDel, &input->m_isPurged);
 		}
+	}
+	std::unique_ptr<SeqReadAppendonlyStore> seqStore;
+	if (schema.m_enableLinearScan) {
+		seqStore.reset(new SeqReadAppendonlyStore(tmpSegDir, schema));
 	}
 	SortableStrVec strVec;
 	size_t fixlen = schema.getFixedRowLen();
@@ -1119,7 +1003,10 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 			parts.push_back(this->buildStore(schema, strVec));
 			strVec.clear();
 		}
+		size_t oldsize = strVec.size();
 		pushRecord(strVec, store, physicId, fixlen, ctx);
+		if (seqStore)
+			seqStore->append(fstring(strVec.m_strpool).substr(oldsize), NULL);
 	};
 	const bm_uint_t* oldpurgeBits = input->m_isPurged.bldata();
 	assert(!oldpurgeBits || input->m_isPurged.size() == m_isDel.size());
