@@ -3,6 +3,7 @@
 #include <terark/io/DataIO.hpp>
 #include <terark/util/mmap.hpp>
 #include <terark/util/autoclose.hpp>
+#include <terark/util/truncate_file.hpp>
 #include <functional>
 #include <terark/num_to_str.hpp>
 
@@ -172,27 +173,7 @@ void FixedLenStore::shrinkToFit() {
 	ullong realSize = sizeof(Header) + m_mmapBase->mem_size();
 	mmap_close(m_mmapBase, m_mmapSize);
 	m_mmapBase = nullptr;
-#ifdef _MSC_VER
-{
-	Auto_close_fd fd(::_open(m_fpath.c_str(), O_BINARY|O_RDWR));
-	if (fd < 0) {
-		THROW_STD(logic_error
-			, "FATAL: ::_open(%s, O_BINARY|O_RDWR) = %s"
-			, m_fpath.c_str(), strerror(errno));
-	}
-	int err = ::_chsize_s(fd, realSize);
-	if (err) {
-		THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %lld) = %s"
-			, m_fpath.c_str(), realSize, strerror(errno));
-	}
-}
-#else
-	int err = ::truncate(m_fpath.c_str(), realSize);
-	if (err) {
-		THROW_STD(logic_error, "FATAL: ::truncate(%s, %lld) = %s"
-			, m_fpath.c_str(), realSize, strerror(errno));
-	}
-#endif
+	truncate_file(m_fpath, realSize);
 	this->openStore();
 	TERARK_RT_assert(realSize == m_mmapSize, std::logic_error);
 }
@@ -219,27 +200,7 @@ FixedLenStore::allocFileSize(ullong fileSize) {
 		mmap_close(h, m_mmapSize);
 		m_mmapBase = nullptr;
 	}
-#ifdef _MSC_VER
-{
-	Auto_close_fd fd(::_open(m_fpath.c_str(), O_CREAT|O_BINARY|O_RDWR, 0644));
-	if (fd < 0) {
-		THROW_STD(logic_error
-			, "FATAL: ::_open(%s, O_CREAT|O_BINARY|O_RDWR) = %s"
-			, m_fpath.c_str(), strerror(errno));
-	}
-	int err = ::_chsize_s(fd, newBytes);
-	if (err) {
-		THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %lld) = %s"
-			, m_fpath.c_str(), newBytes, strerror(errno));
-	}
-}
-#else
-	int err = ::truncate(m_fpath.c_str(), newBytes);
-	if (err) {
-		THROW_STD(logic_error, "FATAL: ::truncate(%s, %lld) = %s"
-			, m_fpath.c_str(), newBytes, strerror(errno));
-	}
-#endif
+	truncate_file(m_fpath, newBytes);
 	const bool writable = true;
 	m_mmapBase = (Header*)mmap_load(m_fpath, &m_mmapSize, writable);
 	m_mmapBase->capacity = (m_mmapSize - sizeof(Header)) / m_fixlen;
@@ -257,5 +218,12 @@ FixedLenStore::allocFileSize(ullong fileSize) {
 	m_recordsBasePtr = h->get_data(0);
 	return h;
 }
+
+void FixedLenStore::deleteFiles() {
+	mmap_close(m_mmapBase, m_mmapSize);
+	m_mmapBase = nullptr;
+	boost::filesystem::remove(m_fpath);
+}
+
 
 }} // namespace terark::db

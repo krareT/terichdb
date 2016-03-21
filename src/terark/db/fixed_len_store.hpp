@@ -43,6 +43,8 @@ public:
 	void setNumRows(size_t rows);
 	void reserveRows(size_t rows);
 
+	void deleteFiles() override;
+
 protected:
 	struct  Header;
 	Header* allocFileSize(ullong size);
