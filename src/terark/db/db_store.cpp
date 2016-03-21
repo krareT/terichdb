@@ -82,6 +82,10 @@ UpdatableStore* ReadableStore::getUpdatableStore() {
 	return nullptr;
 }
 
+void ReadableStore::deleteFiles() {
+	THROW_STD(invalid_argument, "Unsupportted Method");
+}
+
 namespace {
 	class DefaultStoreIterForward : public StoreIterator {
 		DbContextPtr m_ctx;
@@ -153,6 +157,21 @@ ReadableStore::createDefaultStoreIterForward(DbContext* ctx) const {
 }
 StoreIterator*
 ReadableStore::createDefaultStoreIterBackward(DbContext* ctx) const {
+	return new DefaultStoreIterBackward(const_cast<ReadableStore*>(this), ctx);
+}
+
+StoreIterator*
+ReadableStore::ensureStoreIterForward(DbContext* ctx) const {
+	StoreIterator* iter = this->createStoreIterForward(ctx);
+	if (iter)
+		return iter;
+	return new DefaultStoreIterForward(const_cast<ReadableStore*>(this), ctx);
+}
+StoreIterator*
+ReadableStore::ensureStoreIterBackward(DbContext* ctx) const {
+	StoreIterator* iter = this->createStoreIterBackward(ctx);
+	if (iter)
+		return iter;
 	return new DefaultStoreIterBackward(const_cast<ReadableStore*>(this), ctx);
 }
 

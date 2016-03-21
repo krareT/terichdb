@@ -40,6 +40,7 @@ class StoreIterator : public RefCounter {
 protected:
 	ReadableStorePtr m_store;
 public:
+	ReadableStore* getStore() const { return m_store.get(); }
 	virtual ~StoreIterator();
 	virtual bool increment(llong* id, valvec<byte>* val) = 0;
 	virtual bool seekExact(llong  id, valvec<byte>* val) = 0;
@@ -72,6 +73,7 @@ public:
 	virtual llong dataInflateSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
+	virtual void deleteFiles();
 	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
@@ -86,6 +88,9 @@ public:
 
 	StoreIterator* createDefaultStoreIterForward(DbContext*) const;
 	StoreIterator* createDefaultStoreIterBackward(DbContext*) const;
+
+	StoreIterator* ensureStoreIterForward(DbContext*) const;
+	StoreIterator* ensureStoreIterBackward(DbContext*) const;
 };
 
 class TERARK_DB_DLL AppendableStore {
