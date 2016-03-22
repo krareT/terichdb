@@ -75,6 +75,33 @@ public:
 	virtual void clear() = 0;
 };
 
+class TERARK_DB_DLL EmptyIndexStore : public ReadableIndex, public ReadableStore {
+public:
+	EmptyIndexStore();
+	EmptyIndexStore(const Schema&);
+	~EmptyIndexStore();
+
+	llong indexStorageSize() const override;
+
+	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
+
+	IndexIterator* createIndexIterForward(DbContext*) const override;
+	IndexIterator* createIndexIterBackward(DbContext*) const override;
+	class ReadableStore* getReadableStore();
+
+	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
+	llong numDataRows() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+	void deleteFiles();
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
+	ReadableIndex* getReadableIndex();
+
+	void load(PathRef) override;
+	void save(PathRef) const override;
+};
+
 } } // namespace terark::db
 
 #endif // __terark_db_db_index_hpp__
