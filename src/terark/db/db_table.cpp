@@ -1054,7 +1054,7 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 	//		, id, j, baseId, subId);
 		return false;
 	}
-	if (j == m_rowNumVec.size()-1) {
+	if (j == m_rowNumVec.size()-1 && m_wrSeg) {
 		assert(!m_wrSeg->m_bookUpdates);
 		if (txn->syncIndex) {
 			valvec<byte> &row = txn->row1, &key = txn->key1;
@@ -1865,6 +1865,7 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 	size_t j = lo;
 	while (j < files.size() && files[j].startsWith(prefix)) {
 		fstring fname = files[j];
+		assert(!fname.endsWith(".empty"));
 		std::string dotExt = getDotExtension(fname).str();
 		if (prefix.size() + dotExt.size() < fname.size()) {
 			// oldpartIdx is between prefix and dotExt
@@ -2162,6 +2163,7 @@ moveStoreFiles(PathRef srcDir, PathRef destDir,
 		if ("." == fname || ".." == fname) {
 			continue;
 		}
+		assert(!fstring(fname).endsWith(".empty"));
 		assert(fstring(fname).startsWith(prefix));
 		std::string dotExt = getDotExtension(fname).str();
 		if (prefix.size() + dotExt.size() < fname.size()) {
@@ -2242,6 +2244,12 @@ try{
 		size_t newPartIdx = 0;
 		for (auto& e : toMerge) {
 			if (e.needsRePurge()) {
+				assert(e.newIsPurged.size() >= 1);
+				assert(e.newIsPurged.size() == e.seg->m_isDel.size());
+				if (e.newIsPurged.size() == e.newNumPurged) {
+					// new store is empty, all records are purged
+					continue;
+				}
 				auto tmpDir1 = destSegDir / "temp-store";
 				fs::create_directory(tmpDir1);
 				dseg->m_isDel.swap(e.newIsPurged);
@@ -2251,6 +2259,10 @@ try{
 				moveStoreFiles(tmpDir1, destSegDir, prefix, newPartIdx);
 				fs::remove_all(tmpDir1);
 			} else {
+				if (e.seg->m_isPurged.max_rank1() == e.seg->m_isDel.size()) {
+					// old store is empty, all records are purged
+					continue;
+				}
 				e.reuseOldStoreFiles(destSegDir, prefix, newPartIdx);
 			}
 			newPartIdx++;
@@ -2268,7 +2280,7 @@ try{
 			if (e.newIsPurged.empty()) {
 				dseg->m_isPurged.grow(e.seg->m_isDel.size(), false);
 			} else {
-				assert(e.seg->m_isDel.size() == e.seg->m_isPurged.size());
+				assert(e.seg->m_isDel.size() == e.newIsPurged.size());
 				dseg->m_isPurged.append(e.newIsPurged);
 			}
 		}
@@ -2564,7 +2576,7 @@ void CompositeTable::syncFinishWriting() {
 			wrseg->deleteSegment();
 			m_segments.pop_back();
 		}
-		else {
+		else if (wrseg->getWritableStore() != nullptr) {
 			putToFlushQueue(m_segments.size()-1);
 		}
 	}
@@ -2663,7 +2675,6 @@ void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
 		m_bgTaskNum--;
 	}BOOST_SCOPE_EXIT_END;
   {
-	DbContextPtr ctx(this->createDbContext());
 	auto segDir = getSegPath("rd", segIdx);
 	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
 	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
@@ -2695,7 +2706,7 @@ void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
 			, "WARN: convWritableSegmentToReadonly: ex.what = %s\n"
 			, ex.what());
 	}
-	if (this->m_isMerging) {
+	if (this->m_isMerging || m_bgTaskNum > 1) {
 		return;
 	}
   }
@@ -2875,6 +2886,7 @@ void CompositeTable::putToFlushQueue(size_t segIdx) {
 	}
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
+	assert(m_segments[segIdx]->getWritableStore() != nullptr);
 	g_flushQueue.push_back(new WrSegFreezeFlushTask(this, segIdx));
 	m_bgTaskNum++;
 }
@@ -2882,6 +2894,7 @@ void CompositeTable::putToFlushQueue(size_t segIdx) {
 void CompositeTable::putToCompressionQueue(size_t segIdx) {
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
+	assert(m_segments[segIdx]->getWritableStore() != nullptr);
 	if (g_stopCompress) {
 		return;
 	}

@@ -14,6 +14,7 @@
 #include <terark/num_to_str.hpp>
 #include <terark/util/mmap.hpp>
 #include <terark/util/sortable_strvec.hpp>
+#include <terark/util/truncate_file.hpp>
 
 //#define TERARK_DB_ENABLE_DFA_META
 #if defined(TERARK_DB_ENABLE_DFA_META)
@@ -602,6 +603,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		input->m_bookUpdates = true;
 		assert(input->m_updateList.empty());
 	}
+	assert(input->getWritableStore() != nullptr);
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 //	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	llong logicRowNum = input->m_isDel.size();
@@ -921,6 +923,9 @@ ReadableIndexPtr
 ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx) {
 	llong inputRowNum = input->m_isDel.size();
 	assert(inputRowNum > 0);
+	if (m_isDel.size() == m_delcnt) {
+		return new EmptyIndexStore();
+	}
 	const bm_uint_t* isDel = m_isDel.bldata();
 	SortableStrVec strVec;
 	const Schema& schema = m_schema->getIndexSchema(indexId);
@@ -960,12 +965,16 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 ReadableStorePtr
 ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir) {
 	assert(m_isDel.size() == input->m_isDel.size());
+	if (m_isDel.size() == m_delcnt) {
+		return new EmptyIndexStore();
+	}
 	const bm_uint_t* isDel = m_isDel.bldata();
 	const llong inputRowNum = input->m_isDel.size();
 	const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 	const auto& colgroup = *input->m_colgroups[colgroupId];
-	if (schema.getFixedRowLen() && schema.getFixedRowLen() <= 16) {
+	if (should_use_FixedLenStore(schema)) {
 		FixedLenStorePtr store = new FixedLenStore(tmpSegDir, schema);
+		store->reserveRows(m_isDel.size() - m_delcnt);
 		llong physicId = 0;
 		const bm_uint_t* isPurged = input->m_isPurged.bldata();
 		valvec<byte> buf;
@@ -1204,6 +1213,11 @@ ReadonlySegment::openIndex(const Schema& schema, PathRef path) const {
 		store->load(path);
 		return store.release();
 	}
+	if (boost::filesystem::exists(path + ".empty")) {
+		std::unique_ptr<EmptyIndexStore> store(new EmptyIndexStore());
+		store->load(path);
+		return store.release();
+	}
 	return nullptr;
 }
 
@@ -1282,27 +1296,7 @@ void WritableSegment::pushIsDel(bool val) {
 		m_isDelMmap = nullptr;
 		m_isDel.risk_release_ownership();
 		std::string fpath = (m_segDir / "isDel").string();
-#ifdef _MSC_VER
-	{
-		Auto_close_fd fd(::_open(fpath.c_str(), O_CREAT|O_BINARY|O_RDWR, 0644));
-		if (fd < 0) {
-			THROW_STD(logic_error
-				, "FATAL: ::_open(%s, O_CREAT|O_BINARY|O_RDWR) = %s"
-				, fpath.c_str(), strerror(errno));
-		}
-		int err = ::_chsize_s(fd, newCap/8);
-		if (err) {
-			THROW_STD(logic_error, "FATAL: ::_chsize_s(%s, %zd) = %s"
-				, fpath.c_str(), newCap/8, strerror(errno));
-		}
-	}
-#else
-		int err = ::truncate(fpath.c_str(), newCap/8);
-		if (err) {
-			THROW_STD(logic_error, "FATAL: ::truncate(%s, %zd) = %s"
-				, fpath.c_str(), newCap/8, strerror(errno));
-		}
-#endif
+		truncate_file(fpath, newCap/8);
 		m_isDelMmap = loadIsDel_aux(m_segDir, m_isDel);
 		assert(nullptr != m_isDelMmap);
 	}
