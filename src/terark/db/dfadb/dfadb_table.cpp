@@ -1,10 +1,12 @@
 #include "dfadb_table.hpp"
 #include "dfadb_segment.hpp"
 #include <terark/fsa/create_regex_dfa.hpp>
+#include <terark/fsa/dense_dfa.hpp>
 #include <terark/io/FileStream.hpp>
 #include <terark/io/DataIO.hpp>
 #include <terark/num_to_str.hpp>
 #include <terark/util/mmap.hpp>
+#include <terark/db/appendonly.hpp>
 #include <terark/db/mock_db_engine.hpp>
 #include <terark/db/wiredtiger/wt_db_segment.hpp>
 #include <terark/db/dfadb/nlt_index.hpp>
@@ -69,6 +71,12 @@ DfaDbTable::openWritableSegment(PathRef dir) const {
 	}
 }
 
+class AdapterRegexDFA : public DenseDFA_uint32_320 {
+public:
+	typedef AdapterRegexDFA MyType;
+#include <terark/fsa/ppi/match_path.hpp>
+};
+
 bool
 DfaDbTable::indexMatchRegex(size_t indexId, BaseDFA* regexDFA,
 							valvec<llong>* recIdvec, DbContext* ctx)
@@ -95,9 +103,11 @@ const {
 	for (size_t i = 0; i < m_segments.size(); ++i) {
 		auto seg = m_segments[i].get();
 		if (seg->getWritableStore()) {
-			fprintf(stderr
+			if (seg->m_isDel.size() > 0) {
+			  fprintf(stderr
 				, "WARN: segment: %s is a writable segment, can not MatchRegex\n"
 				, getSegPath("wr", i).string().c_str());
+			}
 			continue;
 		}
 		auto index = dynamic_cast<const NestLoudsTrieIndex*>(&*seg->m_indices[indexId]);
@@ -116,10 +126,44 @@ const {
 			}
 			recIdvec->risk_set_size(i);
 		}
+		else if (schema.m_enableLinearScan) {
+			fprintf(stderr
+				, "WARN: RegexMatch exceeded memory limit(%zd bytes) on index '%s' of segment: '%s', try linear scan...\n"
+				, ctx->regexMatchMemLimit
+				, schema.m_name.c_str(), seg->m_segDir.string().c_str());
+			auto matchDFA = static_cast<const AdapterRegexDFA*>(
+					dynamic_cast<const DenseDFA_uint32_320*>(regexDFA)
+				);
+			assert(NULL != matchDFA);
+			valvec<byte> key;
+			size_t subPhysicId = 0;
+			size_t subLogicId = 0;
+			size_t subRowsNum = seg->m_isDel.size();
+			boost::intrusive_ptr<SeqReadAppendonlyStore>
+				seqStore(new SeqReadAppendonlyStore(seg->m_segDir, schema));
+			StoreIteratorPtr iter = seqStore->createStoreIterForward(ctx);
+			const bm_uint_t* isDel = seg->m_isDel.bldata();
+			const bm_uint_t* isPurged = seg->m_isPurged.bldata();
+			const llong baseId = m_rowNumVec[i];
+			for (; subLogicId < subRowsNum; subLogicId++) {
+				if (!isPurged || !terark_bit_test(isPurged, subLogicId)) {
+					llong subCheckPhysicId = INT_MAX; // for fail fast
+					bool hasData = iter->increment(&subCheckPhysicId, &key);
+					TERARK_RT_assert(hasData, std::logic_error);
+					TERARK_RT_assert(size_t(subCheckPhysicId) == subPhysicId, std::logic_error);
+					if (!terark_bit_test(isDel, subLogicId)) {
+						if (matchDFA->first_mismatch_pos(key) == key.size()) {
+							recIdvec->push_back(baseId + subLogicId);
+						}
+					}
+					subPhysicId++;
+				}
+			}
+		}
 		else { // failed because exceeded memory limit
 			// should fallback to use linear scan?
 			fprintf(stderr
-				, "RegexMatch exceeded memory limit(%zd bytes) on index '%s' of segment: '%s'\n"
+				, "ERROR: RegexMatch exceeded memory limit(%zd bytes) on index '%s' of segment: '%s', and linear scan is not enabled, failed!\n"
 				, ctx->regexMatchMemLimit
 				, schema.m_name.c_str(), seg->m_segDir.string().c_str());
 		}

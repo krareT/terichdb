@@ -69,6 +69,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, const char* textKeyFil
 	valvec<llong> recIdvec;
 	profiling pf;
 	llong tt = 0;
+	ctx->regexMatchMemLimit = 16*1024;
 	while (line.getline(fp) > 0) {
 		lineno++;
 		line.chomp();
