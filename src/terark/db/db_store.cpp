@@ -23,12 +23,15 @@ typedef hash_strmap< std::function<ReadableStore*(const Schema& schema)>
 					, ValueInline, SafeCopy
 					>
 		StoreFactory;
-static	StoreFactory s_storeFactory;
+static	StoreFactory& s_storeFactory() {
+	static StoreFactory instance;
+	return instance;
+}
 
 ReadableStore::RegisterStoreFactory::RegisterStoreFactory
 (const char* fnameSuffix, const std::function<ReadableStore*(const Schema& schema)>& f)
 {
-	auto ib = s_storeFactory.insert_i(fnameSuffix, f);
+	auto ib = s_storeFactory().insert_i(fnameSuffix, f);
 	assert(ib.second);
 	if (!ib.second)
 		THROW_STD(invalid_argument, "duplicate suffix: %s", fnameSuffix);
@@ -44,14 +47,16 @@ ReadableStore* ReadableStore::openStore(const Schema& schema, PathRef segDir, fs
 	size_t sufpos = fname.size();
 	while (sufpos > 0 && fname[sufpos-1] != '.') --sufpos;
 	auto suffix = fname.substr(sufpos);
-	size_t idx = s_storeFactory.find_i(suffix);
-	if (idx < s_storeFactory.end_i()) {
-		const auto& factory = s_storeFactory.val(idx);
+	size_t idx = s_storeFactory().find_i(suffix);
+	if (idx < s_storeFactory().end_i()) {
+		const auto& factory = s_storeFactory().val(idx);
 		ReadableStore* store = factory(schema);
 		assert(NULL != store);
 		if (NULL == store) {
 			THROW_STD(runtime_error, "store factory should not return NULL store");
 		}
+	//	fstring baseName = fname.substr(0, sufpos-1);
+	//	auto fpath = segDir / baseName.str();
 		auto fpath = segDir / fname.str();
 		store->load(fpath);
 		return store;
@@ -106,9 +111,10 @@ namespace {
 			}
 			return false;
 		}
-		bool seekExact(llong  id, valvec<byte>* val) override {
-			if (id <= m_rows) {
-				m_id = m_rows;
+		bool seekExact(llong id, valvec<byte>* val) override {
+			if (id < m_rows) {
+				m_store->getValue(id, val, m_ctx.get());
+				m_id = id + 1;
 				return true;
 			}
 			return false;
@@ -138,8 +144,9 @@ namespace {
 			return false;
 		}
 		bool seekExact(llong  id, valvec<byte>* val) override {
-			if (id <= m_rows) {
-				m_id = m_rows;
+			if (id > 0) {
+				m_store->getValue(id-1, val, m_ctx.get());
+				m_id = id - 1;
 				return true;
 			}
 			return false;
