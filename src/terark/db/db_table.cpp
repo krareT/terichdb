@@ -2814,7 +2814,7 @@ class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
 public:
 	CompressionThreadsList() {
 		size_t n = tbb::tbb_thread::hardware_concurrency();
-		if (const char* env = getenv("TerarkDbCompressionThreadsNum")) {
+		if (const char* env = getenv("TerarkDB_CompressionThreadsNum")) {
 			size_t n2 = atoi(env);
 			n = std::min(n, n2);
 		}
