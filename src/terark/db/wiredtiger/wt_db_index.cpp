@@ -365,7 +365,7 @@ const {
 		m_wtCursor->set_key(m_wtCursor, &item);
 		int err = m_wtCursor->search(m_wtCursor);
 		if (err == WT_NOTFOUND) {
-			return -1;
+			return 0;
 		}
 		if (err) {
 			THROW_STD(invalid_argument
@@ -383,6 +383,9 @@ const {
 		m_wtCursor->set_key(m_wtCursor, &item, llong(-1));
 		int cmp;
 		int err = m_wtCursor->search_near(m_wtCursor, &cmp);
+		if (WT_NOTFOUND == err) {
+			return 0;
+		}
 		if (err) {
 			THROW_STD(invalid_argument
 				, "FATAL: wiredtiger search_near(dir=%s, uri=%s, key=%s) = %s"
@@ -400,7 +403,7 @@ const {
 					memcmp(item2.data, item.data, item.size) == 0)
 				{
 					recIdvec->push_back(id);
-					m_wtCursor->next(m_wtCursor);
+					err = m_wtCursor->next(m_wtCursor);
 				}
 				else break;
 			}
