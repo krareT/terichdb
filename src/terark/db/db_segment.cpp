@@ -376,6 +376,19 @@ const {
 	}
 }
 
+void ReadonlySegment::selectColgroups(llong recId,
+						const size_t* cgIdvec, size_t cgIdvecSize,
+						valvec<byte>* cgDataVec, DbContext* ctx) const {
+	for(size_t i = 0; i < cgIdvecSize; ++i) {
+		size_t cgId = cgIdvec[i];
+		if (cgId >= m_schema->getColgroupNum()) {
+			THROW_STD(out_of_range, "cgId = %zd, cgNum = %zd"
+				, cgId, m_schema->getColgroupNum());
+		}
+		m_colgroups[cgId]->getValue(recId, &cgDataVec[cgId], ctx);
+	}
+}
+
 class ReadonlySegment::MyStoreIterForward : public StoreIterator {
 	llong  m_id = 0;
 	DbContextPtr m_ctx;
@@ -1478,6 +1491,30 @@ const {
 			size_t wrtColumnId = m_schema->m_rowSchemaColToWrtCol[columnId];
 			assert(wrtColumnId < wrtSchema.columnNum());
 			wrtSchema.projectToLast(ctx->cols1[wrtColumnId], columnId, colsData);
+		}
+	}
+}
+
+void WritableSegment::selectColgroups(llong recId,
+						const size_t* cgIdvec, size_t cgIdvecSize,
+						valvec<byte>* cgDataVec, DbContext* ctx) const {
+	for(size_t i = 0; i < cgIdvecSize; ++i) {
+		size_t cgId = cgIdvec[i];
+		if (cgId >= m_schema->getColgroupNum()) {
+			THROW_STD(out_of_range, "cgId = %zd, cgNum = %zd"
+				, cgId, m_schema->getColgroupNum());
+		}
+		const ReadableStore* store = m_colgroups[cgId].get();
+		if (store) {
+			// inplace updatable store
+			assert(store->getRecordsBasePtr() != NULL);
+			store->getValue(recId, &cgDataVec[cgId], ctx);
+		}
+		else {
+			const Schema& schema = m_schema->getColgroupSchema(cgId);
+			const valvec<size_t>& colsIdvec = schema.getProj();
+			selectColumns(recId, colsIdvec.data(), colsIdvec.size(),
+						  &cgDataVec[cgId], ctx);
 		}
 	}
 }

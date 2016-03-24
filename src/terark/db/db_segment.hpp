@@ -35,6 +35,9 @@ public:
 	virtual void selectOneColumn(llong recId, size_t columnId,
 								 valvec<byte>* colsData, DbContext*) const = 0;
 
+	virtual void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
+								 valvec<byte>* cgDataVec, DbContext*) const = 0;
+
 	void openIndices(PathRef dir);
 	void saveIndices(PathRef dir) const;
 	llong totalIndexSize() const;
@@ -110,6 +113,9 @@ public:
 					   valvec<byte>* colsData, DbContext*) const override;
 	void selectOneColumn(llong recId, size_t columnId,
 						 valvec<byte>* colsData, DbContext*) const override;
+
+	void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
+						 valvec<byte>* cgDataVec, DbContext*) const override;
 
 	void load(PathRef segDir) override;
 	void save(PathRef segDir) const override;
@@ -203,6 +209,9 @@ public:
 	void selectColumnsCombine(llong recId,
 							  const size_t* colsId, size_t colsNum,
 							  valvec<byte>* colsData, DbContext*) const;
+
+	void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
+						 valvec<byte>* cgDataVec, DbContext*) const override;
 
 	void flushSegment();
 

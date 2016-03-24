@@ -83,6 +83,15 @@ public:
 	}
 	size_t getIndexNum() const { return m_schema->getIndexNum(); }
 
+	const Schema& getColgroupSchema(size_t cgId) const {
+		assert(cgId < m_schema->getColgroupNum());
+		return *m_schema->m_colgroupSchemaSet->m_nested.elem_at(cgId);
+	}
+	size_t getColgroupId(fstring cgName) const {
+		return m_schema->m_colgroupSchemaSet->m_nested.find_i(cgName);
+	}
+	size_t getColgroupNum() const { return m_schema->getColgroupNum(); }
+
 	void indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext*) const;
 	bool indexKeyExists(size_t indexId, fstring key, DbContext*) const;
 	
@@ -110,6 +119,13 @@ public:
 					   valvec<byte>* colsData, DbContext*) const;
 	void selectOneColumn(llong id, size_t columnId,
 						 valvec<byte>* colsData, DbContext*) const;
+
+	void selectColgroups(llong id, const valvec<size_t>& cgIdvec,
+						 valvec<valvec<byte> >* cgDataVec, DbContext*) const;
+	void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
+						 valvec<byte>* cgDataVec, DbContext*) const;
+
+	void selectOneColgroup(llong id, size_t cgId, valvec<byte>* cgData, DbContext*) const;
 
 #if 0
 	StoreIteratorPtr

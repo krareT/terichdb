@@ -1807,6 +1807,32 @@ const {
 	m_segments[upp-1]->selectOneColumn(id - baseId, columnId, colsData, ctx);
 }
 
+void CompositeTable::selectColgroups(llong recId, const valvec<size_t>& cgIdvec,
+						valvec<valvec<byte> >* cgDataVec, DbContext* ctx) const {
+	cgDataVec->resize(cgIdvec.size());
+	selectColgroups(recId, cgIdvec.data(), cgIdvec.size(), cgDataVec->data(), ctx);
+}
+void CompositeTable::selectColgroups(llong recId,
+						const size_t* cgIdvec, size_t cgIdvecSize,
+						valvec<byte>* cgDataVec, DbContext* ctx) const {
+	MyRwLock lock(m_rwMutex, false);
+	DebugCheckRowNumVecNoLock(this);
+	llong rows = m_rowNumVec.back();
+	if (recId < 0 || recId >= rows) {
+		THROW_STD(out_of_range, "recId = %lld, rows=%lld", recId, rows);
+	}
+	size_t upp = upper_bound_a(m_rowNumVec, recId);
+	llong baseId = m_rowNumVec[upp-1];
+	llong subId = recId - baseId;
+	assert(recId >= baseId);
+	m_segments[upp-1]->selectColgroups(subId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+}
+
+void CompositeTable::selectOneColgroup(llong recId, size_t cgId,
+						valvec<byte>* cgData, DbContext* ctx) const {
+	selectColgroups(recId, &cgId, 1, cgData, ctx);
+}
+
 #if 0
 StoreIteratorPtr
 CompositeTable::createProjectIterForward(const valvec<size_t>& cols, DbContext* ctx)

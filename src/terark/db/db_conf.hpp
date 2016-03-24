@@ -167,6 +167,7 @@ namespace terark { namespace db {
 			assert(myColumnId < m_proj.size());
 			return m_proj[myColumnId];
 		}
+		const valvec<size_t>& getProj() const { return m_proj; }
 
 		void byteLexConvert(valvec<byte>&) const;
 		void byteLexConvert(byte* data, size_t size) const;
@@ -245,7 +246,7 @@ namespace terark { namespace db {
 		valvec<ColumnLink> m_columnsLink;
 	*/
 		const Schema*    m_parent;
-		valvec<unsigned> m_proj;
+		valvec<size_t>   m_proj;
 
 	public:
 		// Helpers for define & serializing object
