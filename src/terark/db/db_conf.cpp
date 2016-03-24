@@ -2048,6 +2048,10 @@ if (colgroupsIter != meta.end()) {
 //		indexSchema->m_isPrimary = getJsonValue(index, "primary", false);
 		indexSchema->m_isUnique  = getJsonValue(index, "unique" , false);
 		indexSchema->m_enableLinearScan = getJsonValue(index, "enableLinearScan", false);
+		indexSchema->m_rankSelectClass = getJsonValue(index, "rs", 512);
+		indexSchema->m_nltNestLevel = (byte)limitInBound(
+			getJsonValue(index, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
+
 /*
 		if (indexSchema->m_isPrimary) {
 			if (hasPrimaryIndex) {
