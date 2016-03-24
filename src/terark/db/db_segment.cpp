@@ -385,7 +385,7 @@ void ReadonlySegment::selectColgroups(llong recId,
 			THROW_STD(out_of_range, "cgId = %zd, cgNum = %zd"
 				, cgId, m_schema->getColgroupNum());
 		}
-		m_colgroups[cgId]->getValue(recId, &cgDataVec[cgId], ctx);
+		m_colgroups[cgId]->getValue(recId, &cgDataVec[i], ctx);
 	}
 }
 
@@ -1508,13 +1508,13 @@ void WritableSegment::selectColgroups(llong recId,
 		if (store) {
 			// inplace updatable store
 			assert(store->getRecordsBasePtr() != NULL);
-			store->getValue(recId, &cgDataVec[cgId], ctx);
+			store->getValue(recId, &cgDataVec[i], ctx);
 		}
 		else {
 			const Schema& schema = m_schema->getColgroupSchema(cgId);
 			const valvec<size_t>& colsIdvec = schema.getProj();
 			selectColumns(recId, colsIdvec.data(), colsIdvec.size(),
-						  &cgDataVec[cgId], ctx);
+						  &cgDataVec[i], ctx);
 		}
 	}
 }
