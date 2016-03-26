@@ -1119,16 +1119,15 @@ CompositeTable::updateColumn(llong recordId, fstring colname,
 	updateColumn(recordId, columnId, newColumnData);
 }
 
-namespace {
-	template<class WireType, class LlongOrFloat, class OP>
-	bool updateValueByOp(byte& byteRef, const OP& op) {
-		LlongOrFloat val = reinterpret_cast<WireType&>(byteRef);
-		if (op(val)) {
-			reinterpret_cast<WireType&>(byteRef) = val;
-			return true;
-		}
-		return false;
+template<class WireType, class LlongOrFloat, class OP>
+static inline
+bool updateValueByOp(byte& byteRef, const OP& op) {
+	LlongOrFloat val = reinterpret_cast<WireType&>(byteRef);
+	if (op(val)) {
+		reinterpret_cast<WireType&>(byteRef) = val;
+		return true;
 	}
+	return false;
 }
 
 void

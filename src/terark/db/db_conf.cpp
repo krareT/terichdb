@@ -10,6 +10,7 @@
 #include <terark/util/linebuf.hpp>
 #include <string.h>
 #include "json.hpp"
+#include <boost/algorithm/string/join.hpp>
 
 namespace terark { namespace db {
 
@@ -1894,6 +1895,31 @@ parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 		getJsonValue(js, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
 }
 
+static
+std::vector<std::string>
+parseJsonFields(const terark::json& js) {
+	std::vector<std::string> fields;
+	if (js.is_array()) {
+		for(auto j = js.begin(); js.end() != j; ++j) {
+			std::string oneField = j.value();
+			fields.push_back(oneField);
+		}
+	}
+	else if (js.is_string()) {
+		const std::string& strFields = js;
+		fstring(strFields).split(',', &fields);
+		if (fields.size() > Schema::MaxProjColumns) {
+			THROW_STD(invalid_argument, "Index Columns=%zd exceeds Max=%zd"
+				, fields.size(), Schema::MaxProjColumns);
+		}
+	}
+	else {
+		THROW_STD(invalid_argument
+			, "fields: must be comma separeated string or string array");
+	}
+	return fields;
+}
+
 void SchemaConfig::loadJsonString(fstring jstr) {
 	using terark::json;
 	const json meta = json::parse(jstr.p
@@ -1965,12 +1991,8 @@ if (colgroupsIter != meta.end()) {
 		SchemaPtr schema(new Schema());
 		auto fieldsIter = colgrp.find("fields");
 		if (colgrp.end() != fieldsIter) {
-			const json& fields = fieldsIter.value();
-			if (!fields.is_array()) {
-				THROW_STD(invalid_argument, "json colgroup fields must be an array");
-			}
-			for(auto j = fields.begin(); fields.end() != j; ++j) {
-				std::string colname = j.value();
+			auto fields = parseJsonFields(fieldsIter.value());
+			for(const auto& colname : fields) {
 				size_t columnId = m_rowSchema->getColumnId(colname);
 				if (columnId >= m_rowSchema->columnNum()) {
 					THROW_STD(invalid_argument,
@@ -2022,13 +2044,17 @@ if (colgroupsIter != meta.end()) {
 //	bool hasPrimaryIndex = false;
 	for (const auto& index : tableIndex) {
 		SchemaPtr indexSchema(new Schema());
-		const std::string& strFields = index["fields"];
-		indexSchema->m_name = strFields;
-		std::vector<std::string> fields;
-		fstring(strFields).split(',', &fields);
+		std::vector<std::string> fields = parseJsonFields(index["fields"]);
 		if (fields.size() > Schema::MaxProjColumns) {
 			THROW_STD(invalid_argument, "Index Columns=%zd exceeds Max=%zd",
 				fields.size(), Schema::MaxProjColumns);
+		}
+		auto nameIter = index.find("name");
+		if (index.end() != nameIter) {
+			std::string nameStr = nameIter.value();
+			indexSchema->m_name = std::move(nameStr);
+		} else {
+			indexSchema->m_name = boost::join(fields, ",");
 		}
 		for (const std::string& colname : fields) {
 			const size_t k = m_rowSchema->getColumnId(colname);
@@ -2042,7 +2068,7 @@ if (colgroupsIter != meta.end()) {
 		auto ib = m_indexSchemaSet->m_nested.insert_i(indexSchema);
 		if (!ib.second) {
 			THROW_STD(invalid_argument,
-				"duplicate index: %s", strFields.c_str());
+				"duplicate index name: %s", indexSchema->m_name.c_str());
 		}
 		indexSchema->m_isOrdered = getJsonValue(index, "ordered", true);
 //		indexSchema->m_isPrimary = getJsonValue(index, "primary", false);
