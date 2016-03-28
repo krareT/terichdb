@@ -89,9 +89,9 @@ namespace terark { namespace db {
 		uint32_t reserved0;
 	//	static_bitmap<16, uint16_t> flags;
 		unsigned char reserved1;
-		unsigned char reserved2;
+		unsigned char mysqlType;
 		ColumnType type;
-		unsigned char uType; // user column type, such as mongodb type
+		unsigned char mongoType; // user column type, such as mongodb type
 		ColumnMeta();
 		bool isInteger() const;
 		bool isNumber() const;

@@ -893,9 +893,9 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	for (size_t i = 0; i < schemaColumn; ++i) {
 		fstring     colname = schema->m_columnsMeta.key(i);
 		const auto& colmeta = schema->m_columnsMeta.val(i);
-		bb.writeByte(colmeta.uType);
+		bb.writeByte(colmeta.mongoType);
 		bb.ensureWrite(colname.data(), colname.size()+1); // include '\0'
-		switch ((signed char)colmeta.uType) {
+		switch ((signed char)colmeta.mongoType) {
 		case EOO:
 			invariant(!"terarkDecodeBsonElemVal: encountered EOO");
 			break;
@@ -1047,7 +1047,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		default:
 			{
 				StringBuilder ss;
-				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.uType;
+				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.mongoType;
 				std::string msg = ss.str();
 				massert(10320, msg.c_str(), false);
 			}
@@ -1220,9 +1220,9 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 	for (size_t i = 0; i < colnum; ++i) {
 		fstring     colname = indexSchema.m_columnsMeta.key(i);
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
-		bb.writeByte(colmeta.uType);
+		bb.writeByte(colmeta.mongoType);
 		bb.ensureWrite(colname.data(), colname.size()+1); // include '\0'
-		switch ((signed char)colmeta.uType) {
+		switch ((signed char)colmeta.mongoType) {
 		case EOO:
 			invariant(!"terarkDecodeBsonElemVal: encountered EOO");
 			break;
@@ -1314,7 +1314,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 		default:
 			{
 				StringBuilder ss;
-				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.uType;
+				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.mongoType;
 				std::string msg = ss.str();
 				massert(10320, msg.c_str(), false);
 			}

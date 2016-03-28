@@ -19,18 +19,18 @@ ColumnMeta::ColumnMeta() {
 	fixedOffset = UINT32_MAX;
 	reserved0 = 0;
 	reserved1 = 0;
-	reserved2 = 0;
+	mysqlType = 0;
 	type = ColumnType::Any;
-	uType = 255; // unknown
+	mongoType = 255; // unknown
 }
 
 ColumnMeta::ColumnMeta(ColumnType t) {
 	fixedOffset = UINT32_MAX;
 	reserved0 = 0;
 	reserved1 = 0;
-	reserved2 = 0;
+	mysqlType = 0;
 	type = t;
-	uType = 255;
+	mongoType = 255;
 	switch (t) {
 	default:
 		THROW_STD(runtime_error, "Invalid data row");
@@ -1920,12 +1920,217 @@ parseJsonFields(const terark::json& js) {
 	return fields;
 }
 
+static bool string_equal_nocase(fstring x, fstring y) {
+	if (x.size() != y.size())
+		return false;
+#if defined(_MSC_VER)
+	return _strnicmp(x.data(), y.data(), x.size()) == 0;
+#else
+	return strncasecmp(x.data(), y.data(), x.size()) == 0;
+#endif
+}
+
+namespace MongoBson {
+/**
+    the complete list of valid BSON types
+    see also bsonspec.org
+*/
+enum BSONType {
+    /** smaller than all other types */
+//    MinKey = -1,
+    /** end of object */
+//    EOO = 0,
+    /** double precision floating point value */
+    NumberDouble = 1,
+    /** character string, stored in utf8 */
+    String = 2,
+    /** an embedded object */
+    Object = 3,
+    /** an embedded array */
+    Array = 4,
+    /** binary data */
+    BinData = 5,
+    /** Undefined type */
+    Undefined = 6,
+    /** ObjectId */
+    jstOID = 7,
+    /** boolean type */
+    Bool = 8,
+    /** date type */
+    Date = 9,
+    /** null type */
+    jstNULL = 10,
+    /** regular expression, a pattern with options */
+    RegEx = 11,
+    /** deprecated / will be redesigned */
+    DBRef = 12,
+    /** deprecated / use CodeWScope */
+    Code = 13,
+    /** a programming language (e.g., Python) symbol */
+    Symbol = 14,
+    /** javascript code that can execute on the database server, with SavedContext */
+    CodeWScope = 15,
+    /** 32 bit signed integer */
+    NumberInt = 16,
+    /** Two 32 bit signed integers */
+    bsonTimestamp = 17,
+    /** 64 bit integer */
+    NumberLong = 18,
+    /** 128 bit decimal */
+    NumberDecimal = 19,
+    /** max type that is not MaxKey */
+//    JSTypeMax = Decimal128::enabled ? 19 : 18,
+    /** larger than all other types */
+//    MaxKey = 127
+};
+}
+static int getMongoTypeDefault(ColumnType terarkType) {
+	switch (terarkType) {
+	default:
+		THROW_STD(runtime_error,
+			"Invalid terark type = %d", int(terarkType));
+		break;
+	case ColumnType::Any:
+		abort(); // Any is not implemented yet
+		break;
+	case ColumnType::Uint08:
+	case ColumnType::Sint08:
+		return MongoBson::NumberInt;
+	case ColumnType::Uint16:
+	case ColumnType::Sint16:
+		return MongoBson::NumberInt;
+	case ColumnType::Uint32:
+	case ColumnType::Sint32:
+		return MongoBson::NumberInt;
+	case ColumnType::Uint64:
+	case ColumnType::Sint64:
+		return MongoBson::NumberLong;
+	case ColumnType::Uint128:
+	case ColumnType::Sint128:
+		return MongoBson::NumberLong;
+	case ColumnType::Float32:
+	case ColumnType::Float64:
+		return MongoBson::NumberDouble;
+	case ColumnType::Float128:
+		return MongoBson::NumberDecimal;
+	case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+	case ColumnType::Fixed:   // Fixed length binary
+		return MongoBson::BinData;
+	case ColumnType::VarSint: abort(); break;
+	case ColumnType::VarUint: abort(); break;
+	case ColumnType::StrZero: // Zero ended string
+		return MongoBson::String;
+	case ColumnType::TwoStrZero: // Two Zero ended strings
+		return MongoBson::RegEx;
+	case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+		THROW_STD(invalid_argument,
+			"Must explicit define mongo bson type for terark's <binary> type");
+	case ColumnType::CarBin: // Prefixed by uint32 len
+		return MongoBson::BinData;
+	}
+	return -1;
+}
+static int getMongoTypeChecked(ColumnType terarkType, fstring mongoTypeName) {
+	if (string_equal_nocase(mongoTypeName, "bool")) {
+		if (ColumnMeta(terarkType).isInteger()) {
+			return MongoBson::Bool;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType bool must map to terark integer types");
+	}
+	if (string_equal_nocase(mongoTypeName, "int")) {
+		if (ColumnMeta(terarkType).isNumber()) {
+			return MongoBson::NumberInt;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType bool must map to terark number types");
+	}
+	if (string_equal_nocase(mongoTypeName, "long")) {
+		if (ColumnMeta(terarkType).isNumber()) {
+			return MongoBson::NumberLong;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType long must map to terark type number types");
+	}
+	if (string_equal_nocase(mongoTypeName, "double")) {
+		if (ColumnType::Float64 != terarkType && ColumnType::Float32 != terarkType) {
+			return MongoBson::NumberDouble;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType double must map to terark type double/float32/float64");
+	}
+	if (string_equal_nocase(mongoTypeName, "date")) {
+		if (0 || ColumnType::Sint32 == terarkType || ColumnType::Uint32 == terarkType
+			  || ColumnType::Sint64 == terarkType || ColumnType::Uint64 == terarkType
+		) {
+			return MongoBson::Date;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType date must map to terark type int32/uint32/int64/uint64");
+	}
+	if (string_equal_nocase(mongoTypeName, "timestamp")) {
+		if (ColumnType::Sint64 == terarkType || ColumnType::Uint64 == terarkType) {
+			return MongoBson::bsonTimestamp;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType timestamp must map to terark type int64/uint64");
+	}
+	if (string_equal_nocase(mongoTypeName, "binary") ||
+		string_equal_nocase(mongoTypeName, "bindata")) {
+		if (ColumnType::CarBin == terarkType) {
+			return MongoBson::BinData;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType binary must map to terark type CarBin");
+	}
+	if (string_equal_nocase(mongoTypeName, "array")) {
+		if (ColumnType::CarBin == terarkType) {
+			return MongoBson::Array;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType array must map to terark type CarBin");
+	}
+	if (string_equal_nocase(mongoTypeName, "object")) {
+		if (ColumnType::CarBin == terarkType) {
+			return MongoBson::Object;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType object must map to terark type CarBin");
+	}
+	if (string_equal_nocase(mongoTypeName, "regex")) {
+		if (ColumnType::TwoStrZero == terarkType) {
+			return MongoBson::bsonTimestamp;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType regex must map to terark type TwoStrZero");
+	}
+
+#define MongoTypeAsTerarkStrZero(MongoType) \
+	if (string_equal_nocase(mongoTypeName, "string")) { \
+		if (ColumnType::StrZero == terarkType) { \
+			return MongoBson::MongoType; \
+		} \
+		THROW_STD(invalid_argument, \
+			"mongoType " #MongoType " must map to terark type StrZero"); \
+	}
+	MongoTypeAsTerarkStrZero(String);
+	MongoTypeAsTerarkStrZero(DBRef);
+	MongoTypeAsTerarkStrZero(Code);
+	MongoTypeAsTerarkStrZero(CodeWScope);
+	MongoTypeAsTerarkStrZero(Symbol);
+
+	THROW_STD(invalid_argument, "unknown mongo bson type: %.*s"
+		, mongoTypeName.ilen(), mongoTypeName.data());
+}
+
 void SchemaConfig::loadJsonString(fstring jstr) {
 	using terark::json;
 	const json meta = json::parse(jstr.p
 					// UTF8 BOM Check, fixed in nlohmann::json
 					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
 					);
+	const bool checkMongoType = getJsonValue(meta, "checkMongoType", false);
+	const bool checkMysqlType = getJsonValue(meta, "checkMysqlType", false);
 	const json& rowSchema = meta["RowSchema"];
 	const json& cols = rowSchema["columns"];
 	m_rowSchema.reset(new Schema());
@@ -1945,7 +2150,8 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		if (ColumnType::Fixed == colmeta.type) {
 			colmeta.fixedLen = col["length"];
 		}
-		colmeta.uType = (byte)getJsonValue(col, "uType", (int)colmeta.uType);
+		colmeta.mongoType = (byte)getJsonValue(col, "mongoType", (int)colmeta.mongoType);
+		colmeta.mysqlType = (byte)getJsonValue(col, "mysqlType", (int)colmeta.mysqlType);
 		auto colstoreIter = col.find("colstore");
 		if (col.end() != colstoreIter) {
 			// this colstore has the only-one 'name' field
