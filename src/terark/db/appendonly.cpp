@@ -322,7 +322,13 @@ void SeqReadAppendonlyStore::shrinkToFit() {
 
 void SeqReadAppendonlyStore::deleteFiles() {
 	m_io.reset();
-	boost::filesystem::remove(m_fpath);
+	try {
+		boost::filesystem::remove(m_fpath);
+	}
+	catch (const std::exception& ex) {
+		fprintf(stderr, "ERROR: remove(%s) = %s\n", m_fpath.c_str(), ex.what());
+		throw;
+	}
 }
 
 void SeqReadAppendonlyStore::load(PathRef fpath) {

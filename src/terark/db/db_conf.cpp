@@ -1908,10 +1908,6 @@ parseJsonFields(const terark::json& js) {
 	else if (js.is_string()) {
 		const std::string& strFields = js;
 		fstring(strFields).split(',', &fields);
-		if (fields.size() > Schema::MaxProjColumns) {
-			THROW_STD(invalid_argument, "Index Columns=%zd exceeds Max=%zd"
-				, fields.size(), Schema::MaxProjColumns);
-		}
 	}
 	else {
 		THROW_STD(invalid_argument
@@ -1995,7 +1991,7 @@ static int getMongoTypeDefault(ColumnType terarkType) {
 		break;
 	case ColumnType::Uint08:
 	case ColumnType::Sint08:
-		return MongoBson::NumberInt;
+		return MongoBson::Bool;
 	case ColumnType::Uint16:
 	case ColumnType::Sint16:
 		return MongoBson::NumberInt;
@@ -2026,7 +2022,7 @@ static int getMongoTypeDefault(ColumnType terarkType) {
 		THROW_STD(invalid_argument,
 			"Must explicit define mongo bson type for terark's <binary> type");
 	case ColumnType::CarBin: // Prefixed by uint32 len
-		return MongoBson::BinData;
+		return MongoBson::Object;
 	}
 	return -1;
 }

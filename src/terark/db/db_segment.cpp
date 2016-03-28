@@ -690,6 +690,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 			if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
 				StoreIteratorPtr iter = tmpStore->ensureStoreIterForward(NULL);
 				m_colgroups[i] = buildDictZipStore(schema, tmpDir, *iter, NULL, NULL);
+				iter.reset();
 				tmpStore->deleteFiles();
 				continue;
 			}

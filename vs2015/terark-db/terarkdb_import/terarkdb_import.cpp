@@ -36,7 +36,6 @@ GetoptDone:
 		return 1;
 	}
 	const char* dbdir = argv[optind + 0];
-	terark::db::CompositeTable::setCompressionThreadsNum(compressionThreadsNum);
 	terark::db::CompositeTablePtr tab(terark::db::CompositeTable::createTable("DfaDbTable"));
 	terark::db::DbContextPtr ctx = tab->createDbContext();
 	tab->load(dbdir);
