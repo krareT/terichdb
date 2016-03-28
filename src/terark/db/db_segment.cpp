@@ -1505,7 +1505,7 @@ void WritableSegment::selectColgroups(llong recId,
 			THROW_STD(out_of_range, "cgId = %zd, cgNum = %zd"
 				, cgId, m_schema->getColgroupNum());
 		}
-		const ReadableStore* store = m_colgroups[cgId].get();
+		const ReadableStore* store = m_colgroups.empty() ? NULL : m_colgroups[cgId].get();
 		if (store) {
 			// inplace updatable store
 			assert(store->getRecordsBasePtr() != NULL);
