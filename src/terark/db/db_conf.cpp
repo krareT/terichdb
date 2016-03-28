@@ -2150,8 +2150,18 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		if (ColumnType::Fixed == colmeta.type) {
 			colmeta.fixedLen = col["length"];
 		}
-		colmeta.mongoType = (byte)getJsonValue(col, "mongoType", (int)colmeta.mongoType);
-		colmeta.mysqlType = (byte)getJsonValue(col, "mysqlType", (int)colmeta.mysqlType);
+	//	colmeta.mongoType = (byte)getJsonValue(col, "mongoType", (int)colmeta.mongoType);
+	//	colmeta.mysqlType = (byte)getJsonValue(col, "mysqlType", (int)colmeta.mysqlType);
+		if (checkMongoType) {
+			std::string mongoTypeName = getJsonValue(col, "mongoType", std::string());
+			if (mongoTypeName.empty())
+				colmeta.mongoType = getMongoTypeDefault(colmeta.type);
+			else
+				colmeta.mongoType = getMongoTypeChecked(colmeta.type, mongoTypeName);
+		}
+		if (checkMysqlType) {
+			std::string mysqlTypeName = getJsonValue(col, "mysqlType", std::string());
+		}
 		auto colstoreIter = col.find("colstore");
 		if (col.end() != colstoreIter) {
 			// this colstore has the only-one 'name' field
