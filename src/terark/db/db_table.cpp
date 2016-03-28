@@ -1976,12 +1976,12 @@ public:
 		}
 		size_t avgSegRows = sumSegRows / this->size();
 
-		// find max range in which every seg rows < avg*1.5
+		// find max range in which every seg rows < avg*1.75
 		size_t rngBeg = 0, rngLen = 0;
 		for(size_t j = 0; j < this->size(); ) {
 			size_t k = j;
 			for (; k < this->size(); ++k) {
-				if (this->p[k].seg->m_isDel.size() > avgSegRows*3/2)
+				if (this->p[k].seg->m_isDel.size() > avgSegRows*7/4)
 					break;
 			}
 			if (k - j > rngLen) {
