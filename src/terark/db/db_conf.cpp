@@ -1980,11 +1980,11 @@ enum BSONType {
 //    MaxKey = 127
 };
 }
-static int getMongoTypeDefault(ColumnType terarkType) {
-	switch (terarkType) {
+static int getMongoTypeDefault(const ColumnMeta& colmeta) {
+	switch (colmeta.type) {
 	default:
 		THROW_STD(runtime_error,
-			"Invalid terark type = %d", int(terarkType));
+			"Invalid terark type = %d", int(colmeta.type));
 		break;
 	case ColumnType::Any:
 		abort(); // Any is not implemented yet
@@ -2026,23 +2026,31 @@ static int getMongoTypeDefault(ColumnType terarkType) {
 	}
 	return -1;
 }
-static int getMongoTypeChecked(ColumnType terarkType, fstring mongoTypeName) {
+static int getMongoTypeChecked(const ColumnMeta& colmeta, fstring mongoTypeName) {
+	ColumnType terarkType = colmeta.type;
+	if (string_equal_nocase(mongoTypeName, "oid")) {
+		if (12 == colmeta.fixedLen) {
+			return MongoBson::jstOID;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType oid must map to terark type fixed, length = 12");
+	}
 	if (string_equal_nocase(mongoTypeName, "bool")) {
-		if (ColumnMeta(terarkType).isInteger()) {
+		if (colmeta.isInteger()) {
 			return MongoBson::Bool;
 		}
 		THROW_STD(invalid_argument,
 			"mongoType bool must map to terark integer types");
 	}
 	if (string_equal_nocase(mongoTypeName, "int")) {
-		if (ColumnMeta(terarkType).isNumber()) {
+		if (colmeta.isNumber()) {
 			return MongoBson::NumberInt;
 		}
 		THROW_STD(invalid_argument,
 			"mongoType bool must map to terark number types");
 	}
 	if (string_equal_nocase(mongoTypeName, "long")) {
-		if (ColumnMeta(terarkType).isNumber()) {
+		if (colmeta.isNumber()) {
 			return MongoBson::NumberLong;
 		}
 		THROW_STD(invalid_argument,
@@ -2151,9 +2159,9 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		if (checkMongoType) {
 			std::string mongoTypeName = getJsonValue(col, "mongoType", std::string());
 			if (mongoTypeName.empty())
-				colmeta.mongoType = getMongoTypeDefault(colmeta.type);
+				colmeta.mongoType = getMongoTypeDefault(colmeta);
 			else
-				colmeta.mongoType = getMongoTypeChecked(colmeta.type, mongoTypeName);
+				colmeta.mongoType = getMongoTypeChecked(colmeta, mongoTypeName);
 		}
 		if (checkMysqlType) {
 			std::string mysqlTypeName = getJsonValue(col, "mysqlType", std::string());
