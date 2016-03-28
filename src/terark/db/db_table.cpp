@@ -1284,7 +1284,7 @@ const {
 	MyRwLock lock(m_rwMutex, false);
 	for (size_t i = m_segments.size(); i > 0; ) {
 		auto seg = m_segments[--i].get();
-		auto index = seg->m_indices[indexId];
+		auto index = seg->m_indices[indexId].get();
 		index->searchExact(key, &ctx->exactMatchRecIdvec, ctx);
 		for(llong physicId : ctx->exactMatchRecIdvec) {
 			llong logicId = seg->getLogicId(physicId);
@@ -1304,7 +1304,7 @@ const {
 		auto seg = m_segments[--i].get();
 		if (seg->m_isDel.size() == seg->m_delcnt)
 			continue;
-		auto index = seg->m_indices[indexId];
+		auto index = seg->m_indices[indexId].get();
 		index->searchExact(key, &ctx->exactMatchRecIdvec, ctx);
 		llong baseId = m_rowNumVec[i];
 		for(llong physicId : ctx->exactMatchRecIdvec) {
