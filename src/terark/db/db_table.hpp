@@ -94,7 +94,10 @@ public:
 
 	void indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext*) const;
 	bool indexKeyExists(size_t indexId, fstring key, DbContext*) const;
-	
+
+	void indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext*) const;
+	bool indexKeyExistsNoLock(size_t indexId, fstring key, DbContext*) const;
+
 	virtual	bool indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec, DbContext*) const;
 	virtual	bool indexMatchRegex(size_t indexId, fstring  regexStr, fstring regexOptions, valvec<llong>* recIdvec, DbContext*) const;
 
@@ -126,6 +129,20 @@ public:
 						 valvec<byte>* cgDataVec, DbContext*) const;
 
 	void selectOneColgroup(llong id, size_t cgId, valvec<byte>* cgData, DbContext*) const;
+
+	void selectColumnsNoLock(llong id, const valvec<size_t>& cols,
+					   valvec<byte>* colsData, DbContext*) const;
+	void selectColumnsNoLock(llong id, const size_t* colsId, size_t colsNum,
+					   valvec<byte>* colsData, DbContext*) const;
+	void selectOneColumnNoLock(llong id, size_t columnId,
+						 valvec<byte>* colsData, DbContext*) const;
+
+	void selectColgroupsNoLock(llong id, const valvec<size_t>& cgIdvec,
+						 valvec<valvec<byte> >* cgDataVec, DbContext*) const;
+	void selectColgroupsNoLock(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
+						 valvec<byte>* cgDataVec, DbContext*) const;
+
+	void selectOneColgroupNoLock(llong id, size_t cgId, valvec<byte>* cgData, DbContext*) const;
 
 #if 0
 	StoreIteratorPtr
