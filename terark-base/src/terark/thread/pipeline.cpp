@@ -18,7 +18,6 @@
 	#include <boost/thread/lock_guard.hpp>
 	#include <boost/thread.hpp>
 	#include <boost/bind.hpp>
-	typedef boost::lock_guard<boost::mutex> PipelineLockGuard;
 	#if defined(_WIN32) || defined(_WIN64) || defined(_MSC_VER)
 		#include <Windows.h>
 		#undef min
@@ -27,7 +26,6 @@
 		#include <unistd.h>
 	#endif
 #else
-	typedef std::lock_guard<std::mutex> PipelineLockGuard;
 #endif
 
 namespace terark {

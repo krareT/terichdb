@@ -35,11 +35,13 @@ namespace terark {
 	using boost::mutex;
 	using boost::function;
 	#define TerarkFuncBind boost::bind
+	typedef boost::lock_guard<boost::mutex> PipelineLockGuard;
 #else
 	using std::thread;
 	using std::mutex;
 	using std::function;
 	#define TerarkFuncBind std::bind
+	typedef std::lock_guard<std::mutex> PipelineLockGuard;
 #endif
 
 class TERARK_DLL_EXPORT PipelineTask
