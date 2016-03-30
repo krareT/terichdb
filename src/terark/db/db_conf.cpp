@@ -12,6 +12,11 @@
 #include "json.hpp"
 #include <boost/algorithm/string/join.hpp>
 
+//#define TERARKDB_DEDUCE_DATETIME_COLUMN
+#ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
+#include <re2/re2.h>
+#endif
+
 namespace terark { namespace db {
 
 ColumnMeta::ColumnMeta() {
@@ -1980,7 +1985,14 @@ enum BSONType {
 //    MaxKey = 127
 };
 }
-static int getMongoTypeDefault(const ColumnMeta& colmeta) {
+
+static int 
+getMongoTypeDefault(const std::string& colname, const ColumnMeta& colmeta) {
+#ifdef  TERARKDB_DEDUCE_DATETIME_COLUMN
+	re2::RE2::Options reOpt;
+	reOpt.set_case_sensitive(false);
+	re2::RE2 datetimeRegex("(?:date|time|timestamp)[0-9]*$", reOpt);
+#endif
 	switch (colmeta.type) {
 	default:
 		THROW_STD(runtime_error,
@@ -1997,9 +2009,19 @@ static int getMongoTypeDefault(const ColumnMeta& colmeta) {
 		return MongoBson::NumberInt;
 	case ColumnType::Uint32:
 	case ColumnType::Sint32:
+#ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
+		if (0 && re2::RE2::FullMatch(colname, datetimeRegex)) {
+			return MongoBson::Date;
+		}
+#endif
 		return MongoBson::NumberInt;
 	case ColumnType::Uint64:
 	case ColumnType::Sint64:
+#ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
+		if (0 && re2::RE2::FullMatch(colname, datetimeRegex)) {
+			return MongoBson::bsonTimestamp;
+		}
+#endif
 		return MongoBson::NumberLong;
 	case ColumnType::Uint128:
 	case ColumnType::Sint128:
@@ -2010,7 +2032,11 @@ static int getMongoTypeDefault(const ColumnMeta& colmeta) {
 	case ColumnType::Float128:
 		return MongoBson::NumberDecimal;
 	case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+		return MongoBson::BinData;
 	case ColumnType::Fixed:   // Fixed length binary
+		if (colname == "_id" && colmeta.fixedLen == 12) {
+			return MongoBson::jstOID;
+		}
 		return MongoBson::BinData;
 	case ColumnType::VarSint: abort(); break;
 	case ColumnType::VarUint: abort(); break;
@@ -2026,6 +2052,7 @@ static int getMongoTypeDefault(const ColumnMeta& colmeta) {
 	}
 	return -1;
 }
+
 static int getMongoTypeChecked(const ColumnMeta& colmeta, fstring mongoTypeName) {
 	ColumnType terarkType = colmeta.type;
 	if (string_equal_nocase(mongoTypeName, "oid")) {
@@ -2154,12 +2181,10 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		if (ColumnType::Fixed == colmeta.type) {
 			colmeta.fixedLen = col["length"];
 		}
-	//	colmeta.mongoType = (byte)getJsonValue(col, "mongoType", (int)colmeta.mongoType);
-	//	colmeta.mysqlType = (byte)getJsonValue(col, "mysqlType", (int)colmeta.mysqlType);
 		if (checkMongoType) {
 			std::string mongoTypeName = getJsonValue(col, "mongoType", std::string());
 			if (mongoTypeName.empty())
-				colmeta.mongoType = getMongoTypeDefault(colmeta);
+				colmeta.mongoType = getMongoTypeDefault(name, colmeta);
 			else
 				colmeta.mongoType = getMongoTypeChecked(colmeta, mongoTypeName);
 		}
