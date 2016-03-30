@@ -2235,31 +2235,35 @@ if (colgroupsIter != meta.end()) {
 		}
 		SchemaPtr schema(new Schema());
 		auto fieldsIter = colgrp.find("fields");
-		if (colgrp.end() != fieldsIter) {
-			auto fields = parseJsonFields(fieldsIter.value());
-			for(const auto& colname : fields) {
-				size_t columnId = m_rowSchema->getColumnId(colname);
-				if (columnId >= m_rowSchema->columnNum()) {
-					THROW_STD(invalid_argument,
-						"colname=%s is not in RowSchema", colname.c_str());
-				}
-				auto& colmeta  = m_rowSchema->getColumnMeta(columnId);
-				auto ib = schema->m_columnsMeta.insert_i(colname, colmeta);
-				if (!ib.second) {
-					THROW_STD(invalid_argument
-						, "colname '%s' is dup in colgoup '%s'"
-						, colname.c_str(), cgname.c_str());
-				}
-				if (size_t(-1) != colsToCgId[columnId]) {
-					size_t cgId = colsToCgId[columnId];
-					auto& cgname1 = m_colgroupSchemaSet->getSchema(cgId)->m_name;
-					THROW_STD(invalid_argument
-						, "colname '%s' is dup in colgoup '%s' and colgroup '%s'"
-						, colname.c_str(), cgname1.c_str(), cgname.c_str());
-				}
-				// m_nested.end_i() will be the new colgroupId
-				colsToCgId[columnId] = m_colgroupSchemaSet->m_nested.end_i();
+		if (colgrp.end() == fieldsIter) {
+			fieldsIter = colgrp.find("columns");
+		}
+		if (colgrp.end() == fieldsIter) {
+			THROW_STD(invalid_argument, "'columns' of an colgroup must be defined");
+		}
+		auto fields = parseJsonFields(fieldsIter.value());
+		for(const auto& colname : fields) {
+			size_t columnId = m_rowSchema->getColumnId(colname);
+			if (columnId >= m_rowSchema->columnNum()) {
+				THROW_STD(invalid_argument,
+					"colname=%s is not in RowSchema", colname.c_str());
 			}
+			auto& colmeta  = m_rowSchema->getColumnMeta(columnId);
+			auto ib = schema->m_columnsMeta.insert_i(colname, colmeta);
+			if (!ib.second) {
+				THROW_STD(invalid_argument
+					, "colname '%s' is dup in colgoup '%s'"
+					, colname.c_str(), cgname.c_str());
+			}
+			if (size_t(-1) != colsToCgId[columnId]) {
+				size_t cgId = colsToCgId[columnId];
+				auto& cgname1 = m_colgroupSchemaSet->getSchema(cgId)->m_name;
+				THROW_STD(invalid_argument
+					, "colname '%s' is dup in colgoup '%s' and colgroup '%s'"
+					, colname.c_str(), cgname1.c_str(), cgname.c_str());
+			}
+			// m_nested.end_i() will be the new colgroupId
+			colsToCgId[columnId] = m_colgroupSchemaSet->m_nested.end_i();
 		}
 		schema->m_name = cgname;
 		parseJsonColgroup(*schema, colgrp, sufarrMinFreq);
@@ -2289,7 +2293,14 @@ if (colgroupsIter != meta.end()) {
 //	bool hasPrimaryIndex = false;
 	for (const auto& index : tableIndex) {
 		SchemaPtr indexSchema(new Schema());
-		std::vector<std::string> fields = parseJsonFields(index["fields"]);
+		auto fieldsIter = index.find("fields");
+		if (index.end() == fieldsIter) {
+			fieldsIter = index.find("columns");
+		}
+		if (index.end() == fieldsIter) {
+			THROW_STD(invalid_argument, "'columns' of an index must be defined");
+		}
+		auto fields = parseJsonFields(fieldsIter.value());
 		if (fields.size() > Schema::MaxProjColumns) {
 			THROW_STD(invalid_argument, "Index Columns=%zd exceeds Max=%zd",
 				fields.size(), Schema::MaxProjColumns);
