@@ -1931,6 +1931,44 @@ static bool string_equal_nocase(fstring x, fstring y) {
 #endif
 }
 
+llong parseSizeValue(fstring str) {
+	char* endp = NULL;
+	llong val = strtoll(str.c_str(), &endp, 10);
+	while (*endp && !isalpha(byte(*endp))) {
+		++endp;
+	}
+	if (string_equal_nocase(endp, "KB") || string_equal_nocase(endp, "K")) {
+		return val * 1024;
+	}
+	if (string_equal_nocase(endp, "MB") || string_equal_nocase(endp, "M")) {
+		return val * 1024 * 1024;
+	}
+	if (string_equal_nocase(endp, "GB") || string_equal_nocase(endp, "G")) {
+		return val * 1024 * 1024 * 1024;
+	}
+	if (string_equal_nocase(endp, "TB") || string_equal_nocase(endp, "T")) {
+		return val * 1024 * 1024 * 1024 * 1024;
+	}
+	if (string_equal_nocase(endp, "PB") || string_equal_nocase(endp, "P")) {
+		return val * 1024 * 1024 * 1024 * 1024 * 1024;
+	}
+	return val;
+}
+
+llong getJsonSizeValue(const terark::json& js, const std::string& key, const llong& Default) {
+	auto iter = js.find(key);
+	if (js.end() != iter) {
+		if (iter.value().is_string()) {
+			const std::string& str = iter.value();
+			return parseSizeValue(str);
+		}
+		return static_cast<const llong&>(iter.value());
+	}
+	else {
+		return Default;
+	}
+}
+
 namespace MongoBson {
 /**
     the complete list of valid BSON types
@@ -2205,6 +2243,17 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			THROW_STD(invalid_argument, "duplicate RowName=%s", name.c_str());
 		}
 	}
+	if (checkMongoType) {
+		size_t nonSchemaField = m_rowSchema->getColumnId("$$");
+		if (nonSchemaField >= m_rowSchema->columnNum()) {
+			fprintf(stderr,
+				"WARN: missing '$$' field for mongodb, auto fields will be disable\n");
+		}
+		if (nonSchemaField != m_rowSchema->columnNum()-1) {
+			THROW_STD(invalid_argument,
+				"mongodb '$$' field must be the last field\n");
+		}
+	}
 	m_rowSchema->compile();
 	
 	auto colgroupsIter = meta.find("ColumnGroups");
@@ -2275,10 +2324,10 @@ if (colgroupsIter != meta.end()) {
 }
 
 	// changed config key and compatible with old config key
-	m_compressingWorkMemSize = getJsonValue(meta, "ReadonlyDataMemSize", DEFAULT_compressingWorkMemSize);
-	m_compressingWorkMemSize = getJsonValue(meta, "CompressingWorkMemSize", m_compressingWorkMemSize);
-	m_maxWritingSegmentSize = getJsonValue(meta, "MaxWrSegSize", DEFAULT_maxWritingSegmentSize);
-	m_maxWritingSegmentSize = getJsonValue(meta, "MaxWritingSegmentSize", m_maxWritingSegmentSize);
+	m_compressingWorkMemSize = getJsonSizeValue(meta, "ReadonlyDataMemSize", DEFAULT_compressingWorkMemSize);
+	m_compressingWorkMemSize = getJsonSizeValue(meta, "CompressingWorkMemSize", m_compressingWorkMemSize);
+	m_maxWritingSegmentSize = getJsonSizeValue(meta, "MaxWrSegSize", DEFAULT_maxWritingSegmentSize);
+	m_maxWritingSegmentSize = getJsonSizeValue(meta, "MaxWritingSegmentSize", m_maxWritingSegmentSize);
 
 	m_minMergeSegNum = getJsonValue(
 		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
