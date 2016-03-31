@@ -43,7 +43,11 @@ public:
 	virtual llong indexStorageSize() const = 0;
 
 	///@returns same as recIdvec->size()
-	virtual size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const = 0;
+	void searchExact(fstring key, valvec<llong>* recIdvec, DbContext* ctx) const {
+		recIdvec->erase_all();
+		searchExactAppend(key, recIdvec, ctx);
+	}
+	virtual void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const = 0;
 	///@}
 
 	///@{ ordered index only
@@ -83,7 +87,7 @@ public:
 
 	llong indexStorageSize() const override;
 
-	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
+	void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;

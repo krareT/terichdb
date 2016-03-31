@@ -33,18 +33,17 @@ llong NestLoudsTrieIndex::indexStorageSize() const {
 	return m_dfa->mem_size() + m_keyToId.mem_size();
 }
 
-size_t NestLoudsTrieIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const {
+void NestLoudsTrieIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const {
 	auto dawg = m_dfa->get_dawg();
 	assert(dawg);
 	size_t dawgNum = dawg->num_words();
 	size_t dawgIdx = dawg->index(key);
 	assert(dawgIdx < dawgNum || size_t(-1) == dawgIdx);
-	recIdvec->erase_all();
 	if (m_isUnique) {
 		assert(m_recBits.size() == 0);
 		if (dawgIdx < dawgNum) {
 			recIdvec->push_back(m_keyToId.get(dawgIdx));
-			return 1;
+			return;
 		}
 	}
 	else {
@@ -56,10 +55,8 @@ size_t NestLoudsTrieIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbC
 			for (size_t i = 0; i < dupcnt; ++i) {
 				recIdvec->push_back(m_keyToId.get(bitpos+i));
 			}
-			return dupcnt;
 		}
 	}
-	return 0;
 }
 ///@}
 

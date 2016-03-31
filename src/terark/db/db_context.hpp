@@ -51,6 +51,7 @@ public:
 	valvec<llong> exactMatchRecIdvec;
 	size_t regexMatchMemLimit;
 	bool syncIndex;
+	bool isUpsertOverwritten;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;
 

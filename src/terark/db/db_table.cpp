@@ -730,6 +730,11 @@ CompositeTable::insertRowImpl(fstring row, DbContext* txn, MyRwLock& lock) {
 		if (!isWriteLocked)
 			lock.upgrade_to_writer();
 	}
+	return insertRowDoInsert(row, txn);
+}
+
+llong
+CompositeTable::insertRowDoInsert(fstring row, DbContext* txn) {
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
 	auto& ws = *m_wrSeg;
@@ -843,6 +848,80 @@ Fail:
 	return false;
 }
 
+// dup keys in unique index errors will be ignored
+llong
+CompositeTable::upsertRow(fstring row, DbContext* ctx) {
+	if (!ctx->syncIndex) {
+		THROW_STD(invalid_argument,
+			"txn->syncIndex must be true for calling this method");
+	}
+	const SchemaConfig& sconf = *m_schema;
+	if (sconf.m_uniqIndices.size() > 1) {
+		THROW_STD(invalid_argument
+			, "this table has %zd unique indices, "
+			  "must have at most one unique index for calling this method"
+			, sconf.m_uniqIndices.size());
+	}
+	ctx->isUpsertOverwritten = false;
+	if (sconf.m_uniqIndices.empty()) {
+		return insertRow(row, ctx); // should always success
+	}
+	assert(sconf.m_uniqIndices.size() == 1);
+	size_t uniqueIndexId = sconf.m_uniqIndices[0];
+	// parseRow doesn't need lock
+	sconf.m_rowSchema->parseRow(row, &ctx->cols1);
+	const Schema& indexSchema = sconf.getIndexSchema(uniqueIndexId);
+	indexSchema.selectParent(ctx->cols1, &ctx->key1);
+	MyRwLock lock(m_rwMutex, false);
+	assert(m_rowNumVec.size() == m_segments.size()+1);
+	for(size_t retry = 0; retry < 2; ++retry) {
+		for (size_t segIdx = m_segments.size(); segIdx > 0; ) {
+			auto seg = m_segments[--segIdx].get();
+			auto index = seg->m_indices[uniqueIndexId];
+			index->searchExact(ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			if (ctx->exactMatchRecIdvec.size() && m_wrSeg.get() == seg) {
+				llong subId = ctx->exactMatchRecIdvec[0];
+				assert(ctx->exactMatchRecIdvec.size() == 1);
+				assert(m_wrSeg->m_isDel.is0(subId));
+				m_wrSeg->getValue(subId, &ctx->buf2, ctx);
+				sconf.m_rowSchema->parseRow(ctx->buf2, &ctx->cols2); // old
+				replaceSyncIndex(subId, ctx);
+				m_wrSeg->update(subId, row, ctx);
+				ctx->isUpsertOverwritten = true;
+				return m_rowNumVec[segIdx] + subId;
+			}
+			for(llong subPhysicId : ctx->exactMatchRecIdvec) {
+				llong subLogicId = seg->getLogicId(subPhysicId);
+				if (seg->m_isDel.is0(subLogicId)) {
+					seg->m_isDel.set1(subLogicId);
+					ctx->isUpsertOverwritten = true;
+					return insertRowDoInsert(row, ctx);
+				}
+			}
+		}
+		// no dup
+		if (0 != retry || lock.upgrade_to_writer()) {
+			return insertRowDoInsert(row, ctx);
+		}
+		else {
+			// other threads may have inserted a dupkey record during this
+			// thread calling lock.upgrade_to_writer()
+			// continue; // should be very rare
+		}
+	}
+	TERARK_RT_assert(0, std::logic_error);
+	return -1;
+}
+
+void
+CompositeTable::upsertRowMultiUniqueIndices(fstring row, valvec<llong>* resRecIdvec, DbContext* ctx) {
+	THROW_STD(domain_error, "This method is not supported for now");
+	if (!ctx->syncIndex) {
+		THROW_STD(invalid_argument,
+			"txn->syncIndex must be true for calling this method");
+	}
+}
+
 llong
 CompositeTable::updateRow(llong id, fstring row, DbContext* txn) {
 	m_schema->m_rowSchema->parseRow(row, &txn->cols1); // new row
@@ -911,7 +990,7 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* txn) {
 	}
 	if (j == m_rowNumVec.size()-1) { // id is in m_wrSeg
 		if (txn->syncIndex) {
-			replaceSyncIndex(subId, txn, lock);
+			replaceSyncIndex(subId, txn);
 		}
 		m_wrSeg->m_isDirty = true;
 		m_wrSeg->update(subId, row, txn);
@@ -970,7 +1049,7 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn)
 }
 
 bool
-CompositeTable::replaceSyncIndex(llong subId, DbContext* txn, MyRwLock& lock) {
+CompositeTable::replaceSyncIndex(llong subId, DbContext* txn) {
 	const SchemaConfig& sconf = *m_schema;
 	const WritableSegment& ws = *m_wrSeg;
 	size_t i = 0;
@@ -1317,13 +1396,17 @@ const {
 		if (seg->m_isDel.size() == seg->m_delcnt)
 			continue;
 		auto index = seg->m_indices[indexId].get();
-		index->searchExact(key, &ctx->exactMatchRecIdvec, ctx);
+		size_t oldsize = recIdvec->size();
+		index->searchExactAppend(key, recIdvec, ctx);
 		llong baseId = m_rowNumVec[i];
-		for(llong physicId : ctx->exactMatchRecIdvec) {
+		size_t j = oldsize;
+		for (size_t k = oldsize; k < recIdvec->size(); ++k) {
+			llong physicId = (*recIdvec)[k];
 			llong logicId = seg->getLogicId(physicId);
 			if (!seg->m_isDel[logicId])
-				recIdvec->push_back(baseId + logicId);
+				(*recIdvec)[j++] = baseId + logicId;
 		}
+		recIdvec->risk_set_size(j);
 	}
 }
 

@@ -345,11 +345,10 @@ bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* 
 	return true;
 }
 
-size_t
-WtWritableIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext* ctx)
+void
+WtWritableIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	recIdvec->erase_all();
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
 	item.size = key.size();
@@ -365,7 +364,7 @@ const {
 		m_wtCursor->set_key(m_wtCursor, &item);
 		int err = m_wtCursor->search(m_wtCursor);
 		if (err == WT_NOTFOUND) {
-			return 0;
+			return;
 		}
 		if (err) {
 			THROW_STD(invalid_argument
@@ -384,7 +383,7 @@ const {
 		int cmp;
 		int err = m_wtCursor->search_near(m_wtCursor, &cmp);
 		if (WT_NOTFOUND == err) {
-			return 0;
+			return;
 		}
 		if (err) {
 			THROW_STD(invalid_argument
@@ -410,7 +409,6 @@ const {
 		}
 	}
 	m_wtCursor->reset(m_wtCursor);
-	return recIdvec->size();
 }
 
 bool WtWritableIndex::remove(fstring key, llong id, DbContext* ctx) {

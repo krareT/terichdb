@@ -22,6 +22,7 @@ DbContext::DbContext(const CompositeTable* tab)
 //	tab->registerDbContext(this);
 	regexMatchMemLimit = 16*1024*1024; // 16MB
 	syncIndex = true;
+	isUpsertOverwritten = false;
 }
 
 DbContext::~DbContext() {

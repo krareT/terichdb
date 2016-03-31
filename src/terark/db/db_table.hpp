@@ -56,8 +56,11 @@ public:
 	bool exists(llong id) const;
 
 	llong insertRow(fstring row, DbContext*);
+	llong upsertRow(fstring row, DbContext*);
 	llong updateRow(llong id, fstring row, DbContext*);
 	bool  removeRow(llong id, DbContext*);
+
+	void upsertRowMultiUniqueIndices(fstring row, valvec<llong>* resRecIdvec, DbContext*);
 
 	void updateColumn(llong recordId, size_t columnId, fstring newColumnData, DbContext* = NULL);
 	void updateColumn(llong recordId, fstring colname, fstring newColumnData, DbContext* = NULL);
@@ -193,10 +196,11 @@ protected:
 	bool maybeCreateNewSegment(MyRwLock&);
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
+	llong insertRowDoInsert(fstring row, DbContext*);
 	bool insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool insertSyncIndex(llong subId, DbContext*);
 	bool replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
-	bool replaceSyncIndex(llong newSubId, DbContext*, MyRwLock&);
+	bool replaceSyncIndex(llong newSubId, DbContext*);
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;

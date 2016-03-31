@@ -97,10 +97,8 @@ EmptyIndexStore::~EmptyIndexStore() {}
 
 llong EmptyIndexStore::indexStorageSize() const { return 0; }
 
-size_t
-EmptyIndexStore::searchExact(fstring, valvec<llong>* recIdvec, DbContext*) const {
-	recIdvec->erase_all();
-	return 0;
+void
+EmptyIndexStore::searchExactAppend(fstring, valvec<llong>* recIdvec, DbContext*) const {
 }
 
 class EmptyIndexIterator : public IndexIterator {

@@ -19,7 +19,7 @@ public:
 	///@{ ordered and unordered index
 	llong indexStorageSize() const override;
 
-	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
+	void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 	///@}
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;

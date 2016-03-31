@@ -69,13 +69,11 @@ ZipIntKeyIndex::IntVecLowerBound(fstring binkey) const {
 	return std::make_pair(i, false);
 }
 
-size_t ZipIntKeyIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const {
+void ZipIntKeyIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const {
 	std::pair<size_t, size_t> ib = searchEqualRange(key);
-	recIdvec->erase_all();
 	for (size_t j = ib.first; j < ib.second; ++j) {
 		recIdvec->push_back(m_index.get(j));
 	}
-	return recIdvec->size();
 }
 
 std::pair<size_t, bool>
