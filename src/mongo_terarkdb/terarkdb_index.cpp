@@ -213,8 +213,13 @@ Status TerarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, con
 	auto& td = getMyThreadData();
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
-	llong recIdx = m_table->indexSearchExact(m_indexId, td.m_buf, &*td.m_dbCtx);
-	if (recIdx < 0 || id.repr() == recIdx+1) {
+	auto& tmpIdvec = td.m_dbCtx->exactMatchRecIdvec;
+	m_table->indexSearchExact(m_indexId, td.m_buf, &tmpIdvec, &*td.m_dbCtx);
+	if (tmpIdvec.empty()) {
+	    return Status::OK();
+	}
+	llong recIdx = tmpIdvec[0];
+	if (id.repr() == recIdx+1) {
 	    return Status::OK();
 	}
 	return Status(ErrorCodes::DuplicateKey, "TerarkDbIndex::dupKeyCheck");
