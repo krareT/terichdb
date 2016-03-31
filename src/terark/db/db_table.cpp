@@ -884,8 +884,8 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 				llong subId = ctx->exactMatchRecIdvec[0];
 				assert(ctx->exactMatchRecIdvec.size() == 1);
 				assert(m_wrSeg->m_isDel.is0(subId));
-				m_wrSeg->getValue(subId, &ctx->buf2, ctx);
-				sconf.m_rowSchema->parseRow(ctx->buf2, &ctx->cols2); // old
+				m_wrSeg->getValue(subId, &ctx->row2, ctx);
+				sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 				replaceSyncIndex(subId, ctx);
 				m_wrSeg->update(subId, row, ctx);
 				ctx->isUpsertOverwritten = true;
@@ -895,6 +895,7 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 				llong subLogicId = seg->getLogicId(subPhysicId);
 				if (seg->m_isDel.is0(subLogicId)) {
 					seg->m_isDel.set1(subLogicId);
+					seg->addtoUpdateList(subLogicId);
 					ctx->isUpsertOverwritten = true;
 					return insertRowDoInsert(row, ctx);
 				}
