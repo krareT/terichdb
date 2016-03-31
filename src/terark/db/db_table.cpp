@@ -9,6 +9,7 @@
 #include <terark/io/DataIO.hpp>
 #include <terark/io/MemStream.hpp>
 #include <terark/lcast.hpp>
+#include <terark/num_to_str.hpp>
 #include <terark/util/fstrvec.hpp>
 #include <terark/util/sortable_strvec.hpp>
 #include <boost/scope_exit.hpp>
