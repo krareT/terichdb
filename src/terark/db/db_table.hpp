@@ -172,8 +172,15 @@ public:
 
 	std::string toJsonStr(fstring row) const;
 
-	size_t getSegNum () const { return m_segments.size(); }
+	ReadableSegment* getSegmentPtr(size_t segIdx) const {
+		assert(segIdx < m_segments.size());
+		return m_segments[segIdx].get();
+	}
+	size_t findSegIdx(size_t segIdxBeg, ReadableSegment* seg) const;
+	size_t getSegNum() const { return m_segments.size(); }
 	size_t getWritableSegNum() const;
+
+	size_t getSegArrayUpdateSeq() const { return this->m_segArrayUpdateSeq; }
 
 	///@{ internal use only
 	void convWritableSegmentToReadonly(size_t segIdx);
@@ -239,6 +246,7 @@ protected:
 	size_t m_mergeSeqNum;
 	size_t m_newWrSegNum;
 	size_t m_bgTaskNum;
+	size_t m_segArrayUpdateSeq;
 	bool m_tobeDrop;
 	bool m_isMerging;
 	PurgeStatus m_purgeStatus;
@@ -256,9 +264,14 @@ typedef boost::intrusive_ptr<CompositeTable> CompositeTablePtr;
 /////////////////////////////////////////////////////////////////////////////
 
 inline
-StoreIteratorPtr DbContext::createTableIter() {
+StoreIteratorPtr DbContext::createTableIterForward() {
 	assert(this != nullptr);
 	return m_tab->createStoreIterForward(this);
+}
+inline
+StoreIteratorPtr DbContext::createTableIterBackward() {
+	assert(this != nullptr);
+	return m_tab->createStoreIterBackward(this);
 }
 
 inline
@@ -276,6 +289,11 @@ inline
 llong DbContext::insertRow(fstring row) {
 	assert(this != nullptr);
 	return m_tab->insertRow(row, this);
+}
+inline
+llong DbContext::upsertRow(fstring row) {
+	assert(this != nullptr);
+	return m_tab->upsertRow(row, this);
 }
 inline
 llong DbContext::updateRow(llong id, fstring row) {
@@ -303,6 +321,80 @@ void
 DbContext::indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId) {
 	assert(this != nullptr);
 	m_tab->indexReplace(indexId, indexKey, oldId, newId, this);
+}
+inline void
+DbContext::indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec) {
+	m_tab->indexSearchExact(indexId, key, recIdvec, this);
+}
+inline bool
+DbContext::indexKeyExists(size_t indexId, fstring key) {
+	return m_tab->indexKeyExists(indexId, key, this);
+}
+inline void
+DbContext::indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec) {
+	m_tab->indexSearchExactNoLock(indexId, key, recIdvec, this);
+}
+inline bool
+DbContext::indexKeyExistsNoLock(size_t indexId, fstring key) {
+	return m_tab->indexKeyExistsNoLock(indexId, key, this);
+}
+inline bool
+DbContext::indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec) {
+	return m_tab->indexMatchRegex(indexId, regexDFA, recIdvec, this);
+}
+inline bool
+DbContext::indexMatchRegex(size_t indexId, fstring  regexStr, fstring regexOptions, valvec<llong>* recIdvec) {
+	return m_tab->indexMatchRegex(indexId, regexStr, regexOptions, recIdvec, this);
+}
+
+inline void
+DbContext::selectColumns(llong id, const valvec<size_t>& cols, valvec<byte>* colsData) {
+	m_tab->selectColumns(id, cols, colsData, this);
+}
+inline void
+DbContext::selectColumns(llong id, const size_t* colsId, size_t colsNum, valvec<byte>* colsData) {
+	m_tab->selectColumns(id, colsId, colsNum, colsData, this);
+}
+inline void
+DbContext::selectOneColumn(llong id, size_t columnId, valvec<byte>* colsData, DbContext*) {
+	m_tab->selectOneColumn(id, columnId, colsData, this);
+}
+
+inline void
+DbContext::selectColgroups(llong id, const valvec<size_t>& cgIdvec, valvec<valvec<byte> >* cgDataVec) {
+	m_tab->selectColgroups(id, cgIdvec, cgDataVec, this);
+}
+inline void
+DbContext::selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize, valvec<byte>* cgDataVec) {
+	m_tab->selectColgroups(id, cgIdvec, cgIdvecSize, cgDataVec, this);
+}
+inline void
+DbContext::selectOneColgroup(llong id, size_t cgId, valvec<byte>* cgData) {
+	m_tab->selectOneColgroup(id, cgId, cgData, this);
+}
+inline void
+DbContext::selectColumnsNoLock(llong id, const valvec<size_t>& cols, valvec<byte>* colsData) {
+	m_tab->selectColumnsNoLock(id, cols, colsData, this);
+}
+inline void
+DbContext::selectColumnsNoLock(llong id, const size_t* colsId, size_t colsNum, valvec<byte>* colsData) {
+	m_tab->selectColumnsNoLock(id, colsId, colsNum, colsData, this);
+}
+inline void
+DbContext::selectOneColumnNoLock(llong id, size_t columnId, valvec<byte>* colsData) {
+	m_tab->selectOneColumnNoLock(id, columnId, colsData, this);
+}
+inline void
+DbContext::selectColgroupsNoLock(llong id, const valvec<size_t>& cgIdvec, valvec<valvec<byte> >* cgDataVec) {
+	m_tab->selectColgroupsNoLock(id, cgIdvec, cgDataVec, this);
+}
+inline void
+DbContext::selectColgroupsNoLock(llong id, const size_t* cgIdvec, size_t cgIdvecSize, valvec<byte>* cgDataVec) {
+	m_tab->selectColgroupsNoLock(id, cgIdvec, cgIdvecSize, cgDataVec, this);
+}
+inline void
+DbContext::selectOneColgroupNoLock(llong id, size_t cgId, valvec<byte>* cgData) {
+	m_tab->selectOneColgroupNoLock(id, cgId, cgData, this);
 }
 
 

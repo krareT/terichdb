@@ -49,6 +49,7 @@ CompositeTable::CompositeTable() {
 	m_mergeSeqNum = 0;
 	m_newWrSegNum = 0;
 	m_bgTaskNum = 0;
+	m_segArrayUpdateSeq = 0;
 //	m_ctxListHead = new DbContextLink();
 }
 
@@ -217,10 +218,30 @@ void CompositeTable::load(PathRef dir) {
 		std::string segDir = x.path().string();
 		std::string fname = x.path().filename().string();
 		fstring fstr = fname;
-		if (fstr.endsWith(".tmp")) {
-			fprintf(stderr, "WARN: Temporary segment: %s, remove it\n", segDir.c_str());
-			fs::remove_all(segDir);
+		if (fstr.endsWith(".backup-1")) {
+			fprintf(stderr, "WARN: Found backup segment: %s\n", segDir.c_str());
 			continue;
+		}
+		if (fstr.endsWith(".tmp")) {
+			fname.resize(fname.size()-4);
+			fstr = fname;
+			fs::path rightDir = mergeDir / fname;
+			fs::path backup = rightDir + ".backup-1";
+			if (fs::exists(backup)) {
+				fprintf(stderr, "WARN: Remove backup segment: %s\n", segDir.c_str());
+				if (fs::exists(rightDir)) {
+					THROW_STD(invalid_argument
+						, "ERROR: please check segment: %s\n"
+						, rightDir.string().c_str());
+				}
+				fs::rename(x.path(), rightDir);
+				fs::remove_all(backup);
+			}
+			else {
+				fprintf(stderr, "WARN: Temporary segment: %s, remove it\n", segDir.c_str());
+				fs::remove_all(segDir);
+				continue;
+			}
 		}
 		if (fstr.startsWith("wr-") || fstr.startsWith("rd-")) {
 			segDirList.push_back(fname);
@@ -302,6 +323,16 @@ void CompositeTable::load(PathRef dir) {
 		baseId += m_segments[i]->numDataRows();
 	}
 	m_rowNumVec.back() = baseId; // the end guard
+}
+
+size_t CompositeTable::findSegIdx(size_t segIdxBeg, ReadableSegment* seg) const {
+	const ReadableSegmentPtr* segBase = m_segments.data();
+	const size_t segNum = m_segments.size();
+	for (size_t segIdx = segIdxBeg; segIdx < segNum; ++segIdx) {
+		if (segBase[segIdx].get() == seg)
+			return  segIdx;
+	}
+	return segNum;
 }
 
 size_t CompositeTable::getWritableSegNum() const {
@@ -645,6 +676,7 @@ CompositeTable::doCreateNewSegmentInLock() {
 	llong newMaxRowNum = m_rowNumVec.back();
 	m_rowNumVec.push_back(newMaxRowNum);
 	m_newWrSegNum++;
+	m_segArrayUpdateSeq++;
 	oldwrseg->m_deletedWrIdSet.clear(); // free memory
 	// freeze oldwrseg, this may be too slow
 	// auto& oldwrseg = m_segments.ende(2);
@@ -786,18 +818,15 @@ CompositeTable::insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) 
 		for(size_t i = 0; i < sconf.m_uniqIndices.size(); ++i) {
 			size_t indexId = sconf.m_uniqIndices[i];
 			const Schema& iSchema = sconf.getIndexSchema(indexId);
-			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(txn->cols1, &txn->key1);
-			rIndex->searchExact(txn->key1, &txn->exactMatchRecIdvec, txn);
-			for(llong physicId : txn->exactMatchRecIdvec) {
-				llong logicId = seg->getLogicId(physicId);
+			seg->indexSearchExact(segIdx, indexId, txn->key1, &txn->exactMatchRecIdvec, txn);
+			for(llong logicId : txn->exactMatchRecIdvec) {
 				if (!seg->m_isDel[logicId]) {
 					// std::move makes it no temps
 					char szIdstr[96];
 					snprintf(szIdstr, sizeof(szIdstr)
-						, "logicId = %lld , physicId = %lld"
-						, logicId, physicId);
+						, "logicId = %lld", logicId);
 					txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
 								+ ", " + szIdstr
 								+ ", in freezen seg: " + seg->m_segDir.string();
@@ -852,10 +881,6 @@ Fail:
 // dup keys in unique index errors will be ignored
 llong
 CompositeTable::upsertRow(fstring row, DbContext* ctx) {
-	if (!ctx->syncIndex) {
-		THROW_STD(invalid_argument,
-			"txn->syncIndex must be true for calling this method");
-	}
 	const SchemaConfig& sconf = *m_schema;
 	if (sconf.m_uniqIndices.size() > 1) {
 		THROW_STD(invalid_argument
@@ -868,6 +893,10 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 		return insertRow(row, ctx); // should always success
 	}
 	assert(sconf.m_uniqIndices.size() == 1);
+	if (!ctx->syncIndex) {
+		THROW_STD(invalid_argument,
+			"txn->syncIndex must be true for calling this method");
+	}
 	size_t uniqueIndexId = sconf.m_uniqIndices[0];
 	// parseRow doesn't need lock
 	sconf.m_rowSchema->parseRow(row, &ctx->cols1);
@@ -875,25 +904,30 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 	indexSchema.selectParent(ctx->cols1, &ctx->key1);
 	MyRwLock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
+	bool isWriteLocked = maybeCreateNewSegment(lock);
 	for(size_t retry = 0; retry < 2; ++retry) {
 		for (size_t segIdx = m_segments.size(); segIdx > 0; ) {
 			auto seg = m_segments[--segIdx].get();
-			auto index = seg->m_indices[uniqueIndexId];
-			index->searchExact(ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			seg->indexSearchExact(segIdx, uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
 			if (ctx->exactMatchRecIdvec.size() && m_wrSeg.get() == seg) {
 				llong subId = ctx->exactMatchRecIdvec[0];
 				assert(ctx->exactMatchRecIdvec.size() == 1);
 				assert(m_wrSeg->m_isDel.is0(subId));
 				m_wrSeg->getValue(subId, &ctx->row2, ctx);
 				sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
+				if (0 == retry && !isWriteLocked && !lock.upgrade_to_writer()) {
+					goto NextRetry;
+				}
 				replaceSyncIndex(subId, ctx);
 				m_wrSeg->update(subId, row, ctx);
 				ctx->isUpsertOverwritten = true;
 				return m_rowNumVec[segIdx] + subId;
 			}
-			for(llong subPhysicId : ctx->exactMatchRecIdvec) {
-				llong subLogicId = seg->getLogicId(subPhysicId);
+			for(llong subLogicId : ctx->exactMatchRecIdvec) {
 				if (seg->m_isDel.is0(subLogicId)) {
+					if (0 == retry && !isWriteLocked && !lock.upgrade_to_writer()) {
+						goto NextRetry;
+					}
 					seg->m_isDel.set1(subLogicId);
 					seg->addtoUpdateList(subLogicId);
 					ctx->isUpsertOverwritten = true;
@@ -902,14 +936,15 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			}
 		}
 		// no dup
-		if (0 != retry || lock.upgrade_to_writer()) {
-			return insertRowDoInsert(row, ctx);
-		}
-		else {
+		if (0 == retry && !isWriteLocked && !lock.upgrade_to_writer()) {
 			// other threads may have inserted a dupkey record during this
 			// thread calling lock.upgrade_to_writer()
-			// continue; // should be very rare
+			// goto NextRetry; // should be very rare
 		}
+		else {
+			return insertRowDoInsert(row, ctx);
+		}
+	NextRetry:;
 	}
 	TERARK_RT_assert(0, std::logic_error);
 	return -1;
@@ -1369,14 +1404,12 @@ const {
 bool
 CompositeTable::indexKeyExistsNoLock(size_t indexId, fstring key, DbContext* ctx)
 const {
-	for (size_t i = m_segments.size(); i > 0; ) {
-		auto seg = m_segments[--i].get();
-		auto index = seg->m_indices[indexId].get();
-		index->searchExact(key, &ctx->exactMatchRecIdvec, ctx);
-		for(llong physicId : ctx->exactMatchRecIdvec) {
-			llong logicId = seg->getLogicId(physicId);
-			if (!seg->m_isDel[logicId])
-				return true;
+	ctx->exactMatchRecIdvec.erase_all();
+	for (size_t i = 0; i < m_segments.size(); ++i) {
+		auto seg = m_segments[i].get();
+		seg->indexSearchExactAppend(i, indexId, key, &ctx->exactMatchRecIdvec, ctx);
+		if (ctx->exactMatchRecIdvec.size()) {
+			return true;
 		}
 	}
 	return false;
@@ -1389,27 +1422,35 @@ const {
 	indexSearchExactNoLock(indexId, key, recIdvec, ctx);
 }
 
+/// returned recIdvec is sorted by recId ascending
 void
 CompositeTable::indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
 	recIdvec->erase_all();
-	for (size_t i = m_segments.size(); i > 0; ) {
-		auto seg = m_segments[--i].get();
+	const bool isUnique = m_schema->getIndexSchema(indexId).m_isUnique;
+	for (size_t i = 0; i < m_segments.size(); ++i) {
+		auto seg = m_segments[i].get();
 		if (seg->m_isDel.size() == seg->m_delcnt)
 			continue;
-		auto index = seg->m_indices[indexId].get();
 		size_t oldsize = recIdvec->size();
-		index->searchExactAppend(key, recIdvec, ctx);
-		llong baseId = m_rowNumVec[i];
-		size_t j = oldsize;
-		for (size_t k = oldsize; k < recIdvec->size(); ++k) {
-			llong physicId = (*recIdvec)[k];
-			llong logicId = seg->getLogicId(physicId);
-			if (!seg->m_isDel[logicId])
-				(*recIdvec)[j++] = baseId + logicId;
+		seg->indexSearchExactAppend(i, indexId, key, recIdvec, ctx);
+		size_t newsize = recIdvec->size();
+		size_t len = newsize - oldsize;
+		if (len) {
+			llong* p = recIdvec->data() + oldsize;
+			llong baseId = m_rowNumVec[i];
+			for (size_t j = 0; j < len; ++j) {
+				p[j] += baseId;
+			}
+			if (isUnique) {
+				assert(1 == newsize);
+				return;
+			}
+			if (len >= 2)
+				std::sort(p, p + len);
 		}
-		recIdvec->risk_set_size(j);
 	}
+//	std::reverse(recIdvec->begin(), recIdvec->end()); // make descending
 }
 
 // implemented in DfaDbTable
@@ -2620,6 +2661,7 @@ try{
 		m_rowNumVec.swap(newRowNumVec);
 		m_rowNumVec.back() = newRowNumVec.back();
 		m_mergeSeqNum++;
+		m_segArrayUpdateSeq++;
 		m_isMerging = false;
 #if !defined(NDEBUG)
 		valvec<byte> r1, r2;

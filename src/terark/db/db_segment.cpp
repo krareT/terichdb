@@ -324,6 +324,36 @@ const {
 }
 
 void
+ReadonlySegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+										fstring key, valvec<llong>* recIdvec,
+										DbContext* ctx) const {
+	size_t oldsize = recIdvec->size();
+	auto index = m_indices[indexId].get();
+	index->searchExactAppend(key, recIdvec, ctx);
+	size_t newsize = oldsize;
+	llong* recIdvecData = recIdvec->data();
+	if (m_isPurged.empty()) {
+		for (size_t k = oldsize; k < recIdvec->size(); ++k) {
+			llong logicId = recIdvecData[k];
+			if (!m_isDel[logicId])
+				recIdvecData[newsize++] = logicId;
+		}
+	}
+	else {
+		for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+			size_t physicId = (size_t)recIdvecData[k];
+			assert(this->getReadonlySegment() != NULL);
+			assert(m_isPurged.size() == m_isDel.size());
+			assert(physicId < m_isPurged.max_rank0());
+			size_t logicId = m_isPurged.select0(physicId);
+			if (!m_isDel[logicId])
+				recIdvecData[newsize++] = logicId;
+		}
+	}
+	recIdvec->risk_set_size(newsize);
+}
+
+void
 ReadonlySegment::selectColumns(llong recId,
 							   const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext* ctx)
@@ -833,6 +863,7 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 	}
 #endif
 	tab->m_segments[segIdx] = this;
+	tab->m_segArrayUpdateSeq++;
 }
 
 // dstBaseId is for merge update
@@ -918,10 +949,10 @@ ReadonlySegment::purgeDeletedRecords(CompositeTable* tab, size_t segIdx) {
 	assert(input->m_segDir == this->m_segDir);
 	fs::path backupDir = renameToBackupFromDir(input->m_segDir);
 	{
+		fs::path backupDirCopy = backupDir;
 		MyRwLock lock(tab->m_rwMutex, true);
-		input->m_segDir = backupDir;
+		input->m_segDir.swap(backupDirCopy);
 		input->deleteSegment(); // will delete backupDir
-		tab->m_segments[segIdx] = this;
 	}
 	try { fs::rename(tmpSegDir, m_segDir); }
 	catch (const std::exception& ex) {
@@ -1345,6 +1376,22 @@ const {
 		m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
 		this->getCombineAppend(recId, val, ctx);
 	}
+}
+
+void
+WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+										fstring key, valvec<llong>* recIdvec,
+										DbContext* ctx) const {
+	IndexIterator* iter = ctx->getIndexIterNoLock(mySegIdx, indexId);
+	llong recId = -1;
+	int cmp = iter->seekLowerBound(key, &recId, &ctx->key2);
+	if (cmp == 0) {
+		do {
+			if (!m_isDel[recId])
+				recIdvec->push_back(recId);
+		} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
+	}
+	iter->reset();
 }
 
 void

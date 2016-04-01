@@ -30,6 +30,17 @@ public:
 	virtual void loadRecordStore(PathRef segDir) = 0;
 	virtual void saveRecordStore(PathRef segDir) const = 0;
 
+	inline  void indexSearchExact(size_t mySegIdx, size_t indexId,
+								  fstring key, valvec<llong>* recIdvec,
+								  DbContext* ctx) const {
+		recIdvec->erase_all();
+		indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
+	}
+
+	virtual void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+										fstring key, valvec<llong>* recIdvec,
+										DbContext*) const = 0;
+
 	virtual void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext*) const = 0;
 	virtual void selectOneColumn(llong recId, size_t columnId,
@@ -108,6 +119,10 @@ public:
 
 	void getValueByLogicId(size_t id, valvec<byte>* val, DbContext*) const;
 	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
+
+	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+								fstring key, valvec<llong>* recIdvec,
+								DbContext*) const override;
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
@@ -195,6 +210,10 @@ public:
 	virtual void update(llong id, fstring row, DbContext*) override;
 	virtual void remove(llong id, DbContext* ctx) override;
 	virtual void shrinkToFit() override;
+
+	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+								fstring key, valvec<llong>* recIdvec,
+								DbContext*) const override;
 
 	void getCombineAppend(llong recId, valvec<byte>* val, DbContext*) const;
 

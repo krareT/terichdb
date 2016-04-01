@@ -3,6 +3,10 @@
 
 #include "db_conf.hpp"
 
+namespace terark {
+	class BaseDFA;
+}
+
 namespace terark { namespace db {
 
 typedef boost::intrusive_ptr<class CompositeTable> CompositeTablePtr;
@@ -21,14 +25,19 @@ public:
 	explicit DbContext(const CompositeTable* tab);
 	~DbContext();
 
-//	virtual void onSegCompressed(size_t segIdx, class WritableSegment*, class ReadonlySegment*);
+	void syncSegCtxNoLock();
+	class StoreIterator* getStoreIterNoLock(size_t segIdx);
+	class IndexIterator* getIndexIterNoLock(size_t segIdx, size_t indexId);
 
-	StoreIteratorPtr createTableIter();
+/// @{ delegate methods
+	StoreIteratorPtr createTableIterForward();
+	StoreIteratorPtr createTableIterBackward();
 
 	void getValueAppend(llong id, valvec<byte>* val);
 	void getValue(llong id, valvec<byte>* val);
 
 	llong insertRow(fstring row);
+	llong upsertRow(fstring row);
 	llong updateRow(llong id, fstring row);
 	void  removeRow(llong id);
 
@@ -36,8 +45,38 @@ public:
 	void indexRemove(size_t indexId, fstring indexKey, llong id);
 	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId);
 
+	void indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec);
+	bool indexKeyExists(size_t indexId, fstring key);
+
+	void indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec);
+	bool indexKeyExistsNoLock(size_t indexId, fstring key);
+
+	bool indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec);
+	bool indexMatchRegex(size_t indexId, fstring  regexStr, fstring regexOptions, valvec<llong>* recIdvec);
+
+	void selectColumns(llong id, const valvec<size_t>& cols, valvec<byte>* colsData);
+	void selectColumns(llong id, const size_t* colsId, size_t colsNum, valvec<byte>* colsData);
+	void selectOneColumn(llong id, size_t columnId, valvec<byte>* colsData, DbContext*);
+
+	void selectColgroups(llong id, const valvec<size_t>& cgIdvec, valvec<valvec<byte> >* cgDataVec);
+	void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize, valvec<byte>* cgDataVec);
+
+	void selectOneColgroup(llong id, size_t cgId, valvec<byte>* cgData);
+
+	void selectColumnsNoLock(llong id, const valvec<size_t>& cols, valvec<byte>* colsData);
+	void selectColumnsNoLock(llong id, const size_t* colsId, size_t colsNum, valvec<byte>* colsData);
+	void selectOneColumnNoLock(llong id, size_t columnId, valvec<byte>* colsData);
+
+	void selectColgroupsNoLock(llong id, const valvec<size_t>& cgIdvec, valvec<valvec<byte> >* cgDataVec);
+	void selectColgroupsNoLock(llong id, const size_t* cgIdvec, size_t cgIdvecSize, valvec<byte>* cgDataVec);
+
+	void selectOneColgroupNoLock(llong id, size_t cgId, valvec<byte>* cgData);
+/// @}
+
 public:
+	struct SegCtx;
 	CompositeTable* m_tab;
+	valvec<SegCtx*> m_segCtx;
 	std::string  errMsg;
 	valvec<byte> buf1;
 	valvec<byte> buf2;
@@ -50,6 +89,7 @@ public:
 	ColumnVec    cols2;
 	valvec<llong> exactMatchRecIdvec;
 	size_t regexMatchMemLimit;
+	size_t segArrayUpdateSeq;
 	bool syncIndex;
 	bool isUpsertOverwritten;
 };

@@ -216,7 +216,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 
 	{
 		printf("test iterate table, numDataRows=%lld ...\n", tab->numDataRows());
-		StoreIteratorPtr storeIter = ctx->createTableIter();
+		StoreIteratorPtr storeIter = ctx->createTableIterForward();
 		llong recId;
 		valvec<byte> val;
 		llong iterRows = 0;
