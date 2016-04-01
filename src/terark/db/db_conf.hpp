@@ -42,10 +42,6 @@
 	Class& operator=(const Class&) = delete; \
 	Class& operator=(Class&&) = delete
 
-namespace terark {
-	using namespace terark;
-}
-
 namespace terark { namespace db {
 
 	struct ClassMember_name {
