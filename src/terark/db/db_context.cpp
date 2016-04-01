@@ -7,6 +7,7 @@
 #include "db_context.hpp"
 #include "db_segment.hpp"
 #include "db_table.hpp"
+#include <terark/num_to_str.hpp>
 
 namespace terark { namespace db {
 
