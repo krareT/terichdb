@@ -348,6 +348,7 @@ bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* 
 void
 WtWritableIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
+	THROW_STD(invalid_argument, "This method should not be called");
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
