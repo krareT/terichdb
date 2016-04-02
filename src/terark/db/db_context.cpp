@@ -114,12 +114,12 @@ void DbContext::syncSegCtxNoLock() {
 		SegCtx::reset(sctx[i], indexNum, seg);
 	Done:;
 	}
-#if !defined(NDEBUG)
-	// assert synced for merged segments
 	for (size_t i = segNum; i < m_segCtx.size(); ++i) {
-		assert(NULL == sctx[i]);
+		if (sctx[i]) {
+			SegCtx::destory(sctx[i], indexNum);
+			sctx[i] = NULL;
+		}
 	}
-#endif
 	m_segCtx.risk_set_size(segNum);
 	TERARK_RT_assert(tab->getSegArrayUpdateSeq() == oldtab_segArrayUpdateSeq,
 					 std::logic_error);
