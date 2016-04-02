@@ -1337,7 +1337,10 @@ void WritableSegment::pushIsDel(bool val) {
 		m_delcnt = 0;
 	}
 	else if (terark_unlikely(m_isDel.size() == m_isDel.capacity())) {
+#if !defined(NDEBUG)
 		assert((64 + m_isDel.size()) % ChunkBits == 0);
+		size_t oldsize = m_isDel.size();
+#endif
 		size_t newCap = ((64+m_isDel.size()+2*ChunkBits-1) & ~(ChunkBits-1));
 		mmap_close(m_isDelMmap, sizeof(uint64_t) + m_isDel.mem_size());
 		m_isDelMmap = nullptr;
@@ -1346,6 +1349,8 @@ void WritableSegment::pushIsDel(bool val) {
 		truncate_file(fpath, newCap/8);
 		m_isDelMmap = loadIsDel_aux(m_segDir, m_isDel);
 		assert(nullptr != m_isDelMmap);
+		assert(m_isDel.popcnt() == m_delcnt);
+		assert(m_isDel.size() == oldsize);
 	}
 	assert(m_isDel.size() < m_isDel.capacity());
 	assert(m_isDel.size() == size_t(((uint64_t*)m_isDelMmap)[0]));
