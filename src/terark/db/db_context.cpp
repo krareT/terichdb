@@ -32,19 +32,19 @@ struct DbContext::SegCtx {
 		return p;
 	}
 	static void destory(SegCtx* p, size_t indexNum) {
-		p->seg.reset();
-		p->storeIter.reset();
 		for (size_t i = 0; i < indexNum; ++i) {
 			p->indexIter[i].reset();
 		}
+		p->storeIter.reset();
+		p->seg.reset();
 		::free(p);
 	}
 	static void reset(SegCtx* p, size_t indexNum, ReadableSegment* seg) {
-		p->seg = seg;
-		p->storeIter.reset();
 		for (size_t i = 0; i < indexNum; ++i) {
 			p->indexIter[i].reset();
 		}
+		p->storeIter.reset();
+		p->seg = seg;
 	}
 };
 
@@ -63,7 +63,7 @@ DbContext::DbContext(const CompositeTable* tab)
 	regexMatchMemLimit = 16*1024*1024; // 16MB
 	segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
 	syncIndex = true;
-	isUpsertOverwritten = false;
+	isUpsertOverwritten = 0;
 }
 
 DbContext::~DbContext() {
@@ -128,12 +128,15 @@ void DbContext::syncSegCtxNoLock() {
 
 StoreIterator* DbContext::getStoreIterNoLock(size_t segIdx) {
 	CompositeTable* tab = m_tab;
+	assert(segIdx < tab->getSegNum());
 	if (tab->getSegArrayUpdateSeq() != segArrayUpdateSeq) {
 		assert(segArrayUpdateSeq < tab->getSegArrayUpdateSeq());
 		this->syncSegCtxNoLock();
 	}
+	else if (m_segCtx.size() <= segIdx) {
+		m_segCtx.resize(tab->getSegNum(), NULL);
+	}
 	assert(tab->getSegArrayUpdateSeq() == segArrayUpdateSeq);
-	assert(segIdx < tab->getSegNum());
 	assert(m_segCtx.size() == tab->getSegNum());
 	if (NULL == m_segCtx[segIdx]) {
 		size_t indexNum = tab->getIndexNum();
@@ -148,13 +151,16 @@ StoreIterator* DbContext::getStoreIterNoLock(size_t segIdx) {
 
 IndexIterator* DbContext::getIndexIterNoLock(size_t segIdx, size_t indexId) {
 	CompositeTable* tab = m_tab;
+	assert(segIdx < tab->getSegNum());
 	if (tab->getSegArrayUpdateSeq() != segArrayUpdateSeq) {
 		assert(segArrayUpdateSeq < tab->getSegArrayUpdateSeq());
 		this->syncSegCtxNoLock();
 	}
+	else if (m_segCtx.size() <= segIdx) {
+		m_segCtx.resize(tab->getSegNum(), NULL);
+	}
 	size_t indexNum = tab->getIndexNum();
 	assert(indexId < indexNum);
-	assert(segIdx < tab->getSegNum());
 	assert(m_segCtx.size() == tab->getSegNum());
 	if (NULL == m_segCtx[segIdx]) {
 		m_segCtx[segIdx] = SegCtx::create(tab->getSegmentPtr(segIdx), indexNum);

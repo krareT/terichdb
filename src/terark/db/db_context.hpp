@@ -91,7 +91,7 @@ public:
 	size_t regexMatchMemLimit;
 	size_t segArrayUpdateSeq;
 	bool syncIndex;
-	bool isUpsertOverwritten;
+	byte isUpsertOverwritten;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;
 
