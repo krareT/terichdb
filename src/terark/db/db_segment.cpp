@@ -415,7 +415,8 @@ void ReadonlySegment::selectColgroups(llong recId,
 			THROW_STD(out_of_range, "cgId = %zd, cgNum = %zd"
 				, cgId, m_schema->getColgroupNum());
 		}
-		m_colgroups[cgId]->getValue(recId, &cgDataVec[i], ctx);
+		llong physicId = this->getPhysicId(recId);
+		m_colgroups[cgId]->getValue(physicId, &cgDataVec[i], ctx);
 	}
 }
 
