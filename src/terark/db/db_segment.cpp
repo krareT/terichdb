@@ -1117,9 +1117,9 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 	if (!fs::exists(purgeFpath)) {
 		return;
 	}
-	size_t bytes = 0;
-	m_isPurgedMmap = (byte*)mmap_load(purgeFpath.string(), &bytes);
-	m_isPurged.risk_mmap_from(m_isPurgedMmap, bytes);
+	size_t isPurgedMmapBytes = 0;
+	m_isPurgedMmap = (byte*)mmap_load(purgeFpath.string(), &isPurgedMmapBytes);
+	m_isPurged.risk_mmap_from(m_isPurgedMmap, isPurgedMmapBytes);
 	assert(m_isPurged.size() == m_isDel.size());
 //	assert(m_withPurgeBits); // for self test debug
 	if (m_withPurgeBits) {
@@ -1145,9 +1145,11 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 	m_isDel.risk_set_size(newRows);
 	m_isDel.risk_memcpy(newIsDel);
 	*(uint64_t*)m_isDelMmap = newRows;
+	m_delcnt = newIsDel.popcnt();
 //	mmap_close(m_isDelMmap, 8 + m_isDel.mem_size());
 //	m_isDel.risk_release_ownership();
-	mmap_close(m_isPurgedMmap, bytes);
+	mmap_close(m_isPurgedMmap, isPurgedMmapBytes);
+	m_isPurgedMmap = NULL;
 	m_isPurged.risk_release_ownership();
 	fs::remove(purgeFpath);
 }
