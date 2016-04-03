@@ -1397,7 +1397,9 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	llong recId = -1;
 	int cmp = iter->seekLowerBound(key, &recId, &ctx->key2);
 	if (cmp == 0) {
-		if (m_schema->getIndexSchema(indexId).m_isUnique) {
+		// now IndexIterator::m_isUniqueInSchema is just for this quick check
+		// faster than m_schema->getIndexSchema(indexId).m_isUnique
+		if (iter->isUniqueInSchema()) {
 			if (!m_isDel[recId])
 				recIdvec->push_back(recId);
 		}

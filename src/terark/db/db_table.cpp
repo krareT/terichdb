@@ -1705,6 +1705,7 @@ public:
 	  , m_forward(forward)
 	{
 		assert(tab->m_schema->getIndexSchema(indexId).m_isOrdered);
+		m_isUniqueInSchema = tab->m_schema->getIndexSchema(indexId).m_isUnique;
 		{
 			MyRwLock lock(tab->m_rwMutex);
 			tab->m_tableScanningRefCount++;

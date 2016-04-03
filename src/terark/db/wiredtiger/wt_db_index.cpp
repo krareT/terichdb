@@ -18,6 +18,7 @@ protected:
 	WT_CURSOR* m_iter;
 	valvec<byte> m_buf;
 	MyIndexIterBase(const WtWritableIndex* owner) {
+		m_isUniqueInSchema = owner->m_schema->m_isUnique;
 		m_index.reset(const_cast<WtWritableIndex*>(owner));
 		WT_CONNECTION* conn = m_index->m_wtSession->connection;
 		WT_SESSION* session; // WT_SESSION is not thread safe

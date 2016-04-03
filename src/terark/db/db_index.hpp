@@ -8,7 +8,10 @@ namespace terark { namespace db {
 typedef boost::intrusive_ptr<class ReadableIndex> ReadableIndexPtr;
 
 class TERARK_DB_DLL IndexIterator : public RefCounter {
+protected:
+	bool m_isUniqueInSchema;
 public:
+	IndexIterator();
 	virtual ~IndexIterator();
 	virtual void reset() = 0;
 	virtual bool increment(llong* id, valvec<byte>* key) = 0;
@@ -24,6 +27,8 @@ public:
 	///          ret >  0 : *retKey < key
 	///          ret <  0 : key is less than all keys, iter is eof
 	virtual int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) = 0;
+
+	inline bool isUniqueInSchema() const { return m_isUniqueInSchema; }
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 

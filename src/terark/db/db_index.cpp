@@ -86,6 +86,11 @@ WritableIndex::~WritableIndex() {
 }
 
 /////////////////////////////////////////////////////////////////////////////
+
+IndexIterator::IndexIterator() {
+	// m_isUniqueInSchema is just for a minor performance improve
+	m_isUniqueInSchema = false;
+}
 IndexIterator::~IndexIterator() {
 }
 
