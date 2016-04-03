@@ -340,10 +340,10 @@ ReadonlySegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 		}
 	}
 	else {
+		assert(m_isPurged.size() == m_isDel.size());
+		assert(this->getReadonlySegment() != NULL);
 		for(size_t k = oldsize; k < recIdvec->size(); ++k) {
 			size_t physicId = (size_t)recIdvecData[k];
-			assert(this->getReadonlySegment() != NULL);
-			assert(m_isPurged.size() == m_isDel.size());
 			assert(physicId < m_isPurged.max_rank0());
 			size_t logicId = m_isPurged.select0(physicId);
 			if (!m_isDel[logicId])
@@ -1390,11 +1390,18 @@ void
 WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 										fstring key, valvec<llong>* recIdvec,
 										DbContext* ctx) const {
+	assert(mySegIdx < ctx->m_tab->getSegNum());
+	assert(ctx->m_tab->getSegmentPtr(mySegIdx) == this);
+	assert(m_isPurged.empty());
 	IndexIterator* iter = ctx->getIndexIterNoLock(mySegIdx, indexId);
 	llong recId = -1;
 	int cmp = iter->seekLowerBound(key, &recId, &ctx->key2);
 	if (cmp == 0) {
-		do {
+		if (m_schema->getIndexSchema(indexId).m_isUnique) {
+			if (!m_isDel[recId])
+				recIdvec->push_back(recId);
+		}
+		else do {
 			if (!m_isDel[recId])
 				recIdvec->push_back(recId);
 		} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
