@@ -865,6 +865,7 @@ bool CompositeTable::insertSyncIndex(llong subId, DbContext* txn) {
 		iSchema.selectParent(txn->cols1, &txn->key1);
 		wrIndex->getWritableIndex()->insert(txn->key1, subId, txn);
 	}
+	m_wrSeg->m_uniqIndexUpdateSeq++;
 	return true;
 Fail:
 	for (size_t j = i; j > 0; ) {
@@ -910,30 +911,61 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 	MyRwLock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	bool isWriteLocked = maybeCreateNewSegment(lock);
+	WritableSegment* ws = m_wrSeg.get();
 	for(size_t retry = 0; retry < 2; ++retry) {
+		auto quickUpgradeToWriter = [&]() {
+			if (!isWriteLocked) {
+				assert(0 == retry);
+				isWriteLocked = true;
+				const auto uniqIndexUpdateSeq1 = ws->m_uniqIndexUpdateSeq;
+				const auto segArrayUpdateSeq1 = this->m_segArrayUpdateSeq;
+				if (!lock.upgrade_to_writer()) {
+					// temporary released lock when upgrade_to_writer
+					if (segArrayUpdateSeq1 != this->m_segArrayUpdateSeq) {
+						assert(segArrayUpdateSeq1 < this->m_segArrayUpdateSeq);
+						ws = m_wrSeg.get();
+						if (NULL == ws) {
+							THROW_STD(invalid_argument,
+"syncFinishWriting('%s') was called during upgrade_to_writer(), writing is disallowed"
+								, m_dir.string().c_str());
+						}
+						return false;
+					}
+					if (uniqIndexUpdateSeq1 != ws->m_uniqIndexUpdateSeq) {
+						assert(uniqIndexUpdateSeq1 < ws->m_uniqIndexUpdateSeq);
+						return false;
+					}
+				}
+			}
+			return true;
+		};
 		for (size_t segIdx = m_segments.size(); segIdx > 0; ) {
 			auto seg = m_segments[--segIdx].get();
 			seg->indexSearchExact(segIdx, uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
 			if (ctx->exactMatchRecIdvec.empty()) {
 				continue;
 			}
-			if (m_wrSeg.get() == seg) {
+			if (ws == seg) {
 				llong subId = ctx->exactMatchRecIdvec[0];
 				assert(ctx->exactMatchRecIdvec.size() == 1);
-				assert(m_wrSeg->m_isDel.is0(subId));
-				m_wrSeg->getValue(subId, &ctx->row2, ctx);
+				assert(ws->m_isDel.is0(subId));
+				ws->getValue(subId, &ctx->row2, ctx);
 				sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
-				if (0 == retry && !isWriteLocked && !lock.upgrade_to_writer()) {
+				llong baseId = m_rowNumVec[segIdx]; // must read baseId here
+				if (!quickUpgradeToWriter()) {
 					goto NextRetry;
 				}
-				replaceSyncIndex(subId, ctx);
-				m_wrSeg->update(subId, row, ctx);
+				updateSyncMultIndex(subId, ctx);
+				ws->update(subId, row, ctx);
 				ctx->isUpsertOverwritten = 1;
-				return m_rowNumVec[segIdx] + subId;
+				return baseId + subId;
 			}
 			for(llong subLogicId : ctx->exactMatchRecIdvec) {
 				if (seg->m_isDel.is0(subLogicId)) {
-					if (0 == retry && !isWriteLocked && !lock.upgrade_to_writer()) {
+					if (!quickUpgradeToWriter()) {
+						goto NextRetry;
+					}
+					if (seg->m_isDel[subLogicId]) {
 						goto NextRetry;
 					}
 #if !defined(NDEBUG) && 0
@@ -950,12 +982,7 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			}
 		}
 		// no dup
-		if (0 == retry && !isWriteLocked && !lock.upgrade_to_writer()) {
-			// other threads may have inserted a dupkey record during this
-			// thread calling lock.upgrade_to_writer()
-			// goto NextRetry; // should be very rare
-		}
-		else {
+		if (quickUpgradeToWriter()) {
 			return insertRowDoInsert(row, ctx);
 		}
 	NextRetry:;
@@ -1016,12 +1043,12 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* txn) {
 			seg->getValue(subId, &txn->row2, txn);
 			m_schema->m_rowSchema->parseRow(txn->row2, &txn->cols2); // old row
 
-			if (!replaceCheckSegDup(0, m_segments.size()-1, txn))
+			if (!updateCheckSegDup(0, m_segments.size()-1, txn))
 				return -1;
 			if (!lock.upgrade_to_writer()) {
 				// check for segment changes(should be very rare)
 				if (old_newWrSegNum != m_newWrSegNum) {
-					if (!replaceCheckSegDup(m_segments.size()-2, 1, txn))
+					if (!updateCheckSegDup(m_segments.size()-2, 1, txn))
 						return -1;
 				}
 				directUpgrade = false;
@@ -1041,7 +1068,7 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* txn) {
 	}
 	if (j == m_rowNumVec.size()-1) { // id is in m_wrSeg
 		if (txn->syncIndex) {
-			replaceSyncIndex(subId, txn);
+			updateSyncIndex(subId, txn);
 		}
 		m_wrSeg->m_isDirty = true;
 		m_wrSeg->update(subId, row, txn);
@@ -1062,7 +1089,7 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* txn) {
 }
 
 bool
-CompositeTable::replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) {
+CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) {
 	// m_wrSeg will be check in unique index insert
 	const size_t endSeg = begSeg + numSeg;
 	assert(endSeg < m_segments.size()); // don't check m_wrSeg
@@ -1100,9 +1127,9 @@ CompositeTable::replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn)
 }
 
 bool
-CompositeTable::replaceSyncIndex(llong subId, DbContext* txn) {
+CompositeTable::updateSyncIndex(llong subId, DbContext* txn) {
 	const SchemaConfig& sconf = *m_schema;
-	const WritableSegment& ws = *m_wrSeg;
+	WritableSegment& ws = *m_wrSeg;
 	size_t i = 0;
 	for (; i < sconf.m_uniqIndices.size(); ++i) {
 		size_t indexId = sconf.m_uniqIndices[i];
@@ -1129,23 +1156,10 @@ CompositeTable::replaceSyncIndex(llong subId, DbContext* txn) {
 			}
 		}
 	}
-	for (i = 0; i < sconf.m_multIndices.size(); ++i) {
-		size_t indexId = sconf.m_multIndices[i];
-		const Schema& iSchema = sconf.getIndexSchema(indexId);
-		iSchema.selectParent(txn->cols2, &txn->key2); // old
-		iSchema.selectParent(txn->cols1, &txn->key1); // new
-		if (!valvec_equalTo(txn->key1, txn->key2)) {
-			auto wrIndex = ws.m_indices[indexId]->getWritableIndex();
-			if (!wrIndex->remove(txn->key2, subId, txn)) {
-				assert(0);
-				THROW_STD(invalid_argument, "should be a bug");
-			}
-			if (!wrIndex->insert(txn->key1, subId, txn)) {
-				assert(0);
-				THROW_STD(invalid_argument, "should be a bug");
-			}
-		}
+	if (!sconf.m_uniqIndices.empty()) {
+		ws.m_uniqIndexUpdateSeq++;
 	}
+	updateSyncMultIndex(subId, txn);
 	return true;
 Fail:
 	for (size_t j = i; j > 0; ) {
@@ -1163,6 +1177,29 @@ Fail:
 		}
 	}
 	return false;
+}
+
+void
+CompositeTable::updateSyncMultIndex(llong subId, DbContext* txn) {
+	const SchemaConfig& sconf = *m_schema;
+	const WritableSegment& ws = *m_wrSeg;
+	for (size_t i = 0; i < sconf.m_multIndices.size(); ++i) {
+		size_t indexId = sconf.m_multIndices[i];
+		const Schema& iSchema = sconf.getIndexSchema(indexId);
+		iSchema.selectParent(txn->cols2, &txn->key2); // old
+		iSchema.selectParent(txn->cols1, &txn->key1); // new
+		if (!valvec_equalTo(txn->key1, txn->key2)) {
+			auto wrIndex = ws.m_indices[indexId]->getWritableIndex();
+			if (!wrIndex->remove(txn->key2, subId, txn)) {
+				assert(0);
+				THROW_STD(invalid_argument, "should be a bug");
+			}
+			if (!wrIndex->insert(txn->key1, subId, txn)) {
+				assert(0);
+				THROW_STD(invalid_argument, "should be a bug");
+			}
+		}
+	}
 }
 
 bool
@@ -1196,6 +1233,9 @@ CompositeTable::removeRow(llong id, DbContext* txn) {
 				const Schema& iSchema = m_schema->getIndexSchema(i);
 				iSchema.selectParent(columns, &key);
 				wrIndex->remove(key, subId, txn);
+			}
+			if (!m_schema->m_uniqIndices.empty()) {
+				m_wrSeg->m_uniqIndexUpdateSeq++;
 			}
 		}
 		// TODO: if remove fail, set m_isDel[subId] = 1 ??
@@ -2291,6 +2331,9 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 		}
 		assert(!oldpurgeBits || seg->m_isPurged.max_rank0() == physicId);
 	}
+	if (strVec.str_size() == 0) {
+		return new EmptyIndexStore();
+	}
 	ReadableIndex* index = dseg->buildIndex(schema, strVec);
 #if !defined(NDEBUG)
 	valvec<byte> rec2;
@@ -2512,6 +2555,13 @@ try{
 		dseg->m_isPurged.build_cache(true, false);
 		assert(dseg->m_isPurged.size() == rows);
 		assert(dseg->m_isPurged.size() == toMerge.m_newSegRows);
+		if (dseg->m_isPurged.max_rank1() == dseg->m_isPurged.size()) {
+			for (size_t cgId = indexNum; cgId < colgroupNum; ++cgId) {
+				auto emptyStore = new EmptyIndexStore();
+				dseg->m_colgroups[cgId] = emptyStore;
+				emptyStore->save(destSegDir);
+			}
+		}
 	}
 	assert(rows == toMerge.m_newSegRows);
 	dseg->m_isDel.erase_all();

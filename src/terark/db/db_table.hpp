@@ -206,8 +206,9 @@ protected:
 	llong insertRowDoInsert(fstring row, DbContext*);
 	bool insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool insertSyncIndex(llong subId, DbContext*);
-	bool replaceCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
-	bool replaceSyncIndex(llong newSubId, DbContext*);
+	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
+	bool updateSyncIndex(llong newSubId, DbContext*);
+	void updateSyncMultIndex(llong newSubId, DbContext*);
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;

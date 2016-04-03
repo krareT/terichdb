@@ -239,6 +239,7 @@ public:
 
 	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;
+	uint64_t          m_uniqIndexUpdateSeq;
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 

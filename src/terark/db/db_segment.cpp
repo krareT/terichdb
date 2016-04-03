@@ -1319,6 +1319,7 @@ const {
 ///////////////////////////////////////////////////////////////////////////////
 
 WritableSegment::WritableSegment() {
+	m_uniqIndexUpdateSeq = 0;
 }
 WritableSegment::~WritableSegment() {
 	if (!m_tobeDel)
