@@ -218,7 +218,7 @@ void CompositeTable::load(PathRef dir) {
 		std::string segDir = x.path().string();
 		std::string fname = x.path().filename().string();
 		fstring fstr = fname;
-		if (fstr.endsWith(".backup-1")) {
+		if (fstr.endsWith(".backup-0")) {
 			fprintf(stderr, "WARN: Found backup segment: %s\n", segDir.c_str());
 			continue;
 		}
@@ -226,7 +226,7 @@ void CompositeTable::load(PathRef dir) {
 			fname.resize(fname.size()-4);
 			fstr = fname;
 			fs::path rightDir = mergeDir / fname;
-			fs::path backup = rightDir + ".backup-1";
+			fs::path backup = rightDir + ".backup-0";
 			if (fs::exists(backup)) {
 				fprintf(stderr, "WARN: Remove backup segment: %s\n", segDir.c_str());
 				if (fs::exists(rightDir)) {
@@ -888,14 +888,19 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			  "must have at most one unique index for calling this method"
 			, sconf.m_uniqIndices.size());
 	}
-	ctx->isUpsertOverwritten = false;
+	ctx->isUpsertOverwritten = 0;
 	if (sconf.m_uniqIndices.empty()) {
 		return insertRow(row, ctx); // should always success
 	}
 	assert(sconf.m_uniqIndices.size() == 1);
 	if (!ctx->syncIndex) {
 		THROW_STD(invalid_argument,
-			"txn->syncIndex must be true for calling this method");
+			"ctx->syncIndex must be true for calling this method");
+	}
+	if (!m_wrSeg) {
+		THROW_STD(invalid_argument
+			, "syncFinishWriting('%s') was called, now writing is not allowed"
+			, m_dir.string().c_str());
 	}
 	size_t uniqueIndexId = sconf.m_uniqIndices[0];
 	// parseRow doesn't need lock
@@ -909,7 +914,10 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 		for (size_t segIdx = m_segments.size(); segIdx > 0; ) {
 			auto seg = m_segments[--segIdx].get();
 			seg->indexSearchExact(segIdx, uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
-			if (ctx->exactMatchRecIdvec.size() && m_wrSeg.get() == seg) {
+			if (ctx->exactMatchRecIdvec.empty()) {
+				continue;
+			}
+			if (m_wrSeg.get() == seg) {
 				llong subId = ctx->exactMatchRecIdvec[0];
 				assert(ctx->exactMatchRecIdvec.size() == 1);
 				assert(m_wrSeg->m_isDel.is0(subId));
@@ -920,7 +928,7 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 				}
 				replaceSyncIndex(subId, ctx);
 				m_wrSeg->update(subId, row, ctx);
-				ctx->isUpsertOverwritten = true;
+				ctx->isUpsertOverwritten = 1;
 				return m_rowNumVec[segIdx] + subId;
 			}
 			for(llong subLogicId : ctx->exactMatchRecIdvec) {
@@ -928,9 +936,15 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 					if (0 == retry && !isWriteLocked && !lock.upgrade_to_writer()) {
 						goto NextRetry;
 					}
+#if !defined(NDEBUG) && 0
+					size_t realdelcnt = seg->m_isDel.popcnt();
+					assert(realdelcnt == seg->m_delcnt);
+#endif
+					seg->m_delcnt++;
 					seg->m_isDel.set1(subLogicId);
 					seg->addtoUpdateList(subLogicId);
-					ctx->isUpsertOverwritten = true;
+					ctx->isUpsertOverwritten = 2;
+					tryAsyncPurgeDeleteInLock(seg);
 					return insertRowDoInsert(row, ctx);
 				}
 			}
@@ -2114,6 +2128,7 @@ public:
 	size_t m_newSegRows = 0;
 
 	bool canMerge(CompositeTable* tab) {
+		// most failed checks should fails here...
 		if (tab->m_isMerging)
 			return false;
 		if (PurgeStatus::none != tab->m_purgeStatus)
@@ -2136,8 +2151,12 @@ public:
 				return false;
 			if (tab->m_isMerging)
 				return false;
+			if (PurgeStatus::none != tab->m_purgeStatus)
+				return false;
 			if (!lock.upgrade_to_writer()) {
 				if (tab->m_isMerging) // check again
+					return false;
+				if (PurgeStatus::none != tab->m_purgeStatus)
 					return false;
 			}
 			tab->m_isMerging = true;
