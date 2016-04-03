@@ -3,7 +3,8 @@
 
 #include "db_store.hpp"
 #include "db_index.hpp"
-#include <tbb/queuing_rw_mutex.h>
+//#include <tbb/queuing_rw_mutex.h>
+#include <tbb/spin_rw_mutex.h>
 
 namespace terark {
 	class BaseDFA; // forward declaration
@@ -11,8 +12,11 @@ namespace terark {
 
 namespace terark { namespace db {
 
-typedef tbb::queuing_rw_mutex              MyRwMutex;
-typedef tbb::queuing_rw_mutex::scoped_lock MyRwLock;
+//typedef tbb::queuing_rw_mutex           MyRwMutex;
+//typedef tbb::spin_rw_mutex              MyRwMutex;
+typedef tbb::speculative_spin_rw_mutex  MyRwMutex;
+
+typedef MyRwMutex::scoped_lock MyRwLock;
 
 class TERARK_DB_DLL ReadableSegment;
 class TERARK_DB_DLL ReadonlySegment;
@@ -230,7 +234,7 @@ protected:
 //	void unregisterDbContext(DbContext* ctx) const;
 
 public:
-	mutable tbb::queuing_rw_mutex m_rwMutex;
+	mutable MyRwMutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
 protected:
 	enum class PurgeStatus : unsigned {
