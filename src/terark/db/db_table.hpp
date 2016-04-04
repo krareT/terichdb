@@ -3,8 +3,8 @@
 
 #include "db_store.hpp"
 #include "db_index.hpp"
-//#include <tbb/queuing_rw_mutex.h>
-#include <tbb/spin_rw_mutex.h>
+#include <tbb/queuing_rw_mutex.h>
+//#include <tbb/spin_rw_mutex.h>
 
 namespace terark {
 	class BaseDFA; // forward declaration
@@ -12,8 +12,8 @@ namespace terark {
 
 namespace terark { namespace db {
 
-//typedef tbb::queuing_rw_mutex           MyRwMutex;
-typedef tbb::spin_rw_mutex              MyRwMutex;
+typedef tbb::queuing_rw_mutex           MyRwMutex;
+//typedef tbb::spin_rw_mutex              MyRwMutex;
 //typedef tbb::speculative_spin_rw_mutex  MyRwMutex;
 
 typedef MyRwMutex::scoped_lock MyRwLock;
