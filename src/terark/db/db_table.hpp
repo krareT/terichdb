@@ -13,8 +13,8 @@ namespace terark {
 namespace terark { namespace db {
 
 //typedef tbb::queuing_rw_mutex           MyRwMutex;
-//typedef tbb::spin_rw_mutex              MyRwMutex;
-typedef tbb::speculative_spin_rw_mutex  MyRwMutex;
+typedef tbb::spin_rw_mutex              MyRwMutex;
+//typedef tbb::speculative_spin_rw_mutex  MyRwMutex;
 
 typedef MyRwMutex::scoped_lock MyRwLock;
 
