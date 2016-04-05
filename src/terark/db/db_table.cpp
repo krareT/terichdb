@@ -939,8 +939,8 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			}
 			return true;
 		};
-		for (size_t segIdx = m_segments.size(); segIdx > 0; ) {
-			auto seg = m_segments[--segIdx].get();
+		for (size_t segIdx = 0; segIdx < m_segments.size(); ++segIdx) {
+			auto seg = m_segments[segIdx].get();
 			seg->indexSearchExact(segIdx, uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
 			if (ctx->exactMatchRecIdvec.empty()) {
 				continue;
@@ -949,13 +949,20 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 				llong subId = ctx->exactMatchRecIdvec[0];
 				assert(ctx->exactMatchRecIdvec.size() == 1);
 				assert(ws->m_isDel.is0(subId));
-				ws->getValue(subId, &ctx->row2, ctx);
-				sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
+				assert(m_segments.size() - 1 == segIdx);
 				llong baseId = m_rowNumVec[segIdx]; // must read baseId here
-				if (!quickUpgradeToWriter()) {
-					goto NextRetry;
+				if (!sconf.m_multIndices.empty()) {
+					ws->getValue(subId, &ctx->row2, ctx);
+					sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
+					if (!quickUpgradeToWriter()) {
+						goto NextRetry;
+					}
+					updateSyncMultIndex(subId, ctx);
 				}
-				updateSyncMultIndex(subId, ctx);
+				else { // need not to upgradeToWriter
+					// may race condition if user calling updateColumns
+					// in other threads
+				}
 				ws->update(subId, row, ctx);
 				ctx->isUpsertOverwritten = 1;
 				return baseId + subId;
