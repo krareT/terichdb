@@ -912,6 +912,11 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	bool isWriteLocked = maybeCreateNewSegment(lock);
 	WritableSegment* ws = m_wrSeg.get();
+	enum ChangeType {
+		NoChange = 0,
+		WrtIndexChanged = 1,
+		SegArrayChanged = 2,
+	};
 	for(size_t retry = 0; retry < 2; ++retry) {
 		auto quickUpgradeToWriter = [&]() {
 			if (!isWriteLocked) {
@@ -929,15 +934,15 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 "syncFinishWriting('%s') was called during upgrade_to_writer(), writing is disallowed"
 								, m_dir.string().c_str());
 						}
-						return false;
+						return SegArrayChanged;
 					}
 					if (uniqIndexUpdateSeq1 != ws->m_uniqIndexUpdateSeq) {
 						assert(uniqIndexUpdateSeq1 < ws->m_uniqIndexUpdateSeq);
-						return false;
+						return WrtIndexChanged;
 					}
 				}
 			}
-			return true;
+			return NoChange;
 		};
 		for (size_t segIdx = 0; segIdx < m_segments.size(); ++segIdx) {
 			auto seg = m_segments[segIdx].get();
@@ -954,7 +959,25 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 				if (!sconf.m_multIndices.empty()) {
 					ws->getValue(subId, &ctx->row2, ctx);
 					sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
-					if (!quickUpgradeToWriter()) {
+					switch (quickUpgradeToWriter()) {
+					case NoChange:
+						break;
+					case WrtIndexChanged:
+						// must search again for very rare race condition
+						seg->indexSearchExact(segIdx, uniqueIndexId,
+							ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+						if (ctx->exactMatchRecIdvec.empty()) {
+							return insertRowDoInsert(row, ctx);
+						}
+						else { // even the subId is not changed,
+							// the record data may have changed,
+							// it is required to re-fetch the record data
+							assert(ctx->exactMatchRecIdvec.size() == 1);
+							subId = ctx->exactMatchRecIdvec[0];
+							ws->getValue(subId, &ctx->row2, ctx);
+							sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
+						}
+					case SegArrayChanged:
 						goto NextRetry;
 					}
 					updateSyncMultIndex(subId, ctx);
@@ -969,10 +992,17 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			}
 			for(llong subLogicId : ctx->exactMatchRecIdvec) {
 				if (seg->m_isDel.is0(subLogicId)) {
-					if (!quickUpgradeToWriter()) {
-						goto NextRetry;
-					}
-					if (seg->m_isDel[subLogicId]) {
+					switch (quickUpgradeToWriter()) {
+					case NoChange:
+						if (seg->m_isDel[subLogicId]) {
+							return insertRowDoInsert(row, ctx);
+						}
+					case WrtIndexChanged:
+						if (seg->m_isDel[subLogicId]) {
+							goto NextRetry;
+						}
+						break;
+					case SegArrayChanged:
 						goto NextRetry;
 					}
 #if !defined(NDEBUG) && 0
@@ -989,8 +1019,31 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			}
 		}
 		// no dup
-		if (quickUpgradeToWriter()) {
+		switch (quickUpgradeToWriter()) {
+		case NoChange:
 			return insertRowDoInsert(row, ctx);
+		case WrtIndexChanged:
+			// must search m_wrSeg for very rare race condition
+			ws->indexSearchExact(m_segments.size()-1, uniqueIndexId,
+				ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			if (ctx->exactMatchRecIdvec.empty()) {
+				return insertRowDoInsert(row, ctx);
+			}
+			else {
+				assert(ctx->exactMatchRecIdvec.size() == 1);
+				llong  subId = ctx->exactMatchRecIdvec[0];
+				if (!sconf.m_multIndices.empty()) {
+					ws->getValue(subId, &ctx->row2, ctx);
+					sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
+					updateSyncMultIndex(subId, ctx);
+				}
+				ws->update(subId, row, ctx);
+				ctx->isUpsertOverwritten = 1;
+				llong  baseId = m_rowNumVec.ende(2);
+				return baseId + subId;
+			}
+		case SegArrayChanged:
+			break; // goto NextRetry;
 		}
 	NextRetry:;
 	}
