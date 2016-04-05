@@ -1730,17 +1730,18 @@ WritableSegment::createStoreIterBackward(DbContext* ctx) const {
 llong WritableSegment::append(fstring row, DbContext* ctx) {
 	auto store = m_wrtStore->getAppendableStore();
 	assert(nullptr != store);
-	if (m_schema->m_updatableColgroups.empty()) {
+	const SchemaConfig& sconf = *m_schema;
+	if (sconf.m_updatableColgroups.empty()) {
 		return store->append(row, ctx);
 	}
 	else {
-		m_schema->m_rowSchema->parseRow(row, &ctx->cols1);
-		m_schema->m_wrtSchema->selectParent(ctx->cols1, &ctx->buf1);
+		sconf.m_rowSchema->parseRow(row, &ctx->cols1);
+		sconf.m_wrtSchema->selectParent(ctx->cols1, &ctx->buf1);
 		llong id1 = store->append(ctx->buf1, ctx);
-		for (size_t colgroupId : m_schema->m_updatableColgroups) {
+		for (size_t colgroupId : sconf.m_updatableColgroups) {
 			store = m_colgroups[colgroupId]->getAppendableStore();
 			assert(nullptr != store);
-			const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+			const Schema& schema = sconf.getColgroupSchema(colgroupId);
 			schema.selectParent(ctx->cols1, &ctx->buf1);
 			llong id2 = store->append(ctx->buf1, ctx);
 			TERARK_RT_assert(id1 == id2, std::logic_error);
@@ -1753,17 +1754,18 @@ void WritableSegment::update(llong id, fstring row, DbContext* ctx) {
 	assert(id <= llong(m_isDel.size()));
 	auto store = m_wrtStore->getUpdatableStore();
 	assert(nullptr != store);
-	if (m_schema->m_updatableColgroups.empty()) {
+	const SchemaConfig& sconf = *m_schema;
+	if (sconf.m_updatableColgroups.empty()) {
 		store->update(id, row, ctx);
 	}
 	else {
-		m_schema->m_rowSchema->parseRow(row, &ctx->cols1);
-		m_schema->m_wrtSchema->selectParent(ctx->cols1, &ctx->buf1);
+		sconf.m_rowSchema->parseRow(row, &ctx->cols1);
+		sconf.m_wrtSchema->selectParent(ctx->cols1, &ctx->buf1);
 		store->update(id, ctx->buf1, ctx);
-		for (size_t colgroupId : m_schema->m_updatableColgroups) {
+		for (size_t colgroupId : sconf.m_updatableColgroups) {
 			store = m_colgroups[colgroupId]->getUpdatableStore();
 			assert(nullptr != store);
-			const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+			const Schema& schema = sconf.getColgroupSchema(colgroupId);
 			schema.selectParent(ctx->cols1, &ctx->buf1);
 			store->update(id, ctx->buf1, ctx);
 		}
