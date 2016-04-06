@@ -894,7 +894,7 @@ MockDbContext::MockDbContext(const CompositeTable* tab) : DbContext(tab) {
 MockDbContext::~MockDbContext() {
 }
 
-DbContext* MockCompositeTable::createDbContext() const {
+DbContext* MockCompositeTable::createDbContextNoLock() const {
 	return new MockDbContext(this);
 }
 

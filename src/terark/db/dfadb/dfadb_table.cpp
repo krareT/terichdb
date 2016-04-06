@@ -20,7 +20,7 @@ DfaDbContext::DfaDbContext(const CompositeTable* tab) : DbContext(tab) {
 DfaDbContext::~DfaDbContext() {
 }
 
-DbContext* DfaDbTable::createDbContext() const {
+DbContext* DfaDbTable::createDbContextNoLock() const {
 	return new DfaDbContext(this);
 }
 

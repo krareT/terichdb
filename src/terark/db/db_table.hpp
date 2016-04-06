@@ -49,8 +49,10 @@ public:
 
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
-	virtual DbContext* createDbContext() const = 0;
+	DbContext* createDbContext() const;
+	virtual DbContext* createDbContextNoLock() const = 0;
 
+	llong inlineGetRowNum() const { return m_rowNum; }
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
 	llong dataStorageSize() const override;
@@ -205,6 +207,7 @@ protected:
 	void checkRowNumVecNoLock() const;
 
 	bool maybeCreateNewSegment(MyRwLock&);
+	void maybeCreateNewSegmentInWriteLock();
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
 	llong insertRowDoInsert(fstring row, DbContext*);
@@ -213,6 +216,7 @@ protected:
 	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool updateSyncIndex(llong newSubId, DbContext*);
 	void updateSyncMultIndex(llong newSubId, DbContext*);
+	llong upsertRowReverseSearchSegInWriteLock(fstring row, DbContext*);
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
@@ -252,6 +256,7 @@ protected:
 	size_t m_newWrSegNum;
 	size_t m_bgTaskNum;
 	size_t m_segArrayUpdateSeq;
+	llong  m_rowNum;
 	bool m_tobeDrop;
 	bool m_isMerging;
 	PurgeStatus m_purgeStatus;
@@ -402,6 +407,43 @@ DbContext::selectOneColgroupNoLock(llong id, size_t cgId, valvec<byte>* cgData) 
 	m_tab->selectOneColgroupNoLock(id, cgId, cgData, this);
 }
 
+inline
+ReadableSegment* DbContext::getSegmentPtr(size_t segIdx) const {
+//	assert(this->segArrayUpdateSeq == m_tab->m_segArrayUpdateSeq);
+	return m_segCtx[segIdx]->seg;
+}
+
+inline
+void DbContext::trySyncSegCtxNoLock(const CompositeTable* tab) {
+	if (this->segArrayUpdateSeq != tab->m_segArrayUpdateSeq) {
+		assert(this->segArrayUpdateSeq < tab->m_segArrayUpdateSeq);
+		this->doSyncSegCtxNoLock(tab);
+		assert(m_segCtx.size() == tab->m_segments.size());
+		assert(m_rowNumVec.size() == tab->m_segments.size()+1);
+		assert(m_rowNumVec.size() == tab->m_rowNumVec.size());
+	}
+	else {
+		assert(m_segCtx.size() == tab->m_segments.size());
+		assert(m_rowNumVec.size() == tab->m_segments.size()+1);
+		assert(m_rowNumVec.size() == tab->m_rowNumVec.size());
+		m_rowNumVec.back() = tab->m_rowNum;
+	}
+}
+
+inline
+void DbContext::trySyncSegCtxSpeculativeLock(const CompositeTable* tab) {
+	if (this->segArrayUpdateSeq != tab->m_segArrayUpdateSeq) {
+		assert(this->segArrayUpdateSeq < tab->m_segArrayUpdateSeq);
+		MyRwLock lock(tab->m_rwMutex, false);
+		this->doSyncSegCtxNoLock(tab);
+		assert(m_segCtx.size() == tab->m_segments.size());
+		assert(m_rowNumVec.size() == tab->m_segments.size()+1);
+		assert(m_rowNumVec.size() == tab->m_rowNumVec.size());
+	}
+	else {
+		m_rowNumVec.back() = tab->m_rowNum;
+	}
+}
 
 } } // namespace terark::db
 

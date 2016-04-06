@@ -42,6 +42,8 @@ ReadableSegment::ReadableSegment() {
 	m_delcnt = 0;
 	m_tobeDel = false;
 	m_isDirty = false;
+	m_isFreezed = false;
+	m_hasLockFreePointSearch = true;
 	m_bookUpdates = false;
 	m_withPurgeBits = false;
 	m_isPurgedMmap = nullptr;
@@ -73,6 +75,9 @@ ReadableSegment::~ReadableSegment() {
 }
 
 ReadonlySegment* ReadableSegment::getReadonlySegment() const {
+	return nullptr;
+}
+WritableSegment* ReadableSegment::getWritableSegment() const {
 	return nullptr;
 }
 
@@ -237,6 +242,7 @@ ReadonlySegment::ReadonlySegment() {
 	m_dataMemSize = 0;
 	m_totalStorageSize = 0;
 	m_dataInflateSize = 0;
+	m_isFreezed = true;
 	m_isPurgedMmap = 0;
 }
 ReadonlySegment::~ReadonlySegment() {
@@ -639,10 +645,11 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	auto tmpDir = m_segDir + ".tmp";
 	fs::create_directories(tmpDir);
 
-	DbContextPtr ctx(tab->createDbContext());
+	DbContextPtr ctx;
 	ReadableSegmentPtr input;
 	{
-		MyRwLock lock(tab->m_rwMutex, true);
+		MyRwLock lock(tab->m_rwMutex, false);
+		ctx.reset(tab->createDbContextNoLock());
 		input = tab->m_segments[segIdx];
 		input->m_bookUpdates = true;
 		assert(input->m_updateList.empty());
@@ -833,7 +840,7 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 	}
 #if !defined(NDEBUG)
 	valvec<byte> r1, r2;
-	DbContextPtr ctx = tab->createDbContext();
+	DbContextPtr ctx = tab->createDbContextNoLock();
 	const Schema& rowSchema = *m_schema->m_rowSchema;
 	for(size_t i = 0, rows = m_isDel.size(); i < rows; ++i) {
 		if (!input->m_isDel[i]) {
@@ -1382,6 +1389,7 @@ const {
 	else {
 		ctx->buf1.erase_all();
 		ctx->cols1.erase_all();
+		SpinRwLock  lock(m_rwMutex, false);
 		m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
 		this->getCombineAppend(recId, val, ctx);
 	}
@@ -1391,8 +1399,8 @@ void
 WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 										fstring key, valvec<llong>* recIdvec,
 										DbContext* ctx) const {
-	assert(mySegIdx < ctx->m_tab->getSegNum());
-	assert(ctx->m_tab->getSegmentPtr(mySegIdx) == this);
+	assert(mySegIdx < ctx->m_segCtx.size());
+	assert(ctx->getSegmentPtr(mySegIdx) == this);
 	assert(m_isPurged.empty());
 	IndexIterator* iter = ctx->getIndexIterNoLock(mySegIdx, indexId);
 	llong recId = -1;
@@ -1401,13 +1409,29 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 		// now IndexIterator::m_isUniqueInSchema is just for this quick check
 		// faster than m_schema->getIndexSchema(indexId).m_isUnique
 		if (iter->isUniqueInSchema()) {
-			if (!m_isDel[recId])
-				recIdvec->push_back(recId);
+			if (this->m_isFreezed) {
+				if (!m_isDel[recId])
+					recIdvec->push_back(recId);
+			}
+			else {
+				SpinRwLock lock(this->m_rwMutex, false);
+				if (!m_isDel[recId])
+					recIdvec->push_back(recId);
+			}
 		}
-		else do {
-			if (!m_isDel[recId])
-				recIdvec->push_back(recId);
-		} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
+		else if (this->m_isFreezed) {
+			do {
+				if (!m_isDel[recId])
+					recIdvec->push_back(recId);
+			} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
+		}
+		else {
+			SpinRwLock lock(this->m_rwMutex, false);
+			do {
+				if (!m_isDel[recId])
+					recIdvec->push_back(recId);
+			} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
+		}
 	}
 	iter->reset();
 }
@@ -1620,6 +1644,10 @@ void WritableSegment::loadRecordStore(PathRef segDir) {
 		m_colgroups[colgroupId] = store.release();
 	}
 	m_wrtStore->load(segDir / "__wrtStore__");
+}
+
+WritableSegment* WritableSegment::getWritableSegment() const {
+	return const_cast<WritableSegment*>(this);
 }
 
 llong WritableSegment::totalStorageSize() const {

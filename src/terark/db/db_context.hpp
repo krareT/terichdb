@@ -25,9 +25,13 @@ public:
 	explicit DbContext(const CompositeTable* tab);
 	~DbContext();
 
-	void syncSegCtxNoLock();
+	void doSyncSegCtxNoLock(const CompositeTable* tab);
+	void trySyncSegCtxNoLock(const CompositeTable* tab);
+	void trySyncSegCtxSpeculativeLock(const CompositeTable* tab);
 	class StoreIterator* getStoreIterNoLock(size_t segIdx);
 	class IndexIterator* getIndexIterNoLock(size_t segIdx, size_t indexId);
+
+	void debugCheckUnique(fstring row, size_t uniqIndexId);
 
 /// @{ delegate methods
 	StoreIteratorPtr createTableIterForward();
@@ -73,10 +77,26 @@ public:
 	void selectOneColgroupNoLock(llong id, size_t cgId, valvec<byte>* cgData);
 /// @}
 
+	class ReadableSegment* getSegmentPtr(size_t segIdx) const;
+
 public:
-	struct SegCtx;
+	struct SegCtx {
+		class ReadableSegment* seg;
+		class StoreIterator* storeIter;
+		class IndexIterator* indexIter[1];
+	private:
+		friend class DbContext;
+		~SegCtx() = delete;
+		SegCtx() = delete;
+		SegCtx(const SegCtx&) = delete;
+		SegCtx& operator=(const SegCtx&) = delete;
+		static SegCtx* create(ReadableSegment* seg, size_t indexNum);
+		static void destory(SegCtx*& p, size_t indexNum);
+		static void reset(SegCtx* p, size_t indexNum, ReadableSegment* seg);
+	};
 	CompositeTable* m_tab;
 	valvec<SegCtx*> m_segCtx;
+	valvec<llong>   m_rowNumVec; // copy of CompositeTable::m_rowNumVec
 	std::string  errMsg;
 	valvec<byte> buf1;
 	valvec<byte> buf2;

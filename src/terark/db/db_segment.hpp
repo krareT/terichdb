@@ -5,12 +5,16 @@
 #include "db_store.hpp"
 #include <terark/bitmap.hpp>
 #include <terark/rank_select.hpp>
+#include <tbb/spin_rw_mutex.h>
 
 namespace terark {
 	class SortableStrVec;
 }
 
 namespace terark { namespace db {
+
+typedef tbb::spin_rw_mutex        SpinRwMutex;
+typedef SpinRwMutex::scoped_lock  SpinRwLock;
 
 // This ReadableStore is used for return full-row
 // A full-row is of one table, the table has multiple indices
@@ -19,6 +23,7 @@ public:
 	ReadableSegment();
 	~ReadableSegment();
 	virtual class ReadonlySegment* getReadonlySegment() const;
+	virtual class WritableSegment* getWritableSegment() const;
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
@@ -81,6 +86,8 @@ public:
 	febitvec    m_updateBits; // if m_updateList is too large, use updateBits
 	bool        m_tobeDel;
 	bool        m_isDirty;
+	bool        m_isFreezed;
+	bool        m_hasLockFreePointSearch;
 	bool        m_bookUpdates;
 	bool        m_withPurgeBits;  // just for ReadonlySegment
 };
@@ -189,6 +196,8 @@ public:
 	void pushIsDel(bool val);
 	void popIsDel();
 
+	WritableSegment* getWritableSegment() const override;
+
 	llong totalStorageSize() const override;
 	llong dataStorageSize() const override;
 	llong dataInflateSize() const override;
@@ -237,6 +246,7 @@ public:
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
 
+	mutable SpinRwMutex m_rwMutex;
 	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;
 	uint64_t          m_uniqIndexUpdateSeq;

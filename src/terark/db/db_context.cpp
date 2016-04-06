@@ -11,42 +11,47 @@
 
 namespace terark { namespace db {
 
-struct DbContext::SegCtx {
-	ReadableSegmentPtr seg;
-	StoreIteratorPtr storeIter;
-	IndexIteratorPtr indexIter[1];
+template<class T>
+static inline void RefcntPtr_release(T*& p) {
+	if (p) {
+		p->release();
+		p = NULL;
+	}
+}
 
-	~SegCtx() = delete;
-	SegCtx() = delete;
-	SegCtx(const SegCtx&) = delete;
-	SegCtx& operator=(const SegCtx&) = delete;
-
-	static SegCtx* create(ReadableSegment* seg, size_t indexNum) {
-		size_t memsize = sizeof(SegCtx) + sizeof(IndexIteratorPtr) * (indexNum-1);
-		SegCtx* p = (SegCtx*)malloc(memsize);
-		new(&p->seg)ReadableSegmentPtr(seg);
-		new(&p->storeIter)StoreIteratorPtr();
-		for (size_t i = 0; i < indexNum; ++i) {
-			new(&p->indexIter[i])IndexIteratorPtr();
-		}
-		return p;
+DbContext::SegCtx*
+DbContext::SegCtx::create(ReadableSegment* seg, size_t indexNum) {
+	size_t memsize = sizeof(SegCtx) + sizeof(IndexIteratorPtr) * (indexNum-1);
+	SegCtx* p = (SegCtx*)malloc(memsize);
+	seg->add_ref();
+	p->seg = seg;
+	p->storeIter = NULL;
+	for (size_t i = 0; i < indexNum; ++i) {
+		p->indexIter[i] = NULL;
 	}
-	static void destory(SegCtx* p, size_t indexNum) {
-		for (size_t i = 0; i < indexNum; ++i) {
-			p->indexIter[i].reset();
-		}
-		p->storeIter.reset();
-		p->seg.reset();
-		::free(p);
+	return p;
+}
+void DbContext::SegCtx::destory(SegCtx*& rp, size_t indexNum) {
+	SegCtx* p = rp;
+	for (size_t i = 0; i < indexNum; ++i) {
+		RefcntPtr_release(p->indexIter[i]);
 	}
-	static void reset(SegCtx* p, size_t indexNum, ReadableSegment* seg) {
-		for (size_t i = 0; i < indexNum; ++i) {
-			p->indexIter[i].reset();
-		}
-		p->storeIter.reset();
-		p->seg = seg;
+	RefcntPtr_release(p->storeIter);
+	assert(NULL != p->seg);
+	p->seg->release();
+	::free(p);
+	rp = NULL;
+}
+void DbContext::SegCtx::reset(SegCtx* p, size_t indexNum, ReadableSegment* seg) {
+	for (size_t i = 0; i < indexNum; ++i) {
+		RefcntPtr_release(p->indexIter[i]);
 	}
-};
+	RefcntPtr_release(p->storeIter);
+	assert(NULL != p->seg);
+	p->seg->release();
+	p->seg = seg;
+	seg->add_ref();
+}
 
 DbContextLink::DbContextLink() {
 //	m_prev = m_next = this;
@@ -58,48 +63,62 @@ DbContextLink::~DbContextLink() {
 DbContext::DbContext(const CompositeTable* tab)
   : m_tab(const_cast<CompositeTable*>(tab))
 {
+// must calling the constructor in lock tab->m_rwMutex
+	size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
 //	tab->registerDbContext(this);
-//	m_segCtx.resize(tab->getIndexNum(), nullptr);
 	regexMatchMemLimit = 16*1024*1024; // 16MB
-	segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
+	size_t indexNum = tab->getIndexNum();
+	size_t segNum = tab->getSegNum();
+	m_segCtx.resize(segNum, NULL);
+	SegCtx** sctx = m_segCtx.data();
+	for (size_t i = 0; i < segNum; ++i) {
+		sctx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
+	}
+	m_rowNumVec.assign(tab->m_rowNumVec);
+	segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 	syncIndex = true;
 	isUpsertOverwritten = 0;
+	TERARK_RT_assert(tab->getSegArrayUpdateSeq() == oldtab_segArrayUpdateSeq,
+					 std::logic_error);
 }
 
 DbContext::~DbContext() {
 //	m_tab->unregisterDbContext(this);
 	size_t indexNum = m_tab->getIndexNum();
-	for (auto x : m_segCtx) {
-		if (x) {
-			SegCtx::destory(x, indexNum);
-		}
+	for (auto& x : m_segCtx) {
+		assert(NULL != x);
+		SegCtx::destory(x, indexNum);
 	}
 }
 
-void DbContext::syncSegCtxNoLock() {
-	CompositeTable* tab = m_tab;
+void DbContext::doSyncSegCtxNoLock(const CompositeTable* tab) {
+	assert(tab == m_tab);
+	assert(this->segArrayUpdateSeq < tab->getSegArrayUpdateSeq());
+	size_t indexNum = tab->getIndexNum();
 	size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
+	size_t oldSegNum = m_segCtx.size();
 	size_t segNum = tab->getSegNum();
 	if (m_segCtx.size() < segNum) {
 		m_segCtx.resize(segNum, NULL);
+		for (size_t i = oldSegNum; i < segNum; ++i)
+			m_segCtx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
 	}
 	SegCtx** sctx = m_segCtx.data();
-	size_t oldSegNum = m_segCtx.size();
-	size_t indexNum = tab->getIndexNum();
 	for (size_t i = 0; i < segNum; ++i) {
-		if (NULL == sctx[i])
-			continue;
 		ReadableSegment* seg = tab->getSegmentPtr(i);
-		if (sctx[i]->seg.get() == seg)
+		if (NULL == sctx[i]) {
+			sctx[i] = SegCtx::create(seg, indexNum);
+			continue;
+		}
+		if (sctx[i]->seg == seg)
 			continue;
 		for (size_t j = i; j < oldSegNum; ++j) {
-			if (sctx[j] && sctx[j]->seg.get() == seg) {
+			assert(NULL != sctx[j]);
+			if (sctx[j]->seg == seg) {
 				for (size_t k = i; k < j; ++k) {
 					// this should be a merged segments range
-					if (sctx[k]) {
-						SegCtx::destory(sctx[k], indexNum);
-						sctx[k] = NULL;
-					}
+					assert(NULL != sctx[k]);
+					SegCtx::destory(sctx[k], indexNum);
 				}
 				for (size_t k = 0; k < oldSegNum - j; ++k) {
 					sctx[i + k] = sctx[j + k];
@@ -115,62 +134,50 @@ void DbContext::syncSegCtxNoLock() {
 	Done:;
 	}
 	for (size_t i = segNum; i < m_segCtx.size(); ++i) {
-		if (sctx[i]) {
+		if (sctx[i])
 			SegCtx::destory(sctx[i], indexNum);
-			sctx[i] = NULL;
-		}
+	}
+	for (size_t i = 0; i < segNum; ++i) {
+		TERARK_RT_assert(NULL != sctx[i], std::logic_error);
+		TERARK_RT_assert(NULL != sctx[i]->seg, std::logic_error);
+		TERARK_RT_assert(tab->getSegmentPtr(i) == sctx[i]->seg, std::logic_error);
 	}
 	m_segCtx.risk_set_size(segNum);
+	m_rowNumVec.assign(tab->m_rowNumVec);
+	TERARK_RT_assert(m_rowNumVec.size() == segNum + 1, std::logic_error);
 	TERARK_RT_assert(tab->getSegArrayUpdateSeq() == oldtab_segArrayUpdateSeq,
 					 std::logic_error);
 	segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
 }
 
 StoreIterator* DbContext::getStoreIterNoLock(size_t segIdx) {
-	CompositeTable* tab = m_tab;
-	assert(segIdx < tab->getSegNum());
-	if (tab->getSegArrayUpdateSeq() != segArrayUpdateSeq) {
-		assert(segArrayUpdateSeq < tab->getSegArrayUpdateSeq());
-		this->syncSegCtxNoLock();
-	}
-	else if (m_segCtx.size() <= segIdx) {
-		m_segCtx.resize(tab->getSegNum(), NULL);
-	}
-	assert(tab->getSegArrayUpdateSeq() == segArrayUpdateSeq);
-	assert(m_segCtx.size() == tab->getSegNum());
-	if (NULL == m_segCtx[segIdx]) {
-		size_t indexNum = tab->getIndexNum();
-		m_segCtx[segIdx] = SegCtx::create(tab->getSegmentPtr(segIdx), indexNum);
-	}
+	assert(segIdx < m_segCtx.size());
 	SegCtx* p = m_segCtx[segIdx];
-	if (p->storeIter.get() == nullptr) {
-		p->storeIter = tab->getSegmentPtr(segIdx)->createStoreIterForward(this);
+	if (p->storeIter == nullptr) {
+		p->storeIter = m_segCtx[segIdx]->seg->createStoreIterForward(this);
 	}
-	return p->storeIter.get();
+	return p->storeIter;
 }
 
 IndexIterator* DbContext::getIndexIterNoLock(size_t segIdx, size_t indexId) {
-	CompositeTable* tab = m_tab;
-	assert(segIdx < tab->getSegNum());
-	if (tab->getSegArrayUpdateSeq() != segArrayUpdateSeq) {
-		assert(segArrayUpdateSeq < tab->getSegArrayUpdateSeq());
-		this->syncSegCtxNoLock();
-	}
-	else if (m_segCtx.size() <= segIdx) {
-		m_segCtx.resize(tab->getSegNum(), NULL);
-	}
-	size_t indexNum = tab->getIndexNum();
-	assert(indexId < indexNum);
-	assert(m_segCtx.size() == tab->getSegNum());
-	if (NULL == m_segCtx[segIdx]) {
-		m_segCtx[segIdx] = SegCtx::create(tab->getSegmentPtr(segIdx), indexNum);
-	}
+// can be slightly not sync with tab
+	assert(segIdx < m_segCtx.size());
+	assert(indexId < m_tab->getIndexNum());
 	SegCtx* sc = m_segCtx[segIdx];
-	if (sc->indexIter[indexId].get() == nullptr) {
-		sc->indexIter[indexId] = tab->getSegmentPtr(segIdx)->
+	if (sc->indexIter[indexId] == nullptr) {
+		sc->indexIter[indexId] = m_segCtx[segIdx]->seg->
 			m_indices[indexId]->createIndexIterForward(this);
 	}
-	return sc->indexIter[indexId].get();
+	return sc->indexIter[indexId];
+}
+
+void DbContext::debugCheckUnique(fstring row, size_t uniqueIndexId) {
+	assert(this->segArrayUpdateSeq == m_tab->m_segArrayUpdateSeq);
+	const Schema& indexSchema = m_tab->getIndexSchema(uniqueIndexId);
+	m_tab->m_schema->m_rowSchema->parseRow(row, &cols1);
+	indexSchema.selectParent(cols1, &key1);
+	indexSearchExactNoLock(uniqueIndexId, key1, &exactMatchRecIdvec);
+	assert(exactMatchRecIdvec.size() <= 1);
 }
 
 } } // namespace terark::db

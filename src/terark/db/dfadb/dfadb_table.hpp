@@ -20,7 +20,7 @@ public:
 };
 class TERARK_DB_DLL DfaDbTable : public CompositeTable {
 public:
-	DbContext* createDbContext() const override;
+	DbContext* createDbContextNoLock() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;
 	WritableSegment* createWritableSegment(PathRef dir) const override;
 	WritableSegment* openWritableSegment(PathRef dir) const override;

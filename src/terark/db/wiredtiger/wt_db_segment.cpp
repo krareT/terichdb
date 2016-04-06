@@ -12,6 +12,7 @@ WtWritableSegment::WtWritableSegment() {
 	if (const char* env = getenv("TerarkDB_WrSegCacheSizeMB")) {
 		m_cacheSize = (size_t)strtoull(env, NULL, 10) * 1024 * 1024;
 	}
+	m_hasLockFreePointSearch = false;
 }
 WtWritableSegment::~WtWritableSegment() {
 	m_indices.clear();

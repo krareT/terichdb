@@ -212,7 +212,10 @@ const {
 	cursor->set_key(cursor, recno);
 	int err = cursor->search(cursor);
 	if (err) {
-		THROW_STD(invalid_argument, "wiredtiger search failed: recno=%lld", recno);
+		WT_SESSION* ses = cursor->session;
+		THROW_STD(invalid_argument
+			, "wiredtiger search failed: recno=%lld, wtError=%s"
+			, recno, ses->strerror(ses, err));
 	}
 	WT_ITEM item;
 	cursor->get_value(cursor, &item);
