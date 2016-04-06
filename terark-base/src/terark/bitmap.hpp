@@ -377,6 +377,7 @@ public:
 	size_t blsize() const { return (m_size + WordBits -1) / WordBits; }
 	size_t size() const { return m_size; }
 	size_t capacity() const { return m_capacity; }
+	size_t unused() const { return m_capacity - m_size; }
 	bool  empty() const { return m_size == 0; }
 	void  swap(febitvec& y) {
 		std::swap(m_words, y.m_words);

@@ -1408,8 +1408,10 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	if (cmp == 0) {
 		// now IndexIterator::m_isUniqueInSchema is just for this quick check
 		// faster than m_schema->getIndexSchema(indexId).m_isUnique
+		// use lock if m_isDel.unused() is less than ProtectCnt
+		const size_t ProtectCnt = 10;
 		if (iter->isUniqueInSchema()) {
-			if (this->m_isFreezed) {
+			if (this->m_isFreezed || m_isDel.unused() >= ProtectCnt) {
 				if (!m_isDel[recId])
 					recIdvec->push_back(recId);
 			}
@@ -1426,11 +1428,30 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 			} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
 		}
 		else {
-			SpinRwLock lock(this->m_rwMutex, false);
+			size_t oldsize = recIdvec->size();
 			do {
-				if (!m_isDel[recId])
-					recIdvec->push_back(recId);
+				recIdvec->push_back(recId);
 			} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
+			size_t i = oldsize, j = oldsize;
+			size_t n = recIdvec->size();
+			llong* p = recIdvec->data();
+			const bm_uint_t* isDel = m_isDel.bldata();
+			if (m_isDel.unused() > ProtectCnt) {
+				for (; j < n; ++j) {
+					intptr_t id = intptr_t(p[j]);
+					if (!terark_bit_test(isDel, id))
+						p[i++] = id;
+				}
+			}
+			else { // same code, but with lock, lock as less as possible
+				SpinRwLock lock(this->m_rwMutex, false);
+				for (; j < n; ++j) {
+					intptr_t id = intptr_t(p[j]);
+					if (!terark_bit_test(isDel, id))
+						p[i++] = id;
+				}
+			}
+			recIdvec->risk_set_size(i);
 		}
 	}
 	iter->reset();
