@@ -1421,12 +1421,6 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 					recIdvec->push_back(recId);
 			}
 		}
-		else if (this->m_isFreezed) {
-			do {
-				if (!m_isDel[recId])
-					recIdvec->push_back(recId);
-			} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
-		}
 		else {
 			size_t oldsize = recIdvec->size();
 			do {
@@ -1435,8 +1429,8 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 			size_t i = oldsize, j = oldsize;
 			size_t n = recIdvec->size();
 			llong* p = recIdvec->data();
-			const bm_uint_t* isDel = m_isDel.bldata();
-			if (m_isDel.unused() > ProtectCnt) {
+			if (this->m_isFreezed || m_isDel.unused() > ProtectCnt) {
+				const bm_uint_t* isDel = m_isDel.bldata();
 				for (; j < n; ++j) {
 					intptr_t id = intptr_t(p[j]);
 					if (!terark_bit_test(isDel, id))
@@ -1445,6 +1439,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 			}
 			else { // same code, but with lock, lock as less as possible
 				SpinRwLock lock(this->m_rwMutex, false);
+				const bm_uint_t* isDel = m_isDel.bldata();
 				for (; j < n; ++j) {
 					intptr_t id = intptr_t(p[j]);
 					if (!terark_bit_test(isDel, id))
