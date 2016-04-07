@@ -135,6 +135,7 @@ public:
 	MockWritableSegment(PathRef dir);
 	~MockWritableSegment();
 protected:
+	DbTransaction* createTransaction();
 	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
 	ReadableIndex* openIndex(const Schema&, PathRef) const override;
 };

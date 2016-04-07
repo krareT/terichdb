@@ -855,6 +855,11 @@ MockWritableSegment::~MockWritableSegment() {
 	m_wrtStore.reset();
 }
 
+DbTransaction* MockWritableSegment::createTransaction() {
+	assert(0);
+	return NULL;
+}
+
 ReadableIndex*
 MockWritableSegment::openIndex(const Schema& schema, PathRef path) const {
 	std::unique_ptr<ReadableIndex> index(createIndex(schema, path));

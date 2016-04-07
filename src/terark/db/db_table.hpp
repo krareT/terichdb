@@ -5,6 +5,7 @@
 #include "db_index.hpp"
 #include <tbb/queuing_rw_mutex.h>
 //#include <tbb/spin_rw_mutex.h>
+#include <atomic>
 
 namespace terark {
 	class BaseDFA; // forward declaration
@@ -210,13 +211,13 @@ protected:
 	void maybeCreateNewSegmentInWriteLock();
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
+	llong insertRowDontSyncIndex(fstring row, DbContext*);
 	llong insertRowDoInsert(fstring row, DbContext*);
 	bool insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
-	bool insertSyncIndex(llong subId, DbContext*);
+	bool insertSyncIndex(llong subId, class DefaultCommitTransaction&, DbContext*);
 	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
-	bool updateSyncIndex(llong newSubId, DbContext*);
-	void updateSyncMultIndex(llong newSubId, DbContext*);
-	llong upsertRowReverseSearchSegInWriteLock(fstring row, DbContext*);
+	bool updateWithSyncIndex(llong newSubId, fstring row, DbContext*);
+	void updateSyncMultIndex(llong newSubId, class DefaultCommitTransaction&, DbContext*);
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
@@ -240,6 +241,7 @@ protected:
 public:
 	mutable MyRwMutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
+	mutable std::atomic_size_t m_inprogressWritingCount;
 protected:
 	enum class PurgeStatus : unsigned {
 		none,

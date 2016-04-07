@@ -95,6 +95,8 @@ public:
 		static void reset(SegCtx* p, size_t indexNum, ReadableSegment* seg);
 	};
 	CompositeTable* m_tab;
+	class WritableSegment* m_wrSegPtr;
+	std::unique_ptr<class DbTransaction> m_transaction;
 	valvec<SegCtx*> m_segCtx;
 	valvec<llong>   m_rowNumVec; // copy of CompositeTable::m_rowNumVec
 	std::string  errMsg;

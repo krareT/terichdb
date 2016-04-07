@@ -6,6 +6,7 @@
 #include <terark/bitmap.hpp>
 #include <terark/rank_select.hpp>
 #include <tbb/spin_rw_mutex.h>
+#include <tbb/tbb_thread.h>
 
 namespace terark {
 	class SortableStrVec;
@@ -82,6 +83,7 @@ public:
 	rank_select_se m_isPurged; // just for ReadonlySegment
 	byte*          m_isPurgedMmap;
 	boost::filesystem::path m_segDir;
+	mutable SpinRwMutex m_segMutex;
 	valvec<uint32_t> m_updateList; // including deletions
 	febitvec    m_updateBits; // if m_updateList is too large, use updateBits
 	bool        m_tobeDel;
@@ -185,11 +187,92 @@ protected:
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
+class DbTransaction : boost::noncopyable {
+	friend class TransactionGuard;
+	friend class DefaultCommitTransaction;
+	friend class DefaultRollbackTransaction;
+	virtual void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) = 0;
+	virtual void indexRemove(size_t indexId, fstring key, llong recId) = 0;
+	virtual bool indexInsert(size_t indexId, fstring key, llong recId) = 0;
+	virtual void indexUpsert(size_t indexId, fstring key, llong recId) = 0;
+	virtual void storeRemove(llong recId) = 0;
+	virtual void storeUpsert(llong recId, fstring row) = 0;
+	virtual void storeGetRow(llong recId, valvec<byte>* row) = 0;
+	virtual void startTransaction() = 0;
+	virtual void commit() = 0;
+	virtual void rollback() = 0;
+public:
+	virtual ~DbTransaction();
+};
+class TransactionGuard {
+protected:
+	DbTransaction* m_txn;
+	enum Status { started, committed, rollbacked } m_status;
+public:
+	explicit TransactionGuard(DbTransaction* txn) {
+		assert(NULL != txn);
+		txn->startTransaction();
+		m_txn = txn;
+		m_status = started;
+	}
+	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) {
+		m_txn->indexSearch(indexId, key, recIdvec);
+	}
+	void indexRemove(size_t indexId, fstring key, llong recId) {
+		m_txn->indexRemove(indexId, key, recId);
+	}
+	bool indexInsert(size_t indexId, fstring key, llong recId) {
+		return m_txn->indexInsert(indexId, key, recId);
+	}
+	void indexUpsert(size_t indexId, fstring key, llong recId) {
+		m_txn->indexUpsert(indexId, key, recId);
+	}
+	void storeRemove(llong recId) {
+		m_txn->storeRemove(recId);
+	}
+	void storeUpsert(llong recId, fstring row) {
+		m_txn->storeUpsert(recId, row);
+	}
+	void storeGetRow(llong recId, valvec<byte>* row) {
+		m_txn->storeGetRow(recId, row);
+	}
+	void commit() {
+		assert(started == m_status);
+		m_txn->commit();
+		m_status = committed;
+	}
+	void rollback() {
+		assert(started == m_status);
+		m_txn->rollback();
+		m_status = rollbacked;
+	}
+};
+class DefaultCommitTransaction : public TransactionGuard {
+public:
+	explicit
+	DefaultCommitTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
+	~DefaultCommitTransaction() {
+		if (started == m_status)
+			m_txn->commit();
+	}
+};
+class DefaultRollbackTransaction : public TransactionGuard {
+public:
+	explicit
+	DefaultRollbackTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
+	~DefaultRollbackTransaction() {
+		if (started == m_status)
+			m_txn->rollback();
+	}
+};
+
 // Concrete WritableSegment should not implement this class,
 // should implement PlainWritableSegment or SmartWritableSegment
 class TERARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
 	class MyStoreIter;
 public:
+	virtual DbTransaction* createTransaction() = 0;
+
 	WritableSegment();
 	~WritableSegment();
 
@@ -225,6 +308,7 @@ public:
 								DbContext*) const override;
 
 	void getCombineAppend(llong recId, valvec<byte>* val, DbContext*) const;
+	void getCombineAppend(llong recId, valvec<byte>* val, valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2) const;
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 					   valvec<byte>* colsData, DbContext*) const override;
@@ -246,10 +330,8 @@ public:
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
 
-	mutable SpinRwMutex m_rwMutex;
 	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;
-	uint64_t          m_uniqIndexUpdateSeq;
 };
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 

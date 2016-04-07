@@ -10,7 +10,7 @@ namespace terark { namespace db { namespace wt {
 
 namespace fs = boost::filesystem;
 
-static const char g_dataStoreUri[] = "table:__BlobStore__";
+extern const char g_dataStoreUri[] = "table:__BlobStore__";
 
 //////////////////////////////////////////////////////////////////
 class WtWritableStoreIterBase : public StoreIterator {

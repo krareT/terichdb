@@ -45,6 +45,8 @@ public:
 
 	void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 	WritableIndex* getWritableIndex() override { return this; }
+
+	const std::string& getIndexUri() const { return m_uri; }
 };
 typedef boost::intrusive_ptr<WtWritableIndex> WtWritableIndexPtr;
 

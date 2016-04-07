@@ -216,9 +216,15 @@ void ReadableSegment::addtoUpdateList(size_t logicId) {
 		return;
 	}
 	if (m_updateList.size() * 256 < m_isDel.size() && m_updateBits.empty()) {
+		SpinRwLock lock(m_segMutex);
 		m_updateList.push_back(uint32_t(logicId));
 	}
+	else if (!m_updateBits.empty()) {
+		assert(m_updateBits.size() == m_isDel.size() + 1);
+		m_updateBits.set1(logicId);
+	}
 	else {
+		SpinRwLock lock(m_segMutex);
 		// reserve an extra bit as the guard
 		m_updateBits.resize(m_isDel.size() + 1, false);
 		bm_uint_t* bits = m_updateBits.bldata();
@@ -1325,8 +1331,10 @@ const {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+DbTransaction::~DbTransaction() {
+}
+
 WritableSegment::WritableSegment() {
-	m_uniqIndexUpdateSeq = 0;
 }
 WritableSegment::~WritableSegment() {
 	if (!m_tobeDel)
@@ -1389,9 +1397,15 @@ const {
 	else {
 		ctx->buf1.erase_all();
 		ctx->cols1.erase_all();
-		SpinRwLock  lock(m_rwMutex, false);
 		m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
-		this->getCombineAppend(recId, val, ctx);
+		const size_t ProtectCnt = 100;
+		if (m_isFreezed || m_isDel.unused() > ProtectCnt) {
+			this->getCombineAppend(recId, val, ctx);
+		}
+		else {
+			SpinRwLock  lock(m_segMutex, false);
+			this->getCombineAppend(recId, val, ctx);
+		}
 	}
 }
 
@@ -1416,7 +1430,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 					recIdvec->push_back(recId);
 			}
 			else {
-				SpinRwLock lock(this->m_rwMutex, false);
+				SpinRwLock lock(this->m_segMutex, false);
 				if (!m_isDel[recId])
 					recIdvec->push_back(recId);
 			}
@@ -1438,7 +1452,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 				}
 			}
 			else { // same code, but with lock, lock as less as possible
-				SpinRwLock lock(this->m_rwMutex, false);
+				SpinRwLock lock(this->m_segMutex, false);
 				const bm_uint_t* isDel = m_isDel.bldata();
 				for (; j < n; ++j) {
 					intptr_t id = intptr_t(p[j]);
@@ -1455,22 +1469,28 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 void
 WritableSegment::getCombineAppend(llong recId, valvec<byte>* val, DbContext* ctx)
 const {
+	getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
+}
+
+void WritableSegment::getCombineAppend(llong recId, valvec<byte>* val,
+					valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2)
+const {
 	auto& sconf = *m_schema;
 	assert(m_colgroups.size() == sconf.getColgroupNum());
-	ctx->cols1.reserve(sconf.columnNum());
-	sconf.m_wrtSchema->parseRowAppend(ctx->buf1, 0, &ctx->cols1);
+	cols1.reserve(sconf.columnNum());
+	sconf.m_wrtSchema->parseRowAppend(wrtBuf, 0, &cols1);
 	for(size_t colgroupId : sconf.m_updatableColgroups) {
 		auto& schema = sconf.getColgroupSchema(colgroupId);
 		auto cg = m_colgroups[colgroupId].get();
 		assert(nullptr != cg);
-		size_t oldsize = ctx->buf1.size();
-		cg->getValueAppend(recId, &ctx->buf1, ctx);
-		schema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
+		size_t oldsize = wrtBuf.size();
+		cg->getValueAppend(recId, &wrtBuf, NULL);
+		schema.parseRowAppend(wrtBuf, oldsize, &cols1);
 	}
-	ctx->cols2.m_base = ctx->buf1.data();
-	ctx->cols2.m_cols.resize_fill(sconf.columnNum());
-	auto  pCols1 = ctx->cols1.m_cols.data();
-	auto  pCols2 = ctx->cols2.m_cols.data();
+	cols2.m_base = wrtBuf.data();
+	cols2.m_cols.resize_fill(sconf.columnNum());
+	auto  pCols1 = cols1.m_cols.data();
+	auto  pCols2 = cols2.m_cols.data();
 	auto& wrtSchema = *sconf.m_wrtSchema;
 	for(size_t i  = 0, n = wrtSchema.columnNum(); i < n; ++i) {
 		size_t j  = wrtSchema.parentColumnId(i);
@@ -1486,7 +1506,7 @@ const {
 		}
 		baseColumnIdx1 += colnum;
 	}
-	sconf.m_rowSchema->combineRowAppend(ctx->cols2, val);
+	sconf.m_rowSchema->combineRowAppend(cols2, val);
 }
 
 void WritableSegment::selectColumns(llong recId,

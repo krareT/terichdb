@@ -74,6 +74,10 @@ DbContext::DbContext(const CompositeTable* tab)
 	for (size_t i = 0; i < segNum; ++i) {
 		sctx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
 	}
+	m_wrSegPtr = tab->m_wrSeg.get();
+	if (m_wrSegPtr) {
+		m_transaction.reset(m_wrSegPtr->createTransaction());
+	}
 	m_rowNumVec.assign(tab->m_rowNumVec);
 	segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 	syncIndex = true;
@@ -102,6 +106,13 @@ void DbContext::doSyncSegCtxNoLock(const CompositeTable* tab) {
 		m_segCtx.resize(segNum, NULL);
 		for (size_t i = oldSegNum; i < segNum; ++i)
 			m_segCtx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
+	}
+	if (tab->m_wrSeg.get() != m_wrSegPtr) {
+		m_wrSegPtr = tab->m_wrSeg.get();
+		if (m_wrSegPtr)
+			m_transaction.reset(m_wrSegPtr->createTransaction());
+		else
+			m_transaction.reset();
 	}
 	SegCtx** sctx = m_segCtx.data();
 	for (size_t i = 0; i < segNum; ++i) {
