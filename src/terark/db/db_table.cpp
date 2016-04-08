@@ -1196,7 +1196,6 @@ Fail:
 void
 CompositeTable::updateSyncMultIndex(llong subId, DefaultCommitTransaction& txn, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
-	const WritableSegment& ws = *m_wrSeg;
 	for (size_t i = 0; i < sconf.m_multIndices.size(); ++i) {
 		size_t indexId = sconf.m_multIndices[i];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
