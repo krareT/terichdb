@@ -66,6 +66,8 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		}
 		if (600 == i)
 			i = i;
+		if (17714 == recRow.id)
+			i = i;
 		llong recId = ctx->insertRow(binRow);
 		if (recId < 0) {
 			assert(bits.is1(recRow.id));
@@ -76,6 +78,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 			if (bits.is1(recRow.id)) {
 				ctx->removeRow(recId);
 				llong recId2 = ctx->insertRow(binRow);
+				assert(recId2 == recId);
 			}
 			assert(tab->exists(recId));
 			assert(bits.is0(recRow.id));
@@ -84,6 +87,8 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 
 		if (rand() < RAND_MAX*0.3) {
 			llong randomRecId = rand() % tab->numDataRows();
+			if (93 == randomRecId)
+				i = i;
 			uint64_t keyId = 0;
 			recBuf.erase_all();
 			std::string jstr;
@@ -103,10 +108,14 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 			if (rand() < RAND_MAX*0.3) {
 				// may remove deleted record
 				ctx->removeRow(randomRecId);
+				assert(!tab->exists(randomRecId));
+				assert(!ctx->indexKeyExists(0, fstring((char*)&keyId, 8)));
 				isDeleted = true;
 			}
 			else if (tab->exists(randomRecId)) {
 				ctx->removeRow(randomRecId);
+				assert(!tab->exists(randomRecId));
+				assert(!ctx->indexKeyExists(0, fstring((char*)&keyId, 8)));
 				isDeleted = true;
 			}
 			if (isDeleted && keyId > 0) {
