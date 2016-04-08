@@ -204,7 +204,7 @@ class DbTransaction : boost::noncopyable {
 public:
 	virtual ~DbTransaction();
 };
-class TransactionGuard {
+class TransactionGuard : boost::noncopyable {
 protected:
 	DbTransaction* m_txn;
 	enum Status { started, committed, rollbacked } m_status;
@@ -214,6 +214,9 @@ public:
 		txn->startTransaction();
 		m_txn = txn;
 		m_status = started;
+	}
+	~TransactionGuard() {
+		assert(committed == m_status || rollbacked == m_status);
 	}
 	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) {
 		m_txn->indexSearch(indexId, key, recIdvec);
@@ -252,8 +255,10 @@ public:
 	explicit
 	DefaultCommitTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
 	~DefaultCommitTransaction() {
-		if (started == m_status)
+		if (started == m_status) {
 			m_txn->commit();
+			m_status = committed;
+		}
 	}
 };
 class DefaultRollbackTransaction : public TransactionGuard {
@@ -261,8 +266,10 @@ public:
 	explicit
 	DefaultRollbackTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
 	~DefaultRollbackTransaction() {
-		if (started == m_status)
+		if (started == m_status) {
 			m_txn->rollback();
+			m_status = rollbacked;
+		}
 	}
 };
 
