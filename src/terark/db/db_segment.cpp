@@ -215,16 +215,11 @@ void ReadableSegment::addtoUpdateList(size_t logicId) {
 	if (!m_bookUpdates) {
 		return;
 	}
-	if (m_updateList.size() * 256 < m_isDel.size() && m_updateBits.empty()) {
-		SpinRwLock lock(m_segMutex);
-		m_updateList.push_back(uint32_t(logicId));
-	}
-	else if (!m_updateBits.empty()) {
+	if (!m_updateBits.empty()) {
 		assert(m_updateBits.size() == m_isDel.size() + 1);
 		m_updateBits.set1(logicId);
 	}
 	else {
-		SpinRwLock lock(m_segMutex);
 		// reserve an extra bit as the guard
 		m_updateBits.resize(m_isDel.size() + 1, false);
 		bm_uint_t* bits = m_updateBits.bldata();
