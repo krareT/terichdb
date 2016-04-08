@@ -83,6 +83,10 @@ struct WtCursor {
 		if (cursor)
 			cursor->close(cursor);
 	}
+#if !defined(NDEBUG)
+	WtCursor(const WtCursor& y) : cursor(NULL) { assert(NULL == y.cursor); }
+	WtCursor& operator=(const WtCursor& y) { assert(NULL == y.cursor); }
+#endif
 	operator WT_CURSOR*() const { return cursor; }
 };
 struct WtCursor2 {
@@ -96,12 +100,17 @@ struct WtSession {
 		if (ses)
 			ses->close(ses, NULL);
 	}
+#if !defined(NDEBUG)
+	WtSession(const WtSession& y) : ses(NULL) { assert(NULL == y.ses); }
+	WtSession& operator=(const WtSession& y) { assert(NULL == y.ses); }
+#endif
+	operator WT_SESSION*() const { return ses; }
 };
 struct WtItem : public WT_ITEM {
 	WtItem() {
 		memset(this, 0, sizeof(WtItem));
 	}
-	operator fstring() { return fstring((const char*)data, size); }
+	operator fstring() const { return fstring((const char*)data, size); }
 	const char* charData() const { return (const char*)data; }
 };
 
@@ -126,7 +135,7 @@ public:
 				);
 		}
 		WT_SESSION* ses = m_session.ses;
-		err = ses->open_cursor(ses, g_dataStoreUri, NULL, "overwrite", &m_store.cursor);
+		err = ses->open_cursor(ses, g_dataStoreUri, NULL, "overwrite=true", &m_store.cursor);
 		if (err) {
 			THROW_STD(invalid_argument
 				, "ERROR: wiredtiger store open cursor: %s"
@@ -138,20 +147,19 @@ public:
 			WtWritableIndex* wtIndex = dynamic_cast<WtWritableIndex*>(index);
 			assert(NULL != wtIndex);
 			const char* uri = wtIndex->getIndexUri().c_str();
-			err = ses->open_cursor(ses, uri, NULL, NULL, &m_indices[indexId].insert.cursor);
+			err = ses->open_cursor(ses, uri, NULL, "overwrite=false", &m_indices[indexId].insert.cursor);
 			if (err) {
 				THROW_STD(invalid_argument
 					, "ERROR: wiredtiger open index cursor: %s"
 					, ses->strerror(ses, err));
 			}
-			err = ses->open_cursor(ses, uri, NULL, "overwrite", &m_indices[indexId].overwrite.cursor);
+			err = ses->open_cursor(ses, uri, NULL, "overwrite=true", &m_indices[indexId].overwrite.cursor);
 			if (err) {
 				THROW_STD(invalid_argument
 					, "ERROR: wiredtiger open index cursor: %s"
 					, ses->strerror(ses, err));
 			}
 		}
-//		m_ctx = new DbContext()
 	}
 	void startTransaction() override {
 		WT_SESSION* ses = m_session.ses;
@@ -182,16 +190,13 @@ public:
 	}
 	bool indexInsert(size_t indexId, fstring key, llong recId) override {
 		assert(indexId < m_indices.size());
-		WtItem item;
-		item.data = key.data();
-		item.size = key.size();
+		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].insert;
+		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
+		int err = cur->insert(cur);
 		if (schema.m_isUnique) {
-			cur->set_key(cur, &item);
-			cur->set_value(cur, recId);
-			int err = cur->insert(cur);
 			if (WT_DUPLICATE_KEY == err) {
 				return false;
 			}
@@ -201,11 +206,6 @@ public:
 			}
 		}
 		else {
-			llong recId = -1;
-			cur->set_key(cur, &item, recId);
-			cur->set_value(cur, 1);
-			int cmp = 0;
-			int err = cur->insert(cur);
 			if (WT_DUPLICATE_KEY == err) {
 				assert(0); // assert in debug
 				return true; // ignore in release
@@ -219,19 +219,17 @@ public:
 	}
 	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) override {
 		assert(indexId < m_indices.size());
-		WtItem item;
-		item.data = key.data();
-		item.size = key.size();
+		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].insert;
+		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
 		recIdvec->erase_all();
+		int err = cur->search(cur);
+		if (WT_NOTFOUND == err) {
+			return;
+		}
 		if (schema.m_isUnique) {
-			cur->set_key(cur, &item);
-			int err = cur->search(cur);
-			if (WT_NOTFOUND == err) {
-				return;
-			}
 			if (err) {
 				THROW_STD(invalid_argument
 					, "ERROR: wiredtiger search: %s", ses->strerror(ses, err));
@@ -245,39 +243,34 @@ public:
 			cur->set_key(cur, &item, recId);
 			int cmp = 0;
 			int err = cur->search_near(cur, &cmp);
-			if (WT_NOTFOUND == err) {
-				return;
-			}
 			if (err) {
 				THROW_STD(invalid_argument
 					, "ERROR: wiredtiger search_near: %s", ses->strerror(ses, err));
 			}
 			if (cmp >= 0) {
-				do {
-					cur->get_key(cur, &item, &recId);
-					if (item == key) {
-						recIdvec->push_back(recId);
-					} else {
-						break;
+				WtItem item2;
+				while (0 == err) {
+					llong id;
+					cur->get_key(cur, &item2, &id);
+					if (item2.size == item.size &&
+						memcmp(item2.data, item.data, item.size) == 0)
+					{
+						recIdvec->push_back(id);
+						err = cur->next(cur);
 					}
-				} while (cur->next(cur) == 0);
+					else break;
+				}
 			}
 		}
+		cur->reset(cur);
 	}
 	void indexRemove(size_t indexId, fstring key, llong recId) override {
 		assert(indexId < m_indices.size());
-		WtItem item;
-		item.data = key.data();
-		item.size = key.size();
+		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].insert;
-		if (schema.m_isUnique) {
-			cur->set_key(cur, &item);
-		}
-		else {
-			cur->set_key(cur, &item, recId);
-		}
+		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
 		int err = cur->remove(cur);
 		if (WT_NOTFOUND == err) {
 			return;
@@ -290,35 +283,22 @@ public:
 	void indexUpsert(size_t indexId, fstring key, llong recId) override {
 		assert(indexId < m_indices.size());
 		WtItem item;
-		item.data = key.data();
-		item.size = key.size();
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].overwrite;
-		if (schema.m_isUnique) {
-			cur->set_key(cur, &item);
-			cur->set_value(cur, recId);
-			int err = cur->insert(cur);
-			if (err) {
-				THROW_STD(invalid_argument
-					, "ERROR: wiredtiger upsert unique index: %s", ses->strerror(ses, err));
-			}
-		}
-		else {
-			llong recId = -1;
-			cur->set_key(cur, &item, recId);
-			cur->set_value(cur, 1);
-			int cmp = 0;
-			int err = cur->insert(cur);
-			if (err) {
-				THROW_STD(invalid_argument
-					, "ERROR: wiredtiger upsert multi index: %s", ses->strerror(ses, err));
-			}
+		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
+		int err = cur->insert(cur);
+		if (err) {
+			THROW_STD(invalid_argument
+				, "ERROR: wiredtiger upsert %s index: %s"
+				, schema.m_isUnique ? "unique" : "multi"
+				, ses->strerror(ses, err));
 		}
 	}
 	void storeRemove(llong recId) override {
 		WT_SESSION* ses = m_session.ses;
 		WT_CURSOR* cur = m_store;
+		cur->set_key(cur, recId + 1); // recno = recId + 1
 		int err = cur->remove(cur);
 		if (WT_NOTFOUND == err) {
 			return;
@@ -338,6 +318,7 @@ public:
 			auto& sconf = m_sconf;
 			auto seg = m_seg;
 			sconf.m_rowSchema->parseRow(row, &m_cols1);
+			SpinRwLock lock(m_seg->m_segMutex);
 			for (size_t colgroupId : sconf.m_updatableColgroups) {
 				auto store = seg->m_colgroups[colgroupId]->getUpdatableStore();
 				assert(nullptr != store);

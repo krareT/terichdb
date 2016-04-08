@@ -211,9 +211,7 @@ protected:
 	void maybeCreateNewSegmentInWriteLock();
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
-	llong insertRowDontSyncIndex(fstring row, DbContext*);
 	llong insertRowDoInsert(fstring row, DbContext*);
-	bool insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool insertSyncIndex(llong subId, class DefaultCommitTransaction&, DbContext*);
 	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool updateWithSyncIndex(llong newSubId, fstring row, DbContext*);

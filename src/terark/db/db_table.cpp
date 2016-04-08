@@ -797,7 +797,6 @@ CompositeTable::insertRow(fstring row, DbContext* txn) {
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	MyRwLock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
-	txn->trySyncSegCtxNoLock(this);
 	return insertRowImpl(row, txn, lock);
 }
 
@@ -805,9 +804,31 @@ llong
 CompositeTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 	DebugCheckRowNumVecNoLock(this);
 	maybeCreateNewSegment(lock);
-	if (ctx->syncIndex) {
-		if (!insertCheckSegDup(0, m_segments.size()-1, ctx))
-			return -1;
+	ctx->trySyncSegCtxNoLock(this);
+	if (!ctx->syncIndex) {
+		return insertRowDoInsert(row, ctx);
+	}
+	const SchemaConfig& sconf = *m_schema;
+	for (size_t segIdx = 0; segIdx < m_segments.size()-1; ++segIdx) {
+		auto seg = m_segments[segIdx].get();
+		for(size_t indexId : sconf.m_uniqIndices) {
+			const Schema& iSchema = sconf.getIndexSchema(indexId);
+			assert(iSchema.m_isUnique);
+			iSchema.selectParent(ctx->cols1, &ctx->key1);
+			seg->indexSearchExact(segIdx, indexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			for(llong logicId : ctx->exactMatchRecIdvec) {
+				if (!seg->m_isDel[logicId]) {
+					char szIdstr[96];
+					snprintf(szIdstr, sizeof(szIdstr), "logicId = %lld", logicId);
+					ctx->errMsg = "DupKey=" + iSchema.toJsonStr(ctx->key1)
+								+ ", " + szIdstr
+								+ ", in frozen seg: " + seg->m_segDir.string();
+				//	txn->errMsg += ", rowData=";
+				//	txn->errMsg += sconf.m_rowSchema->toJsonStr(row);
+					return -1;
+				}
+			}
+		}
 	}
 	return insertRowDoInsert(row, ctx);
 }
@@ -851,6 +872,9 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 				ws.m_delcnt--;
 				assert(ws.m_isDel.popcnt() == ws.m_delcnt);
 			}
+			else {
+				ws.m_deletedWrIdSet.push_back(subId);
+			}
 			return -1; // fail
 		}
 	}
@@ -863,41 +887,6 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
 	}
 	return wrBaseId + subId;
-}
-
-bool
-CompositeTable::insertCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) {
-	// m_wrSeg will be check in unique index insert
-	const size_t endSeg = begSeg + numSeg;
-	assert(endSeg < m_segments.size()); // don't check m_wrSeg
-	if (0 == numSeg)
-		return true;
-	const SchemaConfig& sconf = *m_schema;
-	for (size_t segIdx = begSeg; segIdx < endSeg; ++segIdx) {
-		auto seg = &*m_segments[segIdx];
-		for(size_t i = 0; i < sconf.m_uniqIndices.size(); ++i) {
-			size_t indexId = sconf.m_uniqIndices[i];
-			const Schema& iSchema = sconf.getIndexSchema(indexId);
-			assert(iSchema.m_isUnique);
-			iSchema.selectParent(txn->cols1, &txn->key1);
-			seg->indexSearchExact(segIdx, indexId, txn->key1, &txn->exactMatchRecIdvec, txn);
-			for(llong logicId : txn->exactMatchRecIdvec) {
-				if (!seg->m_isDel[logicId]) {
-					// std::move makes it no temps
-					char szIdstr[96];
-					snprintf(szIdstr, sizeof(szIdstr)
-						, "logicId = %lld", logicId);
-					txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
-								+ ", " + szIdstr
-								+ ", in freezen seg: " + seg->m_segDir.string();
-				//	txn->errMsg += ", rowData=";
-				//	txn->errMsg += sconf.m_rowSchema->toJsonStr(row);
-					return false;
-				}
-			}
-		}
-	}
-	return true;
 }
 
 bool
@@ -1068,19 +1057,6 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* ctx) {
 			THROW_STD(invalid_argument
 				, "id=%lld has been deleted, segIdx=%zd, baseId=%lld, subId=%lld"
 				, id, j, baseId, subId);
-			/*
-			// behave as insert
-			if (!insertCheckSegDup(0, m_segments.size()-1, txn))
-				return -1;
-			if (!lock.upgrade_to_writer()) {
-				// check for segment changes(should be very rare)
-				if (old_newWrSegNum != m_newWrSegNum) {
-					if (!insertCheckSegDup(m_segments.size()-2, 1, txn))
-						return -1;
-				}
-				directUpgrade = false;
-			}
-			*/
 		}
 		else {
 			seg->getValue(subId, &ctx->row2, ctx);
@@ -1137,7 +1113,7 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* ctx) {
 }
 
 bool
-CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) {
+CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 	// m_wrSeg will be check in unique index insert
 	const size_t endSeg = begSeg + numSeg;
 	assert(endSeg < m_segments.size()); // don't check m_wrSeg
@@ -1151,9 +1127,9 @@ CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) 
 			auto seg = &*m_segments[segIdx];
 			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
-			iSchema.selectParent(txn->cols1, &txn->key1);
-			rIndex->searchExact(txn->key1, &txn->exactMatchRecIdvec, txn);
-			for(llong physicId : txn->exactMatchRecIdvec) {
+			iSchema.selectParent(ctx->cols1, &ctx->key1);
+			rIndex->searchExact(ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			for(llong physicId : ctx->exactMatchRecIdvec) {
 				llong logicId = seg->getLogicId(physicId);
 				if (!seg->m_isDel[logicId]) {
 					// std::move makes it no temps
@@ -1161,9 +1137,9 @@ CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* txn) 
 					snprintf(szIdstr, sizeof(szIdstr)
 						, "logicId = %lld , physicId = %lld"
 						, logicId, physicId);
-					txn->errMsg = "DupKey=" + iSchema.toJsonStr(txn->key1)
+					ctx->errMsg = "DupKey=" + iSchema.toJsonStr(ctx->key1)
 								+ ", " + szIdstr
-								+ ", in freezen seg: " + seg->m_segDir.string();
+								+ ", in frozen seg: " + seg->m_segDir.string();
 				//	txn->errMsg += ", rowData=";
 				//	txn->errMsg += m_rowSchema->toJsonStr(row);
 					return false;
@@ -1257,8 +1233,18 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 	if (!seg->m_isFreezed) {
 		assert(m_wrSeg.get() == seg);
 		assert(!m_wrSeg->m_bookUpdates);
+		auto setWrSegDelmarkLocked = [&]() {
+			SpinRwLock wsLock(m_wrSeg->m_segMutex);
+			if (!m_wrSeg->m_isDel[subId]) {
+				m_wrSeg->m_deletedWrIdSet.push_back(uint32_t(subId));
+				m_wrSeg->m_delcnt++;
+				m_wrSeg->m_isDel.set1(subId); // always set delmark
+				m_wrSeg->m_isDirty = true;
+			}
+			assert(m_wrSeg->m_isDel.popcnt() == m_wrSeg->m_delcnt);
+		};
 		if (ctx->syncIndex) {
-			DefaultCommitTransaction txn(ctx->m_transaction.get());
+			TransactionGuard txn(ctx->m_transaction.get());
 			valvec<byte> &row = ctx->row1, &key = ctx->key1;
 			ColumnVec& columns = ctx->cols1;
 			txn.storeGetRow(subId, &row);
@@ -1269,33 +1255,26 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 				txn.indexRemove(i, key, subId);
 			}
 			txn.storeRemove(subId);
-			SpinRwLock wsLock(m_wrSeg->m_segMutex);
-			m_wrSeg->m_deletedWrIdSet.push_back(uint32_t(subId));
-			m_wrSeg->m_delcnt++;
-			m_wrSeg->m_isDel.set1(subId); // always set delmark
-			m_wrSeg->m_isDirty = true;
-			assert(m_wrSeg->m_isDel.popcnt() == m_wrSeg->m_delcnt);
+			setWrSegDelmarkLocked();
 			txn.commit();
 		}
 		else {
-			SpinRwLock wsLock(m_wrSeg->m_segMutex);
-			m_wrSeg->m_deletedWrIdSet.push_back(uint32_t(subId));
-			m_wrSeg->m_delcnt++;
-			m_wrSeg->m_isDel.set1(subId); // always set delmark
-			m_wrSeg->m_isDirty = true;
-			assert(m_wrSeg->m_isDel.popcnt() == m_wrSeg->m_delcnt);
+			setWrSegDelmarkLocked();
 		}
 	}
 	else { // freezed segment, just set del mark
-		seg->addtoUpdateList(size_t(subId));
-		seg->m_isDel.set1(subId);
-		seg->m_delcnt++;
-		seg->m_isDirty = true;
-#if !defined(NDEBUG)
-		size_t delcnt = seg->m_isDel.popcnt();
-		assert(delcnt == seg->m_delcnt);
-#endif
-		tryAsyncPurgeDeleteInLock(seg);
+		SpinRwLock wsLock(seg->m_segMutex);
+		if (!seg->m_isDel[subId]) {
+			seg->addtoUpdateList(size_t(subId));
+			seg->m_isDel.set1(subId);
+			seg->m_delcnt++;
+			seg->m_isDirty = true;
+	#if !defined(NDEBUG)
+			size_t delcnt = seg->m_isDel.popcnt();
+			assert(delcnt == seg->m_delcnt);
+	#endif
+			tryAsyncPurgeDeleteInLock(seg);
+		}
 	}
 	return true;
 }
@@ -2586,7 +2565,9 @@ void CompositeTable::merge(MergeParam& toMerge) {
 	std::string segPathList = toMerge.joinPathList();
 	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s ...\n"
 		, segPathList.c_str(), destSegDir.string().c_str());
+#if defined(NDEBUG)
 try{
+#endif
 	fs::create_directories(destSegDir);
 	fs::path   mergingLockFile = destMergeDir / "merging.lock";
 	FileStream mergingLockFp(mergingLockFile.string().c_str(), "wb");
@@ -2883,6 +2864,7 @@ try{
 	}
 	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s done!\n"
 		, segPathList.c_str(), destSegDir.string().c_str());
+#if defined(NDEBUG)
 }
 catch (const std::exception& ex) {
 	fprintf(stderr
@@ -2891,6 +2873,7 @@ catch (const std::exception& ex) {
 	TERARK_IF_DEBUG(throw,;);
 	fs::remove_all(destMergeDir);
 }
+#endif
 }
 
 void CompositeTable::checkRowNumVecNoLock() const {
