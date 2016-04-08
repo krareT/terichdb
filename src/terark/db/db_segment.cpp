@@ -1393,6 +1393,10 @@ const {
 		ctx->buf1.erase_all();
 		ctx->cols1.erase_all();
 		m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
+		if (ctx->buf1.empty()) { // fail
+			assert(0); // TODO:
+			return; // now ignore in release compile
+		}
 		const size_t ProtectCnt = 100;
 		if (m_isFreezed || m_isDel.unused() > ProtectCnt) {
 			this->getCombineAppend(recId, val, ctx);

@@ -213,9 +213,10 @@ const {
 	int err = cursor->search(cursor);
 	if (WT_NOTFOUND == err) {
 		WT_SESSION* ses = cursor->session;
-		THROW_STD(invalid_argument
-			, "wiredtiger NotFound: recno=%lld, should always found: %s"
-			, recno, ses->strerror(ses, err));
+		fprintf(stderr
+			, "ERROR: wiredtiger NotFound: recno=%lld, should always found"
+			, recno);
+		return;
 	}
 	if (err) {
 		WT_SESSION* ses = cursor->session;
