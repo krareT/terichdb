@@ -49,6 +49,7 @@ const {
 		   memcmp(keysData + f*(id=m_index[j]), key.p, f) == 0)
 	{
 		recIdvec->push_back(id);
+		++j;
 	}
 }
 
