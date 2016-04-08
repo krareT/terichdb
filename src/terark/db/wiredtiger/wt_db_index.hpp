@@ -30,6 +30,10 @@ class TERARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex
 				   WT_ITEM* item, valvec<byte>* buf) const;
 
 public:
+	static void getKeyVal(const Schema&, WT_CURSOR*, valvec<byte>* key, llong* recId);
+	static void setKeyVal(const Schema&, WT_CURSOR*, fstring key, llong recId,
+				   WT_ITEM* item, valvec<byte>* buf);
+
 	explicit WtWritableIndex(const Schema&, WT_CONNECTION* conn);
 	~WtWritableIndex();
 	void save(PathRef) const override;

@@ -173,9 +173,15 @@ std::string toWtSchema(const Schema& schema) {
 void
 WtWritableIndex::getKeyVal(WT_CURSOR* cursor, valvec<byte>* key, llong* recId)
 const {
+	getKeyVal(*m_schema, cursor, key, recId);
+}
+
+void WtWritableIndex::getKeyVal(const Schema& schema, WT_CURSOR* cursor,
+								valvec<byte>* key, llong* recId)
+{
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
-	if (m_isUnique) {
+	if (schema.m_isUnique) {
 		cursor->get_key(cursor, &item);
 		cursor->get_value(cursor, recId);
 	}
@@ -184,25 +190,31 @@ const {
 	//	cursor->get_value(cursor, ...); // has no value
 	}
 	key->assign((const byte*)item.data, item.size);
-	if (m_schema->m_needEncodeToLexByteComparable) {
-		m_schema->byteLexConvert(key->data(), item.size);
+	if (schema.m_needEncodeToLexByteComparable) {
+		schema.byteLexConvert(key->data(), item.size);
 	}
 }
 
 void WtWritableIndex::setKeyVal(WT_CURSOR* cursor, fstring key, llong recId,
 								WT_ITEM* item, valvec<byte>* buf)
 const {
+	setKeyVal(*m_schema, cursor, key, recId, item, buf);
+}
+void WtWritableIndex::setKeyVal(const Schema& schema, WT_CURSOR* cursor,
+								fstring key, llong recId,
+								WT_ITEM* item, valvec<byte>* buf)
+{
 	memset(item, 0, sizeof(*item));
 	item->size = key.size();
-	if (m_schema->m_needEncodeToLexByteComparable) {
+	if (schema.m_needEncodeToLexByteComparable) {
 		buf->assign(key);
-		m_schema->byteLexConvert(*buf);
+		schema.byteLexConvert(*buf);
 		item->data = buf->data();
 	}
 	else {
 		item->data = key.data();
 	}
-	if (m_isUnique) {
+	if (schema.m_isUnique) {
 		cursor->set_key(cursor, item);
 		cursor->set_value(cursor, recId);
 	}
