@@ -1153,7 +1153,6 @@ CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) 
 bool
 CompositeTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
-	WritableSegment& ws = *m_wrSeg;
 	DefaultCommitTransaction txn(ctx->m_transaction.get());
 	size_t i = 0;
 	for (; i < sconf.m_uniqIndices.size(); ++i) {
