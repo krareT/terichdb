@@ -148,12 +148,23 @@ void FixedLenStore::update(llong id, fstring row, DbContext* ctx) {
 	Header* h = m_mmapBase;
 	assert(id >= 0);
 	TERARK_RT_assert(row.size() == m_fixlen, std::invalid_argument);
-	if (h && id < llong(h->rows)) {
-		memcpy(h->get_data(id), row.data(), row.size());
-	} else {
-		TERARK_RT_assert(!h || size_t(id) == h->rows, std::invalid_argument);
-		append(row, ctx);
+	if (nullptr == h) {
+		h = allocFileSize(llong(std::max(m_mmapSize, sizeof(Header)) * 1.618));
 	}
+	// id may greater than h->rows in concurrent insertions
+	uint64_t oldRows = h->rows;
+	uint64_t newRows = std::max<uint64_t>(oldRows, id+1);
+	assert(uint64_t(id) <= oldRows); // assert in single thread tests
+	if (newRows >= h->capacity) {
+		assert(m_mmapSize % ChunkBytes == 0);
+		size_t required_bytes = m_mmapSize + m_fixlen * (newRows - h->capacity);
+		h = allocFileSize(llong(std::max(required_bytes, sizeof(Header)) * 1.618));
+		assert(h->capacity > newRows);
+	}
+	memcpy(h->get_data(id), row.data(), row.size());
+	h->rows = newRows;
+//	if (oldRows == id)
+//		h->rows = newRows; // what if mmap is in slower RAM?
 }
 
 void FixedLenStore::remove(llong id, DbContext*) {
