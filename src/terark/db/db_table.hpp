@@ -229,6 +229,7 @@ protected:
 	ReadonlySegment* myCreateReadonlySegment(PathRef segDir) const;
 	WritableSegment* myCreateWritableSegment(PathRef segDir) const;
 
+	bool checkPurgeDeleteNoLock(const ReadableSegment* seg);
 	bool tryAsyncPurgeDeleteInLock(const ReadableSegment* seg);
 	void asyncPurgeDeleteInLock();
 	void inLockPutPurgeDeleteTaskToQueue();

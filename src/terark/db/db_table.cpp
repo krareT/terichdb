@@ -986,14 +986,23 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			}
 			llong newRecId = insertRowDoInsert(row, ctx);
 			if (newRecId >= 0) {
-				seg->m_delcnt++;
-				seg->m_isDel.set1(subId);
-				seg->addtoUpdateList(subId);
+				{
+					SpinRwLock segLock(seg->m_segMutex, true);
+					seg->m_delcnt++;
+					seg->m_isDel.set1(subId);
+					seg->addtoUpdateList(subId);
+				}
 				ctx->isUpsertOverwritten = 2;
-				tryAsyncPurgeDeleteInLock(seg);
+				if (checkPurgeDeleteNoLock(seg)) {
+					lock.upgrade_to_writer();
+					asyncPurgeDeleteInLock();
+					maybeCreateNewSegmentInWriteLock();
+				}
+				else {
+					maybeCreateNewSegment(lock);
+				}
 			}
 			TERARK_IF_DEBUG(ctx->debugCheckUnique(row, uniqueIndexId),;);
-			maybeCreateNewSegment(lock);
 			return newRecId;
 		}
 	}
@@ -1096,17 +1105,18 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* ctx) {
 		return id; // id is not changed
 	}
 	else {
+		tryAsyncPurgeDeleteInLock(seg);
 		lock.downgrade_to_reader();
 	//	lock.release();
 	//	lock.acquire(m_rwMutex, false);
 		llong recId = insertRowImpl(row, ctx, lock); // id is changed
 		if (recId >= 0) {
 			// mark old subId as deleted
+			SpinRwLock segLock(seg->m_segMutex);
 			seg->addtoUpdateList(size_t(subId));
 			seg->m_isDel.set1(subId);
 			seg->m_delcnt++;
 			assert(seg->m_isDel.popcnt() == seg->m_delcnt);
-			tryAsyncPurgeDeleteInLock(seg);
 		}
 		return recId;
 	}
@@ -1261,17 +1271,22 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 		}
 	}
 	else { // freezed segment, just set del mark
-		SpinRwLock wsLock(seg->m_segMutex);
-		if (!seg->m_isDel[subId]) {
-			seg->addtoUpdateList(size_t(subId));
-			seg->m_isDel.set1(subId);
-			seg->m_delcnt++;
-			seg->m_isDirty = true;
-	#if !defined(NDEBUG)
-			size_t delcnt = seg->m_isDel.popcnt();
-			assert(delcnt == seg->m_delcnt);
-	#endif
-			tryAsyncPurgeDeleteInLock(seg);
+		{
+			SpinRwLock wsLock(seg->m_segMutex);
+			if (!seg->m_isDel[subId]) {
+				seg->addtoUpdateList(size_t(subId));
+				seg->m_isDel.set1(subId);
+				seg->m_delcnt++;
+				seg->m_isDirty = true;
+		#if !defined(NDEBUG)
+				size_t delcnt = seg->m_isDel.popcnt();
+				assert(delcnt == seg->m_delcnt);
+		#endif
+			}
+		}
+		if (checkPurgeDeleteNoLock(seg)) {
+			lock.upgrade_to_writer();
+			asyncPurgeDeleteInLock();
 		}
 	}
 	return true;
@@ -2126,6 +2141,8 @@ struct SegEntry {
 	febitvec newIsPurged;
 	size_t oldNumPurged;
 	size_t newNumPurged;
+	febitvec  updateBits;
+	valvec<uint32_t> updateList;
 
 	// constructor must be fast enough
 	SegEntry(ReadonlySegment* s, size_t i) : seg(s), idx(i) {
@@ -2295,6 +2312,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		double newMarkDelRatio = 1.0*newMarkDelcnt / (oldRealRecords + 0.1);
 		// may cause book more records during 'e.newIsPurged = seg->m_isDel'
 		// but this would not cause big problems
+		seg->m_updateList.reserve(1024); // reduce enlarge times
 		seg->m_bookUpdates = true;
 		if (newMarkDelRatio > purgeThreshold) {
 			// do purge: physic delete
@@ -2759,40 +2777,45 @@ try{
 	};
 	auto syncUpdates = [&](ReadonlySegment* dseg) {
 		DebugCheckRowNumVecNoLock(this);
+		for (auto& e : toMerge) {
+			ReadableSegment* sseg = e.seg;
+			assert(e.updateBits.empty());
+			assert(e.updateList.empty());
+			SpinRwLock segLock(sseg->m_segMutex, true);
+			e.updateBits.swap(sseg->m_updateBits);
+			e.updateList.swap(sseg->m_updateList);
+		}
 		size_t baseLogicId = 0;
 		for (auto& e : toMerge) {
 			ReadableSegment* sseg = e.seg;
-			if (sseg->m_updateBits.empty()) {
-				for (size_t subId : sseg->m_updateList) {
+			if (e.updateBits.empty()) {
+				for (size_t subId : e.updateList) {
 					syncOneRecord(dseg, sseg, baseLogicId, subId);
 				}
 			}
 			else {
-				assert(sseg->m_updateBits.size() == sseg->m_isDel.size() + 1);
-				assert(sseg->m_updateList.empty());
-				size_t subId = sseg->m_updateBits.zero_seq_len(0);
+				assert(e.updateBits.size() == sseg->m_isDel.size() + 1);
+				assert(e.updateList.empty());
+				size_t subId = e.updateBits.zero_seq_len(0);
 				size_t subRows = sseg->m_isDel.size();
 				while (subId < subRows) {
 					syncOneRecord(dseg, sseg, baseLogicId, subId);
-					size_t zeroSeqLen = sseg->m_updateBits.zero_seq_len(subId + 1);
+					size_t zeroSeqLen = e.updateBits.zero_seq_len(subId + 1);
 					subId += 1 + zeroSeqLen;
 				}
 				assert(subId == subRows);
 			}
 			baseLogicId += sseg->m_isDel.size();
-			// it is safe to change these 2 member in reader lock
-			sseg->m_updateList.erase_all();
-			sseg->m_updateBits.erase_all();
+			e.updateList.erase_all();
+			e.updateBits.erase_all();
 		}
 		assert(baseLogicId == toMerge.m_newSegRows);
 		dseg->m_delcnt = dseg->m_isDel.popcnt();
 	};
 	{
-		MyRwLock lock(m_rwMutex, false);
-		syncUpdates(dseg.get());
-		if (!lock.upgrade_to_writer()) {
-			syncUpdates(dseg.get());
-		}
+		syncUpdates(dseg.get()); // no lock
+		MyRwLock lock(m_rwMutex, true);
+		syncUpdates(dseg.get()); // write locked
 		for (auto& e : toMerge) {
 			e.seg->m_bookUpdates = false;
 		}
@@ -3267,13 +3290,21 @@ void CompositeTable::putToCompressionQueue(size_t segIdx) {
 }
 
 inline
-bool CompositeTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
+bool CompositeTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
 	assert(!g_stopPutToFlushQueue);
 	if (g_stopPutToFlushQueue) {
 		return false;
 	}
 	auto maxDelcnt = seg->m_isDel.size() * m_schema->m_purgeDeleteThreshold;
 	if (seg->m_delcnt >= maxDelcnt) {
+		return true;
+	}
+	return false;
+}
+
+inline
+bool CompositeTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
+	if (checkPurgeDeleteNoLock(seg)) {
 		asyncPurgeDeleteInLock();
 		return true;
 	}

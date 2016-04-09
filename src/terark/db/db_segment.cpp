@@ -215,24 +215,28 @@ void ReadableSegment::addtoUpdateList(size_t logicId) {
 	if (!m_bookUpdates) {
 		return;
 	}
-	if (!m_updateBits.empty()) {
-		assert(m_updateBits.size() == m_isDel.size() + 1);
+	const size_t rows = m_isDel.size();
+	if ((m_updateList.unused() > 0 || m_updateList.size() < rows / 256) && m_updateBits.empty()) {
+		m_updateList.push_back(logicId);
+	}
+	else if (!m_updateBits.empty()) {
+		assert(m_updateBits.size() == rows + 1);
 		m_updateBits.set1(logicId);
 	}
 	else {
 		// reserve an extra bit as the guard
-		m_updateBits.resize(m_isDel.size() + 1, false);
+		m_updateBits.resize(rows + 1, false);
 		bm_uint_t* bits = m_updateBits.bldata();
 		uint32_t* idvec = m_updateList.data();
 		size_t    idnum = m_updateList.size();
 		for(size_t i = 0; i < idnum; ++i) {
 			size_t id = idvec[i];
-			assert(id < m_isDel.size());
+			assert(id < rows);
 			terark_bit_set1(bits, id);
 		}
 		terark_bit_set1(bits, logicId);
 		// set the last bit to 1 as the guard
-		terark_bit_set1(bits, m_isDel.size());
+		terark_bit_set1(bits, rows);
 		m_updateList.clear();
 	}
 }
@@ -652,6 +656,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		MyRwLock lock(tab->m_rwMutex, false);
 		ctx.reset(tab->createDbContextNoLock());
 		input = tab->m_segments[segIdx];
+		input->m_updateList.reserve(1024);
 		input->m_bookUpdates = true;
 		assert(input->m_updateList.empty());
 	}
@@ -782,19 +787,25 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 	assert(this->m_isDel.popcnt() == this->m_delcnt);
 	assert(this->m_isPurged.max_rank1() == this->m_delcnt);
 
-	MyRwLock lock(tab->m_rwMutex, false);
+	valvec<uint32_t> updateList;
+	febitvec         updateBits;
 	auto syncNewDeletionMark = [&]() {
 		assert(input->m_bookUpdates);
-		if (input->m_updateList.size() > 0) {
-			assert(input->m_updateBits.size() == 0);
-			std::sort(input->m_updateList.begin(), input->m_updateList.end());
-			input->m_updateList.trim(
-				std::unique(input->m_updateList.begin(),
-							input->m_updateList.end())
+		{
+			SpinRwLock inputLock(input->m_segMutex, true);
+			updateList.swap(input->m_updateList);
+			updateBits.swap(input->m_updateBits);
+		}
+		if (updateList.size() > 0) {
+			assert(updateBits.size() == 0);
+			std::sort(updateList.begin(), updateList.end());
+			updateList.trim(
+				std::unique(updateList.begin(),
+							updateList.end())
 			);
-			auto dlist = input->m_updateList.data();
+			auto dlist = updateList.data();
 			auto isDel = this->m_isDel.bldata();
-			size_t dlistSize = input->m_updateList.size();
+			size_t dlistSize = updateList.size();
 			for (size_t i = 0; i < dlistSize; ++i) {
 				assert(dlist[i] < m_isDel.size());
 				size_t logicId = dlist[i];
@@ -803,43 +814,35 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 				else
 					this->syncUpdateRecordNoLock(0, logicId, input);
 			}
-#if !defined(NDEBUG)
-			size_t computed_delcnt1 = this->m_isDel.popcnt();
-			size_t computed_delcnt2 = input->m_isDel.popcnt();
-			assert(computed_delcnt1 == input->m_delcnt);
-			assert(computed_delcnt2 == input->m_delcnt);
-#endif
 		}
-		else if (input->m_updateBits.size() > 0) {
-			assert(input->m_updateBits.size() == m_isDel.size()+1);
-			size_t logicId = input->m_updateBits.zero_seq_len(0);
+		else if (updateBits.size() > 0) {
+			assert(updateBits.size() == m_isDel.size()+1);
+			size_t logicId = updateBits.zero_seq_len(0);
 			while (logicId < m_isDel.size()) {
 				if (!input->m_isDel[logicId]) {
 					this->syncUpdateRecordNoLock(0, logicId, input);
 				}
-				logicId += 1 + input->m_updateBits.zero_seq_len(logicId + 1);
+				logicId += 1 + updateBits.zero_seq_len(logicId + 1);
 			}
 			m_isDel.risk_memcpy(input->m_isDel);
-#if !defined(NDEBUG)
-			size_t computed_delcnt1 = this->m_isDel.popcnt();
-			size_t computed_delcnt2 = input->m_isDel.popcnt();
-			assert(computed_delcnt1 == input->m_delcnt);
-			assert(computed_delcnt2 == input->m_delcnt);
-#endif
 		}
 		// m_updateBits and m_updateList is safe to change in reader lock here
-		input->m_updateBits.erase_all();
-		input->m_updateList.erase_all();
+		updateBits.erase_all();
+		updateList.erase_all();
 		m_delcnt = input->m_delcnt;
 	};
-	syncNewDeletionMark();
-	if (!lock.upgrade_to_writer()) {
-		if (input->m_updateList.size() || input->m_updateList.size()) {
-			// this case should be very rare
-			syncNewDeletionMark();
-		}
-	}
+	syncNewDeletionMark(); // no lock
+	MyRwLock lock(tab->m_rwMutex, false);
+	syncNewDeletionMark(); // reader locked
+	lock.upgrade_to_writer();
+	syncNewDeletionMark(); // writer locked
 #if !defined(NDEBUG)
+	{
+		size_t computed_delcnt1 = this->m_isDel.popcnt();
+		size_t computed_delcnt2 = input->m_isDel.popcnt();
+		assert(computed_delcnt1 == input->m_delcnt);
+		assert(computed_delcnt2 == input->m_delcnt);
+	}
 	valvec<byte> r1, r2;
 	DbContextPtr ctx = tab->createDbContextNoLock();
 	const Schema& rowSchema = *m_schema->m_rowSchema;
@@ -934,11 +937,14 @@ ReadonlySegment::purgeDeletedRecords(CompositeTable* tab, size_t segIdx) {
 	DbContextPtr ctx(tab->createDbContext());
 	ReadonlySegmentPtr input;
 	{
-		MyRwLock lock(tab->m_rwMutex, true);
+		MyRwLock lock(tab->m_rwMutex, false);
 		input = tab->m_segments[segIdx]->getReadonlySegment();
 		assert(NULL != input);
-		tab->m_purgeStatus = CompositeTable::PurgeStatus::purging;
+		assert(!input->m_bookUpdates);
+		input->m_updateList.reserve(1024);
 		input->m_bookUpdates = true;
+		lock.upgrade_to_writer();
+		tab->m_purgeStatus = CompositeTable::PurgeStatus::purging;
 	}
 	fprintf(stderr, "INFO: purging %s\n", input->m_segDir.string().c_str());
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
