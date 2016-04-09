@@ -212,7 +212,6 @@ const {
 	cursor->set_key(cursor, recno);
 	int err = cursor->search(cursor);
 	if (WT_NOTFOUND == err) {
-		WT_SESSION* ses = cursor->session;
 		fprintf(stderr
 			, "ERROR: wiredtiger NotFound: recno=%lld, should always found"
 			, recno);

@@ -270,7 +270,7 @@ public:
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].insert;
-		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
+		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
 		int err = cur->remove(cur);
 		if (WT_NOTFOUND == err) {
 			return;
@@ -286,7 +286,7 @@ public:
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].overwrite;
-		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
+		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
 		int err = cur->insert(cur);
 		if (err) {
 			THROW_STD(invalid_argument
