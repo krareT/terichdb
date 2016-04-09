@@ -37,13 +37,13 @@
 #pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
 #endif
 
-#include <map>
-#include <string>
-#include <terark/db/db_table.hpp>
 #include "mongo_terarkdb_common.hpp"
 #include "mongo/base/string_data.h"
+#include <map>
+#include <string>
 #include <mutex>
 #include <terark/hash_strmap.hpp>
+#include <terark/db/db_table.hpp>
 
 namespace mongo {
 	class RecordStore;

@@ -12,17 +12,15 @@
 #pragma warning(disable: 4800)
 #endif
 
-#include <terark/db/db_table.hpp>
-#include <terark/db/mock_db_engine.hpp>
-
 #include <mongo/db/operation_context.h>
 #include <mongo/db/record_id.h>
 #include <mongo/db/storage/recovery_unit.h>
 #include <mongo/bson/bsonobjbuilder.h>
 #include <boost/filesystem.hpp>
-
-#include "record_codec.h"
 #include <thread>
+#include <terark/db/db_table.hpp>
+#include <terark/db/mock_db_engine.hpp>
+#include "record_codec.h"
 
 namespace terark { namespace db {
 
