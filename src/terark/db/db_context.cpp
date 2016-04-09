@@ -88,6 +88,7 @@ DbContext::DbContext(const CompositeTable* tab)
 
 DbContext::~DbContext() {
 //	m_tab->unregisterDbContext(this);
+	this->m_transaction.reset(); // destory before m_segCtx
 	size_t indexNum = m_tab->getIndexNum();
 	for (auto& x : m_segCtx) {
 		assert(NULL != x);
