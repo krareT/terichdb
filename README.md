@@ -10,7 +10,7 @@ TerarkDB is,
 
 TerarkDB's read performance at a glance:
 
-[[docs/images/read-only.jpg]]
+![](docs/images/read-only.jpg)
 
 ## 2. Dependencies
 You need to install these third party libs before start using TerarkDB:
