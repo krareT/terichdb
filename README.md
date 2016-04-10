@@ -61,7 +61,7 @@ Here's an example of `dbmeta.json`:
 ```
 
 - `RowSchema.columns` defines fields in the table, in this case we defined `key` and `value`.
-- `ReadonlyDataMemSize` and `MaxWrSegSize` is optional for now.
+- `ReadonlyDataMemSize` and `MaxWrSegSize` are optional for now.
 - `TableIndex` defnies indexes on data fields.
 
 You can have only one `dbmeta.json` for every db for now, that means if you want multiple tables, you need to create other database folders, e.g. `/terarkdb/db2`, `/terarkdb/db3`. We will make our APIs much easier to use in the future.
