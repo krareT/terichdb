@@ -23,7 +23,6 @@ You need to install these third party libs before start using TerarkDB:
 
 `libTerarkDB-g++-5.3-r.so` is open source as you can see, but `libterark-fsa_all-g++-r.so`(Our core algorithm) is not, you can get these two libs from our [official web site](http://www.terark.com/en/products/terark-db).
 
-
 ## 3. Usage
 After install all these dependencies, we are ready to go.
 
@@ -37,6 +36,16 @@ These headers should be included :
 #include <terark/io/RangeStream.hpp>
 #include <terark/lcast.hpp>
 ```
+
+#### Compile your own code
+We are re-factoring our code base now, in the meanwhile you can compile your code like this: 
+
+```
+    g++-5 main.cpp -std=c++11 -L../../deps/ -I../src -I../terark-base/src
+```
+
+The `../../deps/` is your dependency '*.so' lib folder. The rest two `src/` foler will be placed into one `includes` folder in the future.
+
 
 ### 3.2. Schema
 TerarkDB is a `schema based` NoSQL database, you need to place a `dbmeta.json` in the folder you want to use for db(eg. `/terarkdb/db1/`).
