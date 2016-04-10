@@ -89,14 +89,14 @@ ctx = tab->createDbContext()
 ```
 terark::NativeDataOutput<terark::AutoGrownMemIO> rowBuilder;
 TestRow recRow;
-recRow.key = “terarkdb”;
-recRow.value = “hello world”;
+recRow.key = "terarkdb";
+recRow.value = "hello world";
 rowBuilder.rewind();
 rowBuilder << recRow;
 terark::fstring binRow(rowBuilder.begin(), rowBuilder.tell());
 if (ctx->insertRow(binRow) < 0) {
-                                printf("Insert failed: %s\n", ctx->errMsg.c_str());
-                                exit(-1);
+    printf("Insert failed: %s\n", ctx->errMsg.c_str());
+    exit(-1);
 }
 ```
 
@@ -105,14 +105,14 @@ And `TestRow` is a struct that contains our actual data:
 ```
 terark::NativeDataOutput<terark::AutoGrownMemIO> rowBuilder;
 TestRow recRow;
-recRow.key = “terarkdb”;
-recRow.value = “hello world”;
+recRow.key = "terarkdb";
+recRow.value = "hello world";
 rowBuilder.rewind();
 rowBuilder << recRow;
 terark::fstring binRow(rowBuilder.begin(), rowBuilder.tell());
 if (ctx->insertRow(binRow) < 0) {
-                                printf("Insert failed: %s\n", ctx->errMsg.c_str());
-                                exit(-1);
+    printf("Insert failed: %s\n", ctx->errMsg.c_str());
+    exit(-1);
 }
 ```
 
@@ -132,7 +132,7 @@ colgroups.push_back(i);
  terark::fstring key = “terarkdb”;
  tab->indexSearchExact(indexId, key, &idvec, ctx.get());
  for (auto recId : idvec) {
-        tab->selectColgroups(recId, colgroups, &cgDataVec, ctx.get());
+    tab->selectColgroups(recId, colgroups, &cgDataVec, ctx.get());
  }
 ```
 
@@ -149,16 +149,16 @@ terark::llong recId;
 
 int ret = indexIter->seekLowerBound(key, &recId, &keyHit);
 if (ret == 0) { // found exact key
-do {
-            assert(recId < tab->numDataRows());
-                         idvec.push_back(recId);
-              } while (indexIter->increment(&recId, &keyHit)
-                                                && terark::fstring(keyHit) == key);
+    do {
+        assert(recId < tab->numDataRows());
+        idvec.push_back(recId);
+    } while (indexIter->increment(&recId, &keyHit)
+                && terark::fstring(keyHit) == key);
 }
  
 for (size_t i = 0; i < idvec.size(); ++i) {
-recId = idvec[i];
-ctx->removeRow(recId);
+    recId = idvec[i];
+    ctx->removeRow(recId);
 }
 ```
 
