@@ -41,10 +41,8 @@ These headers should be included :
 We are re-factoring our code base now, in the meanwhile you can compile your code like this: 
 
 ```
-    g++-5 main.cpp -std=c++11 -L../../deps/ -I../src -I../terark-base/src
+  g++-5 main.cpp -std=c++11 -L../../deps_libs -lTerarkDB-g++-5.3-r -lboost_system -lboost_filesystem -ltbb -lwiredtiger-2.7.0 -I../src -I../terark-base/src
 ```
-
-The `../../deps/` is your dependency '*.so' lib folder. The rest two `src/` foler will be placed into one `includes` folder in the future.
 
 
 ### 3.2. Schema
