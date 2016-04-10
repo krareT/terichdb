@@ -15,7 +15,7 @@ TerarkDB's read performance at a glance:
 ## 2. Dependencies
 You need to install these third party libs before start using TerarkDB:
 
-- libboost_system.so.1.60.0, libboost_filesystem.so.1.60.0(both of the lib are included in boost_1_60_0)
+- libboost_system.so.1.60.0, libboost_filesystem.so.1.60.0(both of them are included in boost_1_60_0)
 - libwiredtiger-2.7.0.so
 - libtbb.so.2(tbb44_20160128)
 - libTerarkDB-g++-5.3-r.so
