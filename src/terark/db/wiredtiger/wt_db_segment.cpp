@@ -163,7 +163,11 @@ public:
 	}
 	void startTransaction() override {
 		WT_SESSION* ses = m_session.ses;
-		int err = ses->begin_transaction(ses, "isolation=read-committed,sync=false");
+		const char* txnConfig = getenv("TerarkDB_WiredtigerTransactionConfig");
+		if (NULL == txnConfig) {
+			txnConfig = "isolation=read-committed,sync=false";
+		}
+		int err = ses->begin_transaction(ses, txnConfig);
 		if (err) {
 			THROW_STD(invalid_argument
 				, "ERROR: wiredtiger begin_transaction: %s"
@@ -340,15 +344,17 @@ public:
 				, "ERROR: wiredtiger store upsert: %s", ses->strerror(ses, err));
 		}
 	}
-	void storeGetRow(llong recId, valvec<byte>* row) override {
+	bool storeGetRow(llong recId, valvec<byte>* row) override {
 		WT_SESSION* ses = m_session.ses;
 		WT_CURSOR* cur = m_store;
 		WtItem item;
 		cur->set_key(cur, recId+1); // recno = recId+1
 		int err = cur->search(cur);
 		if (err) {
-			THROW_STD(invalid_argument
-				, "ERROR: wiredtiger store search: %s", ses->strerror(ses, err));
+			fprintf(stderr
+				, "WARN: fail read-uncommited row(recId=%lld) in: %s\n"
+				, recId, m_seg->m_segDir.string().c_str());
+			return false;
 		}
 		cur->get_value(cur, &item);
 		if (m_sconf.m_updatableColgroups.empty()) {
