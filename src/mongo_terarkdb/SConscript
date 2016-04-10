@@ -7,9 +7,9 @@ nkEnv.InjectThirdPartyIncludePaths(libraries=['valgrind'])
 
 terarkLib = ''
 if GetOption('dbg') == 'on':
-    terarkLib = ['terark-TerarkDB-d', 'terark-d']
+    terarkLib = ['TerarkDB-d', 'terark-fsa_all-d']
 else:
-    terarkLib = ['terark-TerarkDB-r', 'terark-r']
+    terarkLib = ['TerarkDB-r', 'terark-fsa_all-r']
 
 nkEnv.Library(
 	target='storage_terarkdb',
@@ -20,7 +20,6 @@ nkEnv.Library(
 		'terarkdb_index.cpp',
 		'terarkdb_kv_engine.cpp',
 		'terarkdb_record_store.cpp',
-		'terarkdb_recovery_unit.cpp',
 		'terarkdb_size_storer.cpp',
 		'terarkdb_server_status.cpp',
 		'terarkdb_recovery_unit.cpp',

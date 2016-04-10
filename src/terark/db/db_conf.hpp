@@ -42,10 +42,6 @@
 	Class& operator=(const Class&) = delete; \
 	Class& operator=(Class&&) = delete
 
-namespace terark {
-	using namespace terark;
-}
-
 namespace terark { namespace db {
 
 	struct ClassMember_name {
@@ -89,13 +85,58 @@ namespace terark { namespace db {
 		uint32_t reserved0;
 	//	static_bitmap<16, uint16_t> flags;
 		unsigned char reserved1;
-		unsigned char reserved2;
+		unsigned char mysqlType;
 		ColumnType type;
-		unsigned char uType; // user column type, such as mongodb type
+		unsigned char mongoType; // user column type, such as mongodb type
 		ColumnMeta();
 		bool isInteger() const;
 		bool isNumber() const;
+		bool isString() const;
 		explicit ColumnMeta(ColumnType);
+		size_t fixedEndOffset() const { return fixedOffset + fixedLen; }
+	};
+
+	class TERARK_DB_DLL ColumnVec {
+	public:
+		struct Elem {
+			uint32_t pos;
+			uint32_t len;
+			Elem() : pos(UINT32_MAX), len(UINT32_MAX) {}
+			Elem(uint32_t p, uint32_t n) : pos(p), len(n) {}
+			bool isValid() const { return UINT32_MAX != pos; }
+		};
+		const  byte*  m_base;
+		valvec<Elem>  m_cols;
+
+		~ColumnVec();
+		ColumnVec();
+		ColumnVec(size_t cap, valvec_reserve);
+		ColumnVec(const ColumnVec&);
+		ColumnVec(ColumnVec&&);
+		ColumnVec& operator=(const ColumnVec&);
+		ColumnVec& operator=(ColumnVec&&);
+
+		bool empty() const { return m_cols.empty(); }
+		void erase_all() {
+			m_base = nullptr;
+			m_cols.erase_all();
+		}
+		size_t size() const { return m_cols.size(); }
+		fstring operator[](size_t idx) const {
+			assert(idx < m_cols.size());
+			Elem e = m_cols[idx];
+			return fstring(m_base + e.pos, e.len);
+		}
+		Elem get_elem(size_t idx) const {
+			assert(idx < m_cols.size());
+			return m_cols[idx];
+		}
+		void grow(size_t inc) { m_cols.grow(inc); }
+		void push_back(size_t pos, size_t len) {
+			m_cols.push_back({uint32_t(pos), uint32_t(len)});
+		}
+		void push_back(Elem e) { m_cols.push_back(e); }
+		void reserve(size_t cap) { m_cols.reserve(cap); }
 	};
 
 	class TERARK_DB_DLL Schema : public RefCounter {
@@ -106,21 +147,23 @@ namespace terark { namespace db {
 		~Schema();
 		void compile(const Schema* parent = nullptr);
 
-		void parseRow(fstring row, valvec<fstring>* columns) const;
-		void parseRowAppend(fstring row, valvec<fstring>* columns) const;
-		void combineRow(const valvec<fstring>& myCols, valvec<byte>* myRowData) const;
+		void parseRow(fstring row, ColumnVec* columns) const;
+		void parseRowAppend(fstring row, size_t start, ColumnVec* columns) const;
+		void combineRow(const ColumnVec& myCols, valvec<byte>* myRowData) const;
+		void combineRowAppend(const ColumnVec& myCols, valvec<byte>* myRowData) const;
 
 		void projectToNorm(fstring col, size_t columnId, valvec<byte>* rowData) const;
 		void projectToLast(fstring col, size_t columnId, valvec<byte>* rowData) const;
 
-		void selectParent(const valvec<fstring>& parentCols, valvec<byte>* myRowData) const;
-		void selectParent(const valvec<fstring>& parentCols, valvec<fstring>* myCols) const;
+		void selectParent(const ColumnVec& parentCols, valvec<byte>* myRowData) const;
+		void selectParent(const ColumnVec& parentCols, ColumnVec* myCols) const;
 
 		size_t parentColumnId(size_t myColumnId) const {
 			assert(m_proj.size() == m_columnsMeta.end_i());
 			assert(myColumnId < m_proj.size());
 			return m_proj[myColumnId];
 		}
+		const valvec<size_t>& getProj() const { return m_proj; }
 
 		void byteLexConvert(valvec<byte>&) const;
 		void byteLexConvert(byte* data, size_t size) const;
@@ -177,6 +220,7 @@ namespace terark { namespace db {
 		bool   m_useFastZip : 1;
 		bool   m_dictZipLocalMatch : 1;
 		bool   m_isInplaceUpdatable: 1;
+		bool   m_enableLinearScan  : 1;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
 		// used for ordered index, m_indexOrder.is1(i) means i'th column
@@ -198,7 +242,7 @@ namespace terark { namespace db {
 		valvec<ColumnLink> m_columnsLink;
 	*/
 		const Schema*    m_parent;
-		valvec<unsigned> m_proj;
+		valvec<size_t>   m_proj;
 
 	public:
 		// Helpers for define & serializing object
@@ -206,6 +250,7 @@ namespace terark { namespace db {
 		struct Fixed {
 			char data[N];
 			Fixed() { memset(data, 0, N); }
+			operator fstring() const { return fstring(data, N); }
 			template<class DIO> friend void
 			DataIO_loadObject(DIO& dio, Fixed& x) { dio.ensureRead(&x, N); }
 			template<class DIO> friend void
@@ -263,21 +308,30 @@ namespace terark { namespace db {
 	// a set of schema, could be all indices of a table
 	// or all column groups of a table
 	class TERARK_DB_DLL SchemaSet : public RefCounter {
-		struct Hash {
+		struct TERARK_DB_DLL Hash {
 			size_t operator()(const SchemaPtr& x) const;
 			size_t operator()(fstring x) const;
 		};
-		struct Equal {
+		struct TERARK_DB_DLL Equal {
 			bool operator()(const SchemaPtr& x, const SchemaPtr& y) const;
 			bool operator()(const SchemaPtr& x, fstring y) const;
 			bool operator()(fstring x, const SchemaPtr& y) const
 			  { return (*this)(y, x); }
 		};
+		struct MyKeyExtractor {
+			const std::string&
+			operator()(const SchemaPtr& x) const { return x->m_name; }
+		};
+		typedef hash_and_equal< fstring
+							  , fstring_func::hash_align
+							  , fstring_func::equal_align
+							  > MyHashEqual;
 	public:
 		SchemaSet();
 		~SchemaSet();
 		SchemaPtr m_uniqIndexFields;
-		gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
+	//	gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
+		gold_hash_tab<std::string, SchemaPtr, MyHashEqual, MyKeyExtractor> m_nested;
 		size_t m_flattenColumnNum;
 		size_t indexNum() const { return m_nested.end_i(); }
 		const Schema* getSchema(size_t nth) const {
@@ -294,16 +348,19 @@ namespace terark { namespace db {
 			uint32_t colgroupId;
 			uint32_t subColumnId;
 		};
-		SchemaPtr     m_rowSchema;
-		SchemaSetPtr  m_indexSchemaSet;
-		SchemaSetPtr  m_colgroupSchemaSet;
+		SchemaPtr      m_rowSchema;
+		SchemaPtr      m_wrtSchema;
+		SchemaSetPtr   m_indexSchemaSet;
+		SchemaSetPtr   m_colgroupSchemaSet;
 		valvec<size_t> m_uniqIndices;
 		valvec<size_t> m_multIndices;
+		valvec<size_t> m_updatableColgroups; // index of m_colgroupSchemaSet
+		valvec<size_t> m_rowSchemaColToWrtCol;
 		valvec<Colproject> m_colproject; // parallel with m_rowSchema
-		llong m_readonlyDataMemSize;
-		llong m_maxWrSegSize;
-		size_t m_minMergeSegNum;
-		double m_purgeDeleteThreshold;
+		llong    m_compressingWorkMemSize;
+		llong    m_maxWritingSegmentSize;
+		size_t   m_minMergeSegNum;
+		double   m_purgeDeleteThreshold;
 
 		SchemaConfig();
 		~SchemaConfig();
@@ -330,6 +387,9 @@ namespace terark { namespace db {
 
 		const Schema& getRowSchema() const { return *m_rowSchema; }
 		size_t columnNum() const { return m_rowSchema->columnNum(); }
+
+		bool isInplaceUpdatableColumn(size_t columnId) const;
+		bool isInplaceUpdatableColumn(fstring colname) const;
 
 		void loadJsonString(fstring jstr);
 		void loadJsonFile(fstring fname);

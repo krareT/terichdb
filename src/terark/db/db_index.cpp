@@ -1,4 +1,5 @@
 #include "db_index.hpp"
+#include <terark/io/FileStream.hpp>
 
 namespace terark { namespace db {
 
@@ -81,8 +82,77 @@ WritableIndex* ReadableIndex::getWritableIndex() {
 	return nullptr;
 }
 
+WritableIndex::~WritableIndex() {
+}
+
 /////////////////////////////////////////////////////////////////////////////
+
+IndexIterator::IndexIterator() {
+	// m_isUniqueInSchema is just for a minor performance improve
+	m_isUniqueInSchema = false;
+}
 IndexIterator::~IndexIterator() {
 }
+
+
+/////////////////////////////////////////////////////////////////////////////
+EmptyIndexStore::EmptyIndexStore() {}
+EmptyIndexStore::EmptyIndexStore(const Schema&) {}
+EmptyIndexStore::~EmptyIndexStore() {}
+
+llong EmptyIndexStore::indexStorageSize() const { return 0; }
+
+void
+EmptyIndexStore::searchExactAppend(fstring, valvec<llong>* recIdvec, DbContext*) const {
+}
+
+class EmptyIndexIterator : public IndexIterator {
+public:
+	void reset() override {}
+	bool increment(llong* id, valvec<byte>* key) override { return false; }
+	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) { return -1; }
+};
+
+IndexIterator* EmptyIndexStore::createIndexIterForward(DbContext*) const {
+	return new EmptyIndexIterator();
+}
+IndexIterator* EmptyIndexStore::createIndexIterBackward(DbContext*) const {
+	return new EmptyIndexIterator();
+}
+class ReadableStore* EmptyIndexStore::getReadableStore() {
+	return this;
+}
+
+llong EmptyIndexStore::dataStorageSize() const { return 0; }
+llong EmptyIndexStore::dataInflateSize() const { return 0; }
+llong EmptyIndexStore::numDataRows() const { return 0; }
+void EmptyIndexStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
+	THROW_STD(invalid_argument, "Invalid method call");
+}
+void EmptyIndexStore::deleteFiles() {}
+StoreIterator* EmptyIndexStore::createStoreIterForward(DbContext*) const {
+	return nullptr;
+}
+StoreIterator* EmptyIndexStore::createStoreIterBackward(DbContext*) const {
+	return nullptr;
+}
+ReadableIndex* EmptyIndexStore::getReadableIndex() { return this; }
+
+void EmptyIndexStore::load(PathRef fpath) {
+	std::string strFpath = fpath.string() + ".empty";
+//	FileStream fp(strFpath.c_str(), "wb");
+}
+void EmptyIndexStore::save(PathRef fpath) const {
+	std::string strFpath = fpath.string();
+	if (!fstring(strFpath).endsWith(".empty")) {
+		strFpath += ".empty";
+	}
+	else {
+		strFpath = strFpath;
+	}
+	FileStream fp(strFpath.c_str(), "wb");
+}
+
+TERARK_DB_REGISTER_STORE("empty", EmptyIndexStore);
 
 } } // namespace terark::db

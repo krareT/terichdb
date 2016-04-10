@@ -9,7 +9,7 @@ namespace terark { namespace db {
 
 class TERARK_DB_DLL ZipIntStore : public ReadableStore {
 public:
-	ZipIntStore();
+	explicit ZipIntStore(const Schema& schema);
 	~ZipIntStore();
 
 	llong dataStorageSize() const override;

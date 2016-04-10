@@ -40,6 +40,7 @@ class StoreIterator : public RefCounter {
 protected:
 	ReadableStorePtr m_store;
 public:
+	ReadableStore* getStore() const { return m_store.get(); }
 	virtual ~StoreIterator();
 	virtual bool increment(llong* id, valvec<byte>* val) = 0;
 	virtual bool seekExact(llong  id, valvec<byte>* val) = 0;
@@ -53,22 +54,26 @@ class TERARK_DB_DLL WritableStore;
 class TERARK_DB_DLL ReadableIndex;
 class TERARK_DB_DLL ReadableStore : virtual public Permanentable {
 	TERARK_DB_NON_COPYABLE_CLASS(ReadableStore);
+protected:
+	byte_t* m_recordsBasePtr;
 public:
 	struct RegisterStoreFactory {
-		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*()>& f);
+		RegisterStoreFactory(const char* fnameSuffix, const std::function<ReadableStore*(const Schema& schema)>& f);
 	};
 #define TERARK_DB_REGISTER_STORE(suffix, StoreClass) \
 	static ReadableStore::RegisterStoreFactory \
-		regStore_##StoreClass(suffix, [](){ return new StoreClass(); });
+		regStore_##StoreClass(suffix, [](const Schema& schema){ return new StoreClass(schema); });
 
-	static ReadableStore* openStore(PathRef segDir, fstring fname);
+	static ReadableStore* openStore(const Schema& schema, PathRef segDir, fstring fname);
 
 	ReadableStore();
 	~ReadableStore();
+	inline  byte* getRecordsBasePtr() const { return m_recordsBasePtr; }
 	virtual llong dataStorageSize() const = 0;
 	virtual llong dataInflateSize() const = 0;
 	virtual llong numDataRows() const = 0;
 	virtual void getValueAppend(llong id, valvec<byte>* val, DbContext*) const = 0;
+	virtual void deleteFiles();
 	virtual StoreIterator* createStoreIterForward(DbContext*) const = 0;
 	virtual StoreIterator* createStoreIterBackward(DbContext*) const = 0;
 	virtual WritableStore* getWritableStore();
@@ -83,26 +88,28 @@ public:
 
 	StoreIterator* createDefaultStoreIterForward(DbContext*) const;
 	StoreIterator* createDefaultStoreIterBackward(DbContext*) const;
+
+	StoreIterator* ensureStoreIterForward(DbContext*) const;
+	StoreIterator* ensureStoreIterBackward(DbContext*) const;
 };
 
 class TERARK_DB_DLL AppendableStore {
 public:
 	virtual ~AppendableStore();
 	virtual llong append(fstring row, DbContext*) = 0;
+	virtual void  shrinkToFit() = 0;
 };
 
 class TERARK_DB_DLL UpdatableStore {
 public:
 	virtual ~UpdatableStore();
 	virtual void update(llong id, fstring row, DbContext*) = 0;
-	virtual byte* getRawDataBasePtr();
 };
 
 class TERARK_DB_DLL WritableStore : public AppendableStore, public UpdatableStore {
 public:
 	virtual ~WritableStore();
 	virtual void remove(llong id, DbContext*) = 0;
-	virtual void clear() = 0;
 };
 
 class TERARK_DB_DLL MultiPartStore : public ReadableStore {

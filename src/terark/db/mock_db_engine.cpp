@@ -10,6 +10,11 @@ namespace fs = boost::filesystem;
 
 TERARK_DB_REGISTER_STORE("mock", MockReadonlyStore);
 
+MockReadonlyStore::MockReadonlyStore(const Schema& schema)
+  : m_schema(schema)
+{
+	m_fixedLen = schema.getFixedRowLen();
+}
 llong MockReadonlyStore::dataStorageSize() const {
 	return m_rows.used_mem_size();
 }
@@ -419,13 +424,12 @@ const {
 	}
 }
 
-size_t
-MockReadonlyIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*)
+void
+MockReadonlyIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*)
 const {
-	recIdvec->erase_all();
 	size_t lower;
 	if (forwardLowerBound(key, &lower) != 0) {
-		return 0;
+		return;
 	}
 	size_t f = m_fixedLen;
 	if (f) {
@@ -441,7 +445,6 @@ const {
 			recIdvec->push_back(m_ids[i]);
 		}
 	}
-	return m_ids[lower];
 }
 
 IndexIterator* MockReadonlyIndex::createIndexIterForward(DbContext*) const {
@@ -518,6 +521,12 @@ public:
 	}
 };
 
+MockWritableStore::MockWritableStore() {
+	m_dataSize = 0;
+}
+MockWritableStore::~MockWritableStore() {
+}
+
 void MockWritableStore::save(PathRef fpath) const {
 	FileStream fp(fpath.string().c_str(), "wb");
 	fp.disbuf();
@@ -560,21 +569,39 @@ llong MockWritableStore::append(fstring row, DbContext*) {
 	llong id = m_rows.size();
 	m_rows.push_back();
 	m_rows.back().assign(row);
+	m_dataSize += row.size();
 	return id;
 }
-void MockWritableStore::update(llong id, fstring row, DbContext*) {
+
+void MockWritableStore::update(llong id, fstring row, DbContext* ctx) {
 	assert(id >= 0);
-	assert(id < llong(m_rows.size()));
+	assert(id <= llong(m_rows.size()));
+	if (llong(m_rows.size()) == id) {
+		append(row, ctx);
+		return;
+	}
+	size_t oldsize = m_rows[id].size();
 	m_rows[id].assign(row);
+	m_dataSize -= oldsize;
+	m_dataSize += row.size();
 }
+
 void MockWritableStore::remove(llong id, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
-	m_rows[id].clear();
+	if (m_rows.size()-1 == size_t(id)) {
+		m_rows.pop_back();
+	}
+	else {
+		m_dataSize -= m_rows[id].size();
+		m_rows[id].clear();
+	}
 }
-void MockWritableStore::clear() {
-	m_rows.clear();
+
+void MockWritableStore::shrinkToFit() {
+	m_rows.shrink_to_fit();
 }
+
 AppendableStore* MockWritableStore::getAppendableStore() { return this; }
 UpdatableStore* MockWritableStore::getUpdatableStore() { return this; }
 WritableStore* MockWritableStore::getWritableStore() { return this; }
@@ -753,17 +780,15 @@ bool MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, DbCo
 }
 
 template<class Key>
-size_t
-MockWritableIndex<Key>::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*)
+void
+MockWritableIndex<Key>::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*)
 const {
 	auto kx = makeKey<Key>(key);
 	auto iter = m_kv.lower_bound(std::make_pair(kx, 0LL));
-	recIdvec->erase_all();
 	while (m_kv.end() != iter && iter->first == kx) {
 		recIdvec->push_back(iter->second);
 		++iter;
 	}
-	return recIdvec->size();
 }
 
 template<class Key>
@@ -812,7 +837,7 @@ MockReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
 const {
 	std::unique_ptr<ReadableStore> store(ReadonlySegment::buildStore(schema, storeData));
 	if (!store) {
-		std::unique_ptr<MockReadonlyStore> mockStore(new MockReadonlyStore());
+		std::unique_ptr<MockReadonlyStore> mockStore(new MockReadonlyStore(schema));
 		mockStore->build(schema, storeData);
 		store = std::move(mockStore);
 	}
@@ -822,27 +847,17 @@ const {
 ///////////////////////////////////////////////////////////////////////////
 MockWritableSegment::MockWritableSegment(PathRef dir) {
 	m_segDir = dir;
-	m_dataSize = 0;
+	m_wrtStore = new MockWritableStore();
 }
 MockWritableSegment::~MockWritableSegment() {
-	if (!m_tobeDel && m_rows.size())
+	if (!m_tobeDel && !m_isDel.empty())
 		this->save(m_segDir);
+	m_wrtStore.reset();
 }
 
-void MockWritableSegment::saveRecordStore(PathRef dir) const {
-	fs::path fpath = dir / "rows";
-	FileStream fp(fpath.string().c_str(), "wb");
-	fp.disbuf();
-	NativeDataOutput<OutputBuffer> dio; dio.attach(&fp);
-	dio << m_rows;
-}
-
-void MockWritableSegment::loadRecordStore(PathRef dir) {
-	fs::path fpath = dir / "rows";
-	FileStream fp(fpath.string().c_str(), "rb");
-	fp.disbuf();
-	NativeDataInput<InputBuffer> dio; dio.attach(&fp);
-	dio >> m_rows;
+DbTransaction* MockWritableSegment::createTransaction() {
+	assert(0);
+	return NULL;
 }
 
 ReadableIndex*
@@ -850,72 +865,6 @@ MockWritableSegment::openIndex(const Schema& schema, PathRef path) const {
 	std::unique_ptr<ReadableIndex> index(createIndex(schema, path));
 	index->load(path);
 	return index.release();
-}
-
-llong MockWritableSegment::dataStorageSize() const {
-	return m_rows.used_mem_size() + m_dataSize;
-}
-
-llong MockWritableSegment::dataInflateSize() const {
-	return m_dataSize;
-}
-
-void
-MockWritableSegment::getValueAppend(llong id, valvec<byte>* val,
-									DbContext*)
-const {
-	assert(id >= 0);
-	assert(id < llong(m_rows.size()));
-	val->append(m_rows[id]);
-}
-
-StoreIterator* MockWritableSegment::createStoreIterForward(DbContext*) const {
-	return new MockWritableStoreIterForward<MockWritableSegment>(this);
-}
-StoreIterator* MockWritableSegment::createStoreIterBackward(DbContext*) const {
-	return new MockWritableStoreIterBackward<MockWritableSegment>(this);
-}
-
-llong MockWritableSegment::totalStorageSize() const {
-	return totalIndexSize() + m_rows.used_mem_size() + m_dataSize;
-}
-
-llong MockWritableSegment::append(fstring row, DbContext*) {
-	llong id = m_rows.size();
-	m_rows.push_back();
-	m_rows.back().assign(row);
-	m_dataSize += row.size();
-	return id;
-}
-
-void MockWritableSegment::update(llong id, fstring row, DbContext* ctx) {
-	assert(id >= 0);
-	assert(id <= llong(m_rows.size()));
-	if (llong(m_rows.size()) == id) {
-		append(row, ctx);
-		return;
-	}
-	size_t oldsize = m_rows[id].size();
-	m_rows[id].assign(row);
-	m_dataSize -= oldsize;
-	m_dataSize += row.size();
-}
-
-void MockWritableSegment::remove(llong id, DbContext*) {
-	assert(id >= 0);
-	assert(id < llong(m_rows.size()));
-	if (m_rows.size()-1 == size_t(id)) {
-		m_rows.pop_back();
-	}
-	else {
-		m_dataSize -= m_rows[id].size();
-		m_rows[id].clear();
-	}
-}
-
-void MockWritableSegment::clear() {
-	m_rows.clear();
-	m_dataSize = 0;
 }
 
 ReadableIndex*
@@ -950,7 +899,7 @@ MockDbContext::MockDbContext(const CompositeTable* tab) : DbContext(tab) {
 MockDbContext::~MockDbContext() {
 }
 
-DbContext* MockCompositeTable::createDbContext() const {
+DbContext* MockCompositeTable::createDbContextNoLock() const {
 	return new MockDbContext(this);
 }
 

@@ -8,7 +8,7 @@ namespace terark { namespace db { namespace dfadb {
 
 TERARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
 
-NestLoudsTrieStore::NestLoudsTrieStore() {
+NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema) {
 }
 NestLoudsTrieStore::~NestLoudsTrieStore() {
 }
@@ -110,15 +110,27 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
 					   ? schema.m_dictZipSampleRatio : 0.05;
 	valvec<byte> rec;
+	auto emptyCheckProtect = [&](size_t sampled) {
+	//	TERARK_RT_assert(sampled > 0, std::logic_error);
+		if (0 == sampled) {
+			if (rec.empty())
+				builder->addSample("Hello World!"); // for fallback
+			else
+				builder->addSample(rec);
+		}
+	};
 	if (NULL == isPurged || isPurged->size() == 0) {
 		llong recId;
+		size_t sampled = 0;
 		while (iter.increment(&recId, &rec)) {
 			if (NULL == isDel || !terark_bit_test(isDel, recId)) {
 				if (rand() < RAND_MAX * sampleRatio ) {
 					builder->addSample(rec);
+					sampled++;
 				}
 			}
 		}
+		emptyCheckProtect(sampled);
 		builder->prepare(recId + 1, fpath.string());
 		iter.reset();
 		while (iter.increment(&recId, &rec)) {
@@ -128,29 +140,38 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		}
 	}
 	else {
+		assert(NULL != isDel);
+		llong  newPhysicId = 0;
 		llong  physicId = 0;
 		size_t logicNum = isPurged->size();
+		size_t sampled = 0;
 		const bm_uint_t* isPurgedptr = isPurged->bldata();
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
 			if (!terark_bit_test(isPurgedptr, logicId)) {
-				bool hasData = iter.seekExact(physicId, &rec);
-				TERARK_RT_assert(hasData, std::logic_error);
-				if (NULL == isDel || !terark_bit_test(isDel, logicId)) {
+				if (!terark_bit_test(isDel, logicId)) {
+					bool hasData = iter.seekExact(physicId, &rec);
+					TERARK_RT_assert(hasData, std::logic_error);
+				//	if (hasData && rec.empty()) {
+				//		hasData = false;
+				//	}
 					if (rand() < RAND_MAX * sampleRatio) {
 						builder->addSample(rec);
+						sampled++;
 					}
+					newPhysicId++;
 				}
 				physicId++;
 			}
 		}
-		builder->prepare(physicId, fpath.string());
+		emptyCheckProtect(sampled);
+		builder->prepare(newPhysicId, fpath.string());
 		iter.reset();
 		physicId = 0;
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
 			if (!terark_bit_test(isPurgedptr, logicId)) {
 				bool hasData = iter.increment(&physicId, &rec);
 				TERARK_RT_assert(hasData, std::logic_error);
-				if (NULL == isDel || !terark_bit_test(isDel, logicId)) {
+				if (!terark_bit_test(isDel, logicId)) {
 					builder->addRecord(rec);
 				}
 				physicId++;

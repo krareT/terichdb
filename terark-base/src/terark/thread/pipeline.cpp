@@ -4,7 +4,7 @@
 #include <terark/circular_queue.hpp>
 #include <terark/num_to_str.hpp>
 //#include <terark/util/compare.hpp>
-#include <vector>
+#include <terark/valvec.hpp>
 //#include <deque>
 //#include <boost/circular_buffer.hpp>
 #include <terark/util/concurrent_queue.hpp>
@@ -18,7 +18,6 @@
 	#include <boost/thread/lock_guard.hpp>
 	#include <boost/thread.hpp>
 	#include <boost/bind.hpp>
-	typedef boost::lock_guard<boost::mutex> PipelineLockGuard;
 	#if defined(_WIN32) || defined(_WIN64) || defined(_MSC_VER)
 		#include <Windows.h>
 		#undef min
@@ -27,7 +26,6 @@
 		#include <unistd.h>
 	#endif
 #else
-	typedef std::lock_guard<std::mutex> PipelineLockGuard;
 #endif
 
 namespace terark {
@@ -44,7 +42,7 @@ typedef util::concurrent_queue<circular_queue<PipelineQueueItem> > base_queue;
 class PipelineStage::queue_t : public base_queue
 {
 public:
-	queue_t(int size) : base_queue(size)
+	queue_t(size_t size) : base_queue(size)
 	{
 		base_queue::queue().init(size);
 	}
@@ -90,17 +88,17 @@ PipelineStage::~PipelineStage()
 	}
 }
 
-int PipelineStage::getInQueueSize() const {
+size_t PipelineStage::getInputQueueSize() const {
 	assert(m_prev->m_out_queue);
 	return m_prev->m_out_queue->size();
 }
 
-int PipelineStage::getOutQueueSize() const {
+size_t PipelineStage::getOutputQueueSize() const {
 	assert(this->m_out_queue);
 	return this->m_out_queue->size();
 }
 
-void PipelineStage::setOutQueueSize(int size) {
+void PipelineStage::setOutputQueueSize(size_t size) {
 	if (size > 0) {
 		assert(NULL == this->m_out_queue);
 		this->m_out_queue = new queue_t(size);
@@ -406,7 +404,7 @@ void PipelineStage::run_serial_step_slow(int threadno,
 	assert(m_threads.size() == 1);
 	assert(0 == threadno);
 	using namespace std;
-	vector<PipelineQueueItem> cache;
+	valvec<PipelineQueueItem> cache;
 	m_plserial = 1;
 	while (isPrevRunning()) {
 		PipelineQueueItem item;
@@ -431,7 +429,7 @@ void PipelineStage::run_serial_step_slow(int threadno,
 		}
 	}
 	std::sort(cache.begin(), cache.end(), plserial_less());
-	for (vector<PipelineQueueItem>::iterator i = cache.begin(); i != cache.end(); ++i) {
+	for (valvec<PipelineQueueItem>::iterator i = cache.begin(); i != cache.end(); ++i) {
 		if (i->task)
 			process(threadno, &*i);
 		(this->*fdo)(*i);
@@ -452,7 +450,7 @@ void PipelineStage::run_serial_step_fast(int threadno,
 	using namespace std;
 	const ptrdiff_t nlen = TERARK_IF_DEBUG(4, 64); // should power of 2
 	ptrdiff_t head = 0;
-	vector<PipelineQueueItem> cache(nlen), overflow;
+	valvec<PipelineQueueItem> cache(nlen), overflow;
 	m_plserial = 1; // this is expected_serial
 	while (isPrevRunning()) {
 		PipelineQueueItem item;
@@ -502,9 +500,10 @@ void PipelineStage::run_serial_step_fast(int threadno,
 			overflow.push_back(cache[i]);
 	}
 	std::sort(overflow.begin(), overflow.end(), plserial_less());
-	for (vector<PipelineQueueItem>::iterator i = overflow.begin(); i != overflow.end(); ++i) {
+	for (size_t j = 0; j != overflow.size(); ++j) {
+		PipelineQueueItem* i = &overflow[j];
 		if (i->task)
-			process(threadno, &*i);
+			process(threadno, i);
 		(this->*fdo)(*i);
 	}
 }
@@ -677,8 +676,9 @@ void PipelineProcessor::compile(int input_feed_queue_size)
 	start();
 }
 
-void PipelineProcessor::send(PipelineTask* task)
+void PipelineProcessor::inqueue(PipelineTask* task)
 {
+	PipelineLockGuard lock(m_mutexForInqueue);
 	PipelineQueueItem item(++m_head->m_plserial, task);
 	m_head->m_out_queue->push_back(item);
 }
@@ -715,14 +715,14 @@ void PipelineProcessor::clear()
 	m_head->m_prev = m_head->m_next = m_head;
 }
 
-int PipelineProcessor::getInQueueSize(int step_no) const {
+size_t PipelineProcessor::getInputQueueSize(size_t step_no) const {
 	PipelineStage* step = m_head;
-	for (int i = 0; i < step_no; ++i) {
+	for (size_t i = 0; i < step_no; ++i) {
 		step = step->m_next;
 		assert(step != m_head); // step_no too large
 		if (step == m_head) {
 			char msg[128];
-			sprintf(msg, "invalid step_no=%d", step_no);
+			sprintf(msg, "invalid step_no=%zd", step_no);
 			throw std::invalid_argument(msg);
 		}
 	}

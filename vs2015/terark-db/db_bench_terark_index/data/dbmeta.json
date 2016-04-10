@@ -1,0 +1,13 @@
+{
+	"RowSchema": {
+		"columns" : {
+			"key"   : { "type" : "strzero" },
+			"value" : { "type" : "strzero" }
+		}
+	},
+	"ReadonlyDataMemSize" : 101024,
+	"MaxWrSegSize" : 201024,
+	"TableIndex" : [
+		{ "fields": "key"  , "ordered" : true, "unique": true }
+	]
+}

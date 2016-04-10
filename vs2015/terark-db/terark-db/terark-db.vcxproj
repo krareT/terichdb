@@ -42,14 +42,14 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>NotSet</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>NotSet</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -167,6 +167,7 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\src\terark\db\appendonly.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_index.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_store.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_conf.hpp" />
@@ -195,6 +196,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\..\src\terark\db\appendonly.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_index.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_store.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_conf.cpp" />

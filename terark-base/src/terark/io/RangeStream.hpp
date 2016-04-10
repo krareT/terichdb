@@ -119,4 +119,4 @@ namespace terark {
 
 } // namespace terark
 
-#endif __terark_io_stream_range_hpp__
+#endif // __terark_io_stream_range_hpp__

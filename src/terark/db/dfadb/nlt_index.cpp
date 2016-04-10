@@ -6,7 +6,7 @@
 
 namespace terark { namespace db { namespace dfadb {
 
-NestLoudsTrieIndex::NestLoudsTrieIndex() {
+NestLoudsTrieIndex::NestLoudsTrieIndex(const Schema& schema) {
 	m_idmapBase = nullptr;
 	m_idmapSize = 0;
 	m_dataInflateSize = 0;
@@ -33,18 +33,17 @@ llong NestLoudsTrieIndex::indexStorageSize() const {
 	return m_dfa->mem_size() + m_keyToId.mem_size();
 }
 
-size_t NestLoudsTrieIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const {
+void NestLoudsTrieIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const {
 	auto dawg = m_dfa->get_dawg();
 	assert(dawg);
 	size_t dawgNum = dawg->num_words();
 	size_t dawgIdx = dawg->index(key);
 	assert(dawgIdx < dawgNum || size_t(-1) == dawgIdx);
-	recIdvec->erase_all();
 	if (m_isUnique) {
 		assert(m_recBits.size() == 0);
 		if (dawgIdx < dawgNum) {
 			recIdvec->push_back(m_keyToId.get(dawgIdx));
-			return 1;
+			return;
 		}
 	}
 	else {
@@ -56,10 +55,8 @@ size_t NestLoudsTrieIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbC
 			for (size_t i = 0; i < dupcnt; ++i) {
 				recIdvec->push_back(m_keyToId.get(bitpos+i));
 			}
-			return dupcnt;
 		}
 	}
-	return 0;
 }
 ///@}
 
@@ -223,7 +220,6 @@ void NestLoudsTrieIndex::load(PathRef path) {
 	m_idToKey.risk_set_data((byte*)(m_idmapBase+1)        , rows, kbits);
 	m_keyToId.risk_set_data((byte*)(m_idmapBase+1) + bytes, rows, rbits);
 	assert(m_idToKey.mem_size() == bytes);
-//	assert(m_keyToId.mem_size() == bytes);
 	m_isUnique = keys == rows;
 	if (!m_isUnique) {
 		m_recBits.risk_mmap_from((byte*)(m_idmapBase+1)+bytes+m_keyToId.mem_size(), rslen);
@@ -498,6 +494,35 @@ IndexIterator* NestLoudsTrieIndex::createIndexIterBackward(DbContext*) const {
 		return new UniqueIndexIterBackward(this);
 	else
 		return new DupableIndexIterBackward(this);
+}
+
+bool NestLoudsTrieIndex::matchRegexAppend(BaseDFA* regexDFA,
+										  valvec<llong>* recIdvec,
+										  DbContext* ctx) const {
+	valvec<size_t> matchStates;
+	if (!m_dfa->match_dfa(initial_state, *regexDFA,
+						  &matchStates, ctx->regexMatchMemLimit)) {
+		return false;
+	}
+	if (m_isUnique) {
+		for(size_t state : matchStates) {
+			size_t keyId = m_dfa->state_to_word_id(state);
+			size_t recId = m_keyToId[keyId];
+			recIdvec->push_back(recId);
+		}
+	}
+	else {
+		for(size_t state : matchStates) {
+			size_t keyId = m_dfa->state_to_word_id(state);
+			size_t bitPosLow = m_recBits.select1(keyId);
+			size_t bitPosHig = m_recBits.zero_seq_len(bitPosLow + 1) + bitPosLow + 1;
+			for(size_t mapId = bitPosLow; mapId < bitPosHig; ++mapId) {
+				size_t recId = m_keyToId[mapId];
+				recIdvec->push_back(recId);
+			}
+		}
+	}
+	return true;
 }
 
 }}} // namespace terark::db::dfadb

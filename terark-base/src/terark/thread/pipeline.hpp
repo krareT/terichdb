@@ -35,11 +35,13 @@ namespace terark {
 	using boost::mutex;
 	using boost::function;
 	#define TerarkFuncBind boost::bind
+	typedef boost::lock_guard<boost::mutex> PipelineLockGuard;
 #else
 	using std::thread;
 	using std::mutex;
 	using std::function;
 	#define TerarkFuncBind std::bind
+	typedef std::lock_guard<std::mutex> PipelineLockGuard;
 #endif
 
 class TERARK_DLL_EXPORT PipelineTask
@@ -138,9 +140,9 @@ public:
 	// helper functions:
 	std::string msg_leading(int threadno) const;
 	mutex* getMutex() const;
-	int getInQueueSize()  const;
-	int getOutQueueSize() const;
-	void setOutQueueSize(int size);
+	size_t getInputQueueSize()  const;
+	size_t getOutputQueueSize() const;
+	void setOutputQueueSize(size_t size);
 };
 
 class TERARK_DLL_EXPORT FunPipelineStage : public PipelineStage
@@ -166,6 +168,7 @@ class TERARK_DLL_EXPORT PipelineProcessor
 	int m_queue_timeout;
 	function<void(PipelineTask*)> m_destroyTask;
 	mutex* m_mutex;
+	mutex  m_mutexForInqueue;
 	volatile size_t m_run; // size_t is CPU word, should be bool
 	bool m_is_mutex_owner;
 	bool m_keepSerial;
@@ -208,11 +211,11 @@ public:
 	void compile(); // input feed from external, not first step
 	void compile(int input_feed_queue_size /* default = m_queue_size */);
 
-	void send(PipelineTask* task);
+	void inqueue(PipelineTask* task);
 
 	void stop() { m_run = false; }
 	void wait();
-	int getInQueueSize(int step_no) const;
+	size_t getInputQueueSize(size_t step_no) const;
 };
 
 #define PPL_STEP_0(pObject, Class, MemFun, thread_count) \

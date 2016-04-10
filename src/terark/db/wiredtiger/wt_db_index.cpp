@@ -11,24 +11,44 @@ namespace terark { namespace db { namespace wt {
 
 namespace fs = boost::filesystem;
 
-class WtWritableIndex::MyIndexIterForward : public IndexIterator {
+class WtWritableIndex::MyIndexIterBase : public IndexIterator {
+protected:
 	typedef boost::intrusive_ptr<WtWritableIndex> MockWritableIndexPtr;
 	WtWritableIndexPtr m_index;
 	WT_CURSOR* m_iter;
 	valvec<byte> m_buf;
-public:
-	MyIndexIterForward(const WtWritableIndex* owner) {
+	MyIndexIterBase(const WtWritableIndex* owner) {
+		m_isUniqueInSchema = owner->m_schema->m_isUnique;
 		m_index.reset(const_cast<WtWritableIndex*>(owner));
-		int err = m_index->m_wtSession->open_cursor(
-			m_index->m_wtSession, m_index->m_uri.c_str(), NULL, NULL, &m_iter);
+		WT_CONNECTION* conn = m_index->m_wtSession->connection;
+		WT_SESSION* session; // WT_SESSION is not thread safe
+		int err = conn->open_session(conn, NULL, NULL, &session);
 		if (err) {
+			THROW_STD(invalid_argument
+				, "FATAL: wiredtiger open session(dir=%s) = %s"
+				, conn->get_home(conn), wiredtiger_strerror(err)
+				);
+		}
+		const std::string& uri = m_index->m_uri;
+		err = session->open_cursor(session, uri.c_str(), NULL, NULL, &m_iter);
+		if (err) {
+			session->close(session, NULL);
 			THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
 		}
 	}
-	~MyIndexIterForward() {
-		if (m_iter)
-			m_iter->close(m_iter);
+	~MyIndexIterBase() {
+		WT_SESSION* session = m_iter->session;
+		m_iter->close(m_iter);
+		session->close(session, NULL);
 	}
+	void reset() override {
+		m_iter->reset(m_iter);
+	}
+};
+
+class WtWritableIndex::MyIndexIterForward : public MyIndexIterBase {
+public:
+	MyIndexIterForward(const WtWritableIndex* o) : MyIndexIterBase(o) {}
 	bool increment(llong* id, valvec<byte>* key) override {
 		assert(nullptr != m_iter);
 		int err = m_iter->next(m_iter);
@@ -40,9 +60,6 @@ public:
 			THROW_STD(logic_error, "cursor_next failed: %s", wiredtiger_strerror(err));
 		}
 		return false;
-	}
-	void reset() override {
-		m_iter->reset(m_iter);
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		int cmp = 0;
@@ -63,24 +80,9 @@ public:
 	}
 };
 
-class WtWritableIndex::MyIndexIterBackward : public IndexIterator {
-	typedef boost::intrusive_ptr<WtWritableIndex> MockWritableIndexPtr;
-	WtWritableIndexPtr m_index;
-	WT_CURSOR* m_iter;
-	valvec<byte> m_buf;
+class WtWritableIndex::MyIndexIterBackward : public MyIndexIterBase {
 public:
-	MyIndexIterBackward(const WtWritableIndex* owner) {
-		m_index.reset(const_cast<WtWritableIndex*>(owner));
-		int err = m_index->m_wtSession->open_cursor(
-			m_index->m_wtSession, m_index->m_uri.c_str(), NULL, NULL, &m_iter);
-		if (err != 0) {
-			THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
-		}
-	}
-	~MyIndexIterBackward() {
-		if (m_iter)
-			m_iter->close(m_iter);
-	}
+	MyIndexIterBackward(const WtWritableIndex* o) : MyIndexIterBase(o) {}
 	bool increment(llong* id, valvec<byte>* key) override {
 		assert(nullptr != m_iter);
 		int err = m_iter->prev(m_iter);
@@ -92,9 +94,6 @@ public:
 			THROW_STD(logic_error, "cursor_next failed: %s", wiredtiger_strerror(err));
 		}
 		return false;
-	}
-	void reset() override {
-		m_iter->reset(m_iter);
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		int cmp = 0;
@@ -174,9 +173,15 @@ std::string toWtSchema(const Schema& schema) {
 void
 WtWritableIndex::getKeyVal(WT_CURSOR* cursor, valvec<byte>* key, llong* recId)
 const {
+	getKeyVal(*m_schema, cursor, key, recId);
+}
+
+void WtWritableIndex::getKeyVal(const Schema& schema, WT_CURSOR* cursor,
+								valvec<byte>* key, llong* recId)
+{
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
-	if (m_isUnique) {
+	if (schema.m_isUnique) {
 		cursor->get_key(cursor, &item);
 		cursor->get_value(cursor, recId);
 	}
@@ -185,25 +190,31 @@ const {
 	//	cursor->get_value(cursor, ...); // has no value
 	}
 	key->assign((const byte*)item.data, item.size);
-	if (m_schema->m_needEncodeToLexByteComparable) {
-		m_schema->byteLexConvert(key->data(), item.size);
+	if (schema.m_needEncodeToLexByteComparable) {
+		schema.byteLexConvert(key->data(), item.size);
 	}
 }
 
 void WtWritableIndex::setKeyVal(WT_CURSOR* cursor, fstring key, llong recId,
 								WT_ITEM* item, valvec<byte>* buf)
 const {
+	setKeyVal(*m_schema, cursor, key, recId, item, buf);
+}
+void WtWritableIndex::setKeyVal(const Schema& schema, WT_CURSOR* cursor,
+								fstring key, llong recId,
+								WT_ITEM* item, valvec<byte>* buf)
+{
 	memset(item, 0, sizeof(*item));
 	item->size = key.size();
-	if (m_schema->m_needEncodeToLexByteComparable) {
+	if (schema.m_needEncodeToLexByteComparable) {
 		buf->assign(key);
-		m_schema->byteLexConvert(*buf);
+		schema.byteLexConvert(*buf);
 		item->data = buf->data();
 	}
 	else {
 		item->data = key.data();
 	}
-	if (m_isUnique) {
+	if (schema.m_isUnique) {
 		cursor->set_key(cursor, item);
 		cursor->set_value(cursor, recId);
 	}
@@ -213,26 +224,36 @@ const {
 	}
 }
 
-WtWritableIndex::WtWritableIndex(const Schema& schema, PathRef segDir, WT_SESSION* session) {
-	std::string strDir = segDir.parent_path().string();
+WtWritableIndex::WtWritableIndex(const Schema& schema, WT_CONNECTION* conn) {
+	WT_SESSION* session;
+	int err = conn->open_session(conn, NULL, NULL, &session);
+	if (err) {
+		THROW_STD(invalid_argument, "FATAL: wiredtiger open session(dir=%s) = %s"
+			, conn->get_home(conn), wiredtiger_strerror(err)
+			);
+	}
 	m_keyFmt = toWtSchema(schema);
 	m_uri = "table:" + schema.m_name;
 	std::replace(m_uri.begin(), m_uri.end(), ',', '.');
-	int err = session->create(session, m_uri.c_str(), m_keyFmt.c_str());
+	err = session->create(session, m_uri.c_str(), m_keyFmt.c_str());
 	if (err) {
+		session->close(session, NULL);
 		THROW_STD(invalid_argument, "FATAL: wiredtiger create(%s, dir=%s) = %s"
 			, m_keyFmt.c_str()
-			, strDir.c_str(), wiredtiger_strerror(err)
+			, conn->get_home(conn), wiredtiger_strerror(err)
 			);
 	}
 	err = session->open_cursor(session,
 			m_uri.c_str(), NULL, "overwrite=true", &m_wtReplace);
 	if (err) {
+		session->close(session, NULL);
 		THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
 	}
 	err = session->open_cursor(session,
 			m_uri.c_str(), NULL, "overwrite=false", &m_wtCursor);
 	if (err) {
+		m_wtReplace->close(m_wtReplace);
+		session->close(session, NULL);
 		THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
 	}
 	this->m_wtSession = session;
@@ -337,11 +358,11 @@ bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* 
 	return true;
 }
 
-size_t
-WtWritableIndex::searchExact(fstring key, valvec<llong>* recIdvec, DbContext* ctx)
+void
+WtWritableIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
+	THROW_STD(invalid_argument, "This method should not be called");
 	tbb::mutex::scoped_lock lock(m_wtMutex);
-	recIdvec->erase_all();
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
 	item.size = key.size();
@@ -357,7 +378,7 @@ const {
 		m_wtCursor->set_key(m_wtCursor, &item);
 		int err = m_wtCursor->search(m_wtCursor);
 		if (err == WT_NOTFOUND) {
-			return -1;
+			return;
 		}
 		if (err) {
 			THROW_STD(invalid_argument
@@ -375,6 +396,9 @@ const {
 		m_wtCursor->set_key(m_wtCursor, &item, llong(-1));
 		int cmp;
 		int err = m_wtCursor->search_near(m_wtCursor, &cmp);
+		if (WT_NOTFOUND == err) {
+			return;
+		}
 		if (err) {
 			THROW_STD(invalid_argument
 				, "FATAL: wiredtiger search_near(dir=%s, uri=%s, key=%s) = %s"
@@ -392,14 +416,13 @@ const {
 					memcmp(item2.data, item.data, item.size) == 0)
 				{
 					recIdvec->push_back(id);
-					m_wtCursor->next(m_wtCursor);
+					err = m_wtCursor->next(m_wtCursor);
 				}
 				else break;
 			}
 		}
 	}
 	m_wtCursor->reset(m_wtCursor);
-	return recIdvec->size();
 }
 
 bool WtWritableIndex::remove(fstring key, llong id, DbContext* ctx) {

@@ -339,9 +339,13 @@ public:
         assert(i < m_size);
 		terark_bit_set1(m_words, i);
     }
-	void set0(size_t first, size_t last);
-	void set1(size_t first, size_t last);
-	void set (size_t first, size_t last, bool val);
+	void set0(size_t first, size_t num);
+	void set1(size_t first, size_t num);
+	void set (size_t first, size_t num, bool val);
+
+	void beg_end_set0(size_t beg, size_t end);
+	void beg_end_set1(size_t beg, size_t end);
+	void beg_end_set (size_t beg, size_t end, bool val);
 
 	void set_word(size_t word_idx, bm_uint_t bits) {
 		m_words[word_idx] = bits;
@@ -373,6 +377,7 @@ public:
 	size_t blsize() const { return (m_size + WordBits -1) / WordBits; }
 	size_t size() const { return m_size; }
 	size_t capacity() const { return m_capacity; }
+	size_t unused() const { return m_capacity - m_size; }
 	bool  empty() const { return m_size == 0; }
 	void  swap(febitvec& y) {
 		std::swap(m_words, y.m_words);

@@ -9,6 +9,7 @@
 namespace terark { namespace db { namespace wt {
 
 class TERARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
+	class MyIndexIterBase;     friend class MyIndexIterBase;
 	class MyIndexIterForward;  friend class MyIndexIterForward;
 	class MyIndexIterBackward; friend class MyIndexIterBackward;
 
@@ -29,7 +30,11 @@ class TERARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex
 				   WT_ITEM* item, valvec<byte>* buf) const;
 
 public:
-	explicit WtWritableIndex(const Schema&, PathRef segDir, WT_SESSION* session);
+	static void getKeyVal(const Schema&, WT_CURSOR*, valvec<byte>* key, llong* recId);
+	static void setKeyVal(const Schema&, WT_CURSOR*, fstring key, llong recId,
+				   WT_ITEM* item, valvec<byte>* buf);
+
+	explicit WtWritableIndex(const Schema&, WT_CONNECTION* conn);
 	~WtWritableIndex();
 	void save(PathRef) const override;
 	void load(PathRef) override;
@@ -42,8 +47,10 @@ public:
 	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
 	void clear() override;
 
-	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
+	void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 	WritableIndex* getWritableIndex() override { return this; }
+
+	const std::string& getIndexUri() const { return m_uri; }
 };
 typedef boost::intrusive_ptr<WtWritableIndex> WtWritableIndexPtr;
 

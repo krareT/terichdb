@@ -42,7 +42,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "terarkdb_kv_engine.h"
 #include "terarkdb_record_store.h"
-#include "terarkdb_recovery_unit.h"
+//#include "terarkdb_recovery_unit.h"
 //#include "terarkdb_session_cache.h"
 //#include "terarkdb_util.h"
 #include "mongo/util/assert_util.h"
@@ -64,7 +64,7 @@ TerarkDbServerStatusSection::generateSection(OperationContext* txn,
                                            const BSONElement& configElement) const {
     BSONObjBuilder bob;
 
-    TerarkDbRecoveryUnit::appendGlobalStats(bob);
+//    TerarkDbRecoveryUnit::appendGlobalStats(bob);
 
     return bob.obj();
 }

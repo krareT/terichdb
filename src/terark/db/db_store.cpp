@@ -17,40 +17,46 @@ StoreIterator::~StoreIterator() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-typedef hash_strmap< std::function<ReadableStore*()>
+typedef hash_strmap< std::function<ReadableStore*(const Schema& schema)>
 					, fstring_func::hash_align
 					, fstring_func::equal_align
 					, ValueInline, SafeCopy
 					>
 		StoreFactory;
-static	StoreFactory s_storeFactory;
+static	StoreFactory& s_storeFactory() {
+	static StoreFactory instance;
+	return instance;
+}
 
 ReadableStore::RegisterStoreFactory::RegisterStoreFactory
-(const char* fnameSuffix, const std::function<ReadableStore*()>& f)
+(const char* fnameSuffix, const std::function<ReadableStore*(const Schema& schema)>& f)
 {
-	auto ib = s_storeFactory.insert_i(fnameSuffix, f);
+	auto ib = s_storeFactory().insert_i(fnameSuffix, f);
 	assert(ib.second);
 	if (!ib.second)
 		THROW_STD(invalid_argument, "duplicate suffix: %s", fnameSuffix);
 }
 
 ReadableStore::ReadableStore() {
+	m_recordsBasePtr = nullptr;
 }
 ReadableStore::~ReadableStore() {
 }
 
-ReadableStore* ReadableStore::openStore(PathRef segDir, fstring fname) {
+ReadableStore* ReadableStore::openStore(const Schema& schema, PathRef segDir, fstring fname) {
 	size_t sufpos = fname.size();
 	while (sufpos > 0 && fname[sufpos-1] != '.') --sufpos;
 	auto suffix = fname.substr(sufpos);
-	size_t idx = s_storeFactory.find_i(suffix);
-	if (idx < s_storeFactory.end_i()) {
-		const auto& factory = s_storeFactory.val(idx);
-		ReadableStore* store = factory();
+	size_t idx = s_storeFactory().find_i(suffix);
+	if (idx < s_storeFactory().end_i()) {
+		const auto& factory = s_storeFactory().val(idx);
+		ReadableStore* store = factory(schema);
 		assert(NULL != store);
 		if (NULL == store) {
 			THROW_STD(runtime_error, "store factory should not return NULL store");
 		}
+	//	fstring baseName = fname.substr(0, sufpos-1);
+	//	auto fpath = segDir / baseName.str();
 		auto fpath = segDir / fname.str();
 		store->load(fpath);
 		return store;
@@ -81,6 +87,10 @@ UpdatableStore* ReadableStore::getUpdatableStore() {
 	return nullptr;
 }
 
+void ReadableStore::deleteFiles() {
+	THROW_STD(invalid_argument, "Unsupportted Method");
+}
+
 namespace {
 	class DefaultStoreIterForward : public StoreIterator {
 		DbContextPtr m_ctx;
@@ -101,9 +111,10 @@ namespace {
 			}
 			return false;
 		}
-		bool seekExact(llong  id, valvec<byte>* val) override {
-			if (id <= m_rows) {
-				m_id = m_rows;
+		bool seekExact(llong id, valvec<byte>* val) override {
+			if (id < m_rows) {
+				m_store->getValue(id, val, m_ctx.get());
+				m_id = id + 1;
 				return true;
 			}
 			return false;
@@ -133,8 +144,9 @@ namespace {
 			return false;
 		}
 		bool seekExact(llong  id, valvec<byte>* val) override {
-			if (id <= m_rows) {
-				m_id = m_rows;
+			if (id > 0) {
+				m_store->getValue(id-1, val, m_ctx.get());
+				m_id = id - 1;
 				return true;
 			}
 			return false;
@@ -155,6 +167,21 @@ ReadableStore::createDefaultStoreIterBackward(DbContext* ctx) const {
 	return new DefaultStoreIterBackward(const_cast<ReadableStore*>(this), ctx);
 }
 
+StoreIterator*
+ReadableStore::ensureStoreIterForward(DbContext* ctx) const {
+	StoreIterator* iter = this->createStoreIterForward(ctx);
+	if (iter)
+		return iter;
+	return new DefaultStoreIterForward(const_cast<ReadableStore*>(this), ctx);
+}
+StoreIterator*
+ReadableStore::ensureStoreIterBackward(DbContext* ctx) const {
+	StoreIterator* iter = this->createStoreIterBackward(ctx);
+	if (iter)
+		return iter;
+	return new DefaultStoreIterBackward(const_cast<ReadableStore*>(this), ctx);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 AppendableStore::~AppendableStore() {
@@ -163,10 +190,6 @@ AppendableStore::~AppendableStore() {
 ///////////////////////////////////////////////////////////////////////////////
 
 UpdatableStore::~UpdatableStore() {
-}
-
-byte* UpdatableStore::getRawDataBasePtr() {
-	return NULL;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

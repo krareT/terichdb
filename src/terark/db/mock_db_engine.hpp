@@ -10,9 +10,10 @@ namespace terark { namespace db {
 
 class TERARK_DB_DLL MockReadonlyStore : public ReadableStore {
 	size_t    m_fixedLen;
-	SchemaPtr m_schema;
+	const Schema& m_schema;
 public:
 	fstrvec m_rows;
+	explicit MockReadonlyStore(const Schema&);
 
 	void build(const Schema&, SortableStrVec& storeData);
 
@@ -53,7 +54,7 @@ public:
 	llong dataInflateSize() const override;
 	void getValueAppend(llong id, valvec<byte>* key, DbContext*) const override;
 
-	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
+	void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
@@ -69,6 +70,9 @@ public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
 
+	MockWritableStore();
+	~MockWritableStore();
+
 	void save(PathRef) const override;
 	void load(PathRef) override;
 
@@ -83,7 +87,7 @@ public:
 	void  update(llong id, fstring row, DbContext*) override;
 	void  remove(llong id, DbContext*) override;
 
-	void clear() override;
+	void shrinkToFit() override;
 
 	AppendableStore* getAppendableStore() override;
 	UpdatableStore* getUpdatableStore() override;
@@ -111,7 +115,7 @@ public:
 	bool replace(fstring key, llong oldId, llong newId, DbContext*) override;
 	void clear() override;
 
-	size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
+	void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
 	WritableIndex* getWritableIndex() override { return this; }
 };
 
@@ -128,28 +132,12 @@ protected:
 
 class TERARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
 public:
-	valvec<valvec<byte> > m_rows;
-	llong m_dataSize;
-
 	MockWritableSegment(PathRef dir);
 	~MockWritableSegment();
-
-	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
-
 protected:
+	DbTransaction* createTransaction();
+	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
 	ReadableIndex* openIndex(const Schema&, PathRef) const override;
-	llong dataStorageSize() const override;
-	llong dataInflateSize() const override;
-	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	StoreIterator* createStoreIterForward(DbContext*) const override;
-	StoreIterator* createStoreIterBackward(DbContext*) const override;
-	llong totalStorageSize() const override;
-	llong append(fstring row, DbContext*) override;
-	void update(llong id, fstring row, DbContext*) override;
-	void remove(llong id, DbContext*) override;
-	void clear() override;
-	void loadRecordStore(PathRef segDir) override;
-	void saveRecordStore(PathRef segDir) const override;
 };
 
 class TERARK_DB_DLL MockDbContext : public DbContext {
@@ -159,7 +147,7 @@ public:
 };
 class TERARK_DB_DLL MockCompositeTable : public CompositeTable {
 public:
-	DbContext* createDbContext() const override;
+	DbContext* createDbContextNoLock() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;
 	WritableSegment* createWritableSegment(PathRef dir) const override;
 	WritableSegment* openWritableSegment(PathRef dir) const override;

@@ -72,7 +72,7 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 //#include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/kv/kv_catalog.h"
-
+#include <terark/io/FileStream.hpp>
 
 #if !defined(__has_feature)
 #define __has_feature(x) 0
@@ -100,6 +100,11 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 	m_pathWt = basePath / "wt";
 	m_pathTerarkTables = m_pathTerark / "tables";
 
+	try {
+		boost::filesystem::create_directories(m_pathWt);
+	}
+	catch (const std::exception&) {
+	}
 	m_wtEngine.reset(new WiredTigerKVEngine(
 				kWiredTigerEngineName,
 				m_pathWt.string(),
@@ -107,7 +112,8 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 				cacheSizeGB,
 				durable,
 				false, // ephemeral
-				repair));
+				repair,
+				false));
 
     _previousCheckedDropsQueued = Date_t::now();
 /*
@@ -141,6 +147,10 @@ void TerarkDbKVEngine::cleanShutdown() {
 	std::lock_guard<std::mutex> lock(m_mutex);
     m_tables.clear();
 	CompositeTable::safeStopAndWaitForFlush();
+}
+
+void TerarkDbKVEngine::setJournalListener(JournalListener* jl) {
+	m_wtEngine->setJournalListener(jl);
 }
 
 Status
@@ -252,18 +262,30 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 
     LOG(2) << "TerarkDbKVEngine::createRecordStore: ns:" << ns << ", config: " << config;
 */
+    LOG(2) << "TerarkDbKVEngine::createRecordStore: ns:" << ns << ", ident: " << ident
+		<< "\noptions.storageEngine: " << options.storageEngine.jsonString(Strict, true)
+		<< "\noptions.indexOptionDefaults: " << options.indexOptionDefaults.jsonString(Strict, true)
+		;
 	auto tabDir = m_pathTerarkTables / ns.toString();
     LOG(2)	<< "TerarkDbKVEngine::createRecordStore: ns:" << ns
 			<< ", tabDir=" << tabDir.string();
-
 	if (fs::exists(tabDir)) {
-		return Status::OK();
+	//	return Status(ErrorCodes::FileAlreadyOpen, "Collection is already existed");
 	}
 	else {
 		// TODO: parse options.storageEngine.TerarkSegDB to define schema
-		return Status(ErrorCodes::CommandNotSupported,
-			"dynamic create RecordStore is not supported, schema is required");
+		// return Status(ErrorCodes::CommandNotSupported,
+		//	"dynamic create RecordStore is not supported, schema is required");
+		fs::create_directories(tabDir);
+		bool includeFieldName = false;
+		bool pretty = true;
+		std::string dbmetaFile = (tabDir / "dbmeta.json").string();
+		std::string dbmetaData = options.storageEngine[kTerarkDbEngineName]
+							.jsonString(Strict, includeFieldName, pretty);
+		terark::FileStream fp(dbmetaFile.c_str(), "w");
+		fp.ensureWrite(dbmetaData.c_str(), dbmetaData.size());
 	}
+	return Status::OK();
 }
 
 RecordStore*

@@ -20,10 +20,12 @@ public:
 };
 class TERARK_DB_DLL DfaDbTable : public CompositeTable {
 public:
-	DbContext* createDbContext() const override;
+	DbContext* createDbContextNoLock() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;
 	WritableSegment* createWritableSegment(PathRef dir) const override;
 	WritableSegment* openWritableSegment(PathRef dir) const override;
+	bool indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec, DbContext*) const override;
+	bool indexMatchRegex(size_t indexId, fstring  regexStr, fstring  regexOptions, valvec<llong>* recIdvec, DbContext*) const override;
 };
 
 }}} // namespace terark::db::dfadb

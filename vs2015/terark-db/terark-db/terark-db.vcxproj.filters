@@ -123,6 +123,9 @@
     <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.hpp">
       <Filter>Header Files\terark\db\wiredtiger</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\db\appendonly.hpp">
+      <Filter>Header Files\terark\db</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -190,6 +193,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.cpp">
       <Filter>Source Files\terark\db\wiredtiger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\db\appendonly.cpp">
+      <Filter>Source Files\terark\db</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

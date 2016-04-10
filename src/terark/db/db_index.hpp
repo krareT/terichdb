@@ -8,7 +8,10 @@ namespace terark { namespace db {
 typedef boost::intrusive_ptr<class ReadableIndex> ReadableIndexPtr;
 
 class TERARK_DB_DLL IndexIterator : public RefCounter {
+protected:
+	bool m_isUniqueInSchema;
 public:
+	IndexIterator();
 	virtual ~IndexIterator();
 	virtual void reset() = 0;
 	virtual bool increment(llong* id, valvec<byte>* key) = 0;
@@ -24,6 +27,8 @@ public:
 	///          ret >  0 : *retKey < key
 	///          ret <  0 : key is less than all keys, iter is eof
 	virtual int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) = 0;
+
+	inline bool isUniqueInSchema() const { return m_isUniqueInSchema; }
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
@@ -43,7 +48,11 @@ public:
 	virtual llong indexStorageSize() const = 0;
 
 	///@returns same as recIdvec->size()
-	virtual size_t searchExact(fstring key, valvec<llong>* recIdvec, DbContext*) const = 0;
+	void searchExact(fstring key, valvec<llong>* recIdvec, DbContext* ctx) const {
+		recIdvec->erase_all();
+		searchExactAppend(key, recIdvec, ctx);
+	}
+	virtual void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const = 0;
 	///@}
 
 	///@{ ordered index only
@@ -68,10 +77,38 @@ typedef boost::intrusive_ptr<ReadableIndex> ReadableIndexPtr;
 /// both ordered and unordered index can be writable
 class TERARK_DB_DLL WritableIndex {
 public:
+	virtual ~WritableIndex();
 	virtual bool remove(fstring key, llong id, DbContext*) = 0;
 	virtual bool insert(fstring key, llong id, DbContext*) = 0;
 	virtual bool replace(fstring key, llong id, llong newId, DbContext*) = 0;
 	virtual void clear() = 0;
+};
+
+class TERARK_DB_DLL EmptyIndexStore : public ReadableIndex, public ReadableStore {
+public:
+	EmptyIndexStore();
+	EmptyIndexStore(const Schema&);
+	~EmptyIndexStore();
+
+	llong indexStorageSize() const override;
+
+	void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override;
+
+	IndexIterator* createIndexIterForward(DbContext*) const override;
+	IndexIterator* createIndexIterBackward(DbContext*) const override;
+	class ReadableStore* getReadableStore();
+
+	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
+	llong numDataRows() const override;
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+	void deleteFiles();
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
+	ReadableIndex* getReadableIndex();
+
+	void load(PathRef) override;
+	void save(PathRef) const override;
 };
 
 } } // namespace terark::db

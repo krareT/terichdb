@@ -1,0 +1,14 @@
+﻿{
+	"RowSchema": {
+		"columns" : {
+			"seqNo": { "type" : "uint64" },
+      "key": { "type": "strzero" },
+      "val": { "type": "strzero" }
+		}
+	},
+  "ReadonlyDataMemSize" : 10240,
+	"MaxWrSegSize" : 20480,
+	"TableIndex" : [
+		{ "fields": "key", "ordered" : true, "unique" : false }
+	]
+}

@@ -49,6 +49,8 @@
 
 namespace terark {
 
+typedef unsigned char uint08_t;
+typedef   signed char  int08_t;
 typedef unsigned char   byte_t;
 typedef unsigned char   byte;
 typedef   signed char  sbyte_t;
@@ -137,7 +139,7 @@ private:											\
 #	define DEBUG_fflush(fp)
 #	define TERARK_IF_DEBUG(Then, Else)  Else
 #	define TERARK_RT_assert(exp, ExceptionT)  \
-	if (!(exp)) { \
+	if (terark_unlikely(!(exp))) { \
 		string_appender<> oss;\
 		oss << "expression=\"" << #exp << "\", exception=\"" << #ExceptionT << "\"\n" \
 			<< __FILE__ ":" BOOST_STRINGIZE(__LINE__) ", in function: " \

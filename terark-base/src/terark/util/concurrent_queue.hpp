@@ -70,10 +70,10 @@ public:
 
 public:
 	//! default will not limit max size
-	explicit concurrent_queue(int maxSize = INT_MAX) : m_maxSize(maxSize) {}
+	explicit concurrent_queue(size_t maxSize = size_t(-1)) : m_maxSize(maxSize) {}
 
 	//! not needed lock...
-	int maxSize() const throw()	{ return m_maxSize;	}
+	size_t maxSize() const throw()	{ return m_maxSize;	}
 
 	//! locked get size...
 	size_type size()
