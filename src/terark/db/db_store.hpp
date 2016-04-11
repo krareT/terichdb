@@ -141,6 +141,26 @@ private:
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 };
 
+//warning C4275: non dll-interface class 'std::logic_error' used as base for dll-interface class 'terark::db::ReadRecordException'
+#pragma warning(disable:4275)
+class TERARK_DB_DLL ReadRecordException : public std::logic_error {
+public:
+	~ReadRecordException();
+	ReadRecordException(const char* errType, const std::string& segDir, llong baseId, llong subId);
+	ReadRecordException(const ReadRecordException&);
+	ReadRecordException& operator=(const ReadRecordException&);
+	std::string m_segDir;
+	llong m_baseId;
+	llong m_subId;
+};
+class TERARK_DB_DLL ReadDeletedRecordException : public ReadRecordException {
+public:
+	ReadDeletedRecordException(const std::string& segDir, llong baseId, llong subId);
+};
+class TERARK_DB_DLL ReadUncommitedRecordException : public ReadRecordException {
+public:
+	ReadUncommitedRecordException(const std::string& segDir, llong baseId, llong subId);
+};
 
 } } // namespace terark::db
 

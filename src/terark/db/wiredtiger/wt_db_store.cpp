@@ -26,7 +26,7 @@ public:
 				);
 		}
 		WT_CURSOR* cursor;
-		err = ses->open_cursor(ses, g_dataStoreUri, NULL, NULL, &cursor);
+		err = ses->open_cursor(ses, g_dataStoreUri, NULL, "overwrite=true", &cursor);
 		if (err) {
 			std::string msg = ses->strerror(ses, err);
 			ses->close(ses, NULL);
@@ -68,11 +68,13 @@ public:
 			);
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
+		m_cursor->reset(m_cursor); // reset, terarkdb has no snapshot
 		llong recno = id + 1;
 		m_cursor->set_key(m_cursor, recno);
 		int err = m_cursor->search(m_cursor);
 		if (err == 0) {
 			WT_ITEM item;
+			memset(&item, 0, sizeof(WT_ITEM));
 			m_cursor->get_value(m_cursor, &item);
 			val->assign((const byte*)item.data, item.size);
 			return true;
@@ -209,16 +211,17 @@ const {
 	llong recno = id + 1;
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	auto cursor = getReplaceCursor();
+	auto ses = cursor->session;
+	auto conn = ses->connection;
 	cursor->set_key(cursor, recno);
 	int err = cursor->search(cursor);
 	if (WT_NOTFOUND == err) {
-		fprintf(stderr
-			, "ERROR: wiredtiger NotFound: recno=%lld, should always found"
-			, recno);
-		return;
+		throw ReadRecordException("Wiredtiger NotFound", conn->get_home(conn), -1, id);
 	}
 	if (err) {
-		WT_SESSION* ses = cursor->session;
+		throw ReadRecordException(ses->strerror(ses, err), conn->get_home(conn), -1, id);
+	}
+	if (err) {
 		THROW_STD(invalid_argument
 			, "wiredtiger search failed: recno=%lld, wtError=%s"
 			, recno, ses->strerror(ses, err));

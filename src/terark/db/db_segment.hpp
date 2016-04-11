@@ -314,7 +314,6 @@ public:
 								fstring key, valvec<llong>* recIdvec,
 								DbContext*) const override;
 
-	void getCombineAppend(llong recId, valvec<byte>* val, DbContext*) const;
 	void getCombineAppend(llong recId, valvec<byte>* val, valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2) const;
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
@@ -336,6 +335,8 @@ public:
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
+
+	void getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx) const;
 
 	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;

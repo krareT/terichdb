@@ -2,6 +2,7 @@
 #include "wt_db_index.hpp"
 #include "wt_db_store.hpp"
 #include "wt_db_context.hpp"
+#include <boost/scope_exit.hpp>
 
 namespace terark { namespace db { namespace wt {
 
@@ -161,7 +162,9 @@ public:
 			}
 		}
 	}
+#define TERARK_WT_USE_TXN 1
 	void startTransaction() override {
+#if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		const char* txnConfig = getenv("TerarkDB_WiredtigerTransactionConfig");
 		if (NULL == txnConfig) {
@@ -173,8 +176,10 @@ public:
 				, "ERROR: wiredtiger begin_transaction: %s"
 				, ses->strerror(ses, err));
 		}
+#endif
 	}
 	void commit() override {
+#if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		int err = ses->commit_transaction(ses, NULL);
 		if (err) {
@@ -182,8 +187,10 @@ public:
 				, "ERROR: wiredtiger commit_transaction: %s"
 				, ses->strerror(ses, err));
 		}
+#endif
 	}
 	void rollback() override {
+#if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		int err = ses->rollback_transaction(ses, NULL);
 		if (err) {
@@ -191,6 +198,7 @@ public:
 				, "ERROR: wiredtiger rollback_transaction: %s"
 				, ses->strerror(ses, err));
 		}
+#endif
 	}
 	bool indexInsert(size_t indexId, fstring key, llong recId) override {
 		assert(indexId < m_indices.size());
@@ -230,6 +238,7 @@ public:
 		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
 		recIdvec->erase_all();
 		int err = cur->search(cur);
+		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
 		if (WT_NOTFOUND == err) {
 			return;
 		}
@@ -276,6 +285,7 @@ public:
 		WT_CURSOR* cur = m_indices[indexId].insert;
 		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
 		int err = cur->remove(cur);
+		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
 		if (WT_NOTFOUND == err) {
 			return;
 		}
@@ -304,6 +314,7 @@ public:
 		WT_CURSOR* cur = m_store;
 		cur->set_key(cur, recId + 1); // recno = recId + 1
 		int err = cur->remove(cur);
+		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
 		if (WT_NOTFOUND == err) {
 			return;
 		}
@@ -343,18 +354,28 @@ public:
 			THROW_STD(invalid_argument
 				, "ERROR: wiredtiger store upsert: %s", ses->strerror(ses, err));
 		}
+//		StoreIteratorPtr iter = m_seg->m_wrtStore->createStoreIterForward(NULL);
+//		valvec<byte> buf3;
+//		iter->seekExact(recId, &buf3);
+//		valvec<byte> buf2;
+//		m_seg->m_wrtStore->getValue(recId, &buf2, NULL);
+//		std::string js3 = m_sconf.m_wrtSchema->toJsonStr(buf3);
+//		std::string js2 = m_sconf.m_wrtSchema->toJsonStr(buf2);
+//		std::string js1 = m_sconf.m_wrtSchema->toJsonStr(m_wrtBuf);
 	}
-	bool storeGetRow(llong recId, valvec<byte>* row) override {
+	void storeGetRow(llong recId, valvec<byte>* row) override {
 		WT_SESSION* ses = m_session.ses;
 		WT_CURSOR* cur = m_store;
 		WtItem item;
+		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
+		cur->reset(cur);
 		cur->set_key(cur, recId+1); // recno = recId+1
 		int err = cur->search(cur);
+		if (err == WT_NOTFOUND) {
+			throw ReadUncommitedRecordException(m_seg->m_segDir.string(), -1, recId);
+		}
 		if (err) {
-			fprintf(stderr
-				, "WARN: fail read-uncommited row(recId=%lld) in: %s\n"
-				, recId, m_seg->m_segDir.string().c_str());
-			return false;
+			throw ReadRecordException(ses->strerror(ses, err), m_seg->m_segDir.string(), -1, recId);
 		}
 		cur->get_value(cur, &item);
 		if (m_sconf.m_updatableColgroups.empty()) {

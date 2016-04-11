@@ -654,14 +654,7 @@ const {
 	llong baseId = rowNumPtr[upp-1];
 	llong subId = id - baseId;
 	auto seg = ctx->m_segCtx[upp-1]->seg;
-	if (seg->m_hasLockFreePointSearch) {
-		seg->getValueAppend(subId, val, ctx);
-	}
-	else {
-		StoreIterator* iter = ctx->getStoreIterNoLock(upp-1);
-		bool ret = iter->seekExact(subId, val);
-		TERARK_RT_assert(ret, std::logic_error);
-	}
+	seg->getValueAppend(subId, val, ctx);
 }
 
 bool
@@ -862,6 +855,7 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 			ws.m_isDel.set0(subId);
 			ws.m_delcnt--;
 			assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+			txn.commit();
 		}
 		else {
 			SpinRwLock wsLock(ws.m_segMutex, true);
@@ -875,6 +869,7 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 			else {
 				ws.m_deletedWrIdSet.push_back(subId);
 			}
+			txn.rollback();
 			return -1; // fail
 		}
 	}
@@ -1017,16 +1012,25 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 		return recId;
 	}
 	llong subId = ctx->exactMatchRecIdvec[0];
+	llong baseId = m_rowNumVec.ende(2);
 	assert(ctx->exactMatchRecIdvec.size() == 1);
 	DefaultCommitTransaction txn(ctx->m_transaction.get());
-	if (!sconf.m_multIndices.empty()) { 
-		m_wrSeg->getValue(subId, &ctx->row2, ctx);
+	if (!sconf.m_multIndices.empty()) {
+		try {
+			txn.storeGetRow(subId, &ctx->row2);
+		}
+		catch (const ReadRecordException&) {
+			fprintf(stderr
+				, "ERROR: upsertRow(baseId=%lld, subId=%lld): read old row data failed: %s\n"
+				, baseId, subId, m_wrSeg->m_segDir.string().c_str());
+			txn.rollback();
+			return false;
+		}
 		sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 		updateSyncMultIndex(subId, txn, ctx);
 	}
 	txn.storeUpsert(subId, row);
 	ctx->isUpsertOverwritten = 1;
-	llong baseId = m_rowNumVec.ende(2);
 	maybeCreateNewSegment(lock);
 	return baseId + subId;
 }
@@ -1164,6 +1168,18 @@ bool
 CompositeTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
 	DefaultCommitTransaction txn(ctx->m_transaction.get());
+	try {
+		txn.storeGetRow(subId, &ctx->row2);
+	}
+	catch (const ReadRecordException&) {
+		llong baseId = m_rowNumVec.ende(2);
+		fprintf(stderr
+			, "ERROR: updateRow(baseId=%lld, subId=%lld): read old row data failed: %s\n"
+			, baseId, subId, m_wrSeg->m_segDir.string().c_str());
+		txn.rollback();
+		return false;
+	}
+	sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 	size_t i = 0;
 	for (; i < sconf.m_uniqIndices.size(); ++i) {
 		size_t indexId = sconf.m_uniqIndices[i];
@@ -1255,7 +1271,16 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 			TransactionGuard txn(ctx->m_transaction.get());
 			valvec<byte> &row = ctx->row1, &key = ctx->key1;
 			ColumnVec& columns = ctx->cols1;
-			txn.storeGetRow(subId, &row);
+			try {
+				txn.storeGetRow(subId, &row);
+			}
+			catch (const ReadRecordException& ex) {
+				fprintf(stderr
+					, "ERROR: removeRow(id=%lld): read row data failed: %s\n"
+					, id, ex.what());
+				txn.rollback();
+				return false;
+			}
 			m_schema->m_rowSchema->parseRow(row, &columns);
 			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
 				const Schema& iSchema = m_schema->getIndexSchema(i);

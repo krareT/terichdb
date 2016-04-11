@@ -55,6 +55,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		recRow.str2 = std::string("s2:") + recRow.fix.data;
 		recRow.str3 = std::string("s3:") + recRow.fix.data;
 		recRow.str4 = std::string("s4:") + recRow.fix.data;
+		sprintf(recRow.fix2.data, "F2.%06lld", recRow.id);
 		rowBuilder.rewind();
 		rowBuilder << recRow;
 		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
@@ -66,14 +67,21 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 		}
 		if (600 == i)
 			i = i;
-		if (17714 == recRow.id)
+		if (3903 == recRow.id)
 			i = i;
 		llong recId = ctx->insertRow(binRow);
 		if (recId < 0) {
 			assert(bits.is1(recRow.id));
 			printf("Insert failed: %s\n", ctx->errMsg.c_str());
 		} else {
-			printf("Insert recId = %lld: %s\n", recId, tab->toJsonStr(binRow).c_str());
+			ctx->getValue(recId, &recBuf);
+			std::string js1 = tab->toJsonStr(binRow);
+			printf("Insert recId = %lld: %s\n", recId, js1.c_str());
+			if (fstring(binRow) != recBuf) {
+				std::string js2 = tab->toJsonStr(recBuf);
+				printf("Fetch_ recId = %lld: %s\n", recId, js2.c_str());
+				assert(0);
+			}
 			insertedRows++;
 			if (bits.is1(recRow.id)) {
 				ctx->removeRow(recId);
@@ -87,7 +95,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 
 		if (rand() < RAND_MAX*0.3) {
 			llong randomRecId = rand() % tab->numDataRows();
-			if (93 == randomRecId)
+			if (22 == randomRecId)
 				i = i;
 			uint64_t keyId = 0;
 			recBuf.erase_all();
@@ -97,7 +105,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
 				assert(indexId < tab->getIndexNum());
 				tab->selectOneColumn(randomRecId, indexId, &recBuf, &*ctx);
 				keyId = unaligned_load<uint64_t>(recBuf.data());
-				if (keyId == 27754)
+				if (keyId == 20538)
 					keyId = keyId;
 				ctx->getValue(randomRecId, &recBuf);
 				jstr = tab->toJsonStr(recBuf);

@@ -1392,24 +1392,24 @@ WritableStore* WritableSegment::getWritableStore() { return this; }
 void
 WritableSegment::getValueAppend(llong recId, valvec<byte>* val, DbContext* ctx)
 const {
+	assert(&ctx->buf1 != val);
+	assert(&ctx->buf2 != val);
 	if (m_schema->m_updatableColgroups.empty()) {
-		m_wrtStore->getValueAppend(recId, val, ctx);
+	//	m_wrtStore->getValueAppend(recId, val, ctx);
+		this->getWrtStoreData(recId, val, ctx);
 	}
 	else {
 		ctx->buf1.erase_all();
 		ctx->cols1.erase_all();
-		m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
-		if (ctx->buf1.empty()) { // fail
-			assert(0); // TODO:
-			return; // now ignore in release compile
-		}
+	//	m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
+		this->getWrtStoreData(recId, &ctx->buf1, ctx);
 		const size_t ProtectCnt = 100;
 		if (m_isFreezed || m_isDel.unused() > ProtectCnt) {
-			this->getCombineAppend(recId, val, ctx);
+			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
 		}
 		else {
 			SpinRwLock  lock(m_segMutex, false);
-			this->getCombineAppend(recId, val, ctx);
+			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
 		}
 	}
 }
@@ -1471,12 +1471,6 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	iter->reset();
 }
 
-void
-WritableSegment::getCombineAppend(llong recId, valvec<byte>* val, DbContext* ctx)
-const {
-	getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
-}
-
 void WritableSegment::getCombineAppend(llong recId, valvec<byte>* val,
 					valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2)
 const {
@@ -1530,8 +1524,10 @@ void WritableSegment::selectColumnsByWhole(llong recId,
 									const size_t* colsId, size_t colsNum,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
+	assert(m_schema->m_updatableColgroups.empty());
 	colsData->erase_all();
-	this->getValue(recId, &ctx->buf1, ctx);
+//	this->getValue(recId, &ctx->buf1, ctx);
+	this->getWrtStoreData(recId, &ctx->buf1, ctx);
 	const Schema& schema = *m_schema->m_rowSchema;
 	schema.parseRow(ctx->buf1, &ctx->cols1);
 	assert(ctx->cols1.size() == schema.columnNum());
@@ -1575,7 +1571,8 @@ const {
 		else {
 			schema = sconf.m_wrtSchema.get();
 			if (ctx->cols1.empty()) {
-				m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+			//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+				this->getWrtStoreData(recId, &ctx->buf1, ctx);
 				schema->parseRow(ctx->buf1, &ctx->cols1);
 			}
 			size_t subColumnId = sconf.m_rowSchemaColToWrtCol[columnId];
@@ -1609,7 +1606,8 @@ const {
 	}
 	else {
 		const Schema& wrtSchema = *m_schema->m_wrtSchema;
-		m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+	//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+		this->getWrtStoreData(recId, &ctx->buf1, ctx);
 		wrtSchema.parseRow(ctx->buf1, &ctx->cols1);
 		assert(ctx->cols1.size() == wrtSchema.columnNum());
 		colsData->erase_all();
@@ -1722,15 +1720,16 @@ llong WritableSegment::dataStorageSize() const {
 }
 
 class WritableSegment::MyStoreIter : public StoreIterator {
-	ColumnVec    m_cols;
-	DbContextPtr m_ctx;
 	const SchemaConfig& m_sconf;
 	const WritableSegment* m_wrtSeg;
 	StoreIteratorPtr m_wrtIter;
+	valvec<byte> m_wrtBuf;
+	ColumnVec    m_cols1;
+	ColumnVec    m_cols2;
 public:
 	MyStoreIter(const WritableSegment* wrtSeg, StoreIterator* wrtIter,
 				DbContext* ctx, const SchemaConfig& sconf)
-	  : m_ctx(ctx), m_sconf(sconf)
+	  : m_sconf(sconf)
 	{
 		m_store = const_cast<WritableSegment*>(wrtSeg);
 		m_wrtSeg = wrtSeg;
@@ -1745,24 +1744,23 @@ public:
 			}
 			return false;
 		}
-		m_ctx->buf1.erase_all();
-		m_ctx->cols1.erase_all();
-		if (m_wrtIter->increment(id, &m_ctx->buf1)) {
+		if (m_wrtIter->increment(id, &m_wrtBuf)) {
 			val->erase_all();
-			m_wrtSeg->getCombineAppend(*id, val, m_ctx.get());
+			m_wrtSeg->getCombineAppend(*id, val, m_wrtBuf, m_cols1, m_cols2);
 			return true;
 		}
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
+		m_wrtIter->reset();
 		if (m_sconf.m_updatableColgroups.empty()) {
 			return m_wrtIter->seekExact(id, val);
 		}
-		m_ctx->buf1.erase_all();
-		m_ctx->cols1.erase_all();
-		if (m_wrtIter->seekExact(id, &m_ctx->buf1)) {
+		m_wrtBuf.erase_all();
+		m_cols1.erase_all();
+		if (m_wrtIter->seekExact(id, &m_wrtBuf)) {
 			val->erase_all();
-			m_wrtSeg->getCombineAppend(id, val, m_ctx.get());
+			m_wrtSeg->getCombineAppend(id, val, m_wrtBuf, m_cols1, m_cols2);
 			return true;
 		}
 		return false;
@@ -1852,6 +1850,16 @@ void WritableSegment::shrinkToFit() {
 		store->shrinkToFit();
 	}
 	m_wrtStore->getAppendableStore()->shrinkToFit();
+}
+
+void WritableSegment::getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx)
+const {
+	if (m_hasLockFreePointSearch) {
+		m_wrtStore->getValue(subId, buf, ctx);
+	}
+	else {
+		ctx->getWrSegWrtStoreData(this, subId, buf);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

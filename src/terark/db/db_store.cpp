@@ -366,4 +366,35 @@ void MultiPartStore::syncRowNumVec() {
 
 /////////////////////////////////////////////////////////////////////////////
 
+ReadRecordException::~ReadRecordException() {
+}
+static std::string
+ReadRecordExceptionErrMessage(const char* errType, const std::string& segDir, llong baseId, llong subId) {
+	char szBuf[96];
+	std::string msg;
+	msg.reserve(512);
+	msg += errType;
+	msg += " in \"";
+	msg += segDir;
+	sprintf(szBuf, "\", baseId = %lld, subId = %lld", baseId, subId);
+	msg += szBuf;
+	return msg;
+}
+ReadRecordException::ReadRecordException(const char* errType, const std::string& segDir, llong baseId, llong subId)
+  : std::logic_error(ReadRecordExceptionErrMessage(errType, segDir, baseId, subId))
+{
+	m_segDir = segDir;
+	m_baseId = baseId;
+	m_subId = subId;
+}
+ReadRecordException::ReadRecordException(const ReadRecordException&) = default;
+ReadRecordException& ReadRecordException::operator=(const ReadRecordException&) = default;
+
+ReadDeletedRecordException::ReadDeletedRecordException(const std::string& segDir, llong baseId, llong subId)
+  : ReadRecordException("ReadDeletedRecordException", segDir, baseId, subId)
+{}
+ReadUncommitedRecordException::ReadUncommitedRecordException(const std::string& segDir, llong baseId, llong subId)
+  : ReadRecordException("ReadUncommitedRecordException", segDir, baseId, subId)
+{}
+
 } } // namespace terark::db
