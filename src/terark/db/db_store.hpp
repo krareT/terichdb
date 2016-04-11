@@ -141,8 +141,10 @@ private:
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 };
 
+#ifdef _MSC_VER
 //warning C4275: non dll-interface class 'std::logic_error' used as base for dll-interface class 'terark::db::ReadRecordException'
 #pragma warning(disable:4275)
+#endif
 class TERARK_DB_DLL ReadRecordException : public std::logic_error {
 public:
 	~ReadRecordException();
