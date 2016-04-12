@@ -121,6 +121,7 @@ class WtWritableSegment::WtDbTransaction : public DbTransaction {
 	WtCursor  m_store;
 	valvec<WtCursor2> m_indices;
 	const SchemaConfig& m_sconf;
+	std::string m_strError;
 public:
 	~WtDbTransaction() {
 	}
@@ -178,17 +179,19 @@ public:
 		}
 #endif
 	}
-	void commit() override {
+	bool commit() override {
 #if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		int err = ses->commit_transaction(ses, NULL);
 		if (err) {
-			THROW_STD(invalid_argument
-				, "ERROR: wiredtiger commit_transaction: %s"
-				, ses->strerror(ses, err));
+			m_strError = "wiredtiger commit_transaction: ";
+			m_strError += ses->strerror(ses, err);
+			return false;
 		}
 #endif
+		return true;
 	}
+	const std::string& strError() const override { return m_strError; }
 	void rollback() override {
 #if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;

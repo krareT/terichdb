@@ -199,8 +199,9 @@ class DbTransaction : boost::noncopyable {
 	virtual void storeUpsert(llong recId, fstring row) = 0;
 	virtual void storeGetRow(llong recId, valvec<byte>* row) = 0;
 	virtual void startTransaction() = 0;
-	virtual void commit() = 0;
+	virtual bool commit() = 0;
 	virtual void rollback() = 0;
+	virtual const std::string& strError() const = 0;
 public:
 	virtual ~DbTransaction();
 };
@@ -239,27 +240,23 @@ public:
 	void storeGetRow(llong recId, valvec<byte>* row) {
 		m_txn->storeGetRow(recId, row);
 	}
-	void commit() {
+	bool commit() {
 		assert(started == m_status);
-		m_txn->commit();
-		m_status = committed;
+		if (m_txn->commit()) {
+			m_status = committed;
+			return true;
+		} else {
+			m_status = rollbacked;
+			return false;
+		}
 	}
 	void rollback() {
 		assert(started == m_status);
 		m_txn->rollback();
 		m_status = rollbacked;
 	}
-};
-class DefaultCommitTransaction : public TransactionGuard {
-public:
-	explicit
-	DefaultCommitTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
-	~DefaultCommitTransaction() {
-		if (started == m_status) {
-			m_txn->commit();
-			m_status = committed;
-		}
-	}
+	const std::string& strError() const { return m_txn->strError(); }
+	const char* szError() const { return m_txn->strError().c_str(); }
 };
 class DefaultRollbackTransaction : public TransactionGuard {
 public:

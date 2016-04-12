@@ -20,6 +20,8 @@
 #undef min
 #undef max
 
+//#define SegDir_c_str(seg) seg->m_segDir.string().c_str()
+
 namespace terark { namespace db {
 
 namespace fs = boost::filesystem;
@@ -828,7 +830,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 
 llong
 CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
-	DefaultCommitTransaction txn(ctx->m_transaction.get());
+	TransactionGuard txn(ctx->m_transaction.get());
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
 	auto& ws = *m_wrSeg;
@@ -855,19 +857,19 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 			ws.m_isDel.set0(subId);
 			ws.m_delcnt--;
 			assert(ws.m_isDel.popcnt() == ws.m_delcnt);
-			txn.commit();
 		}
-		else {
-			SpinRwLock wsLock(ws.m_segMutex, true);
-			if (wrBaseId + subId + 1 == m_rowNum) {
-				m_rowNumVec.back()--;
-				m_rowNum--;
-				ws.popIsDel();
-				ws.m_delcnt--;
-				assert(ws.m_isDel.popcnt() == ws.m_delcnt);
-			}
-			else {
-				ws.m_deletedWrIdSet.push_back(subId);
+		else {{
+				SpinRwLock wsLock(ws.m_segMutex, true);
+				if (wrBaseId + subId + 1 == m_rowNum) {
+					m_rowNumVec.back()--;
+					m_rowNum--;
+					ws.popIsDel();
+					ws.m_delcnt--;
+					assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+				}
+				else {
+					ws.m_deletedWrIdSet.push_back(subId);
+				}
 			}
 			txn.rollback();
 			return -1; // fail
@@ -881,11 +883,16 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 		ws.m_delcnt--;
 		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
 	}
+	if (!txn.commit()) {
+		TERARK_THROW(CommitException
+			, "commit failed: %s, baseId=%lld, subId=%lld, seg = %s"
+			, txn.szError(), wrBaseId, subId, ws.m_segDir.string().c_str());
+	}
 	return wrBaseId + subId;
 }
 
 bool
-CompositeTable::insertSyncIndex(llong subId, DefaultCommitTransaction& txn, DbContext* ctx) {
+CompositeTable::insertSyncIndex(llong subId, TransactionGuard& txn, DbContext* ctx) {
 	// first try insert unique index
 	const SchemaConfig& sconf = *m_schema;
 	size_t i = 0;
@@ -1014,7 +1021,7 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 	llong subId = ctx->exactMatchRecIdvec[0];
 	llong baseId = m_rowNumVec.ende(2);
 	assert(ctx->exactMatchRecIdvec.size() == 1);
-	DefaultCommitTransaction txn(ctx->m_transaction.get());
+	TransactionGuard txn(ctx->m_transaction.get());
 	if (!sconf.m_multIndices.empty()) {
 		try {
 			txn.storeGetRow(subId, &ctx->row2);
@@ -1024,12 +1031,18 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 				, "ERROR: upsertRow(baseId=%lld, subId=%lld): read old row data failed: %s\n"
 				, baseId, subId, m_wrSeg->m_segDir.string().c_str());
 			txn.rollback();
-			return false;
+			throw ReadRecordException("pre updateSyncMultIndex",
+						m_wrSeg->m_segDir.string(), baseId, subId);
 		}
 		sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 		updateSyncMultIndex(subId, txn, ctx);
 	}
 	txn.storeUpsert(subId, row);
+	if (!txn.commit()) {
+		TERARK_THROW(CommitException
+			, "commit failed: %s, baseId=%lld, subId=%lld, seg = %s, caller should retry"
+			, txn.szError(), baseId, subId, m_wrSeg->m_segDir.string().c_str());
+	}
 	ctx->isUpsertOverwritten = 1;
 	maybeCreateNewSegment(lock);
 	return baseId + subId;
@@ -1167,17 +1180,15 @@ CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) 
 bool
 CompositeTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
-	DefaultCommitTransaction txn(ctx->m_transaction.get());
+	TransactionGuard txn(ctx->m_transaction.get());
 	try {
 		txn.storeGetRow(subId, &ctx->row2);
 	}
 	catch (const ReadRecordException&) {
-		llong baseId = m_rowNumVec.ende(2);
-		fprintf(stderr
-			, "ERROR: updateRow(baseId=%lld, subId=%lld): read old row data failed: %s\n"
-			, baseId, subId, m_wrSeg->m_segDir.string().c_str());
 		txn.rollback();
-		return false;
+		llong baseId = m_rowNumVec.ende(2);
+		throw ReadRecordException("updateWithSyncIndex"
+			, m_wrSeg->m_segDir.string(), baseId, subId);
 	}
 	sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 	size_t i = 0;
@@ -1203,6 +1214,13 @@ CompositeTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	}
 	updateSyncMultIndex(subId, txn, ctx);
 	txn.storeUpsert(subId, row);
+	if (!txn.commit()) {
+		llong baseId = m_rowNumVec.ende(2);
+		TERARK_THROW(CommitException
+			, "commit failed: %s, baseId=%lld, subId=%lld, seg = %s"
+			, txn.szError(), baseId, subId
+			, m_wrSeg->m_segDir.string().c_str());
+	}
 	return true;
 Fail:
 	for (size_t j = i; j > 0; ) {
@@ -1220,7 +1238,7 @@ Fail:
 }
 
 void
-CompositeTable::updateSyncMultIndex(llong subId, DefaultCommitTransaction& txn, DbContext* ctx) {
+CompositeTable::updateSyncMultIndex(llong subId, TransactionGuard& txn, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
 	for (size_t i = 0; i < sconf.m_multIndices.size(); ++i) {
 		size_t indexId = sconf.m_multIndices[i];
@@ -1247,26 +1265,23 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	auto seg = m_segments[j-1].get();
-//	assert(seg->m_isDel.is0(subId));
-	if (seg->m_isDel.is1(size_t(subId))) {
-	//	THROW_STD(invalid_argument
-	//		, "Row has been deleted: id=%lld seg=%zd baseId=%lld subId=%lld"
-	//		, id, j, baseId, subId);
-		return false;
-	}
 	if (!seg->m_isFreezed) {
-		assert(m_wrSeg.get() == seg);
-		assert(!m_wrSeg->m_bookUpdates);
-		auto setWrSegDelmarkLocked = [&]() {
-			SpinRwLock wsLock(m_wrSeg->m_segMutex);
-			if (!m_wrSeg->m_isDel[subId]) {
-				m_wrSeg->m_deletedWrIdSet.push_back(uint32_t(subId));
-				m_wrSeg->m_delcnt++;
-				m_wrSeg->m_isDel.set1(subId); // always set delmark
-				m_wrSeg->m_isDirty = true;
+		auto wrseg = m_wrSeg.get();
+		assert(wrseg == seg);
+		assert(!wrseg->m_bookUpdates);
+		{
+			SpinRwLock wsLock(wrseg->m_segMutex);
+			if (!wrseg->m_isDel[subId]) {
+				wrseg->m_deletedWrIdSet.push_back(uint32_t(subId));
+				wrseg->m_delcnt++;
+				wrseg->m_isDel.set1(subId); // always set delmark
+				wrseg->m_isDirty = true;
+				assert(wrseg->m_isDel.popcnt() == wrseg->m_delcnt);
 			}
-			assert(m_wrSeg->m_isDel.popcnt() == m_wrSeg->m_delcnt);
-		};
+			else {
+				return false;
+			}
+		}
 		if (ctx->syncIndex) {
 			TransactionGuard txn(ctx->m_transaction.get());
 			valvec<byte> &row = ctx->row1, &key = ctx->key1;
@@ -1279,20 +1294,24 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 					, "ERROR: removeRow(id=%lld): read row data failed: %s\n"
 					, id, ex.what());
 				txn.rollback();
-				return false;
+				throw ReadRecordException("removeRow: pre remove index",
+					wrseg->m_segDir.string(), baseId, subId);
 			}
 			m_schema->m_rowSchema->parseRow(row, &columns);
-			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
+			for (size_t i = 0; i < wrseg->m_indices.size(); ++i) {
 				const Schema& iSchema = m_schema->getIndexSchema(i);
 				iSchema.selectParent(columns, &key);
 				txn.indexRemove(i, key, subId);
 			}
 			txn.storeRemove(subId);
-			setWrSegDelmarkLocked();
-			txn.commit();
-		}
-		else {
-			setWrSegDelmarkLocked();
+			if (!txn.commit()) {
+				// this fail should be ignored, because the deletion bit
+				// have always be set, remove index is just an optimization
+				// for future search
+				fprintf(stderr
+					, "WARN: removeRow: commit failed: recId=%lld, baseId=%lld, subId=%lld, seg = %s"
+					, id, baseId, subId, wrseg->m_segDir.string().c_str());
+			}
 		}
 	}
 	else { // freezed segment, just set del mark

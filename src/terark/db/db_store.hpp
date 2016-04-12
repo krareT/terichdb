@@ -145,7 +145,11 @@ private:
 //warning C4275: non dll-interface class 'std::logic_error' used as base for dll-interface class 'terark::db::ReadRecordException'
 #pragma warning(disable:4275)
 #endif
-class TERARK_DB_DLL ReadRecordException : public std::logic_error {
+class TERARK_DB_DLL DbException : public std::logic_error {
+public:
+	using std::logic_error::logic_error;
+};
+class TERARK_DB_DLL ReadRecordException : public DbException {
 public:
 	~ReadRecordException();
 	ReadRecordException(const char* errType, const std::string& segDir, llong baseId, llong subId);
@@ -162,6 +166,11 @@ public:
 class TERARK_DB_DLL ReadUncommitedRecordException : public ReadRecordException {
 public:
 	ReadUncommitedRecordException(const std::string& segDir, llong baseId, llong subId);
+};
+
+class TERARK_DB_DLL CommitException : public DbException {
+public:
+	using DbException::DbException;
 };
 
 } } // namespace terark::db

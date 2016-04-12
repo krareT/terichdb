@@ -381,7 +381,7 @@ ReadRecordExceptionErrMessage(const char* errType, const std::string& segDir, ll
 	return msg;
 }
 ReadRecordException::ReadRecordException(const char* errType, const std::string& segDir, llong baseId, llong subId)
-  : std::logic_error(ReadRecordExceptionErrMessage(errType, segDir, baseId, subId))
+  : DbException(ReadRecordExceptionErrMessage(errType, segDir, baseId, subId))
 {
 	m_segDir = segDir;
 	m_baseId = baseId;
