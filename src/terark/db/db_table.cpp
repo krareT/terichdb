@@ -3228,6 +3228,7 @@ void FlushThreadFunc() {
 Done:
 	assert(g_flushQueue.empty());
 	g_flushStopped = true;
+	fprintf(stderr, "INFO: flushing thread completed!\n");
 }
 
 void CompressThreadFunc() {
@@ -3389,6 +3390,7 @@ void CompositeTable::safeStopAndWaitForFlush() {
 	g_stopCompress = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
 	g_flushThread.join();
+	assert(g_flushStopped);
 	g_compressThreads.join();
 	assert(g_flushQueue.empty());
 	assert(g_compressQueue.empty());
