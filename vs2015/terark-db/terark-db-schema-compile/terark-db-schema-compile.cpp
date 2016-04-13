@@ -18,6 +18,9 @@ void compileOneSchema(const Schema& schema, const char* className) {
 		case ColumnType::Any:
 			assert(0); // not supported now
 			break;
+		case ColumnType::Nested:
+			assert(0); // not supported now
+			break;
 		case ColumnType::Uint08:
 			printf("    unsigned char %s;\n", colname.p);
 			break;
@@ -93,6 +96,9 @@ void compileOneSchema(const Schema& schema, const char* className) {
 		const fstring     colname = schema.getColumnName(i);
 		switch (colmeta.type) {
 		case ColumnType::Any:
+			assert(0); // not supported now
+			break;
+		case ColumnType::Nested:
 			assert(0); // not supported now
 			break;
 		case ColumnType::Uint08:
