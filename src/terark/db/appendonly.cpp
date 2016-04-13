@@ -17,7 +17,7 @@
 namespace terark { namespace db {
 
 struct RandomReadAppendonlyStore::Header {
-	char      magic[32];
+	char      magic[64];
 	uint64_t  rowsNum;
 	uint64_t  rowsCap;
 	uint64_t  dataLen;
