@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include <terark/db/db_conf.cpp>
+#include <terark/db/db_conf.hpp>
 
 using namespace std;
 using namespace terark;
@@ -55,7 +55,10 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			printf("    double %s;\n", colname.p);
 			break;
 		case ColumnType::Float128:
-			printf("    long double %s;\n", colname.p);
+			printf("    __float128 %s;\n", colname.p);
+			break;
+		case ColumnType::Decimal128:
+			printf("    __decimal128 %s;\n", colname.p);
 			break;
 		case ColumnType::Uuid:
 			printf("    terark::db::Schema::Fixed<16> %s;\n", colname.p);
@@ -105,6 +108,7 @@ void compileOneSchema(const Schema& schema, const char* className) {
 		case ColumnType::Float32:
 		case ColumnType::Float64:
 		case ColumnType::Float128:
+		case ColumnType::Decimal128:
 		case ColumnType::Uuid:
 		case ColumnType::Fixed:
 		case ColumnType::VarSint:
