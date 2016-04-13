@@ -3,10 +3,9 @@
 
 #include "stdafx.h"
 #include <terark/db/db_table.hpp>
-#include <terark/io/MemStream.hpp>
 #include <terark/io/DataIO.hpp>
+#include <terark/io/MemStream.hpp>
 #include <terark/io/RangeStream.hpp>
-#include <terark/lcast.hpp>
 
 struct TestRow {
 	uint64_t id;

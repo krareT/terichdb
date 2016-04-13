@@ -37,6 +37,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leveldb", "leveldb\leveldb.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "db-regex-test", "db-regex-test\db-regex-test.vcxproj", "{4258A826-6327-4B14-8529-5B7D5E03971C}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "terark-db-schema-compile", "terark-db-schema-compile\terark-db-schema-compile.vcxproj", "{C712F901-0A81-452A-9311-6FD8923A29DD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -289,6 +291,22 @@ Global
 		{4258A826-6327-4B14-8529-5B7D5E03971C}.RelWithDebInfo|x64.Build.0 = Release|x64
 		{4258A826-6327-4B14-8529-5B7D5E03971C}.RelWithDebInfo|x86.ActiveCfg = Release|Win32
 		{4258A826-6327-4B14-8529-5B7D5E03971C}.RelWithDebInfo|x86.Build.0 = Release|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Debug|x64.ActiveCfg = Debug|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Debug|x64.Build.0 = Debug|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Debug|x86.ActiveCfg = Debug|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Debug|x86.Build.0 = Debug|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.MinSizeRel|x64.ActiveCfg = Release|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.MinSizeRel|x64.Build.0 = Release|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.MinSizeRel|x86.ActiveCfg = Release|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.MinSizeRel|x86.Build.0 = Release|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Release|x64.ActiveCfg = Release|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Release|x64.Build.0 = Release|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Release|x86.ActiveCfg = Release|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.Release|x86.Build.0 = Release|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.RelWithDebInfo|x64.ActiveCfg = Release|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.RelWithDebInfo|x64.Build.0 = Release|x64
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.RelWithDebInfo|x86.ActiveCfg = Release|Win32
+		{C712F901-0A81-452A-9311-6FD8923A29DD}.RelWithDebInfo|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

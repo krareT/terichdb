@@ -302,6 +302,21 @@ namespace terark { namespace db {
 		template<class Str>
 		static StrZeroSaver<Str>
 		StrZero(const Str& x) { return StrZeroSaver<Str>(x); }
+
+		class CarBinData : public valvec<byte_t> {
+			template<class DataIO>
+			friend void DataIO_loadObject(DataIO& dio, CarBinData& x) {
+				uint32_t len;
+				dio >> len;
+				x.resize_no_init(len);
+				dio.ensureRead(x.begin(), len);
+			}
+			template<class DataIO>
+			friend void DataIO_saveObject(DataIO& dio, const CarBinData& x) {
+				dio << uint32_t(x.size());
+				dio.ensureWrite(x.begin(), x.size());
+			}
+		};
 	};
 	typedef boost::intrusive_ptr<Schema> SchemaPtr;
 
