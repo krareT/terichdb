@@ -239,6 +239,10 @@ pkg: ${TerarkDB_d} ${TerarkDB_r}
 	rm -rf ${TarBall}
 	mkdir -p ${TarBall}/lib
 	mkdir -p ${TarBall}/bin
+	mkdir -p ${TarBall}/include/terark/db
+	mkdir -p ${TarBall}/include/terark/io
+	mkdir -p ${TarBall}/include/terark/thread
+	mkdir -p ${TarBall}/include/terark/util
 ifeq (${PKG_WITH_DBG},1)
 	cp    ${TerarkDB_d} ${TarBall}/lib
 	ln -s ${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/${TerarkDB_lib}-d${DLL_SUFFIX}
@@ -246,6 +250,16 @@ endif
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
 	cp    ${TerarkDB_r} ${TarBall}/lib
+	cp    src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
+	cp    src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
+	cp    src/terark/db/db_index.hpp          ${TarBall}/include/terark/db
+	cp    src/terark/db/db_store.hpp          ${TarBall}/include/terark/db
+	cp    src/terark/db/db_segment.hpp        ${TarBall}/include/terark/db
+	cp    src/terark/db/db_table.hpp          ${TarBall}/include/terark/db
+	cp    terark-base/src/terark/*.hpp        ${TarBall}/include/terark
+	cp    terark-base/src/terark/io/*.hpp     ${TarBall}/include/terark/io
+	cp    terark-base/src/terark/thread/*.hpp ${TarBall}/include/terark/thread
+	cp    terark-base/src/terark/util/*.hpp   ${TarBall}/include/terark/util
 	ln -s ${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/${TerarkDB_lib}-r${DLL_SUFFIX}
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
