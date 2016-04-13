@@ -238,10 +238,13 @@ TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BM
 pkg: ${TerarkDB_d} ${TerarkDB_r}
 	rm -rf ${TarBall}
 	mkdir -p ${TarBall}/lib
+	mkdir -p ${TarBall}/bin
 ifeq (${PKG_WITH_DBG},1)
 	cp    ${TerarkDB_d} ${TarBall}/lib
 	ln -s ${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/${TerarkDB_lib}-d${DLL_SUFFIX}
 endif
+	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
+	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
 	cp    ${TerarkDB_r} ${TarBall}/lib
 	ln -s ${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/${TerarkDB_lib}-r${DLL_SUFFIX}
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
