@@ -8,7 +8,6 @@
 #include "targetver.h"
 
 #include <stdio.h>
-#include <terark/db/json.hpp>
 #include <fstream>
 #include <iostream>
 

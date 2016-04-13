@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include <terark/db/db_conf.hpp>
+#include <terark/db/db_conf.cpp>
 
 using namespace std;
 using namespace terark;
