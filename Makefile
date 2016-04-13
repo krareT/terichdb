@@ -172,7 +172,7 @@ TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 ifeq (1,${WITH_DFA_DB})
   TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
   override INCS += -I../terark/src
-  TerarkDB_lib := libterark-db
+  TerarkDB_lib := terark-db
   LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
   LIB_TERARK_R := -L../terark/lib -lterark-fsa_all-${COMPILER}-r
 else
@@ -185,7 +185,7 @@ else
   TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)
   TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
   TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
-  TerarkDB_lib := libterark-db-no-dfadb
+  TerarkDB_lib := terark-db-no-dfadb
 endif
 
 #function definition
