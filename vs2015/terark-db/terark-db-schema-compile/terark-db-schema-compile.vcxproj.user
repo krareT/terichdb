@@ -9,7 +9,7 @@
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>C:\osc\terark-db\vs2015\terark-db\db-test\dfadb\dbmeta.json DbTest DbTestRow</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>C:\osc\terark-db\vs2015\terark-db\db-test\dfadb\dbmeta.json DbTest RowData</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

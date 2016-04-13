@@ -303,19 +303,34 @@ namespace terark { namespace db {
 		static StrZeroSaver<Str>
 		StrZero(const Str& x) { return StrZeroSaver<Str>(x); }
 
-		class CarBinData : public valvec<byte_t> {
+		class CarBin : public valvec<byte_t> {
 			template<class DataIO>
-			friend void DataIO_loadObject(DataIO& dio, CarBinData& x) {
+			friend void DataIO_loadObject(DataIO& dio, CarBin& x) {
 				uint32_t len;
 				dio >> len;
 				x.resize_no_init(len);
 				dio.ensureRead(x.begin(), len);
 			}
 			template<class DataIO>
-			friend void DataIO_saveObject(DataIO& dio, const CarBinData& x) {
+			friend void DataIO_saveObject(DataIO& dio, const CarBin& x) {
 				dio << uint32_t(x.size());
 				dio.ensureWrite(x.begin(), x.size());
 			}
+		public:
+			using valvec<byte_t>::valvec;
+		};
+
+		class TwoStrZero : public std::pair<std::string, std::string> {
+			template<class DataIO>
+			friend void DataIO_loadObject(DataIO& dio, TwoStrZero& x) {
+				dio & StrZero(x.first) & StrZero(x.second);
+			}
+			template<class DataIO>
+			friend void DataIO_saveObject(DataIO& dio, const TwoStrZero& x) {
+				dio & StrZero(x.first) & StrZero(x.second);
+			}
+		public:
+			using std::pair<std::string, std::string>::pair;
 		};
 	};
 	typedef boost::intrusive_ptr<Schema> SchemaPtr;

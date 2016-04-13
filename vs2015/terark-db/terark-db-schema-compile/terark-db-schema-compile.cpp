@@ -79,13 +79,13 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			printf("    std::string %s;\n", colname.p);
 			break;
 		case ColumnType::TwoStrZero:
-			printf("    std::pair<std::string, std::string> %s;\n", colname.p);
+			printf("    terark::db::Schema::TwoStrZero %s;\n", colname.p);
 			break;
 		case ColumnType::Binary:
 			printf("    std::string %s;\n", colname.p);
 			break;
 		case ColumnType::CarBin:
-			printf("    terark::db::Schema::CarBinData %s;\n", colname.p);
+			printf("    terark::db::Schema::CarBin %s;\n", colname.p);
 			break;
 		}
 	}
@@ -119,14 +119,11 @@ void compileOneSchema(const Schema& schema, const char* className) {
 		case ColumnType::Fixed:
 		case ColumnType::VarSint:
 		case ColumnType::VarUint:
+		case ColumnType::TwoStrZero:
 			printf("      &%s\n", colname.p);
 			break;
 		case ColumnType::StrZero:
 			printf("      &terark::db::Schema::StrZero(%s)\n", colname.p);
-			break;
-		case ColumnType::TwoStrZero:
-			printf("      &terark::db::Schema::StrZero(%s.first)\n", colname.p);
-			printf("      &terark::db::Schema::StrZero(%s.second)\n", colname.p);
 			break;
 		case ColumnType::Binary:
 		case ColumnType::CarBin:
@@ -152,10 +149,19 @@ int main(int argc, char* argv[]) {
 	const char* tabName = argv[3];
 	SchemaConfig sconf;
 	sconf.loadJsonFile(jsonFilePath);
+	printf(R"EOS(#pragma once
+#include <terark/db/db_table.hpp>
+#include <terark/io/DataIO.hpp>
+#include <terark/io/MemStream.hpp>
+#include <terark/io/RangeStream.hpp>
+
+)EOS");
 	printf("namespace %s {\n", ns);
 	compileOneSchema(*sconf.m_rowSchema, tabName);
 	for (size_t i = 0; i < sconf.m_colgroupSchemaSet->indexNum(); ++i) {
 		const Schema& schema = *sconf.m_colgroupSchemaSet->getSchema(i);
+		if (schema.columnNum() == 1)
+			continue;
 		std::string cgName = schema.m_name;
 		std::transform(cgName.begin(), cgName.end(), cgName.begin(),
 			[](unsigned char ch) -> char {
