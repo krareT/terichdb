@@ -222,7 +222,7 @@ public:
 	bool seekExact(llong  id, valvec<byte>* val) override {
 		THROW_STD(invalid_argument, "Unsupportted method");
 	}
-	void reset() {
+	void reset() override {
 		m_id = 0;
 		m_fp.rewind();
 		m_di.resetbuf();
