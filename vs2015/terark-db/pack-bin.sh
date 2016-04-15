@@ -26,4 +26,5 @@ cp ../../terark-base/src/terark/util/*.hpp   ${TarBall}/include/terark/util
 git log -n 1 > ${TarBall}/package.version.txt
 
 tar cjf ${TarBall}.tar.bz2 ${TarBall}
+chmod a-x ${TarBall}.tar.bz2
 scp ${TarBall}.tar.bz2 root@nark.cc:/var/www/html/download
