@@ -80,40 +80,6 @@ if [ $hasboost -eq 0 ]; then
 	exit 1
 fi
 
-if test -z "$BDB_HOME"; then
-	hasbdb=0
-	for dir in "" /usr /usr/local /opt $HOME $HOME/opt
-	do
-		if [ -f ${dir}/include/db.h ]; then
-			BDB_VER=`sed -n 's/[# \t]*define.*DB_VERSION_STRING.*Berkeley DB \([0-9]*\.[0-9]*\).*:.*/\1/p' ${dir}/include/db.h`
-			if [ -z "$BDB_VER" ]; then
-				echo can not find version number in ${dir}/include/db.h, try next >&2
-			else
-				BDB_HOME=$dir
-				hasbdb=1
-				break
-			fi
-		fi
-	done
-else
-	hasbdb=1
-	BDB_VER=`sed -n 's/[# \t]*define.*DB_VERSION_STRING.*Berkeley DB \([0-9]*\.[0-9]*\).*:.*/\1/p' ${BDB_HOME}/include/db.h`
-fi
-
-#------------------------------------------------
-if [ $hasbdb -eq 0 ]; then
-	echo "couldn't found BerkeleyDB" 1>&2
-else
-	echo "found BerkeleyDB-${BDB_VER}" 1>&2
-cat >> $EnvConf << EOF
-	BDB_HOME := $BDB_HOME
-	BDB_VER  := $BDB_VER
-	MAYBE_BDB_DBG = \${bdb_util_d}
-	MAYBE_BDB_RLS = \${bdb_util_r}
-EOF
-#------------------------------------------------
-fi
-
 cat > is_cygwin.cpp << "EOF"
 #include <stdio.h>
 int main() {
