@@ -117,7 +117,7 @@ class TERARK_DB_DLL MultiPartStore : public ReadableStore {
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 
 public:
-	explicit MultiPartStore(valvec<ReadableStorePtr>& m_parts);
+	explicit MultiPartStore(valvec<ReadableStorePtr>& parts);
 	~MultiPartStore();
 
 	llong dataInflateSize() const override;
@@ -131,7 +131,7 @@ public:
 	void save(PathRef segDir) const override;
 
 	size_t numParts() const { return m_parts.size(); }
-	const ReadableStore& getPart(size_t i) const { return *m_parts[i]; }
+	ReadableStore* getPart(size_t i) const { return m_parts[i].get(); }
 
 private:
 	void syncRowNumVec();

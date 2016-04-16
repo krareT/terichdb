@@ -1073,7 +1073,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	if (auto cgparts = dynamic_cast<const MultiPartStore*>(&colgroup)) {
 		llong logicId = 0;
 		for (size_t j = 0; j < cgparts->numParts(); ++j) {
-			auto& partStore = cgparts->getPart(j);
+			auto& partStore = *cgparts->getPart(j);
 			llong partRows = partStore.numDataRows();
 			llong subPhysicId = 0;
 			while (logicId < inputRowNum && subPhysicId < partRows) {
