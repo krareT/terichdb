@@ -212,6 +212,7 @@ size_t ReadableSegment::getLogicId(size_t physicId) const {
 }
 
 void ReadableSegment::addtoUpdateList(size_t logicId) {
+	assert(m_isFreezed);
 	if (!m_bookUpdates) {
 		return;
 	}
@@ -276,7 +277,7 @@ void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn
 	assert(txn != nullptr);
 	llong rows = m_isDel.size();
 	if (id < 0 || id >= rows) {
-		THROW_STD(invalid_argument, "invalid id=%lld, rows=%lld", id, rows);
+		THROW_STD(out_of_range, "invalid id=%lld, rows=%lld", id, rows);
 	}
 	getValueByLogicId(id, val, txn);
 }
@@ -869,7 +870,9 @@ ReadonlySegment::completeAndReload(CompositeTable* tab, size_t segIdx,
 }
 
 // dstBaseId is for merge update
-void ReadonlySegment::syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId, ReadableSegment* input) {
+void
+ReadonlySegment::syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,
+										const ReadableSegment* input) {
 	assert(input->m_isDel.is0(logicId));
 	assert(this->m_isDel.is0(dstBaseId + logicId));
 	auto dstPhysicId = this->getPhysicId(dstBaseId + logicId);

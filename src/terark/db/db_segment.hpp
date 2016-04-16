@@ -164,7 +164,8 @@ protected:
 
 	void completeAndReload(class CompositeTable*, size_t segIdx,
 						   class ReadableSegment* input);
-	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId, ReadableSegment* input);
+	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,
+								const ReadableSegment* input);
 
 	ReadableIndexPtr purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx);
 	ReadableStorePtr purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
