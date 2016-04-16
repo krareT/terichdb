@@ -496,25 +496,6 @@ StoreIterator* ReadonlySegment::createStoreIterBackward(DbContext* ctx) const {
 	return new MyStoreIterBackward(this, ctx);
 }
 
-static bool should_use_FixedLenStore(const Schema& schema) {
-	if (schema.columnNum() == 1) {
-		auto colmeta = schema.getColumnMeta(0);
-		if (colmeta.isInteger() && !schema.m_isInplaceUpdatable) {
-			// should use ZipIntStore
-			return false;
-		}
-	}
-	size_t fixlen = schema.getFixedRowLen();
-	if (schema.m_isInplaceUpdatable) {
-		assert(fixlen > 0);
-		return true;
-	}
-	if (fixlen && fixlen <= 16) {
-		return true;
-	}
-	return false;
-}
-
 namespace {
 	class TempFileList {
 		const SchemaSet& m_schemaSet;
@@ -722,7 +703,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	for (size_t i = indexNum; i < colgroupTempFiles.size(); ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
 		auto tmpStore = colgroupTempFiles.getStore(i);
-		if (should_use_FixedLenStore(schema)) {
+		if (schema.should_use_FixedLenStore()) {
 			m_colgroups[i] = tmpStore;
 			continue;
 		}
@@ -1042,7 +1023,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	const llong inputRowNum = input->m_isDel.size();
 	const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 	const auto& colgroup = *input->m_colgroups[colgroupId];
-	if (should_use_FixedLenStore(schema)) {
+	if (schema.should_use_FixedLenStore()) {
 		FixedLenStorePtr store = new FixedLenStore(tmpSegDir, schema);
 		store->reserveRows(m_isDel.size() - m_delcnt);
 		llong physicId = 0;
@@ -1318,7 +1299,7 @@ const {
 ReadableStore*
 ReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
 const {
-	assert(!should_use_FixedLenStore(schema));
+	assert(!schema.should_use_FixedLenStore());
 	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
 		assert(schema.getFixedRowLen() > 0);
 		try {

@@ -2343,7 +2343,8 @@ public:
 
 	bool needsPurgeBits() const;
 
-	void mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId);
+	void mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId);
+	void mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId);
 };
 
 
@@ -2526,7 +2527,7 @@ bool CompositeTable::MergeParam::needsPurgeBits() const {
 
 void
 CompositeTable::MergeParam::
-mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
+mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	FixedLenStorePtr dstStore = new FixedLenStore(dseg->m_segDir, schema);
 	dstStore->reserveRows(m_newSegRows);
@@ -2565,6 +2566,12 @@ mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 	dstStore->setNumRows(newPhysicId);
 	dstStore->shrinkToFit();
 	dseg->m_colgroups[colgroupId] = dstStore;
+}
+
+void
+CompositeTable::MergeParam::
+mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
+
 }
 
 static void
@@ -2678,8 +2685,8 @@ try{
 	}
 	for (size_t i = indexNum; i < colgroupNum; ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
-		if (schema.m_isInplaceUpdatable) {
-			toMerge.mergeInplaceUpdatable(dseg.get(), i);
+		if (schema.should_use_FixedLenStore()) {
+			toMerge.mergeFixedLenColgroup(dseg.get(), i);
 			continue;
 		}
 		const std::string prefix = "colgroup-" + schema.m_name;

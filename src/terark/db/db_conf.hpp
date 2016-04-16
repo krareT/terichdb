@@ -181,6 +181,8 @@ namespace terark { namespace db {
 
 		size_t getFixedRowLen() const { return m_fixedLen; }
 
+		bool should_use_FixedLenStore() const;
+
 		static ColumnType parseColumnType(fstring str);
 		static const char* columnTypeStr(ColumnType);
 
