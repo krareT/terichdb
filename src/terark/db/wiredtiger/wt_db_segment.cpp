@@ -122,6 +122,8 @@ class WtWritableSegment::WtDbTransaction : public DbTransaction {
 	valvec<WtCursor2> m_indices;
 	const SchemaConfig& m_sconf;
 	std::string m_strError;
+	llong m_sizeDiff;
+	WtWritableStore* m_wrtStore;
 public:
 	~WtDbTransaction() {
 	}
@@ -162,6 +164,9 @@ public:
 					, ses->strerror(ses, err));
 			}
 		}
+		m_sizeDiff = 0;
+		m_wrtStore = dynamic_cast<WtWritableStore*>(seg->m_wrtStore.get());
+		assert(nullptr != m_store);
 	}
 #define TERARK_WT_USE_TXN 1
 	void startTransaction() override {
@@ -178,6 +183,7 @@ public:
 				, ses->strerror(ses, err));
 		}
 #endif
+		m_sizeDiff = 0;
 	}
 	bool commit() override {
 #if TERARK_WT_USE_TXN
@@ -189,6 +195,7 @@ public:
 			return false;
 		}
 #endif
+		m_wrtStore->estimateIncDataSize(m_sizeDiff);
 		return true;
 	}
 	const std::string& strError() const override { return m_strError; }
@@ -211,6 +218,7 @@ public:
 		WT_CURSOR* cur = m_indices[indexId].insert;
 		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
 		int err = cur->insert(cur);
+		m_sizeDiff += sizeof(llong) + key.size();
 		if (schema.m_isUnique) {
 			if (WT_DUPLICATE_KEY == err) {
 				return false;
@@ -296,6 +304,7 @@ public:
 			THROW_STD(invalid_argument
 				, "ERROR: wiredtiger search_near: %s", ses->strerror(ses, err));
 		}
+		m_sizeDiff -= sizeof(llong) + key.size();
 	}
 	void indexUpsert(size_t indexId, fstring key, llong recId) override {
 		assert(indexId < m_indices.size());
@@ -311,6 +320,7 @@ public:
 				, schema.m_isUnique ? "unique" : "multi"
 				, ses->strerror(ses, err));
 		}
+		m_sizeDiff += sizeof(llong) + key.size();
 	}
 	void storeRemove(llong recId) override {
 		WT_SESSION* ses = m_session.ses;
@@ -325,6 +335,8 @@ public:
 			THROW_STD(invalid_argument
 				, "ERROR: wiredtiger store remove: %s", ses->strerror(ses, err));
 		}
+	//	don't know how many bytes of the record
+	//	m_sizeDiff += sizeof(llong) + key.size();
 	}
 	void storeUpsert(llong recId, fstring row) override {
 		WtItem item;
@@ -357,6 +369,7 @@ public:
 			THROW_STD(invalid_argument
 				, "ERROR: wiredtiger store upsert: %s", ses->strerror(ses, err));
 		}
+		m_sizeDiff += row.size();
 //		StoreIteratorPtr iter = m_seg->m_wrtStore->createStoreIterForward(NULL);
 //		valvec<byte> buf3;
 //		iter->seekExact(recId, &buf3);

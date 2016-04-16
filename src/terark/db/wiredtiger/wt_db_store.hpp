@@ -16,6 +16,7 @@ class TERARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore
 	mutable WT_SESSION*  m_wtSession;
 	mutable WT_CURSOR*   m_wtCursor;
 	mutable WT_CURSOR*   m_wtAppend;
+	llong m_lastSyncedDataSize;
 	llong m_dataSize;
 
 	WT_CURSOR* getReplaceCursor() const;
@@ -24,6 +25,8 @@ class TERARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore
 public:
 	WtWritableStore(WT_CONNECTION* conn);
 	~WtWritableStore();
+
+	void estimateIncDataSize(llong sizeDiff);
 
 	void save(PathRef) const override;
 	void load(PathRef) override;

@@ -131,6 +131,7 @@ WtWritableStore::WtWritableStore(WT_CONNECTION* conn) {
 	m_wtCursor = NULL;
 	m_wtAppend = NULL;
 	m_dataSize = 0;
+	m_lastSyncedDataSize = 0;
 }
 WtWritableStore::~WtWritableStore() {
 	if (m_wtCursor)
@@ -138,6 +139,19 @@ WtWritableStore::~WtWritableStore() {
 	if (m_wtAppend)
 		m_wtAppend->close(m_wtAppend);
 	m_wtSession->close(m_wtSession, NULL);
+}
+
+void WtWritableStore::estimateIncDataSize(llong sizeDiff) {
+	if (std::abs(m_dataSize - m_lastSyncedDataSize) > 10*1024*1024) {
+		WT_CONNECTION* conn = m_wtSession->connection;
+		boost::filesystem::path fpath = conn->get_home(conn);
+		fpath /= "__BlobStore__.wt";
+		m_dataSize = boost::filesystem::file_size(fpath);
+		m_lastSyncedDataSize = m_dataSize;
+	}
+	else {
+		m_dataSize += sizeDiff;
+	}
 }
 
 WT_CURSOR* WtWritableStore::getReplaceCursor() const {
@@ -174,6 +188,7 @@ void WtWritableStore::load(PathRef path1) {
 	boost::filesystem::path segDir = conn->get_home(conn);
 	auto dataFile = segDir / "__BlobStore__.wt";
 	m_dataSize = boost::filesystem::file_size(dataFile);
+	m_lastSyncedDataSize = m_dataSize;
 }
 
 llong WtWritableStore::dataStorageSize() const {
