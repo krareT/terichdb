@@ -43,7 +43,7 @@ public:
 
 	static CompositeTable* createTable(fstring tableClass);
 
-	static CompositeTable* openTable(PathRef dbPath);
+	static CompositeTable* open(PathRef dbPath);
 
 	virtual void init(PathRef dir, SchemaConfigPtr);
 

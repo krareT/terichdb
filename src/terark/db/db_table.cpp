@@ -51,7 +51,7 @@ public:
 };
 typedef IncrementGuard<std::atomic_size_t> IncrementGuard_size_t;
 
-CompositeTable* CompositeTable::openTable(PathRef dbPath) {
+CompositeTable* CompositeTable::open(PathRef dbPath) {
 	fs::path jsonFile = dbPath / "dbmeta.json";
 	SchemaConfigPtr sconf = new SchemaConfig();
 	sconf->loadJsonFile(jsonFile.string());

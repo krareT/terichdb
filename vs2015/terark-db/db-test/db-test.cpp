@@ -35,8 +35,8 @@ using namespace terark::db;
 
 void doTest(const char* tableDir, size_t maxRowNum) {
 	using namespace terark;
-	CompositeTablePtr tab = CompositeTable::openTable(tableDir);
-	DbContextPtr ctx(tab->createDbContext());
+	CompositeTablePtr tab = CompositeTable::open(tableDir);
+	DbContextPtr ctx = tab->createDbContext();
 
 	valvec<byte> recBuf;
 	NativeDataOutput<AutoGrownMemIO> rowBuilder;
