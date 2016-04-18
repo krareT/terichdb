@@ -1118,6 +1118,8 @@ void ReadonlySegment::load(PathRef segDir) {
 }
 
 void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
+	assert(m_isDel.size() > 0);
+	assert(m_isDelMmap != NULL);
 	assert(m_isPurgedMmap == NULL);
 	assert(m_isPurged.empty());
 	PathRef purgeFpath = segDir / "IsPurged.rs";
@@ -1149,16 +1151,30 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 		}
 	}
 	assert(newId == newRows);
-	m_isDel.risk_set_size(newRows);
-	m_isDel.risk_memcpy(newIsDel);
-	*(uint64_t*)m_isDelMmap = newRows;
-	m_delcnt = newIsDel.popcnt();
-//	mmap_close(m_isDelMmap, 8 + m_isDel.mem_size());
-//	m_isDel.risk_release_ownership();
+	fs::path formalFile = segDir / "IsDel";
+	fs::path backupFile = segDir / "IsDel.backup";
+	fs::rename(formalFile, backupFile);
+	m_isDel.risk_release_ownership(); // by mmap
+	m_isDelMmap = NULL;
+	m_isDel.swap(newIsDel);
+	try {
+		saveIsDel(segDir);
+	}
+	catch (const std::exception& ex) {
+		fprintf(stderr, "ERROR: save %s failed: %s, restore backup\n"
+			, formalFile.string().c_str(), ex.what());
+		fs::rename(backupFile, formalFile);
+		m_isDel.clear(); // by malloc, of newIsDel
+		loadIsDel(segDir);
+		return;
+	}
+	m_isDel.clear(); // by malloc, of newIsDel
+	loadIsDel(segDir);
 	mmap_close(m_isPurgedMmap, isPurgedMmapBytes);
 	m_isPurgedMmap = NULL;
 	m_isPurged.risk_release_ownership();
 	fs::remove(purgeFpath);
+	fs::remove(backupFile);
 }
 
 void ReadonlySegment::savePurgeBits(PathRef segDir) const {
