@@ -4,7 +4,7 @@ TerarkDB is an open source database based on the power of terark storage engine.
 TerarkDB is,
 
 - Read optimized, it's quite fast.
-- Data is highly compressed and no need to be decompressed before read.
+- Data is highly compressed and is not required to be decompressed before read.
 - FSA algorithm based.
 - Regex query is supported from the bottom.
 
