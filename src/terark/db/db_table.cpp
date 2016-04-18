@@ -51,6 +51,15 @@ public:
 };
 typedef IncrementGuard<std::atomic_size_t> IncrementGuard_size_t;
 
+CompositeTable* CompositeTable::openTable(PathRef dbPath) {
+	fs::path jsonFile = dbPath / "dbmeta.json";
+	SchemaConfigPtr sconf = new SchemaConfig();
+	sconf->loadJsonFile(jsonFile.string());
+	std::unique_ptr<CompositeTable> tab(createTable(sconf->m_tableClass));
+	tab->doLoad(dbPath);
+	return tab.release();
+}
+
 CompositeTable::CompositeTable() {
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
@@ -170,23 +179,9 @@ void CompositeTable::removeStaleDir(PathRef root, size_t inUseMergeSeq) const {
 	}
 }
 
-void CompositeTable::load(PathRef dir) {
-	if (!m_segments.empty()) {
-		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
-			long(m_segments.size()));
-	}
-	if (m_schema) {
-		THROW_STD(invalid_argument, "Invalid: schema.columnNum=%ld is not empty",
-			long(m_schema->columnNum()));
-	}
-	m_dir = dir;
-	{
-		fs::path jsonFile = fs::path(m_dir) / "dbmeta.json";
-		m_schema.reset(new SchemaConfig());
-		m_schema->loadJsonFile(jsonFile.string());
-	}
+void CompositeTable::discoverMergeDir(PathRef dir) {
 	long mergeSeq = -1;
-	for (auto& x : fs::directory_iterator(m_dir)) {
+	for (auto& x : fs::directory_iterator(dir)) {
 		fs::path    mergeDirPath = x.path();
 		std::string mergeDirName = mergeDirPath.filename().string();
 		long mergeSeq2 = -1;
@@ -205,7 +200,7 @@ void CompositeTable::load(PathRef dir) {
 				fs::remove_all(mergeDirPath);
 				fprintf(stderr
 					, "ERROR: merging is not completed: '%s'\n"
-					  "\tit should caused by a process crash, skipped and removed '%s'\n"
+					"\tit should caused by a process crash, skipped and removed '%s'\n"
 					, mergingLockFile.string().c_str()
 					, mergeDirPath.string().c_str()
 					);
@@ -219,13 +214,15 @@ void CompositeTable::load(PathRef dir) {
 	}
 	if (mergeSeq < 0) {
 		m_mergeSeqNum = 0;
-		fs::create_directories(getMergePath(m_dir, 0));
+		fs::create_directories(getMergePath(dir, 0));
 	}
 	else {
-		removeStaleDir(m_dir, mergeSeq);
+		removeStaleDir(dir, mergeSeq);
 		m_mergeSeqNum = mergeSeq;
 	}
-	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
+}
+
+static SortableStrVec getWorkingSegDirList(PathRef mergeDir) {
 	SortableStrVec segDirList;
 	for (auto& x : fs::directory_iterator(mergeDir)) {
 		std::string segDir = x.path().string();
@@ -236,7 +233,7 @@ void CompositeTable::load(PathRef dir) {
 			continue;
 		}
 		if (fstr.endsWith(".tmp")) {
-			fname.resize(fname.size()-4);
+			fname.resize(fname.size() - 4);
 			fstr = fname;
 			fs::path rightDir = mergeDir / fname;
 			fs::path backup = rightDir + ".backup-0";
@@ -258,11 +255,37 @@ void CompositeTable::load(PathRef dir) {
 		}
 		if (fstr.startsWith("wr-") || fstr.startsWith("rd-")) {
 			segDirList.push_back(fname);
-		} else {
+		}
+		else {
 			fprintf(stderr, "WARN: Skip unknown dir: %s\n", segDir.c_str());
 		}
 	}
 	segDirList.sort();
+	return segDirList;
+}
+
+void CompositeTable::load(PathRef dir) {
+	if (!m_segments.empty()) {
+		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
+			long(m_segments.size()));
+	}
+	if (m_schema) {
+		THROW_STD(invalid_argument, "Invalid: schema.columnNum=%ld is not empty",
+			long(m_schema->columnNum()));
+	}
+	{
+		fs::path jsonFile = fs::path(dir) / "dbmeta.json";
+		m_schema.reset(new SchemaConfig());
+		m_schema->loadJsonFile(jsonFile.string());
+	}
+	doLoad(dir);
+}
+
+void CompositeTable::doLoad(PathRef dir) {
+	m_dir = dir;
+	discoverMergeDir(m_dir);
+	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
+	SortableStrVec segDirList = getWorkingSegDirList(mergeDir);
 	for (size_t i = 0; i < segDirList.size(); ++i) {
 		std::string fname = segDirList[i].str();
 		fs::path    segDir = mergeDir / fname;

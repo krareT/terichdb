@@ -43,6 +43,8 @@ public:
 
 	static CompositeTable* createTable(fstring tableClass);
 
+	static CompositeTable* openTable(PathRef dbPath);
+
 	virtual void init(PathRef dir, SchemaConfigPtr);
 
 	void load(PathRef dir) override;
@@ -203,6 +205,8 @@ public:
 protected:
 	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);
 
+	void doLoad(PathRef dir);
+
 	class MergeParam; friend class MergeParam;
 	void merge(MergeParam&);
 	void checkRowNumVecNoLock() const;
@@ -221,6 +225,7 @@ protected:
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
 	boost::filesystem::path getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx) const;
 	void removeStaleDir(PathRef dir, size_t inUseMergeSeq) const;
+	void discoverMergeDir(PathRef dir);
 
 	virtual ReadonlySegment* createReadonlySegment(PathRef segDir) const = 0;
 	virtual WritableSegment* createWritableSegment(PathRef segDir) const = 0;

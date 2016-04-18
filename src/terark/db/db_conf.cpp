@@ -2217,6 +2217,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 					// UTF8 BOM Check, fixed in nlohmann::json
 					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
 					);
+	m_tableClass = getJsonValue(meta, "TableClass", std::string("DfaDbTable"));
 	const bool checkMongoType = getJsonValue(meta, "checkMongoType", false);
 	const bool checkMysqlType = getJsonValue(meta, "checkMysqlType", false);
 	const json& rowSchema = meta["RowSchema"];
