@@ -1352,7 +1352,8 @@ CompositeTable::updateColumn(llong recordId, size_t columnId,
 			);
 	}
 	memcpy(coldata, newColumnData.data(), newColumnData.size());
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1400,7 +1401,8 @@ CompositeTable::updateColumnInteger(llong recordId, size_t columnId,
 	case ColumnType::Float32: updateValueByOp<   float, llong>(*coldata, op); break;
 	case ColumnType::Float64: updateValueByOp<  double, llong>(*coldata, op); break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1438,7 +1440,8 @@ CompositeTable::updateColumnDouble(llong recordId, size_t columnId,
 	case ColumnType::Float32: updateValueByOp<   float, double>(*coldata, op); break;
 	case ColumnType::Float64: updateValueByOp<  double, double>(*coldata, op); break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1475,7 +1478,8 @@ CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 	case ColumnType::Float32: *(float *)coldata += incVal; break;
 	case ColumnType::Float64: *(double*)coldata += incVal; break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1511,7 +1515,8 @@ CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 	case ColumnType::Float32: *(float *)coldata += incVal; break;
 	case ColumnType::Float64: *(double*)coldata += incVal; break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
