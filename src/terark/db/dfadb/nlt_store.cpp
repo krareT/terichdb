@@ -106,10 +106,18 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 								  StoreIterator& iter,
 								  const bm_uint_t* isDel,
 								  const febitvec* isPurged) {
+	TERARK_RT_assert(schema.m_dictZipSampleRatio >= 0, std::invalid_argument);
 	std::unique_ptr<DictZipBlobStore> zds(new DictZipBlobStore());
 	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder(zds->createZipBuilder());
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
 					   ? schema.m_dictZipSampleRatio : 0.05;
+	{
+		TERARK_RT_assert(nullptr != iter.getStore(), std::invalid_argument);
+		llong dataSize = iter.getStore()->dataInflateSize();
+		if (dataSize * sampleRatio >= INT32_MAX * 0.95) {
+			sampleRatio = INT32_MAX * 0.95 / dataSize;
+		}
+	}
 
 	// 1. sample memory usage = inputBytes*sampleRatio, and will
 	//    linear scan the input data
