@@ -56,6 +56,7 @@ CompositeTable* CompositeTable::openTable(PathRef dbPath) {
 	SchemaConfigPtr sconf = new SchemaConfig();
 	sconf->loadJsonFile(jsonFile.string());
 	std::unique_ptr<CompositeTable> tab(createTable(sconf->m_tableClass));
+	tab->m_schema = sconf;
 	tab->doLoad(dbPath);
 	return tab.release();
 }
@@ -282,6 +283,7 @@ void CompositeTable::load(PathRef dir) {
 }
 
 void CompositeTable::doLoad(PathRef dir) {
+	assert(m_schema.get() != nullptr);
 	m_dir = dir;
 	discoverMergeDir(m_dir);
 	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
