@@ -1727,6 +1727,7 @@ SchemaConfig::SchemaConfig() {
 	m_maxWritingSegmentSize = DEFAULT_maxWritingSegmentSize;
 	m_minMergeSegNum = DEFAULT_minMergeSegNum;
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
+	m_usePermanentRecordId = false;
 }
 SchemaConfig::~SchemaConfig() {
 }
@@ -2353,6 +2354,9 @@ if (colgroupsIter != meta.end()) {
 		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
 	m_purgeDeleteThreshold = getJsonValue(
 		meta, "PurgeDeleteThreshold", DEFAULT_purgeDeleteThreshold);
+
+	// PermanentRecordId means record id will not be changed by table reload
+	m_usePermanentRecordId = getJsonValue(meta, "UsePermanentRecordId", false);
 
 	const json& tableIndex = meta["TableIndex"];
 	if (!tableIndex.is_array()) {

@@ -394,6 +394,7 @@ namespace terark { namespace db {
 		size_t   m_minMergeSegNum;
 		double   m_purgeDeleteThreshold;
 		std::string m_tableClass;
+		bool     m_usePermanentRecordId;
 
 		SchemaConfig();
 		~SchemaConfig();

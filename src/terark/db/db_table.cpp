@@ -321,6 +321,10 @@ void CompositeTable::doLoad(PathRef dir) {
 			assert(seg);
 			fprintf(stdout, "INFO: loading segment: %s ... ", strDir.c_str());
 			fflush(stdout);
+			// ReadonlySegment::load will delete purge bits and squash
+			// record id space if m_withPurgeBits is false, record id will
+			// be changed in this case
+			seg->m_withPurgeBits = m_schema->m_usePermanentRecordId;
 			seg->load(seg->m_segDir);
 			fprintf(stdout, "done!\n");
 		}
