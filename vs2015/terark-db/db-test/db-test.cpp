@@ -6,6 +6,7 @@
 #include <terark/io/DataIO.hpp>
 #include <terark/io/MemStream.hpp>
 #include <terark/io/RangeStream.hpp>
+#include <terark/num_to_str.hpp>
 
 struct TestRow {
 	uint64_t id;
