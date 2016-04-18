@@ -3,6 +3,7 @@
 #include <terark/fast_zip_blob_store.hpp>
 #include <typeinfo>
 #include <float.h>
+#include <mutex>
 
 namespace terark { namespace db { namespace dfadb {
 
@@ -105,10 +106,37 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 								  StoreIterator& iter,
 								  const bm_uint_t* isDel,
 								  const febitvec* isPurged) {
+	TERARK_RT_assert(schema.m_dictZipSampleRatio >= 0, std::invalid_argument);
 	std::unique_ptr<DictZipBlobStore> zds(new DictZipBlobStore());
 	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder(zds->createZipBuilder());
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
 					   ? schema.m_dictZipSampleRatio : 0.05;
+	{
+		TERARK_RT_assert(nullptr != iter.getStore(), std::invalid_argument);
+		llong dataSize = iter.getStore()->dataInflateSize();
+		if (dataSize * sampleRatio >= INT32_MAX * 0.95) {
+			sampleRatio = INT32_MAX * 0.95 / dataSize;
+		}
+	}
+
+	// 1. sample memory usage = inputBytes*sampleRatio, and will
+	//    linear scan the input data
+	// 2. builder->prepare() will build the suffix array and cache
+	//    for suffix array, and this is all in-memery computing,
+	//    the memory usage is about 5*inputBytes*sampleRatio, after
+	//    `prepare` finished, the total memory usage is about
+	//    6*inputBytes*sampleRatio
+	// 3. builder->addRecord() will send the records into compressing
+	//    pipeline, records will be compressed parallel, this will
+	//    take a long time, the total memory during compressing is
+	//    6*inputBytes*sampleRatio, plus few additional working memory
+	// 4. using lock, the concurrent large memory using durations in
+	//    multi threads are serialized, then the peak memory usage
+	//    is reduced
+	static std::mutex reduceMemMutex;
+	// the lock will be hold for a long time, maybe several minutes
+	std::unique_lock<std::mutex> lock(reduceMemMutex, std::defer_lock);
+
 	valvec<byte> rec;
 	auto emptyCheckProtect = [&](size_t sampled) {
 	//	TERARK_RT_assert(sampled > 0, std::logic_error);
@@ -118,7 +146,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 			else
 				builder->addSample(rec);
 		}
-	};
+	};	
 	if (NULL == isPurged || isPurged->size() == 0) {
 		llong recId;
 		size_t sampled = 0;
@@ -131,6 +159,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 			}
 		}
 		emptyCheckProtect(sampled);
+		lock.lock(); // start lock
 		builder->prepare(recId + 1, fpath.string());
 		iter.reset();
 		while (iter.increment(&recId, &rec)) {
@@ -164,6 +193,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 			}
 		}
 		emptyCheckProtect(sampled);
+		lock.lock(); // start lock
 		builder->prepare(newPhysicId, fpath.string());
 		iter.reset();
 		physicId = 0;
@@ -179,6 +209,8 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		}
 	}
 	zds->completeBuild(*builder);
+	builder.reset(); // explicit destory builder
+	lock.unlock();   // explicit unlock
 	m_store.reset(zds.release());
 }
 

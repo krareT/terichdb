@@ -28,8 +28,10 @@ public:
 	void doSyncSegCtxNoLock(const CompositeTable* tab);
 	void trySyncSegCtxNoLock(const CompositeTable* tab);
 	void trySyncSegCtxSpeculativeLock(const CompositeTable* tab);
-	class StoreIterator* getStoreIterNoLock(size_t segIdx);
+	class StoreIterator* getWrtStoreIterNoLock(size_t segIdx);
 	class IndexIterator* getIndexIterNoLock(size_t segIdx, size_t indexId);
+
+	void getWrSegWrtStoreData(const class ReadableSegment* seg, llong subId, valvec<byte>* buf);
 
 	void debugCheckUnique(fstring row, size_t uniqIndexId);
 
@@ -82,7 +84,7 @@ public:
 public:
 	struct SegCtx {
 		class ReadableSegment* seg;
-		class StoreIterator* storeIter;
+		class StoreIterator* wrtStoreIter;
 		class IndexIterator* indexIter[1];
 	private:
 		friend class DbContext;

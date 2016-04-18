@@ -17,7 +17,7 @@
 namespace terark { namespace db {
 
 struct RandomReadAppendonlyStore::Header {
-	char      magic[32];
+	char      magic[64];
 	uint64_t  rowsNum;
 	uint64_t  rowsCap;
 	uint64_t  dataLen;
@@ -222,7 +222,7 @@ public:
 	bool seekExact(llong  id, valvec<byte>* val) override {
 		THROW_STD(invalid_argument, "Unsupportted method");
 	}
-	void reset() {
+	void reset() override {
 		m_id = 0;
 		m_fp.rewind();
 		m_di.resetbuf();

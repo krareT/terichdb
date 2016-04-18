@@ -164,7 +164,8 @@ protected:
 
 	void completeAndReload(class CompositeTable*, size_t segIdx,
 						   class ReadableSegment* input);
-	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId, ReadableSegment* input);
+	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,
+								const ReadableSegment* input);
 
 	ReadableIndexPtr purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx);
 	ReadableStorePtr purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
@@ -199,8 +200,9 @@ class DbTransaction : boost::noncopyable {
 	virtual void storeUpsert(llong recId, fstring row) = 0;
 	virtual void storeGetRow(llong recId, valvec<byte>* row) = 0;
 	virtual void startTransaction() = 0;
-	virtual void commit() = 0;
+	virtual bool commit() = 0;
 	virtual void rollback() = 0;
+	virtual const std::string& strError() const = 0;
 public:
 	virtual ~DbTransaction();
 };
@@ -239,27 +241,23 @@ public:
 	void storeGetRow(llong recId, valvec<byte>* row) {
 		m_txn->storeGetRow(recId, row);
 	}
-	void commit() {
+	bool commit() {
 		assert(started == m_status);
-		m_txn->commit();
-		m_status = committed;
+		if (m_txn->commit()) {
+			m_status = committed;
+			return true;
+		} else {
+			m_status = rollbacked;
+			return false;
+		}
 	}
 	void rollback() {
 		assert(started == m_status);
 		m_txn->rollback();
 		m_status = rollbacked;
 	}
-};
-class DefaultCommitTransaction : public TransactionGuard {
-public:
-	explicit
-	DefaultCommitTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
-	~DefaultCommitTransaction() {
-		if (started == m_status) {
-			m_txn->commit();
-			m_status = committed;
-		}
-	}
+	const std::string& strError() const { return m_txn->strError(); }
+	const char* szError() const { return m_txn->strError().c_str(); }
 };
 class DefaultRollbackTransaction : public TransactionGuard {
 public:
@@ -314,7 +312,6 @@ public:
 								fstring key, valvec<llong>* recIdvec,
 								DbContext*) const override;
 
-	void getCombineAppend(llong recId, valvec<byte>* val, DbContext*) const;
 	void getCombineAppend(llong recId, valvec<byte>* val, valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2) const;
 
 	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
@@ -336,6 +333,8 @@ public:
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
+
+	void getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx) const;
 
 	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;

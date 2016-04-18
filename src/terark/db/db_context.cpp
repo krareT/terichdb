@@ -25,7 +25,7 @@ DbContext::SegCtx::create(ReadableSegment* seg, size_t indexNum) {
 	SegCtx* p = (SegCtx*)malloc(memsize);
 	seg->add_ref();
 	p->seg = seg;
-	p->storeIter = NULL;
+	p->wrtStoreIter = NULL;
 	for (size_t i = 0; i < indexNum; ++i) {
 		p->indexIter[i] = NULL;
 	}
@@ -36,7 +36,7 @@ void DbContext::SegCtx::destory(SegCtx*& rp, size_t indexNum) {
 	for (size_t i = 0; i < indexNum; ++i) {
 		RefcntPtr_release(p->indexIter[i]);
 	}
-	RefcntPtr_release(p->storeIter);
+	RefcntPtr_release(p->wrtStoreIter);
 	assert(NULL != p->seg);
 	p->seg->release();
 	::free(p);
@@ -46,7 +46,7 @@ void DbContext::SegCtx::reset(SegCtx* p, size_t indexNum, ReadableSegment* seg) 
 	for (size_t i = 0; i < indexNum; ++i) {
 		RefcntPtr_release(p->indexIter[i]);
 	}
-	RefcntPtr_release(p->storeIter);
+	RefcntPtr_release(p->wrtStoreIter);
 	assert(NULL != p->seg);
 	p->seg->release();
 	p->seg = seg;
@@ -162,13 +162,17 @@ void DbContext::doSyncSegCtxNoLock(const CompositeTable* tab) {
 	segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
 }
 
-StoreIterator* DbContext::getStoreIterNoLock(size_t segIdx) {
+StoreIterator* DbContext::getWrtStoreIterNoLock(size_t segIdx) {
 	assert(segIdx < m_segCtx.size());
 	SegCtx* p = m_segCtx[segIdx];
-	if (p->storeIter == nullptr) {
-		p->storeIter = m_segCtx[segIdx]->seg->createStoreIterForward(this);
+	assert(p->seg);
+	assert(p->seg->getWritableSegment() != nullptr);
+	assert(!p->seg->m_hasLockFreePointSearch);
+	if (p->wrtStoreIter == nullptr) {
+		auto wrseg = p->seg->getWritableSegment();
+		p->wrtStoreIter = wrseg->m_wrtStore->createStoreIterForward(this);
 	}
-	return p->storeIter;
+	return p->wrtStoreIter;
 }
 
 IndexIterator* DbContext::getIndexIterNoLock(size_t segIdx, size_t indexId) {
@@ -191,5 +195,36 @@ void DbContext::debugCheckUnique(fstring row, size_t uniqueIndexId) {
 	indexSearchExactNoLock(uniqueIndexId, key1, &exactMatchRecIdvec);
 	assert(exactMatchRecIdvec.size() <= 1);
 }
+
+void
+DbContext::getWrSegWrtStoreData(const ReadableSegment* seg, llong subId, valvec<byte>* buf) {
+	assert(seg->getWritableSegment() != NULL);
+	assert(!seg->m_hasLockFreePointSearch);
+	auto sctx = m_segCtx.data();
+	size_t segIdx = m_segCtx.size();
+	while (segIdx > 0) {
+		auto seg2 = sctx[--segIdx]->seg;
+		if (seg2 == seg) {
+			auto wrtStoreIter = getWrtStoreIterNoLock(segIdx);
+			buf->erase_all();
+			wrtStoreIter->reset();
+			if (!wrtStoreIter->seekExact(subId, buf)) {
+				llong baseId = m_rowNumVec[segIdx];
+				throw ReadRecordException("wrtStoreIter->seekExact",
+					seg->m_segDir.string().c_str(), baseId, subId);
+			}
+			wrtStoreIter->reset();
+			return;
+		}
+	}
+	fprintf(stderr
+		, "WARN: DbContext::getWrSegWrtStoreData: not found segment: %s\n"
+		, seg->m_segDir.string().c_str());
+	// fallback to slow locked getValue:
+	WritableSegment* wrseg = seg->getWritableSegment();
+	assert(wrseg != nullptr);
+	wrseg->m_wrtStore->getValue(subId, buf, this);
+}
+
 
 } } // namespace terark::db

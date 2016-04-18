@@ -16,9 +16,12 @@
 #include <thread> // for std::this_thread::sleep_for
 #include <tbb/tbb_thread.h>
 #include <terark/util/concurrent_queue.hpp>
+#include <float.h>
 
 #undef min
 #undef max
+
+//#define SegDir_c_str(seg) seg->m_segDir.string().c_str()
 
 namespace terark { namespace db {
 
@@ -654,14 +657,7 @@ const {
 	llong baseId = rowNumPtr[upp-1];
 	llong subId = id - baseId;
 	auto seg = ctx->m_segCtx[upp-1]->seg;
-	if (seg->m_hasLockFreePointSearch) {
-		seg->getValueAppend(subId, val, ctx);
-	}
-	else {
-		StoreIterator* iter = ctx->getStoreIterNoLock(upp-1);
-		bool ret = iter->seekExact(subId, val);
-		TERARK_RT_assert(ret, std::logic_error);
-	}
+	seg->getValueAppend(subId, val, ctx);
 }
 
 bool
@@ -835,7 +831,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 
 llong
 CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
-	DefaultCommitTransaction txn(ctx->m_transaction.get());
+	TransactionGuard txn(ctx->m_transaction.get());
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
 	auto& ws = *m_wrSeg;
@@ -863,18 +859,20 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 			ws.m_delcnt--;
 			assert(ws.m_isDel.popcnt() == ws.m_delcnt);
 		}
-		else {
-			SpinRwLock wsLock(ws.m_segMutex, true);
-			if (wrBaseId + subId + 1 == m_rowNum) {
-				m_rowNumVec.back()--;
-				m_rowNum--;
-				ws.popIsDel();
-				ws.m_delcnt--;
-				assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+		else {{
+				SpinRwLock wsLock(ws.m_segMutex, true);
+				if (wrBaseId + subId + 1 == m_rowNum) {
+					m_rowNumVec.back()--;
+					m_rowNum--;
+					ws.popIsDel();
+					ws.m_delcnt--;
+					assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+				}
+				else {
+					ws.m_deletedWrIdSet.push_back(subId);
+				}
 			}
-			else {
-				ws.m_deletedWrIdSet.push_back(subId);
-			}
+			txn.rollback();
 			return -1; // fail
 		}
 	}
@@ -886,11 +884,16 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 		ws.m_delcnt--;
 		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
 	}
+	if (!txn.commit()) {
+		TERARK_THROW(CommitException
+			, "commit failed: %s, baseId=%lld, subId=%lld, seg = %s"
+			, txn.szError(), wrBaseId, subId, ws.m_segDir.string().c_str());
+	}
 	return wrBaseId + subId;
 }
 
 bool
-CompositeTable::insertSyncIndex(llong subId, DefaultCommitTransaction& txn, DbContext* ctx) {
+CompositeTable::insertSyncIndex(llong subId, TransactionGuard& txn, DbContext* ctx) {
 	// first try insert unique index
 	const SchemaConfig& sconf = *m_schema;
 	size_t i = 0;
@@ -936,10 +939,10 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 			, sconf.m_uniqIndices.size());
 	}
 	ctx->isUpsertOverwritten = 0;
-	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	if (sconf.m_uniqIndices.empty()) {
 		return insertRow(row, ctx); // should always success
 	}
+	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	assert(sconf.m_uniqIndices.size() == 1);
 	if (!ctx->syncIndex) {
 		THROW_STD(invalid_argument,
@@ -992,6 +995,7 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 					seg->m_isDel.set1(subId);
 					seg->addtoUpdateList(subId);
 				}
+				TERARK_IF_DEBUG(ctx->debugCheckUnique(row, uniqueIndexId),;);
 				ctx->isUpsertOverwritten = 2;
 				if (checkPurgeDeleteNoLock(seg)) {
 					lock.upgrade_to_writer();
@@ -1002,7 +1006,6 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 					maybeCreateNewSegment(lock);
 				}
 			}
-			TERARK_IF_DEBUG(ctx->debugCheckUnique(row, uniqueIndexId),;);
 			return newRecId;
 		}
 	}
@@ -1017,16 +1020,31 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 		return recId;
 	}
 	llong subId = ctx->exactMatchRecIdvec[0];
+	llong baseId = m_rowNumVec.ende(2);
 	assert(ctx->exactMatchRecIdvec.size() == 1);
-	DefaultCommitTransaction txn(ctx->m_transaction.get());
-	if (!sconf.m_multIndices.empty()) { 
-		m_wrSeg->getValue(subId, &ctx->row2, ctx);
+	TransactionGuard txn(ctx->m_transaction.get());
+	if (!sconf.m_multIndices.empty()) {
+		try {
+			txn.storeGetRow(subId, &ctx->row2);
+		}
+		catch (const ReadRecordException&) {
+			fprintf(stderr
+				, "ERROR: upsertRow(baseId=%lld, subId=%lld): read old row data failed: %s\n"
+				, baseId, subId, m_wrSeg->m_segDir.string().c_str());
+			txn.rollback();
+			throw ReadRecordException("pre updateSyncMultIndex",
+						m_wrSeg->m_segDir.string(), baseId, subId);
+		}
 		sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 		updateSyncMultIndex(subId, txn, ctx);
 	}
 	txn.storeUpsert(subId, row);
+	if (!txn.commit()) {
+		TERARK_THROW(CommitException
+			, "commit failed: %s, baseId=%lld, subId=%lld, seg = %s, caller should retry"
+			, txn.szError(), baseId, subId, m_wrSeg->m_segDir.string().c_str());
+	}
 	ctx->isUpsertOverwritten = 1;
-	llong baseId = m_rowNumVec.ende(2);
 	maybeCreateNewSegment(lock);
 	return baseId + subId;
 }
@@ -1163,7 +1181,17 @@ CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) 
 bool
 CompositeTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
-	DefaultCommitTransaction txn(ctx->m_transaction.get());
+	TransactionGuard txn(ctx->m_transaction.get());
+	try {
+		txn.storeGetRow(subId, &ctx->row2);
+	}
+	catch (const ReadRecordException&) {
+		txn.rollback();
+		llong baseId = m_rowNumVec.ende(2);
+		throw ReadRecordException("updateWithSyncIndex"
+			, m_wrSeg->m_segDir.string(), baseId, subId);
+	}
+	sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 	size_t i = 0;
 	for (; i < sconf.m_uniqIndices.size(); ++i) {
 		size_t indexId = sconf.m_uniqIndices[i];
@@ -1187,6 +1215,13 @@ CompositeTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	}
 	updateSyncMultIndex(subId, txn, ctx);
 	txn.storeUpsert(subId, row);
+	if (!txn.commit()) {
+		llong baseId = m_rowNumVec.ende(2);
+		TERARK_THROW(CommitException
+			, "commit failed: %s, baseId=%lld, subId=%lld, seg = %s"
+			, txn.szError(), baseId, subId
+			, m_wrSeg->m_segDir.string().c_str());
+	}
 	return true;
 Fail:
 	for (size_t j = i; j > 0; ) {
@@ -1204,7 +1239,7 @@ Fail:
 }
 
 void
-CompositeTable::updateSyncMultIndex(llong subId, DefaultCommitTransaction& txn, DbContext* ctx) {
+CompositeTable::updateSyncMultIndex(llong subId, TransactionGuard& txn, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
 	for (size_t i = 0; i < sconf.m_multIndices.size(); ++i) {
 		size_t indexId = sconf.m_multIndices[i];
@@ -1231,43 +1266,53 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 	llong baseId = m_rowNumVec[j-1];
 	llong subId = id - baseId;
 	auto seg = m_segments[j-1].get();
-//	assert(seg->m_isDel.is0(subId));
-	if (seg->m_isDel.is1(size_t(subId))) {
-	//	THROW_STD(invalid_argument
-	//		, "Row has been deleted: id=%lld seg=%zd baseId=%lld subId=%lld"
-	//		, id, j, baseId, subId);
-		return false;
-	}
 	if (!seg->m_isFreezed) {
-		assert(m_wrSeg.get() == seg);
-		assert(!m_wrSeg->m_bookUpdates);
-		auto setWrSegDelmarkLocked = [&]() {
-			SpinRwLock wsLock(m_wrSeg->m_segMutex);
-			if (!m_wrSeg->m_isDel[subId]) {
-				m_wrSeg->m_deletedWrIdSet.push_back(uint32_t(subId));
-				m_wrSeg->m_delcnt++;
-				m_wrSeg->m_isDel.set1(subId); // always set delmark
-				m_wrSeg->m_isDirty = true;
+		auto wrseg = m_wrSeg.get();
+		assert(wrseg == seg);
+		assert(!wrseg->m_bookUpdates);
+		{
+			SpinRwLock wsLock(wrseg->m_segMutex);
+			if (!wrseg->m_isDel[subId]) {
+				wrseg->m_deletedWrIdSet.push_back(uint32_t(subId));
+				wrseg->m_delcnt++;
+				wrseg->m_isDel.set1(subId); // always set delmark
+				wrseg->m_isDirty = true;
+				assert(wrseg->m_isDel.popcnt() == wrseg->m_delcnt);
 			}
-			assert(m_wrSeg->m_isDel.popcnt() == m_wrSeg->m_delcnt);
-		};
+			else {
+				return false;
+			}
+		}
 		if (ctx->syncIndex) {
 			TransactionGuard txn(ctx->m_transaction.get());
 			valvec<byte> &row = ctx->row1, &key = ctx->key1;
 			ColumnVec& columns = ctx->cols1;
-			txn.storeGetRow(subId, &row);
+			try {
+				txn.storeGetRow(subId, &row);
+			}
+			catch (const ReadRecordException& ex) {
+				fprintf(stderr
+					, "ERROR: removeRow(id=%lld): read row data failed: %s\n"
+					, id, ex.what());
+				txn.rollback();
+				throw ReadRecordException("removeRow: pre remove index",
+					wrseg->m_segDir.string(), baseId, subId);
+			}
 			m_schema->m_rowSchema->parseRow(row, &columns);
-			for (size_t i = 0; i < m_wrSeg->m_indices.size(); ++i) {
+			for (size_t i = 0; i < wrseg->m_indices.size(); ++i) {
 				const Schema& iSchema = m_schema->getIndexSchema(i);
 				iSchema.selectParent(columns, &key);
 				txn.indexRemove(i, key, subId);
 			}
 			txn.storeRemove(subId);
-			setWrSegDelmarkLocked();
-			txn.commit();
-		}
-		else {
-			setWrSegDelmarkLocked();
+			if (!txn.commit()) {
+				// this fail should be ignored, because the deletion bit
+				// have always be set, remove index is just an optimization
+				// for future search
+				fprintf(stderr
+					, "WARN: removeRow: commit failed: recId=%lld, baseId=%lld, subId=%lld, seg = %s"
+					, id, baseId, subId, wrseg->m_segDir.string().c_str());
+			}
 		}
 	}
 	else { // freezed segment, just set del mark
@@ -2207,6 +2252,9 @@ class CompositeTable::MergeParam : public valvec<SegEntry> {
 public:
 	size_t m_tabSegNum = 0;
 	size_t m_newSegRows = 0;
+	DbContextPtr   m_ctx;
+	rank_select_se m_oldpurgeBits; // join from all input segs
+	rank_select_se m_newpurgeBits;
 
 	bool canMerge(CompositeTable* tab) {
 		// most failed checks should fails here...
@@ -2299,12 +2347,40 @@ public:
 
 	bool needsPurgeBits() const;
 
-	void mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId);
+	void mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId);
+	void mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId);
+	void mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId);
 };
 
 
 void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
-	for (auto& e : *this) {
+	size_t newSumDelcnt = 0;
+	for (const auto& e : *this) {
+		const ReadonlySegment* seg = e.seg;
+		newSumDelcnt += seg->m_delcnt;
+	}
+	if (newSumDelcnt >= m_newSegRows * purgeThreshold) {
+		// all colgroups need purge
+		assert(m_oldpurgeBits.empty());
+		assert(m_newpurgeBits.empty());
+		for (auto& e : *this) {
+			const ReadonlySegment* seg = e.seg;
+			size_t segRows = seg->m_isDel.size();
+			if (seg->m_isPurged.empty()) {
+				m_oldpurgeBits.grow(segRows, false);
+			}
+			else {
+				m_oldpurgeBits.append(seg->m_isPurged);
+			}
+			e.newIsPurged = seg->m_isDel;
+			e.newNumPurged = e.newIsPurged.popcnt();
+			e.oldNumPurged = seg->m_isPurged.max_rank1();
+			m_newpurgeBits.append(e.newIsPurged);
+		}
+		m_oldpurgeBits.build_cache(true, false);
+		m_newpurgeBits.build_cache(true, false);
+	}
+	else for (auto& e : *this) {
 		ReadonlySegment* seg   = e.seg;
 		size_t oldNumPurged    = seg->m_isPurged.max_rank1();
 		size_t newMarkDelcnt   = seg->m_delcnt - oldNumPurged;
@@ -2482,7 +2558,7 @@ bool CompositeTable::MergeParam::needsPurgeBits() const {
 
 void
 CompositeTable::MergeParam::
-mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
+mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	FixedLenStorePtr dstStore = new FixedLenStore(dseg->m_segDir, schema);
 	dstStore->reserveRows(m_newSegRows);
@@ -2521,6 +2597,109 @@ mergeInplaceUpdatable(ReadonlySegment* dseg, size_t colgroupId) {
 	dstStore->setNumRows(newPhysicId);
 	dstStore->shrinkToFit();
 	dseg->m_colgroups[colgroupId] = dstStore;
+}
+
+#if 0
+class PurgeMappingStore : public ReadableStore {
+	ReadableStorePtr m_realstore;
+	const rank_select_se& m_isPurged;
+public:
+	PurgeMappingStore(ReadableStore* realstore, const rank_select_se& isPurged)
+	 : m_realstore(realstore), m_isPurged(isPurged) {}
+	llong dataInflateSize() const override { return m_realstore->dataInflateSize(); }
+	llong dataStorageSize() const override { return m_realstore->dataStorageSize(); }
+	llong numDataRows() const override { return m_realstore->numDataRows(); }
+	void getValueAppend(llong logicId, valvec<byte>* val, DbContext* ctx) const override {
+		llong physicId = m_isPurged.rank0(logicId);
+		m_realstore->getValueAppend(physicId, val, ctx);
+	}
+	StoreIterator* createStoreIterForward(DbContext*) const override { return nullptr; }
+	StoreIterator* createStoreIterBackward(DbContext*) const override { return nullptr; }
+
+	void load(PathRef segDir) override {}
+	void save(PathRef segDir) const override {}
+};
+#endif
+
+void
+CompositeTable::MergeParam::
+mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
+	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
+	valvec<ReadableStorePtr> parts;
+	for (const auto& e : *this) {
+		auto sseg = e.seg;
+		auto store = sseg->m_colgroups[colgroupId].get();
+		if (auto mstore = dynamic_cast<MultiPartStore*>(store)) {
+			for (size_t i = 0; i < mstore->numParts(); ++i) {
+				parts.push_back(mstore->getPart(i));
+			}
+		}
+		else {
+			parts.push_back(store);
+		}
+	}
+	MultiPartStore mpstore(parts);
+	StoreIteratorPtr iter = mpstore.ensureStoreIterForward(m_ctx.get());
+	dseg->m_colgroups[colgroupId] = dseg->buildDictZipStore(schema,
+		dseg->m_segDir, *iter, m_newpurgeBits.bldata(), &m_oldpurgeBits);
+}
+
+void
+CompositeTable::MergeParam::
+mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
+	assert(dseg->m_isDel.size() == m_newSegRows);
+	assert(m_oldpurgeBits.size() == m_newSegRows);
+	assert(m_newpurgeBits.size() == m_newSegRows);
+	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
+	fs::path storeFilePath = dseg->m_segDir / ("colgroup-" + schema.m_name);
+	if (m_newpurgeBits.size() == m_newpurgeBits.max_rank0()) {
+	//	dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
+	//	dseg->m_colgroups[colgroupId]->save(storeFilePath);
+		return;
+	}
+	if (schema.m_dictZipSampleRatio >= 0.0) {
+		llong sumLen = 0;
+		llong oldphysicRowNum = m_oldpurgeBits.max_rank0();
+		for (const auto& e : *this) {
+			sumLen += e.seg->m_colgroups[colgroupId]->dataInflateSize();
+		}
+		assert(oldphysicRowNum > 0);
+		double sRatio = schema.m_dictZipSampleRatio;
+		double avgLen = 1.0 * sumLen / oldphysicRowNum;
+		if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
+			mergeGdictZipColgroup(dseg, colgroupId);
+			return;
+		}
+	}
+	valvec<byte> rec;
+	SortableStrVec strVec;
+	const size_t fixedIndexRowLen = schema.getFixedRowLen();
+	for (auto& e : *this) {
+		auto seg = e.seg;
+		auto store = seg->m_colgroups[colgroupId].get();
+		assert(nullptr != store);
+		size_t logicRows = seg->m_isDel.size();
+		size_t physicId = 0;
+		const bm_uint_t* segOldpurgeBits = seg->m_isPurged.bldata();
+		const bm_uint_t* segNewpurgeBits = e.newIsPurged.bldata();
+		for (size_t logicId = 0; logicId < logicRows; ++logicId) {
+			if (!segOldpurgeBits || !terark_bit_test(segOldpurgeBits, logicId)) {
+				if (!segNewpurgeBits || !terark_bit_test(segNewpurgeBits, logicId)) {
+					store->getValue(physicId, &rec, m_ctx.get());
+					if (fixedIndexRowLen) {
+						assert(rec.size() == fixedIndexRowLen);
+						strVec.m_strpool.append(rec);
+					} else {
+						strVec.push_back(rec);
+					}
+				}
+				physicId++;
+			}
+		}
+	}
+	ReadableStorePtr mergedstore = dseg->buildStore(schema, strVec);
+	mergedstore->save(storeFilePath);
+	dseg->m_colgroups[colgroupId] = mergedstore;
 }
 
 static void
@@ -2594,6 +2773,7 @@ try{
 	dseg->m_colgroups.resize(colgroupNum);
 	toMerge.syncPurgeBits(m_schema->m_purgeDeleteThreshold);
 	DbContextPtr ctx(this->createDbContext());
+	toMerge.m_ctx = ctx;
 	dseg->m_isDel.erase_all();
 	dseg->m_isDel.reserve(toMerge.m_newSegRows);
 	for (auto& e : toMerge) {
@@ -2634,8 +2814,13 @@ try{
 	}
 	for (size_t i = indexNum; i < colgroupNum; ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
-		if (schema.m_isInplaceUpdatable) {
-			toMerge.mergeInplaceUpdatable(dseg.get(), i);
+		if (schema.should_use_FixedLenStore()) {
+			toMerge.mergeFixedLenColgroup(dseg.get(), i);
+			continue;
+		}
+		if (toMerge.m_newpurgeBits.size() > 0) {
+			assert(toMerge.m_newpurgeBits.size() == toMerge.m_newSegRows);
+			toMerge.mergeAndPurgeColgroup(dseg.get(), i);
 			continue;
 		}
 		const std::string prefix = "colgroup-" + schema.m_name;
@@ -2899,9 +3084,22 @@ catch (const std::exception& ex) {
 
 void CompositeTable::checkRowNumVecNoLock() const {
 #if !defined(NDEBUG)
-	for(size_t i = 0; i < m_segments.size(); ++i) {
+	assert(m_segments.size() >= 1);
+	for(size_t i = 0; i < m_segments.size()-1; ++i) {
 		size_t r1 = m_segments[i]->m_isDel.size();
 		size_t r2 = m_rowNumVec[i+1] - m_rowNumVec[i];
+		assert(r1 == r2);
+	}
+	if (m_wrSeg) {
+		assert(!m_wrSeg->m_isFreezed);
+		SpinRwLock seglock(m_wrSeg->m_segMutex, false);
+		size_t r1 = m_wrSeg->m_isDel.size();
+		size_t r2 = m_rowNumVec.ende(1) - m_rowNumVec.ende(2);
+		assert(r1 == r2);
+	}
+	else { // does not need lock
+		size_t r1 = m_segments.back()->m_isDel.size();
+		size_t r2 = m_rowNumVec.ende(1) - m_rowNumVec.ende(2);
 		assert(r1 == r2);
 	}
 #endif
@@ -3184,6 +3382,7 @@ void FlushThreadFunc() {
 Done:
 	assert(g_flushQueue.empty());
 	g_flushStopped = true;
+	fprintf(stderr, "INFO: flushing thread completed!\n");
 }
 
 void CompressThreadFunc() {
@@ -3345,6 +3544,7 @@ void CompositeTable::safeStopAndWaitForFlush() {
 	g_stopCompress = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
 	g_flushThread.join();
+	assert(g_flushStopped);
 	g_compressThreads.join();
 	assert(g_flushQueue.empty());
 	assert(g_compressQueue.empty());

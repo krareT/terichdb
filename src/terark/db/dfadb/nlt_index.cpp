@@ -179,6 +179,11 @@ void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 		size_t nth = std::find(recIdvec.begin(), recIdvec.end(), id)
 				   - recIdvec.begin();
 		assert(nth < recIdvec.size());
+		if (schema.m_isUnique && !this->m_isUnique) {
+			if (recIdvec.size() > 1) {
+				rec = rec; // for set break point
+			}
+		}
 	}
 #endif
 }

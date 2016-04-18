@@ -1182,6 +1182,25 @@ const ColumnMeta& Schema::getColumnMeta(size_t columnId) const {
 	return m_columnsMeta.val(columnId);
 }
 
+bool Schema::should_use_FixedLenStore() const {
+	if (columnNum() == 1) {
+		auto colmeta = m_columnsMeta.val(0);
+		if (colmeta.isInteger() && !m_isInplaceUpdatable) {
+			// should use ZipIntStore
+			return false;
+		}
+	}
+	size_t fixlen = m_fixedLen;
+	if (m_isInplaceUpdatable) {
+		assert(fixlen > 0);
+		return true;
+	}
+	if (fixlen && fixlen <= 16) {
+		return true;
+	}
+	return false;
+}
+
 void Schema::compileProject(const Schema* parent) {
 	size_t myColsNum = m_columnsMeta.end_i();
 	size_t parentColsNum = parent->m_columnsMeta.end_i();

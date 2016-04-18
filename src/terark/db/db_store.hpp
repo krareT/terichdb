@@ -117,7 +117,7 @@ class TERARK_DB_DLL MultiPartStore : public ReadableStore {
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 
 public:
-	explicit MultiPartStore(valvec<ReadableStorePtr>& m_parts);
+	explicit MultiPartStore(valvec<ReadableStorePtr>& parts);
 	~MultiPartStore();
 
 	llong dataInflateSize() const override;
@@ -131,7 +131,7 @@ public:
 	void save(PathRef segDir) const override;
 
 	size_t numParts() const { return m_parts.size(); }
-	const ReadableStore& getPart(size_t i) const { return *m_parts[i]; }
+	ReadableStore* getPart(size_t i) const { return m_parts[i].get(); }
 
 private:
 	void syncRowNumVec();
@@ -141,6 +141,37 @@ private:
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 };
 
+#ifdef _MSC_VER
+//warning C4275: non dll-interface class 'std::logic_error' used as base for dll-interface class 'terark::db::ReadRecordException'
+#pragma warning(disable:4275)
+#endif
+class TERARK_DB_DLL DbException : public std::logic_error {
+public:
+	using std::logic_error::logic_error;
+};
+class TERARK_DB_DLL ReadRecordException : public DbException {
+public:
+	~ReadRecordException();
+	ReadRecordException(const char* errType, const std::string& segDir, llong baseId, llong subId);
+	ReadRecordException(const ReadRecordException&);
+	ReadRecordException& operator=(const ReadRecordException&);
+	std::string m_segDir;
+	llong m_baseId;
+	llong m_subId;
+};
+class TERARK_DB_DLL ReadDeletedRecordException : public ReadRecordException {
+public:
+	ReadDeletedRecordException(const std::string& segDir, llong baseId, llong subId);
+};
+class TERARK_DB_DLL ReadUncommitedRecordException : public ReadRecordException {
+public:
+	ReadUncommitedRecordException(const std::string& segDir, llong baseId, llong subId);
+};
+
+class TERARK_DB_DLL CommitException : public DbException {
+public:
+	using DbException::DbException;
+};
 
 } } // namespace terark::db
 

@@ -6,7 +6,6 @@
 #include <terark/gold_hash_map.hpp>
 
 namespace terark {
-	using namespace terark;
 	template<class Key, class Val, class IgnoreLess, class IgnoreAlloc>
 	class JsonStrMap : public gold_hash_map<Key, Val
 		, std::hash<Key>

@@ -212,10 +212,10 @@ protected:
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
 	llong insertRowDoInsert(fstring row, DbContext*);
-	bool insertSyncIndex(llong subId, class DefaultCommitTransaction&, DbContext*);
+	bool insertSyncIndex(llong subId, class TransactionGuard&, DbContext*);
 	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool updateWithSyncIndex(llong newSubId, fstring row, DbContext*);
-	void updateSyncMultIndex(llong newSubId, class DefaultCommitTransaction&, DbContext*);
+	void updateSyncMultIndex(llong newSubId, class TransactionGuard&, DbContext*);
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;

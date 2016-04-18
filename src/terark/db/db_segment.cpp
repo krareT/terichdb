@@ -212,6 +212,7 @@ size_t ReadableSegment::getLogicId(size_t physicId) const {
 }
 
 void ReadableSegment::addtoUpdateList(size_t logicId) {
+	assert(m_isFreezed);
 	if (!m_bookUpdates) {
 		return;
 	}
@@ -276,7 +277,7 @@ void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn
 	assert(txn != nullptr);
 	llong rows = m_isDel.size();
 	if (id < 0 || id >= rows) {
-		THROW_STD(invalid_argument, "invalid id=%lld, rows=%lld", id, rows);
+		THROW_STD(out_of_range, "invalid id=%lld, rows=%lld", id, rows);
 	}
 	getValueByLogicId(id, val, txn);
 }
@@ -496,25 +497,6 @@ StoreIterator* ReadonlySegment::createStoreIterBackward(DbContext* ctx) const {
 	return new MyStoreIterBackward(this, ctx);
 }
 
-static bool should_use_FixedLenStore(const Schema& schema) {
-	if (schema.columnNum() == 1) {
-		auto colmeta = schema.getColumnMeta(0);
-		if (colmeta.isInteger() && !schema.m_isInplaceUpdatable) {
-			// should use ZipIntStore
-			return false;
-		}
-	}
-	size_t fixlen = schema.getFixedRowLen();
-	if (schema.m_isInplaceUpdatable) {
-		assert(fixlen > 0);
-		return true;
-	}
-	if (fixlen && fixlen <= 16) {
-		return true;
-	}
-	return false;
-}
-
 namespace {
 	class TempFileList {
 		const SchemaSet& m_schemaSet;
@@ -656,11 +638,13 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 		MyRwLock lock(tab->m_rwMutex, false);
 		ctx.reset(tab->createDbContextNoLock());
 		input = tab->m_segments[segIdx];
-		input->m_updateList.reserve(1024);
-		input->m_bookUpdates = true;
-		assert(input->m_updateList.empty());
 	}
 	assert(input->getWritableStore() != nullptr);
+	assert(input->m_isFreezed);
+	assert(input->m_updateList.empty());
+	assert(input->m_bookUpdates == false);
+	input->m_updateList.reserve(1024);
+	input->m_bookUpdates = true;
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 //	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	llong logicRowNum = input->m_isDel.size();
@@ -720,7 +704,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 	for (size_t i = indexNum; i < colgroupTempFiles.size(); ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
 		auto tmpStore = colgroupTempFiles.getStore(i);
-		if (should_use_FixedLenStore(schema)) {
+		if (schema.should_use_FixedLenStore()) {
 			m_colgroups[i] = tmpStore;
 			continue;
 		}
@@ -760,8 +744,8 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 }
 
 void
-ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
-								   class ReadableSegment* input) {
+ReadonlySegment::completeAndReload(CompositeTable* tab, size_t segIdx,
+								   ReadableSegment* input) {
 	m_dataMemSize = 0;
 	m_dataInflateSize = 0;
 	for (size_t i = 0; i < m_colgroups.size(); ++i) {
@@ -797,6 +781,7 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 			updateBits.swap(input->m_updateBits);
 		}
 		if (updateList.size() > 0) {
+			// this is the likely branch when lock(tab->m_rwMutex)
 			assert(updateBits.size() == 0);
 			std::sort(updateList.begin(), updateList.end());
 			updateList.trim(
@@ -826,16 +811,21 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 			}
 			m_isDel.risk_memcpy(input->m_isDel);
 		}
+		else {
+			// have nothing to update
+			assert(updateList.size() == 0); // for set break point
+		}
 		// m_updateBits and m_updateList is safe to change in reader lock here
 		updateBits.erase_all();
 		updateList.erase_all();
-		m_delcnt = input->m_delcnt;
 	};
 	syncNewDeletionMark(); // no lock
 	MyRwLock lock(tab->m_rwMutex, false);
+	assert(tab->m_segments[segIdx].get() == input);
 	syncNewDeletionMark(); // reader locked
 	lock.upgrade_to_writer();
 	syncNewDeletionMark(); // writer locked
+	m_delcnt = input->m_delcnt;
 #if !defined(NDEBUG)
 	{
 		size_t computed_delcnt1 = this->m_isDel.popcnt();
@@ -874,12 +864,15 @@ ReadonlySegment::completeAndReload(class CompositeTable* tab, size_t segIdx,
 		}
 	}
 #endif
+	assert(tab->m_segments[segIdx].get() == input);
 	tab->m_segments[segIdx] = this;
 	tab->m_segArrayUpdateSeq++;
 }
 
 // dstBaseId is for merge update
-void ReadonlySegment::syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId, ReadableSegment* input) {
+void
+ReadonlySegment::syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,
+										const ReadableSegment* input) {
 	assert(input->m_isDel.is0(logicId));
 	assert(this->m_isDel.is0(dstBaseId + logicId));
 	auto dstPhysicId = this->getPhysicId(dstBaseId + logicId);
@@ -1033,7 +1026,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	const llong inputRowNum = input->m_isDel.size();
 	const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 	const auto& colgroup = *input->m_colgroups[colgroupId];
-	if (should_use_FixedLenStore(schema)) {
+	if (schema.should_use_FixedLenStore()) {
 		FixedLenStorePtr store = new FixedLenStore(tmpSegDir, schema);
 		store->reserveRows(m_isDel.size() - m_delcnt);
 		llong physicId = 0;
@@ -1083,7 +1076,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 	if (auto cgparts = dynamic_cast<const MultiPartStore*>(&colgroup)) {
 		llong logicId = 0;
 		for (size_t j = 0; j < cgparts->numParts(); ++j) {
-			auto& partStore = cgparts->getPart(j);
+			auto& partStore = *cgparts->getPart(j);
 			llong partRows = partStore.numDataRows();
 			llong subPhysicId = 0;
 			while (logicId < inputRowNum && subPhysicId < partRows) {
@@ -1125,6 +1118,8 @@ void ReadonlySegment::load(PathRef segDir) {
 }
 
 void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
+	assert(m_isDel.size() > 0);
+	assert(m_isDelMmap != NULL);
 	assert(m_isPurgedMmap == NULL);
 	assert(m_isPurged.empty());
 	PathRef purgeFpath = segDir / "IsPurged.rs";
@@ -1156,16 +1151,30 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 		}
 	}
 	assert(newId == newRows);
-	m_isDel.risk_set_size(newRows);
-	m_isDel.risk_memcpy(newIsDel);
-	*(uint64_t*)m_isDelMmap = newRows;
-	m_delcnt = newIsDel.popcnt();
-//	mmap_close(m_isDelMmap, 8 + m_isDel.mem_size());
-//	m_isDel.risk_release_ownership();
+	fs::path formalFile = segDir / "IsDel";
+	fs::path backupFile = segDir / "IsDel.backup";
+	fs::rename(formalFile, backupFile);
+	m_isDel.risk_release_ownership(); // by mmap
+	m_isDelMmap = NULL;
+	m_isDel.swap(newIsDel);
+	try {
+		saveIsDel(segDir);
+	}
+	catch (const std::exception& ex) {
+		fprintf(stderr, "ERROR: save %s failed: %s, restore backup\n"
+			, formalFile.string().c_str(), ex.what());
+		fs::rename(backupFile, formalFile);
+		m_isDel.clear(); // by malloc, of newIsDel
+		loadIsDel(segDir);
+		return;
+	}
+	m_isDel.clear(); // by malloc, of newIsDel
+	loadIsDel(segDir);
 	mmap_close(m_isPurgedMmap, isPurgedMmapBytes);
 	m_isPurgedMmap = NULL;
 	m_isPurged.risk_release_ownership();
 	fs::remove(purgeFpath);
+	fs::remove(backupFile);
 }
 
 void ReadonlySegment::savePurgeBits(PathRef segDir) const {
@@ -1309,7 +1318,7 @@ const {
 ReadableStore*
 ReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
 const {
-	assert(!should_use_FixedLenStore(schema));
+	assert(!schema.should_use_FixedLenStore());
 	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
 		assert(schema.getFixedRowLen() > 0);
 		try {
@@ -1392,24 +1401,24 @@ WritableStore* WritableSegment::getWritableStore() { return this; }
 void
 WritableSegment::getValueAppend(llong recId, valvec<byte>* val, DbContext* ctx)
 const {
+	assert(&ctx->buf1 != val);
+	assert(&ctx->buf2 != val);
 	if (m_schema->m_updatableColgroups.empty()) {
-		m_wrtStore->getValueAppend(recId, val, ctx);
+	//	m_wrtStore->getValueAppend(recId, val, ctx);
+		this->getWrtStoreData(recId, val, ctx);
 	}
 	else {
 		ctx->buf1.erase_all();
 		ctx->cols1.erase_all();
-		m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
-		if (ctx->buf1.empty()) { // fail
-			assert(0); // TODO:
-			return; // now ignore in release compile
-		}
+	//	m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
+		this->getWrtStoreData(recId, &ctx->buf1, ctx);
 		const size_t ProtectCnt = 100;
 		if (m_isFreezed || m_isDel.unused() > ProtectCnt) {
-			this->getCombineAppend(recId, val, ctx);
+			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
 		}
 		else {
 			SpinRwLock  lock(m_segMutex, false);
-			this->getCombineAppend(recId, val, ctx);
+			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
 		}
 	}
 }
@@ -1471,12 +1480,6 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	iter->reset();
 }
 
-void
-WritableSegment::getCombineAppend(llong recId, valvec<byte>* val, DbContext* ctx)
-const {
-	getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
-}
-
 void WritableSegment::getCombineAppend(llong recId, valvec<byte>* val,
 					valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2)
 const {
@@ -1530,8 +1533,10 @@ void WritableSegment::selectColumnsByWhole(llong recId,
 									const size_t* colsId, size_t colsNum,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
+	assert(m_schema->m_updatableColgroups.empty());
 	colsData->erase_all();
-	this->getValue(recId, &ctx->buf1, ctx);
+//	this->getValue(recId, &ctx->buf1, ctx);
+	this->getWrtStoreData(recId, &ctx->buf1, ctx);
 	const Schema& schema = *m_schema->m_rowSchema;
 	schema.parseRow(ctx->buf1, &ctx->cols1);
 	assert(ctx->cols1.size() == schema.columnNum());
@@ -1575,7 +1580,8 @@ const {
 		else {
 			schema = sconf.m_wrtSchema.get();
 			if (ctx->cols1.empty()) {
-				m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+			//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+				this->getWrtStoreData(recId, &ctx->buf1, ctx);
 				schema->parseRow(ctx->buf1, &ctx->cols1);
 			}
 			size_t subColumnId = sconf.m_rowSchemaColToWrtCol[columnId];
@@ -1609,7 +1615,8 @@ const {
 	}
 	else {
 		const Schema& wrtSchema = *m_schema->m_wrtSchema;
-		m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+	//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
+		this->getWrtStoreData(recId, &ctx->buf1, ctx);
 		wrtSchema.parseRow(ctx->buf1, &ctx->cols1);
 		assert(ctx->cols1.size() == wrtSchema.columnNum());
 		colsData->erase_all();
@@ -1722,15 +1729,16 @@ llong WritableSegment::dataStorageSize() const {
 }
 
 class WritableSegment::MyStoreIter : public StoreIterator {
-	ColumnVec    m_cols;
-	DbContextPtr m_ctx;
 	const SchemaConfig& m_sconf;
 	const WritableSegment* m_wrtSeg;
 	StoreIteratorPtr m_wrtIter;
+	valvec<byte> m_wrtBuf;
+	ColumnVec    m_cols1;
+	ColumnVec    m_cols2;
 public:
 	MyStoreIter(const WritableSegment* wrtSeg, StoreIterator* wrtIter,
 				DbContext* ctx, const SchemaConfig& sconf)
-	  : m_ctx(ctx), m_sconf(sconf)
+	  : m_sconf(sconf)
 	{
 		m_store = const_cast<WritableSegment*>(wrtSeg);
 		m_wrtSeg = wrtSeg;
@@ -1745,24 +1753,23 @@ public:
 			}
 			return false;
 		}
-		m_ctx->buf1.erase_all();
-		m_ctx->cols1.erase_all();
-		if (m_wrtIter->increment(id, &m_ctx->buf1)) {
+		if (m_wrtIter->increment(id, &m_wrtBuf)) {
 			val->erase_all();
-			m_wrtSeg->getCombineAppend(*id, val, m_ctx.get());
+			m_wrtSeg->getCombineAppend(*id, val, m_wrtBuf, m_cols1, m_cols2);
 			return true;
 		}
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
+		m_wrtIter->reset();
 		if (m_sconf.m_updatableColgroups.empty()) {
 			return m_wrtIter->seekExact(id, val);
 		}
-		m_ctx->buf1.erase_all();
-		m_ctx->cols1.erase_all();
-		if (m_wrtIter->seekExact(id, &m_ctx->buf1)) {
+		m_wrtBuf.erase_all();
+		m_cols1.erase_all();
+		if (m_wrtIter->seekExact(id, &m_wrtBuf)) {
 			val->erase_all();
-			m_wrtSeg->getCombineAppend(id, val, m_ctx.get());
+			m_wrtSeg->getCombineAppend(id, val, m_wrtBuf, m_cols1, m_cols2);
 			return true;
 		}
 		return false;
@@ -1852,6 +1859,16 @@ void WritableSegment::shrinkToFit() {
 		store->shrinkToFit();
 	}
 	m_wrtStore->getAppendableStore()->shrinkToFit();
+}
+
+void WritableSegment::getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx)
+const {
+	if (m_hasLockFreePointSearch) {
+		m_wrtStore->getValue(subId, buf, ctx);
+	}
+	else {
+		ctx->getWrSegWrtStoreData(this, subId, buf);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

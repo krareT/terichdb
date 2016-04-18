@@ -181,6 +181,8 @@ namespace terark { namespace db {
 
 		size_t getFixedRowLen() const { return m_fixedLen; }
 
+		bool should_use_FixedLenStore() const;
+
 		static ColumnType parseColumnType(fstring str);
 		static const char* columnTypeStr(ColumnType);
 
@@ -302,6 +304,36 @@ namespace terark { namespace db {
 		template<class Str>
 		static StrZeroSaver<Str>
 		StrZero(const Str& x) { return StrZeroSaver<Str>(x); }
+
+		class CarBin : public valvec<byte_t> {
+			template<class DataIO>
+			friend void DataIO_loadObject(DataIO& dio, CarBin& x) {
+				uint32_t len;
+				dio >> len;
+				x.resize_no_init(len);
+				dio.ensureRead(x.begin(), len);
+			}
+			template<class DataIO>
+			friend void DataIO_saveObject(DataIO& dio, const CarBin& x) {
+				dio << uint32_t(x.size());
+				dio.ensureWrite(x.begin(), x.size());
+			}
+		public:
+			using valvec<byte_t>::valvec;
+		};
+
+		class TwoStrZero : public std::pair<std::string, std::string> {
+			template<class DataIO>
+			friend void DataIO_loadObject(DataIO& dio, TwoStrZero& x) {
+				dio & StrZero(x.first) & StrZero(x.second);
+			}
+			template<class DataIO>
+			friend void DataIO_saveObject(DataIO& dio, const TwoStrZero& x) {
+				dio & StrZero(x.first) & StrZero(x.second);
+			}
+		public:
+			using std::pair<std::string, std::string>::pair;
+		};
 	};
 	typedef boost::intrusive_ptr<Schema> SchemaPtr;
 
