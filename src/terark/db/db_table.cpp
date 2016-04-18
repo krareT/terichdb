@@ -2852,13 +2852,11 @@ try{
 		}
 	}
 
-	if (toMerge.needsPurgeBits()) {
+	if (toMerge.needsPurgeBits() || dseg->m_isDel.empty()) {
 		if (dseg->m_isPurged.max_rank1() == dseg->m_isPurged.size()) {
-			for (size_t cgId = indexNum; cgId < colgroupNum; ++cgId) {
-				auto emptyStore = new EmptyIndexStore();
-				dseg->m_colgroups[cgId] = emptyStore;
-				emptyStore->save(destSegDir);
-			}
+			ReadableStorePtr store = new EmptyIndexStore();
+			dseg->m_colgroups.fill(indexNum, colgroupNum-indexNum, store);
+			dseg->saveRecordStore(destSegDir);
 		}
 	}
 
