@@ -2369,7 +2369,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		assert(m_oldpurgeBits.empty());
 		assert(m_newpurgeBits.empty());
 		for (auto& e : *this) {
-			const ReadonlySegment* seg = e.seg;
+			ReadonlySegment* seg = e.seg;
 			size_t segRows = seg->m_isDel.size();
 			if (seg->m_isPurged.empty()) {
 				m_oldpurgeBits.grow(segRows, false);
@@ -2377,6 +2377,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 			else {
 				m_oldpurgeBits.append(seg->m_isPurged);
 			}
+			seg->m_bookUpdates = true;
 			e.newIsPurged = seg->m_isDel;
 			e.newNumPurged = e.newIsPurged.popcnt();
 			e.oldNumPurged = seg->m_isPurged.max_rank1();
@@ -2783,6 +2784,7 @@ try{
 	dseg->m_isDel.reserve(toMerge.m_newSegRows);
 	for (auto& e : toMerge) {
 		dseg->m_isDel.append(e.seg->m_isDel);
+		assert(e.seg->m_bookUpdates);
 	}
 	assert(dseg->m_isDel.size() == toMerge.m_newSegRows);
 	dseg->m_delcnt = dseg->m_isDel.popcnt();
@@ -2816,6 +2818,7 @@ try{
 			e.files.push_back(fpath.path().filename().string());
 		}
 		e.files.sort();
+		assert(e.seg->m_bookUpdates);
 	}
 	for (size_t i = indexNum; i < colgroupNum; ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
@@ -2967,6 +2970,7 @@ try{
 		DebugCheckRowNumVecNoLock(this);
 		for (auto& e : toMerge) {
 			ReadableSegment* sseg = e.seg;
+			assert(sseg->m_bookUpdates);
 			assert(e.updateBits.empty());
 			assert(e.updateList.empty());
 			SpinRwLock segLock(sseg->m_segMutex, true);
