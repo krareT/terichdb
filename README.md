@@ -1,7 +1,7 @@
 ## Terarkdb
-TerarkDB is an open source database based on the power of terark storage engine.
+TerarkDB is an open source realtime database based on the power of terark storage engine.
 
-TerarkDB is,
+TerarkDB is:
 
 - Read optimized, it's quite fast.
 - Data is highly compressed and is not required to be decompressed before read.
