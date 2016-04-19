@@ -2068,7 +2068,7 @@ getMongoTypeDefault(const std::string& colname, const ColumnMeta& colmeta) {
 	case ColumnType::Uint32:
 	case ColumnType::Sint32:
 #ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
-		if (0 && re2::RE2::FullMatch(colname, datetimeRegex)) {
+		if (re2::RE2::FullMatch(colname, datetimeRegex)) {
 			return MongoBson::Date;
 		}
 #endif
@@ -2076,7 +2076,7 @@ getMongoTypeDefault(const std::string& colname, const ColumnMeta& colmeta) {
 	case ColumnType::Uint64:
 	case ColumnType::Sint64:
 #ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
-		if (0 && re2::RE2::FullMatch(colname, datetimeRegex)) {
+		if (re2::RE2::FullMatch(colname, datetimeRegex)) {
 			return MongoBson::bsonTimestamp;
 		}
 #endif
@@ -2108,6 +2108,7 @@ getMongoTypeDefault(const std::string& colname, const ColumnMeta& colmeta) {
 	case ColumnType::CarBin: // Prefixed by uint32 len
 		return MongoBson::Object;
 	}
+	abort(); // should not goes here
 	return -1;
 }
 
