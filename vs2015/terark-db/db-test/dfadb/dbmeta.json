@@ -3,13 +3,13 @@
 		"columns" : {
 			"id"  : { "type" : "uint64" },
 			"fix" : { "type" : "fixed", "length" : 9 },
-      "fix2": {
-        "type": "fixed",
-        "length": 10,
-        "colstore": {
-          "inplaceUpdatable": true
-        }
-      },
+			"fix2": {
+				"type": "fixed",
+				"length": 10,
+				"colstore": {
+					"inplaceUpdatable": true
+				}
+			},
 			"str0" : { "type" : "strzero" },
 			"str1" : { "type" : "binary" },
 			"str2" : { "type" : "binary" },
@@ -17,20 +17,20 @@
 			"str4" : { "type" : "binary" }
 		}
 	},
-  "TestDupColgroupShould MoveTo ColumnGroups": {
-    "fields": [ "str3", "str4" ],
-    "inplaceUpdatable": false,
-    "dictZipSampleRatio": 0.0
-  },
-  "ColumnGroups": {
-    "str34": {
-      "fields": [ "str3", "str4" ],
-      "inplaceUpdatable": false,
-      "dictZipSampleRatio": 0.0
-    }
-  },
-  "ReadonlyDataMemSize" : 10240,
-	"MaxWrSegSize" : 20480,
+	"TestDupColgroupShould MoveTo ColumnGroups": {
+		"fields": [ "str3", "str4" ],
+		"inplaceUpdatable": false,
+		"dictZipSampleRatio": 0.0
+	},
+	"ColumnGroups": {
+		"str34": {
+			"fields": [ "str3", "str4" ],
+			"inplaceUpdatable": false,
+			"dictZipSampleRatio": 0.0
+		}
+	},
+	"CompressingWorkMemSize" : "10K",
+	"MaxWritingSegmentSize" : "20K",
 	"TableIndex" : [
 		{ "fields": "id"  , "ordered" : true, "unique" : true },
 		{ "fields": "str0", "ordered" : true },
