@@ -11,6 +11,7 @@
 #include <string.h>
 #include "json.hpp"
 #include <boost/algorithm/string/join.hpp>
+//#include <boost/multiprecision/cpp_int.hpp>
 
 //#define TERARKDB_DEDUCE_DATETIME_COLUMN
 #ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
@@ -1313,6 +1314,7 @@ namespace {
 			colname2val["double"]  = ColumnType::Float64;
 			colname2val["float128"] = ColumnType::Float128;
 			colname2val["uuid"] = ColumnType::Uuid;
+			colname2val["guid"] = ColumnType::Uuid;
 			colname2val["fixed"] = ColumnType::Fixed;
 			colname2val["varsint"] = ColumnType::VarSint;
 			colname2val["varuint"] = ColumnType::VarUint;
@@ -1397,10 +1399,10 @@ int Schema::compareData(fstring x, fstring y) const {
 		case ColumnType::Sint64: CompareByType( int64_t);
 		case ColumnType::Uint128:
 			THROW_STD(invalid_argument, "Uint128 is not supported");
-		//	CompareByType(unsigned __int128);
+		//	CompareByType(boost::multiprecision::uint128_t);
 		case ColumnType::Sint128:
 			THROW_STD(invalid_argument, "Sint128 is not supported");
-		//	CompareByType(  signed __int128);
+		//	CompareByType(boost::multiprecision::int128_t);
 		case ColumnType::Float32: CompareByType(float);
 		case ColumnType::Float64: CompareByType(double);
 		case ColumnType::Float128: CompareByType(long double);
