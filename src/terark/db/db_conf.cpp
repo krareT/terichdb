@@ -2219,8 +2219,8 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
 					);
 	m_tableClass = getJsonValue(meta, "TableClass", std::string("DfaDbTable"));
-	const bool checkMongoType = getJsonValue(meta, "checkMongoType", false);
-	const bool checkMysqlType = getJsonValue(meta, "checkMysqlType", false);
+	const bool checkMongoType = getJsonValue(meta, "CheckMongoType", false);
+	const bool checkMysqlType = getJsonValue(meta, "CheckMysqlType", false);
 	const json& rowSchema = meta["RowSchema"];
 	const json& cols = rowSchema["columns"];
 	m_rowSchema.reset(new Schema());
