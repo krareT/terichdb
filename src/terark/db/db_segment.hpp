@@ -62,6 +62,7 @@ public:
 	void saveIsDel(PathRef segDir) const;
 	void loadIsDel(PathRef segDir);
 	byte*loadIsDel_aux(PathRef segDir, febitvec& isDel) const;
+	void closeIsDel();
 
 	void deleteSegment();
 

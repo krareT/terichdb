@@ -51,6 +51,16 @@ public:
 };
 typedef IncrementGuard<std::atomic_size_t> IncrementGuard_size_t;
 
+CompositeTable* CompositeTable::open(PathRef dbPath) {
+	fs::path jsonFile = dbPath / "dbmeta.json";
+	SchemaConfigPtr sconf = new SchemaConfig();
+	sconf->loadJsonFile(jsonFile.string());
+	std::unique_ptr<CompositeTable> tab(createTable(sconf->m_tableClass));
+	tab->m_schema = sconf;
+	tab->doLoad(dbPath);
+	return tab.release();
+}
+
 CompositeTable::CompositeTable() {
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
@@ -170,23 +180,9 @@ void CompositeTable::removeStaleDir(PathRef root, size_t inUseMergeSeq) const {
 	}
 }
 
-void CompositeTable::load(PathRef dir) {
-	if (!m_segments.empty()) {
-		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
-			long(m_segments.size()));
-	}
-	if (m_schema) {
-		THROW_STD(invalid_argument, "Invalid: schema.columnNum=%ld is not empty",
-			long(m_schema->columnNum()));
-	}
-	m_dir = dir;
-	{
-		fs::path jsonFile = fs::path(m_dir) / "dbmeta.json";
-		m_schema.reset(new SchemaConfig());
-		m_schema->loadJsonFile(jsonFile.string());
-	}
+void CompositeTable::discoverMergeDir(PathRef dir) {
 	long mergeSeq = -1;
-	for (auto& x : fs::directory_iterator(m_dir)) {
+	for (auto& x : fs::directory_iterator(dir)) {
 		fs::path    mergeDirPath = x.path();
 		std::string mergeDirName = mergeDirPath.filename().string();
 		long mergeSeq2 = -1;
@@ -205,7 +201,7 @@ void CompositeTable::load(PathRef dir) {
 				fs::remove_all(mergeDirPath);
 				fprintf(stderr
 					, "ERROR: merging is not completed: '%s'\n"
-					  "\tit should caused by a process crash, skipped and removed '%s'\n"
+					"\tit should caused by a process crash, skipped and removed '%s'\n"
 					, mergingLockFile.string().c_str()
 					, mergeDirPath.string().c_str()
 					);
@@ -219,13 +215,15 @@ void CompositeTable::load(PathRef dir) {
 	}
 	if (mergeSeq < 0) {
 		m_mergeSeqNum = 0;
-		fs::create_directories(getMergePath(m_dir, 0));
+		fs::create_directories(getMergePath(dir, 0));
 	}
 	else {
-		removeStaleDir(m_dir, mergeSeq);
+		removeStaleDir(dir, mergeSeq);
 		m_mergeSeqNum = mergeSeq;
 	}
-	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
+}
+
+static SortableStrVec getWorkingSegDirList(PathRef mergeDir) {
 	SortableStrVec segDirList;
 	for (auto& x : fs::directory_iterator(mergeDir)) {
 		std::string segDir = x.path().string();
@@ -236,7 +234,7 @@ void CompositeTable::load(PathRef dir) {
 			continue;
 		}
 		if (fstr.endsWith(".tmp")) {
-			fname.resize(fname.size()-4);
+			fname.resize(fname.size() - 4);
 			fstr = fname;
 			fs::path rightDir = mergeDir / fname;
 			fs::path backup = rightDir + ".backup-0";
@@ -258,11 +256,38 @@ void CompositeTable::load(PathRef dir) {
 		}
 		if (fstr.startsWith("wr-") || fstr.startsWith("rd-")) {
 			segDirList.push_back(fname);
-		} else {
+		}
+		else {
 			fprintf(stderr, "WARN: Skip unknown dir: %s\n", segDir.c_str());
 		}
 	}
 	segDirList.sort();
+	return segDirList;
+}
+
+void CompositeTable::load(PathRef dir) {
+	if (!m_segments.empty()) {
+		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
+			long(m_segments.size()));
+	}
+	if (m_schema) {
+		THROW_STD(invalid_argument, "Invalid: schema.columnNum=%ld is not empty",
+			long(m_schema->columnNum()));
+	}
+	{
+		fs::path jsonFile = fs::path(dir) / "dbmeta.json";
+		m_schema.reset(new SchemaConfig());
+		m_schema->loadJsonFile(jsonFile.string());
+	}
+	doLoad(dir);
+}
+
+void CompositeTable::doLoad(PathRef dir) {
+	assert(m_schema.get() != nullptr);
+	m_dir = dir;
+	discoverMergeDir(m_dir);
+	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
+	SortableStrVec segDirList = getWorkingSegDirList(mergeDir);
 	for (size_t i = 0; i < segDirList.size(); ++i) {
 		std::string fname = segDirList[i].str();
 		fs::path    segDir = mergeDir / fname;
@@ -296,6 +321,10 @@ void CompositeTable::load(PathRef dir) {
 			assert(seg);
 			fprintf(stdout, "INFO: loading segment: %s ... ", strDir.c_str());
 			fflush(stdout);
+			// If m_withPurgeBits is false, ReadonlySegment::load will
+			// delete purge bits and squeeze record id space tighter,
+			// so record id will be changed in this case
+			seg->m_withPurgeBits = m_schema->m_usePermanentRecordId;
 			seg->load(seg->m_segDir);
 			fprintf(stdout, "done!\n");
 		}
@@ -1352,7 +1381,8 @@ CompositeTable::updateColumn(llong recordId, size_t columnId,
 			);
 	}
 	memcpy(coldata, newColumnData.data(), newColumnData.size());
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1400,7 +1430,8 @@ CompositeTable::updateColumnInteger(llong recordId, size_t columnId,
 	case ColumnType::Float32: updateValueByOp<   float, llong>(*coldata, op); break;
 	case ColumnType::Float64: updateValueByOp<  double, llong>(*coldata, op); break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1438,7 +1469,8 @@ CompositeTable::updateColumnDouble(llong recordId, size_t columnId,
 	case ColumnType::Float32: updateValueByOp<   float, double>(*coldata, op); break;
 	case ColumnType::Float64: updateValueByOp<  double, double>(*coldata, op); break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1475,7 +1507,8 @@ CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 	case ColumnType::Float32: *(float *)coldata += incVal; break;
 	case ColumnType::Float64: *(double*)coldata += incVal; break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1511,7 +1544,8 @@ CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 	case ColumnType::Float32: *(float *)coldata += incVal; break;
 	case ColumnType::Float64: *(double*)coldata += incVal; break;
 	}
-	seg->addtoUpdateList(subId);
+	if (seg->m_isFreezed)
+		seg->addtoUpdateList(subId);
 }
 
 void
@@ -2364,7 +2398,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		assert(m_oldpurgeBits.empty());
 		assert(m_newpurgeBits.empty());
 		for (auto& e : *this) {
-			const ReadonlySegment* seg = e.seg;
+			ReadonlySegment* seg = e.seg;
 			size_t segRows = seg->m_isDel.size();
 			if (seg->m_isPurged.empty()) {
 				m_oldpurgeBits.grow(segRows, false);
@@ -2372,6 +2406,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 			else {
 				m_oldpurgeBits.append(seg->m_isPurged);
 			}
+			seg->m_bookUpdates = true;
 			e.newIsPurged = seg->m_isDel;
 			e.newNumPurged = e.newIsPurged.popcnt();
 			e.oldNumPurged = seg->m_isPurged.max_rank1();
@@ -2778,6 +2813,7 @@ try{
 	dseg->m_isDel.reserve(toMerge.m_newSegRows);
 	for (auto& e : toMerge) {
 		dseg->m_isDel.append(e.seg->m_isDel);
+		assert(e.seg->m_bookUpdates);
 	}
 	assert(dseg->m_isDel.size() == toMerge.m_newSegRows);
 	dseg->m_delcnt = dseg->m_isDel.popcnt();
@@ -2811,6 +2847,7 @@ try{
 			e.files.push_back(fpath.path().filename().string());
 		}
 		e.files.sort();
+		assert(e.seg->m_bookUpdates);
 	}
 	for (size_t i = indexNum; i < colgroupNum; ++i) {
 		const Schema& schema = m_schema->getColgroupSchema(i);
@@ -2852,13 +2889,11 @@ try{
 		}
 	}
 
-	if (toMerge.needsPurgeBits()) {
+	if (toMerge.needsPurgeBits() || dseg->m_isDel.empty()) {
 		if (dseg->m_isPurged.max_rank1() == dseg->m_isPurged.size()) {
-			for (size_t cgId = indexNum; cgId < colgroupNum; ++cgId) {
-				auto emptyStore = new EmptyIndexStore();
-				dseg->m_colgroups[cgId] = emptyStore;
-				emptyStore->save(destSegDir);
-			}
+			ReadableStorePtr store = new EmptyIndexStore();
+			dseg->m_colgroups.fill(indexNum, colgroupNum-indexNum, store);
+			dseg->saveRecordStore(destSegDir);
 		}
 	}
 
@@ -2964,6 +2999,7 @@ try{
 		DebugCheckRowNumVecNoLock(this);
 		for (auto& e : toMerge) {
 			ReadableSegment* sseg = e.seg;
+			assert(sseg->m_bookUpdates);
 			assert(e.updateBits.empty());
 			assert(e.updateList.empty());
 			SpinRwLock segLock(sseg->m_segMutex, true);

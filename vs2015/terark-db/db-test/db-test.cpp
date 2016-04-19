@@ -6,6 +6,7 @@
 #include <terark/io/DataIO.hpp>
 #include <terark/io/MemStream.hpp>
 #include <terark/io/RangeStream.hpp>
+#include <terark/num_to_str.hpp>
 
 struct TestRow {
 	uint64_t id;
@@ -33,11 +34,10 @@ struct TestRow {
 
 using namespace terark::db;
 
-void doTest(terark::fstring tableClass, PathRef tableDir, size_t maxRowNum) {
+void doTest(const char* tableDir, size_t maxRowNum) {
 	using namespace terark;
-	CompositeTablePtr tab = CompositeTable::createTable(tableClass);
-	tab->load(tableDir);
-	DbContextPtr ctx(tab->createDbContext());
+	CompositeTablePtr tab = CompositeTable::open(tableDir);
+	DbContextPtr ctx = tab->createDbContext();
 
 	valvec<byte> recBuf;
 	NativeDataOutput<AutoGrownMemIO> rowBuilder;
@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
 	}
 	size_t maxRowNum = (size_t)strtoull(argv[1], NULL, 10);
 //	doTest("MockCompositeTable", "db1", maxRowNum);
-	doTest("DfaDbTable", "dfadb", maxRowNum);
+	doTest("dfadb", maxRowNum);
 	CompositeTable::safeStopAndWaitForCompress();
     return 0;
 }

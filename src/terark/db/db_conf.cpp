@@ -11,6 +11,7 @@
 #include <string.h>
 #include "json.hpp"
 #include <boost/algorithm/string/join.hpp>
+//#include <boost/multiprecision/cpp_int.hpp>
 
 //#define TERARKDB_DEDUCE_DATETIME_COLUMN
 #ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
@@ -1282,6 +1283,21 @@ namespace {
 			auto& colname2val = *this;
 			colname2val["any"] = ColumnType::Any;
 			colname2val["anytype"] = ColumnType::Any;
+
+			colname2val["int8"] = ColumnType::Sint08;
+			colname2val["int08"] = ColumnType::Sint08;
+			colname2val["int16"] = ColumnType::Sint16;
+			colname2val["int32"] = ColumnType::Sint32;
+			colname2val["int64"] = ColumnType::Sint64;
+			colname2val["int128"] = ColumnType::Sint128;
+
+			colname2val["byte"] = ColumnType::Uint08;
+			colname2val["ubyte"] = ColumnType::Uint08;
+			colname2val["sbyte"] = ColumnType::Sint08;
+
+			colname2val["uint8"] = ColumnType::Uint08;
+			colname2val["sint8"] = ColumnType::Sint08;
+
 			colname2val["uint08"] = ColumnType::Uint08;
 			colname2val["sint08"] = ColumnType::Sint08;
 			colname2val["uint16"] = ColumnType::Uint16;
@@ -1298,6 +1314,7 @@ namespace {
 			colname2val["double"]  = ColumnType::Float64;
 			colname2val["float128"] = ColumnType::Float128;
 			colname2val["uuid"] = ColumnType::Uuid;
+			colname2val["guid"] = ColumnType::Uuid;
 			colname2val["fixed"] = ColumnType::Fixed;
 			colname2val["varsint"] = ColumnType::VarSint;
 			colname2val["varuint"] = ColumnType::VarUint;
@@ -1382,10 +1399,10 @@ int Schema::compareData(fstring x, fstring y) const {
 		case ColumnType::Sint64: CompareByType( int64_t);
 		case ColumnType::Uint128:
 			THROW_STD(invalid_argument, "Uint128 is not supported");
-		//	CompareByType(unsigned __int128);
+		//	CompareByType(boost::multiprecision::uint128_t);
 		case ColumnType::Sint128:
 			THROW_STD(invalid_argument, "Sint128 is not supported");
-		//	CompareByType(  signed __int128);
+		//	CompareByType(boost::multiprecision::int128_t);
 		case ColumnType::Float32: CompareByType(float);
 		case ColumnType::Float64: CompareByType(double);
 		case ColumnType::Float128: CompareByType(long double);
@@ -1727,6 +1744,7 @@ SchemaConfig::SchemaConfig() {
 	m_maxWritingSegmentSize = DEFAULT_maxWritingSegmentSize;
 	m_minMergeSegNum = DEFAULT_minMergeSegNum;
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
+	m_usePermanentRecordId = false;
 }
 SchemaConfig::~SchemaConfig() {
 }
@@ -2067,7 +2085,7 @@ getMongoTypeDefault(const std::string& colname, const ColumnMeta& colmeta) {
 	case ColumnType::Uint32:
 	case ColumnType::Sint32:
 #ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
-		if (0 && re2::RE2::FullMatch(colname, datetimeRegex)) {
+		if (re2::RE2::FullMatch(colname, datetimeRegex)) {
 			return MongoBson::Date;
 		}
 #endif
@@ -2075,7 +2093,7 @@ getMongoTypeDefault(const std::string& colname, const ColumnMeta& colmeta) {
 	case ColumnType::Uint64:
 	case ColumnType::Sint64:
 #ifdef TERARKDB_DEDUCE_DATETIME_COLUMN
-		if (0 && re2::RE2::FullMatch(colname, datetimeRegex)) {
+		if (re2::RE2::FullMatch(colname, datetimeRegex)) {
 			return MongoBson::bsonTimestamp;
 		}
 #endif
@@ -2107,6 +2125,7 @@ getMongoTypeDefault(const std::string& colname, const ColumnMeta& colmeta) {
 	case ColumnType::CarBin: // Prefixed by uint32 len
 		return MongoBson::Object;
 	}
+	abort(); // should not goes here
 	return -1;
 }
 
@@ -2217,8 +2236,9 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 					// UTF8 BOM Check, fixed in nlohmann::json
 					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
 					);
-	const bool checkMongoType = getJsonValue(meta, "checkMongoType", false);
-	const bool checkMysqlType = getJsonValue(meta, "checkMysqlType", false);
+	m_tableClass = getJsonValue(meta, "TableClass", std::string("DfaDbTable"));
+	const bool checkMongoType = getJsonValue(meta, "CheckMongoType", false);
+	const bool checkMysqlType = getJsonValue(meta, "CheckMysqlType", false);
 	const json& rowSchema = meta["RowSchema"];
 	const json& cols = rowSchema["columns"];
 	m_rowSchema.reset(new Schema());
@@ -2352,6 +2372,9 @@ if (colgroupsIter != meta.end()) {
 		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
 	m_purgeDeleteThreshold = getJsonValue(
 		meta, "PurgeDeleteThreshold", DEFAULT_purgeDeleteThreshold);
+
+	// PermanentRecordId means record id will not be changed by table reload
+	m_usePermanentRecordId = getJsonValue(meta, "UsePermanentRecordId", false);
 
 	const json& tableIndex = meta["TableIndex"];
 	if (!tableIndex.is_array()) {

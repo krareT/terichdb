@@ -50,9 +50,7 @@ ReadableSegment::ReadableSegment() {
 }
 ReadableSegment::~ReadableSegment() {
 	if (m_isDelMmap) {
-		size_t bitBytes = m_isDel.capacity()/8;
-		mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);
-		m_isDel.risk_release_ownership();
+		closeIsDel();
 	}
 	else if (m_isDirty && !m_tobeDel && !m_segDir.empty()) {
 		saveIsDel(m_segDir);
@@ -131,6 +129,18 @@ byte* ReadableSegment::loadIsDel_aux(PathRef segDir, febitvec& isDel) const {
 	assert(isDel.size() >= rowNum);
 	isDel.risk_set_size(size_t(rowNum));
 	return isDelMmap;
+}
+
+void ReadableSegment::closeIsDel() {
+	if (m_isDelMmap) {
+		size_t bitBytes = m_isDel.capacity()/8;
+		mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);
+		m_isDel.risk_release_ownership();
+		m_isDelMmap = NULL;
+	}
+	else {
+		m_isDel.clear();
+	}
 }
 
 void ReadableSegment::openIndices(PathRef segDir) {
@@ -1118,7 +1128,7 @@ void ReadonlySegment::load(PathRef segDir) {
 }
 
 void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
-	assert(m_isDel.size() > 0);
+//	assert(m_isDel.size() > 0);
 	assert(m_isDelMmap != NULL);
 	assert(m_isPurgedMmap == NULL);
 	assert(m_isPurged.empty());
@@ -1126,10 +1136,21 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 	if (!fs::exists(purgeFpath)) {
 		return;
 	}
+	fs::path formalFile = segDir / "IsDel";
+	fs::path backupFile = segDir / "IsDel.backup";
 	size_t isPurgedMmapBytes = 0;
 	m_isPurgedMmap = (byte*)mmap_load(purgeFpath.string(), &isPurgedMmapBytes);
 	m_isPurged.risk_mmap_from(m_isPurgedMmap, isPurgedMmapBytes);
-	assert(m_isPurged.size() == m_isDel.size());
+	if (m_isDel.size() != m_isPurged.size()) {
+		assert(m_isDel.size() < m_isPurged.size());
+		// maybe last calling of this function was interupted
+		if (fs::exists(backupFile)) {
+			closeIsDel();
+			fs::remove(formalFile);
+			fs::rename(backupFile, formalFile);
+			loadIsDel(segDir);
+		}
+	}
 //	assert(m_withPurgeBits); // for self test debug
 	if (m_withPurgeBits) {
 		// logical record id will be m_isPurged.select0(physical id)
@@ -1151,12 +1172,10 @@ void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
 		}
 	}
 	assert(newId == newRows);
-	fs::path formalFile = segDir / "IsDel";
-	fs::path backupFile = segDir / "IsDel.backup";
+	closeIsDel();
 	fs::rename(formalFile, backupFile);
-	m_isDel.risk_release_ownership(); // by mmap
-	m_isDelMmap = NULL;
 	m_isDel.swap(newIsDel);
+	m_delcnt = m_isDel.popcnt();
 	try {
 		saveIsDel(segDir);
 	}
@@ -1370,9 +1389,7 @@ void WritableSegment::pushIsDel(bool val) {
 		size_t oldsize = m_isDel.size();
 #endif
 		size_t newCap = ((64+m_isDel.size()+2*ChunkBits-1) & ~(ChunkBits-1));
-		mmap_close(m_isDelMmap, sizeof(uint64_t) + m_isDel.mem_size());
-		m_isDelMmap = nullptr;
-		m_isDel.risk_release_ownership();
+		closeIsDel();
 		std::string fpath = (m_segDir / "isDel").string();
 		truncate_file(fpath, newCap/8);
 		m_isDelMmap = loadIsDel_aux(m_segDir, m_isDel);

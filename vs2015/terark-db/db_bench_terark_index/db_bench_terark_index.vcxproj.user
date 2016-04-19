@@ -5,7 +5,7 @@
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments> --benchmarks=readwhilewriting --value_size=128 --num=100000 --reads=200000 --sync_index=1 --threads=4 --db=data</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--benchmarks=readwhilewriting --value_size=128 --num=1000000 --reads=2000000 --sync_index=1 --threads=1 --db=data --read_ratio=70</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerEnvironment>PATH=C:\osc\wiredtiger-2.7.0;C:\osc\tbb\build\vs2010\intel64\Debug-MT;</LocalDebuggerEnvironment>
   </PropertyGroup>

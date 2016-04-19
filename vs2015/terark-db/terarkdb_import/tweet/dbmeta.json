@@ -30,8 +30,8 @@
 			"text8": { "type" : "strzero"  }
 		}
 	},
-	"ReadonlyDataMemSize" : 200111222,
-	"MaxWrSegSize" : 2111222333,
+	"CompressingWorkMemSize" : "200M",
+	"MaxWritingSegmentSize" : "2G",
 	"TableIndex" : [
 		{ "fields": "_id"  , "ordered" : true, "unique" : false }
 	]

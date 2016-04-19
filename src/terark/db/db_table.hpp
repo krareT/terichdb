@@ -43,6 +43,8 @@ public:
 
 	static CompositeTable* createTable(fstring tableClass);
 
+	static CompositeTable* open(PathRef dbPath);
+
 	virtual void init(PathRef dir, SchemaConfigPtr);
 
 	void load(PathRef dir) override;
@@ -83,6 +85,12 @@ public:
 	void incrementColumnValue(llong recordId, size_t columnId, double incVal, DbContext* = NULL);
 	void incrementColumnValue(llong recordId, fstring colname, double incVal, DbContext* = NULL);
 
+	size_t getColumnId(fstring colname) const {
+		return m_schema->m_rowSchema->getColumnId(colname);
+	}
+	size_t getColumnNum() const {
+		return m_schema->m_rowSchema->columnNum();
+	}
 	const Schema& rowSchema() const { return *m_schema->m_rowSchema; }
 	const Schema& getIndexSchema(size_t indexId) const {
 		assert(indexId < m_schema->getIndexNum());
@@ -124,7 +132,6 @@ public:
 	IndexIteratorPtr createIndexIterBackward(fstring indexCols) const;
 
 	valvec<size_t> getProjectColumns(const hash_strmap<>& colnames) const;
-//	valvec<size_t> getProjectColumns(const Schema&) const;
 
 	void selectColumns(llong id, const valvec<size_t>& cols,
 					   valvec<byte>* colsData, DbContext*) const;
@@ -203,6 +210,8 @@ public:
 protected:
 	static void registerTableClass(fstring tableClass, std::function<CompositeTable*()> tableFactory);
 
+	void doLoad(PathRef dir);
+
 	class MergeParam; friend class MergeParam;
 	void merge(MergeParam&);
 	void checkRowNumVecNoLock() const;
@@ -221,6 +230,7 @@ protected:
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
 	boost::filesystem::path getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx) const;
 	void removeStaleDir(PathRef dir, size_t inUseMergeSeq) const;
+	void discoverMergeDir(PathRef dir);
 
 	virtual ReadonlySegment* createReadonlySegment(PathRef segDir) const = 0;
 	virtual WritableSegment* createWritableSegment(PathRef segDir) const = 0;
