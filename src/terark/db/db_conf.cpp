@@ -1282,6 +1282,21 @@ namespace {
 			auto& colname2val = *this;
 			colname2val["any"] = ColumnType::Any;
 			colname2val["anytype"] = ColumnType::Any;
+
+			colname2val["int8"] = ColumnType::Sint08;
+			colname2val["int08"] = ColumnType::Sint08;
+			colname2val["int16"] = ColumnType::Sint16;
+			colname2val["int32"] = ColumnType::Sint32;
+			colname2val["int64"] = ColumnType::Sint64;
+			colname2val["int128"] = ColumnType::Sint128;
+
+			colname2val["byte"] = ColumnType::Uint08;
+			colname2val["ubyte"] = ColumnType::Uint08;
+			colname2val["sbyte"] = ColumnType::Sint08;
+
+			colname2val["uint8"] = ColumnType::Uint08;
+			colname2val["sint8"] = ColumnType::Sint08;
+
 			colname2val["uint08"] = ColumnType::Uint08;
 			colname2val["sint08"] = ColumnType::Sint08;
 			colname2val["uint16"] = ColumnType::Uint16;
