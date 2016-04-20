@@ -2,6 +2,7 @@
 #include <terark/io/FileStream.hpp>
 #include <terark/io/StreamBuffer.hpp>
 #include <terark/io/DataIO.hpp>
+#include <terark/num_to_str.hpp>
 #include <terark/util/sortable_strvec.hpp>
 #include <mutex>
 
