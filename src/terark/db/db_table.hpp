@@ -7,6 +7,14 @@
 //#include <tbb/spin_rw_mutex.h>
 #include <atomic>
 
+#if defined(TBB_VERSION_MAJOR)
+	#if TBB_VERSION_MAJOR * 1000 + TBB_VERSION_MINOR < 4004
+		#error tbb(thread building block) version must >= 4.4
+	#endif
+#else
+	#error not found tbb(thread building block) headers
+#endif
+
 namespace terark {
 	class BaseDFA; // forward declaration
 } // namespace terark
