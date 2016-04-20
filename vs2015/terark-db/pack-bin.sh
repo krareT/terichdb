@@ -11,7 +11,10 @@ mkdir -p ${TarBall}/include/terark/io
 mkdir -p ${TarBall}/include/terark/thread
 mkdir -p ${TarBall}/include/terark/util
 
-cp x64/Release/*.dll                         ${TarBall}/lib
+cp x64/Release/terark*.dll                   ${TarBall}/lib
+cp x64/Release/terark*.lib                   ${TarBall}/lib
+#cp ../../../terark/vs2015/terark-fsa/x64/Release/*.dll  ${TarBall}/lib
+#cp ../../../terark/vs2015/terark-fsa/x64/Release/*.lib  ${TarBall}/lib
 cp x64/Release/terark-db-schema-compile.exe  ${TarBall}/bin
 cp ../../src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 cp ../../src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
