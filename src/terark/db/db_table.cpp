@@ -1695,7 +1695,7 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 }
 
 bool
-CompositeTable::indexReplace(size_t indexId, fstring indexKey,
+CompositeTable::indexUpdate(size_t indexId, fstring indexKey,
 							 llong oldId, llong newId,
 							 DbContext* txn)
 {
