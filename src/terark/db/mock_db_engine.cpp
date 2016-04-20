@@ -899,24 +899,24 @@ MockDbContext::MockDbContext(const CompositeTable* tab) : DbContext(tab) {
 MockDbContext::~MockDbContext() {
 }
 
-DbContext* MockCompositeTable::createDbContextNoLock() const {
+DbContext* MockDbTable::createDbContextNoLock() const {
 	return new MockDbContext(this);
 }
 
 ReadonlySegment*
-MockCompositeTable::createReadonlySegment(PathRef dir) const {
+MockDbTable::createReadonlySegment(PathRef dir) const {
 	std::unique_ptr<MockReadonlySegment> seg(new MockReadonlySegment());
 	return seg.release();
 }
 
 WritableSegment*
-MockCompositeTable::createWritableSegment(PathRef dir) const {
+MockDbTable::createWritableSegment(PathRef dir) const {
 	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment(dir));
 	return seg.release();
 }
 
 WritableSegment*
-MockCompositeTable::openWritableSegment(PathRef dir) const {
+MockDbTable::openWritableSegment(PathRef dir) const {
 	auto isDelPath = dir / "isDel";
 	if (boost::filesystem::exists(isDelPath)) {
 		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
@@ -929,6 +929,6 @@ MockCompositeTable::openWritableSegment(PathRef dir) const {
 	}
 }
 
-TERARK_DB_REGISTER_TABLE_CLASS(MockCompositeTable);
+TERARK_DB_REGISTER_TABLE_CLASS(MockDbTable);
 
 } } // namespace terark::db

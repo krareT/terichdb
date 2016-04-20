@@ -145,7 +145,7 @@ public:
 	explicit MockDbContext(const CompositeTable* tab);
 	~MockDbContext();
 };
-class TERARK_DB_DLL MockCompositeTable : public CompositeTable {
+class TERARK_DB_DLL MockDbTable : public CompositeTable {
 public:
 	DbContext* createDbContextNoLock() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;
