@@ -128,6 +128,8 @@ protected:
 
 	ReadableIndex* buildIndex(const Schema&, SortableStrVec& indexData) const override;
 	ReadableStore* buildStore(const Schema&, SortableStrVec& storeData) const override;
+	ReadableStore* buildDictZipStore(const Schema&, PathRef, StoreIterator& iter,
+					  const bm_uint_t* isDel, const febitvec* isPurged) const override;
 };
 
 class TERARK_DB_DLL MockWritableSegment : public PlainWritableSegment {

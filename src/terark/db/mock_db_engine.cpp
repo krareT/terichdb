@@ -3,6 +3,7 @@
 #include <terark/io/StreamBuffer.hpp>
 #include <terark/io/DataIO.hpp>
 #include <terark/util/sortable_strvec.hpp>
+#include <mutex>
 
 namespace terark { namespace db {
 
@@ -38,11 +39,11 @@ const {
 	}
 }
 StoreIterator* MockReadonlyStore::createStoreIterForward(DbContext*) const {
-	assert(0); // should not be called
+	// return nullptr indicate use default iter
 	return nullptr;
 }
 StoreIterator* MockReadonlyStore::createStoreIterBackward(DbContext*) const {
-	assert(0); // should not be called
+	// return nullptr indicate use default iter
 	return nullptr;
 }
 
@@ -435,13 +436,13 @@ const {
 	if (f) {
 		auto sp = m_keys.strpool.data();
 		size_t i = lower;
-		while (i < m_ids.size() && memcmp(key.p, sp + f*i, f) == 0) {
+		while (i < m_ids.size() && memcmp(key.p, sp + f*m_ids[i], f) == 0) {
 			recIdvec->push_back(m_ids[i]);
 			i++;
 		}
 	}
 	else {
-		for (size_t i = lower; i < m_ids.size() && m_keys[i] == key; ++i) {
+		for (size_t i = lower; i < m_ids.size() && m_keys[m_ids[i]] == key; ++i) {
 			recIdvec->push_back(m_ids[i]);
 		}
 	}
@@ -477,18 +478,29 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WrStore*>(m_store.get());
-		if (m_id < store->m_rows.size()) {
-			*id = m_id;
-			*val = store->m_rows[m_id];
-			m_id++;
-			return true;
+		size_t rowNum = store->m_rows.size();
+		while (m_id < rowNum) {
+			size_t k = m_id++;
+			if (!store->m_rows[k].empty()) {
+				*id = k;
+				*val = store->m_rows[k];
+				return true;
+			}
 		}
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		m_id = id;
-		llong id2 = -1;
-		return increment(&id2, val);
+		auto store = static_cast<WrStore*>(m_store.get());
+		if (id < 0 || id >= llong(store->m_rows.size())) {
+			THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+				, id, store->m_rows.size());
+		}
+		if (!store->m_rows[id].empty()) {
+			*val = store->m_rows[id];
+			m_id = id + 1;
+			return true;
+		}
+		return false;
 	}
 	void reset() override {
 		m_id = 0;
@@ -504,17 +516,28 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WrStore*>(m_store.get());
-		if (m_id > 0) {
-			*id = --m_id;
-			*val = store->m_rows[m_id];
-			return true;
+		while (m_id > 0) {
+			size_t k = --m_id;
+			if (!store->m_rows[k].empty()) {
+				*id = k;
+				*val = store->m_rows[k];
+				return true;
+			}
 		}
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		m_id = id + 1;
-		llong id2 = -1;
-		return increment(&id2, val);
+		auto store = static_cast<WrStore*>(m_store.get());
+		if (id < 0 || id >= llong(store->m_rows.size())) {
+			THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+				, id, store->m_rows.size());
+		}
+		if (!store->m_rows[id].empty()) {
+			*val = store->m_rows[id];
+			m_id = id;
+			return true;
+		}
+		return false;
 	}
 	void reset() override {
 		m_id = m_store->numDataRows();
@@ -843,11 +866,44 @@ const {
 	}
 	return store.release();
 }
+ReadableStore*
+MockReadonlySegment::
+buildDictZipStore(const Schema& schema, PathRef, StoreIterator& iter,
+				  const bm_uint_t* isDel, const febitvec* isPurged) const {
+	valvec<byte> rec;
+	std::unique_ptr<MockReadonlyStore> store(new MockReadonlyStore(schema));
+	if (NULL == isPurged || isPurged->size() == 0) {
+		llong recId;
+		while (iter.increment(&recId, &rec)) {
+			if (NULL == isDel || !terark_bit_test(isDel, recId)) {
+				store->m_rows.push_back(rec);
+			}
+		}
+	}
+	else {
+		assert(NULL != isDel);
+		llong  physicId = 0;
+		size_t logicNum = isPurged->size();
+		const bm_uint_t* isPurgedptr = isPurged->bldata();
+		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
+			if (!terark_bit_test(isPurgedptr, logicId)) {
+				if (!terark_bit_test(isDel, logicId)) {
+					bool hasData = iter.seekExact(physicId, &rec);
+					TERARK_RT_assert(hasData, std::logic_error);
+					store->m_rows.push_back(rec);
+				}
+				physicId++;
+			}
+		}
+	}
+	return store.release();
+}
 
 ///////////////////////////////////////////////////////////////////////////
 MockWritableSegment::MockWritableSegment(PathRef dir) {
 	m_segDir = dir;
 	m_wrtStore = new MockWritableStore();
+	m_hasLockFreePointSearch = true;
 }
 MockWritableSegment::~MockWritableSegment() {
 	if (!m_tobeDel && !m_isDel.empty())
@@ -855,9 +911,112 @@ MockWritableSegment::~MockWritableSegment() {
 	m_wrtStore.reset();
 }
 
+class MutexLockTransaction : public DbTransaction {
+	const SchemaConfig& m_sconf;
+	WritableSegment*    m_seg;
+	DbContextPtr        m_ctx;
+	std::mutex          m_txnMutex;
+	enum Status { started, committed, rollbacked } m_stat;
+public:
+	explicit
+	MutexLockTransaction(WritableSegment* seg) : m_sconf(*seg->m_schema) {
+		m_seg = seg;
+	//	m_ctx = new DbContext();
+		m_stat = committed;
+	}
+	~MutexLockTransaction() {
+		assert(committed == m_stat || rollbacked == m_stat);
+	}
+	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec)
+	override {
+		auto index = m_seg->m_indices[indexId].get();
+		index->searchExact(key, recIdvec, m_ctx.get());
+	}
+	void indexRemove(size_t indexId, fstring key, llong recId) override {
+		auto index = m_seg->m_indices[indexId].get();
+		auto wrIndex = index->getWritableIndex();
+		wrIndex->remove(key, recId, m_ctx.get());
+	}
+	bool indexInsert(size_t indexId, fstring key, llong recId) override {
+		auto index = m_seg->m_indices[indexId].get();
+		auto wrIndex = index->getWritableIndex();
+		return wrIndex->insert(key, recId, m_ctx.get());
+	}
+	void indexUpsert(size_t indexId, fstring key, llong recId) override {
+		auto index = m_seg->m_indices[indexId].get();
+		auto wrIndex = index->getWritableIndex();
+		wrIndex->insert(key, recId, m_ctx.get());
+	}
+	void storeRemove(llong recId) override {
+		auto wrtStore = m_seg->m_wrtStore->getWritableStore();
+		wrtStore->remove(recId, m_ctx.get());
+	}
+	void storeUpsert(llong recId, fstring row) override {
+		auto wrtStore = m_seg->m_wrtStore->getWritableStore();
+		if (m_sconf.m_updatableColgroups.empty()) {
+			wrtStore->update(recId, row, m_ctx.get());
+		}
+		else {
+			auto& sconf = m_sconf;
+			auto seg = m_seg;
+			sconf.m_rowSchema->parseRow(row, &m_cols1);
+			SpinRwLock lock(m_seg->m_segMutex);
+			for (size_t colgroupId : sconf.m_updatableColgroups) {
+				auto store = seg->m_colgroups[colgroupId]->getUpdatableStore();
+				assert(nullptr != store);
+				const Schema& schema = sconf.getColgroupSchema(colgroupId);
+				schema.selectParent(m_cols1, &m_wrtBuf);
+				store->update(recId, m_wrtBuf, NULL);
+			}
+			sconf.m_wrtSchema->selectParent(m_cols1, &m_wrtBuf);
+			wrtStore->update(recId, m_wrtBuf, m_ctx.get());
+		}
+	}
+	void storeGetRow(llong recId, valvec<byte>* row) override {
+		auto seg = m_seg;		
+		if (m_sconf.m_updatableColgroups.empty()) {
+			seg->m_wrtStore->getValue(recId, row, m_ctx.get());
+		}
+		else {
+			row->erase_all();
+			m_cols1.erase_all();
+			seg->m_wrtStore->getValue(recId, &m_wrtBuf, m_ctx.get());
+			const size_t ProtectCnt = 100;
+			if (seg->m_isFreezed || seg->m_isDel.unused() > ProtectCnt) {
+				seg->getCombineAppend(recId, row, m_wrtBuf, m_cols1, m_cols2);
+			}
+			else {
+				SpinRwLock  lock(seg->m_segMutex, false);
+				seg->getCombineAppend(recId, row, m_wrtBuf, m_cols1, m_cols2);
+			}
+		}
+	}
+	void startTransaction() override {
+		m_stat = started;
+		m_txnMutex.lock();
+	}
+	bool commit() override {
+		assert(started == m_stat);
+		m_stat = committed;
+		m_txnMutex.unlock();
+		return true;
+	}
+	void rollback() override {
+		assert(started == m_stat);
+		m_stat = rollbacked;
+		m_txnMutex.unlock();
+	}
+	const std::string& strError() const override { return m_strError; }
+
+	valvec<byte> m_wrtBuf;
+	ColumnVec    m_cols1;
+	ColumnVec    m_cols2;
+	std::string  m_strError;
+};
+
 DbTransaction* MockWritableSegment::createTransaction() {
-	assert(0);
-	return NULL;
+	auto txn = new MutexLockTransaction(this);
+	return txn;
 }
 
 ReadableIndex*
