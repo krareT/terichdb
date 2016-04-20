@@ -31,7 +31,7 @@
 			);
 	}
 
-	MyRwLock lock(m_rwMutex, true);
+	MyRwLock lock(m_rwMutex, false);
 	DebugCheckRowNumVecNoLock(this);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	assert(recordId < m_rowNumVec.back());
