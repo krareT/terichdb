@@ -121,7 +121,7 @@ public:
 
 	bool indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
-	bool indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);
+	bool indexUpdate(size_t indexId, fstring indexKey, llong oldId, llong newId, DbContext*);
 
 	llong indexStorageSize(size_t indexId) const;
 
@@ -339,9 +339,9 @@ void DbContext::indexRemove(size_t indexId, fstring indexKey, llong id) {
 }
 inline
 void
-DbContext::indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId) {
+DbContext::indexUpdate(size_t indexId, fstring indexKey, llong oldId, llong newId) {
 	assert(this != nullptr);
-	m_tab->indexReplace(indexId, indexKey, oldId, newId, this);
+	m_tab->indexUpdate(indexId, indexKey, oldId, newId, this);
 }
 inline void
 DbContext::indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec) {

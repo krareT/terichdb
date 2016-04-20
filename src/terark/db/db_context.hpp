@@ -49,7 +49,7 @@ public:
 
 	void indexInsert(size_t indexId, fstring indexKey, llong id);
 	void indexRemove(size_t indexId, fstring indexKey, llong id);
-	void indexReplace(size_t indexId, fstring indexKey, llong oldId, llong newId);
+	void indexUpdate(size_t indexId, fstring indexKey, llong oldId, llong newId);
 
 	void indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec);
 	bool indexKeyExists(size_t indexId, fstring key);
