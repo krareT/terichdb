@@ -96,17 +96,22 @@ CompositeTable::~CompositeTable() {
 }
 
 // msvc std::function is not memmovable, use SafeCopy
-static
+typedef
 hash_strmap < std::function<CompositeTable*()>
 			, fstring_func::hash_align
 			, fstring_func::equal_align
 			, ValueInline, SafeCopy
 			>
-s_tableFactory;
+TableFactoryType;
+static TableFactoryType s_getTableFactory() {
+	static TableFactoryType	instance;
+	return instance;
+}
+
 CompositeTable::RegisterTableClass::RegisterTableClass
 (fstring tableClass, const std::function<CompositeTable*()>& f)
 {
-	auto ib = s_tableFactory.insert_i(tableClass, f);
+	auto ib = s_getTableFactory().insert_i(tableClass, f);
 	assert(ib.second);
 	if (!ib.second) {
 		THROW_STD(invalid_argument, "duplicate suffix: %.*s",
@@ -115,6 +120,7 @@ CompositeTable::RegisterTableClass::RegisterTableClass
 }
 
 CompositeTable* CompositeTable::createTable(fstring tableClass) {
+	auto& s_tableFactory = s_getTableFactory();
 	size_t idx = s_tableFactory.find_i(tableClass);
 	if (idx >= s_tableFactory.end_i()) {
 		THROW_STD(invalid_argument, "tableClass = '%.*s' is not registered",
