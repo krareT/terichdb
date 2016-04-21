@@ -31,4 +31,6 @@ TerarkDB is:
 
 
 ## License
-TerarkDB follows [AGPL](http://www.affero.org/oagpl.html), if you want to use it for commercial purpose, please [contact us](http://www.terark.com).
+TerarkDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
+
+For commercial purposes, please  [contact us](http://www.terark.com).
