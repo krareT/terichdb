@@ -1,5 +1,5 @@
 ## TerarkDB
-TerarkDB is an open source NOSQL data store based on terark storage engine.
+TerarkDB is an open source NoSQL data store based on terark storage engine.
 
 TerarkDB is:
 
