@@ -7,6 +7,7 @@
 #include <terark/pass_by_value.hpp>
 #include <terark/util/refcount.hpp>
 #include <boost/intrusive_ptr.hpp>
+#include <boost/version.hpp>
 
 #if defined(_MSC_VER)
 
@@ -35,6 +36,10 @@
 #  define TERARK_DB_DLL
 
 #endif /* _MSC_VER */
+
+#if BOOST_VERSION < 106000
+	#error boost version must >= 1.6
+#endif
 
 #define TERARK_DB_NON_COPYABLE_CLASS(Class) \
 	Class(const Class&) = delete; \

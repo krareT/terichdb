@@ -96,17 +96,22 @@ CompositeTable::~CompositeTable() {
 }
 
 // msvc std::function is not memmovable, use SafeCopy
-static
+typedef
 hash_strmap < std::function<CompositeTable*()>
 			, fstring_func::hash_align
 			, fstring_func::equal_align
 			, ValueInline, SafeCopy
 			>
-s_tableFactory;
+TableFactoryType;
+static TableFactoryType s_getTableFactory() {
+	static TableFactoryType	instance;
+	return instance;
+}
+
 CompositeTable::RegisterTableClass::RegisterTableClass
 (fstring tableClass, const std::function<CompositeTable*()>& f)
 {
-	auto ib = s_tableFactory.insert_i(tableClass, f);
+	auto ib = s_getTableFactory().insert_i(tableClass, f);
 	assert(ib.second);
 	if (!ib.second) {
 		THROW_STD(invalid_argument, "duplicate suffix: %.*s",
@@ -115,6 +120,7 @@ CompositeTable::RegisterTableClass::RegisterTableClass
 }
 
 CompositeTable* CompositeTable::createTable(fstring tableClass) {
+	auto& s_tableFactory = s_getTableFactory();
 	size_t idx = s_tableFactory.find_i(tableClass);
 	if (idx >= s_tableFactory.end_i()) {
 		THROW_STD(invalid_argument, "tableClass = '%.*s' is not registered",
@@ -1380,6 +1386,7 @@ CompositeTable::updateColumn(llong recordId, size_t columnId,
 			, newColumnData.size()
 			);
 	}
+	SpinRwLock segLock(seg->m_segMutex);
 	memcpy(coldata, newColumnData.data(), newColumnData.size());
 	if (seg->m_isFreezed)
 		seg->addtoUpdateList(subId);
@@ -1398,10 +1405,13 @@ CompositeTable::updateColumn(llong recordId, fstring colname,
 
 template<class WireType, class LlongOrFloat, class OP>
 static inline
-bool updateValueByOp(byte& byteRef, const OP& op) {
+bool updateValueByOp(ReadableSegment* seg, llong subId, byte& byteRef, const OP& op) {
 	LlongOrFloat val = reinterpret_cast<WireType&>(byteRef);
 	if (op(val)) {
+		SpinRwLock segLock(seg->m_segMutex);
 		reinterpret_cast<WireType&>(byteRef) = val;
+		if (seg->m_isFreezed)
+			seg->addtoUpdateList(size_t(subId));
 		return true;
 	}
 	return false;
@@ -1419,19 +1429,17 @@ CompositeTable::updateColumnInteger(llong recordId, size_t columnId,
 			, columnId, rowSchema.getColumnName(columnId).c_str()
 			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
 			);
-	case ColumnType::Uint08:  updateValueByOp<uint8_t , llong>(*coldata, op); break;
-	case ColumnType::Sint08:  updateValueByOp< int8_t , llong>(*coldata, op); break;
-	case ColumnType::Uint16:  updateValueByOp<uint16_t, llong>(*coldata, op); break;
-	case ColumnType::Sint16:  updateValueByOp< int16_t, llong>(*coldata, op); break;
-	case ColumnType::Uint32:  updateValueByOp<uint32_t, llong>(*coldata, op); break;
-	case ColumnType::Sint32:  updateValueByOp< int32_t, llong>(*coldata, op); break;
-	case ColumnType::Uint64:  updateValueByOp<uint64_t, llong>(*coldata, op); break;
-	case ColumnType::Sint64:  updateValueByOp< int64_t, llong>(*coldata, op); break;
-	case ColumnType::Float32: updateValueByOp<   float, llong>(*coldata, op); break;
-	case ColumnType::Float64: updateValueByOp<  double, llong>(*coldata, op); break;
+	case ColumnType::Uint08:  updateValueByOp<uint8_t , llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint08:  updateValueByOp< int8_t , llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Uint16:  updateValueByOp<uint16_t, llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint16:  updateValueByOp< int16_t, llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Uint32:  updateValueByOp<uint32_t, llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint32:  updateValueByOp< int32_t, llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Uint64:  updateValueByOp<uint64_t, llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint64:  updateValueByOp< int64_t, llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Float32: updateValueByOp<   float, llong>(seg, subId, *coldata, op); break;
+	case ColumnType::Float64: updateValueByOp<  double, llong>(seg, subId, *coldata, op); break;
 	}
-	if (seg->m_isFreezed)
-		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1458,19 +1466,17 @@ CompositeTable::updateColumnDouble(llong recordId, size_t columnId,
 			, columnId, rowSchema.getColumnName(columnId).c_str()
 			, Schema::columnTypeStr(rowSchema.getColumnType(columnId))
 			);
-	case ColumnType::Uint08:  updateValueByOp<uint08_t, double>(*coldata, op); break;
-	case ColumnType::Sint08:  updateValueByOp< int08_t, double>(*coldata, op); break;
-	case ColumnType::Uint16:  updateValueByOp<uint16_t, double>(*coldata, op); break;
-	case ColumnType::Sint16:  updateValueByOp< int16_t, double>(*coldata, op); break;
-	case ColumnType::Uint32:  updateValueByOp<uint32_t, double>(*coldata, op); break;
-	case ColumnType::Sint32:  updateValueByOp< int32_t, double>(*coldata, op); break;
-	case ColumnType::Uint64:  updateValueByOp<uint64_t, double>(*coldata, op); break;
-	case ColumnType::Sint64:  updateValueByOp< int64_t, double>(*coldata, op); break;
-	case ColumnType::Float32: updateValueByOp<   float, double>(*coldata, op); break;
-	case ColumnType::Float64: updateValueByOp<  double, double>(*coldata, op); break;
+	case ColumnType::Uint08:  updateValueByOp<uint08_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint08:  updateValueByOp< int08_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Uint16:  updateValueByOp<uint16_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint16:  updateValueByOp< int16_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Uint32:  updateValueByOp<uint32_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint32:  updateValueByOp< int32_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Uint64:  updateValueByOp<uint64_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Sint64:  updateValueByOp< int64_t, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Float32: updateValueByOp<   float, double>(seg, subId, *coldata, op); break;
+	case ColumnType::Float64: updateValueByOp<  double, double>(seg, subId, *coldata, op); break;
 	}
-	if (seg->m_isFreezed)
-		seg->addtoUpdateList(subId);
 }
 
 void
@@ -1489,6 +1495,7 @@ void
 CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 									 llong incVal, DbContext* ctx) {
 #include "update_column_impl.hpp"
+	SpinRwLock segLock(seg->m_segMutex);
 	switch (rowSchema.getColumnType(columnId)) {
 	default:
 		THROW_STD(invalid_argument
@@ -1526,6 +1533,7 @@ void
 CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 									 double incVal, DbContext* ctx) {
 #include "update_column_impl.hpp"
+	SpinRwLock segLock(seg->m_segMutex);
 	switch (rowSchema.getColumnType(columnId)) {
 	default:
 		THROW_STD(invalid_argument

@@ -254,7 +254,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 	size_t maxRowNum = (size_t)strtoull(argv[1], NULL, 10);
-//	doTest("MockCompositeTable", "db1", maxRowNum);
+//	doTest("MockDbTable", "db1", maxRowNum);
 	doTest("dfadb", maxRowNum);
 	CompositeTable::safeStopAndWaitForCompress();
     return 0;

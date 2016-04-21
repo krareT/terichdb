@@ -5,9 +5,10 @@
 			"value" : { "type" : "strzero" }
 		}
 	},
-	"ReadonlyDataMemSize" : 101024,
-	"MaxWrSegSize" : 201024,
+	"CompressingWorkMemSize" : "10K",
+  "MaxWritingSegmentSize": "20K",
+  "TableClass" :  "MockDbTable",
 	"TableIndex" : [
-		{ "fields": "key"  , "ordered" : true, "unique": true }
+		{ "fields": "key", "ordered" : true, "unique": true }
 	]
 }

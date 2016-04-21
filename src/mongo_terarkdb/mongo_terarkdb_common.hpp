@@ -31,7 +31,7 @@ namespace mongo { namespace terarkdb {
 namespace fs = boost::filesystem;
 using terark::db::CompositeTable;
 using terark::db::CompositeTablePtr;
-using terark::db::MockCompositeTable;
+using terark::db::MockDbTable;
 
 using terark::ulong;
 using terark::llong;
