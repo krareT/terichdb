@@ -103,7 +103,7 @@ hash_strmap < std::function<CompositeTable*()>
 			, ValueInline, SafeCopy
 			>
 TableFactoryType;
-static TableFactoryType s_getTableFactory() {
+static TableFactoryType& s_getTableFactory() {
 	static TableFactoryType	instance;
 	return instance;
 }

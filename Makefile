@@ -173,20 +173,20 @@ ifeq (1,${WITH_DFA_DB})
   TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
   override INCS += -I../terark/src
   TerarkDB_lib := terark-db
-  LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
-  LIB_TERARK_R := -L../terark/lib -lterark-fsa_all-${COMPILER}-r
 else
   override INCS += -Iterark-base/src
   zip_src := \
     terark-base/src/terark/io/BzipStream.cpp \
 	terark-base/src/terark/io/GzipStream.cpp
-  TerarkDB_src += $(wildcard terark-base/src/terark/*.cpp)
-  TerarkDB_src += $(wildcard terark-base/src/terark/io/*.cpp)
-  TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)
-  TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
-  TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
+#  TerarkDB_src += $(wildcard terark-base/src/terark/*.cpp)
+#  TerarkDB_src += $(wildcard terark-base/src/terark/io/*.cpp)
+#  TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)
+#  TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
+#  TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
   TerarkDB_lib := terark-db-no-dfadb
 endif
+LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
+LIB_TERARK_R := -L../terark/lib -lterark-fsa_all-${COMPILER}-r
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core
