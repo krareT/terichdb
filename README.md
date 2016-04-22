@@ -29,6 +29,24 @@ TerarkDB is:
 - Supported Platforms: Linux, Windows, Mac
 - Transparent foundation for developers to build customized products
 
+## Compile TerarkDB
+
+### Dependencies
+
+  - libboost_system.so(1.60.0) (boost_1_60_0)
+  - libboost_filesystem(1.60.0)(Could be found in boost_1_60_0)
+  - libwiredtiger.so(v2.7.0)
+  - libtbb.so(tbb44_20160128)
+
+### Make
+Execute `make` command under root dir.
+
+### Compiler Support
+
+- Linux : `g++-4.9`, `g++-5.3`
+- OS X : `g++-5.3`, `g++-6.0`, `clang++-7.3`
+- Windows : `vs2015`
+
 
 ## License
 TerarkDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
