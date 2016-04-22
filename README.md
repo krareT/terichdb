@@ -1,4 +1,4 @@
-## TerarkDB
+## 1.TerarkDB
 TerarkDB is an open source NoSQL data store based on terark storage engine.
 
 TerarkDB is:
@@ -9,7 +9,7 @@ TerarkDB is:
 - Native support for regex expression query.
 - [Benchmark](http://terark.com/zh/blog/detail/2)
 
-## Features
+## 2.Features
 - High Compression Ratio
   - Higher than snappy(2~5 times) and other database products, higher than gzip, sometimes higher than bzip
 - Search Directly on Compressed Data without Decompression
@@ -29,26 +29,26 @@ TerarkDB is:
 - Supported Platforms: Linux, Windows, Mac
 - Transparent foundation for developers to build customized products
 
-## Compile TerarkDB
+## 3.Compile TerarkDB
 
-### Dependencies
+### 3.1.Dependencies
 
   - libboost_system.so(1.60.0) (boost_1_60_0)
   - libboost_filesystem(1.60.0)(Could be found in boost_1_60_0)
   - libwiredtiger.so(v2.7.0)
   - libtbb.so(tbb44_20160128)
 
-### Make
+### 3.2.Make
 Execute `make` command under root dir.
 
-### Compiler Support
+### 3.3.Compiler Support
 
 - Linux : `g++-4.9`, `g++-5.3`
 - OS X : `g++-5.3`, `g++-6.0`, `clang++-7.3`
 - Windows : `vs2015`
 
 
-## License
+## 4.License
 TerarkDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
 
 For commercial purposes, please  [contact us](http://www.terark.com).
