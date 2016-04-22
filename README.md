@@ -38,15 +38,17 @@ TerarkDB is:
   - libwiredtiger.so(v2.7.0)
   - libtbb.so(tbb44_20160128)
 
-### 3.2.Make
-Execute `make` command under root dir.
+### 3.2.Compiler Support
 
-### 3.3.Compiler Support
-
-- Linux : `g++-4.9`, `g++-5.3`
+- Linux : `g++-4.8`, `g++-4.9`, `g++-5.3`
 - OS X : `g++-5.3`, `g++-6.0`, `clang++-7.3`
 - Windows : `vs2015`
 
+### 3.3.`dfadb` alternative
+1. TerarkDB is open source but our core data structure and algorithm(named `dfadb`) is not yet.
+2. `dfadb` is supported by a library named `fsa_all_*` in our released packages.
+3. Developers who want to build their own TerarkDB, should place the `fsa_all-*` library into their library search path(e.g. `/usr/local/lib`).
+4. Self-compiled TerarkDB could only use limited APIs, and need to set `“TableClass” : “MockDbTable”,` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/zh/docs/1_3)).
 
 ## 4.License
 TerarkDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
