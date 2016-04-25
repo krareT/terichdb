@@ -9,7 +9,7 @@ namespace terark { namespace db { namespace dfadb {
 
 TERARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
 
-NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema) {
+NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema) : m_schema(schema) {
 }
 NestLoudsTrieStore::~NestLoudsTrieStore() {
 }
@@ -218,7 +218,7 @@ void NestLoudsTrieStore::load(PathRef path) {
 	std::string fpath = fstring(path.string()).endsWith(".nlt")
 					  ? path.string()
 					  : path.string() + ".nlt";
-	m_store.reset(BlobStore::load_from(fpath));
+	m_store.reset(BlobStore::load_from(fpath, m_schema.m_mmapPopulate));
 }
 
 void NestLoudsTrieStore::save(PathRef path) const {

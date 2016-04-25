@@ -157,6 +157,7 @@ Schema::Schema() {
 	m_dictZipLocalMatch = true;
 	m_isInplaceUpdatable = false;
 	m_enableLinearScan = false;
+	m_mmapPopulate = false;
 	m_keepCols.fill(true);
 	m_minFragLen = 0;
 	m_maxFragLen = 0;
@@ -1928,6 +1929,7 @@ parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 	schema.m_maxFragLen = getJsonValue(js, "maxFragLen", 0);
 	schema.m_minFragLen = getJsonValue(js, "minFragLen", 0);
 	schema.m_sufarrMinFreq = getJsonValue(js, "sufarrMinFreq", sufarrMinFreq);
+	schema.m_mmapPopulate = getJsonValue(js, "mmapPopulate", false);
 	//  512: rank_select_se_512
 	//  256: rank_select_se_256
 	// -256: rank_select_il_256

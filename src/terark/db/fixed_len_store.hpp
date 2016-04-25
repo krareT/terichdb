@@ -52,6 +52,7 @@ protected:
 	size_t  m_mmapSize;
 	size_t  m_fixlen;
 	std::string m_fpath;
+	const Schema& m_schema;
 
 	std::pair<size_t, bool> searchLowerBound(fstring binkey) const;
 };

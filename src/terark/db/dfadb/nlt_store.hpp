@@ -29,6 +29,7 @@ public:
 
 protected:
 	std::unique_ptr<BlobStore> m_store;
+	const Schema& m_schema;
 };
 
 }}} // namespace terark::db::dfadb

@@ -228,6 +228,7 @@ namespace terark { namespace db {
 		bool   m_dictZipLocalMatch : 1;
 		bool   m_isInplaceUpdatable: 1;
 		bool   m_enableLinearScan  : 1;
+		bool   m_mmapPopulate : 1;
 		static_bitmap<MaxProjColumns> m_keepCols;
 
 		// used for ordered index, m_indexOrder.is1(i) means i'th column
