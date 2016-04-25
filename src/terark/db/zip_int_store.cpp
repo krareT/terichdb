@@ -7,7 +7,7 @@
 
 namespace terark { namespace db {
 
-ZipIntStore::ZipIntStore(const Schema& schema) {
+ZipIntStore::ZipIntStore(const Schema& schema) : m_schema(schema) {
 	TERARK_RT_assert(schema.columnNum() == 1, std::invalid_argument);
 	m_intType = schema.getColumnMeta(0).type;
 	m_minValue = 0;
@@ -193,7 +193,8 @@ TERARK_DB_REGISTER_STORE("zint", ZipIntStore);
 
 void ZipIntStore::load(PathRef fpath) {
 	assert(fstring(fpath.string()).endsWith(".zint"));
-	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize);
+	bool writable = false;
+	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize, writable, m_schema.m_mmapPopulate);
 	auto header = (const ZipIntStoreHeader*)m_mmapBase;
 	size_t rows = header->rows;
 	m_intType = ColumnType(header->intType);

@@ -9,7 +9,7 @@ namespace terark { namespace db {
 
 class TERARK_DB_DLL ZipIntKeyIndex : public ReadableIndex, public ReadableStore {
 public:
-	ZipIntKeyIndex();
+	ZipIntKeyIndex(const Schema& schema);
 	~ZipIntKeyIndex();
 
 	///@{ ordered and unordered index
@@ -42,6 +42,7 @@ protected:
 	size_t      m_mmapSize;
 	llong       m_minKey; // may be unsigned
 	ColumnType  m_keyType;
+	const Schema& m_schema;
 
 	template<class Int>
 	std::pair<size_t, bool> IntVecLowerBound(fstring binkey) const;

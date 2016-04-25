@@ -6,7 +6,7 @@
 
 namespace terark { namespace db { namespace dfadb {
 
-NestLoudsTrieIndex::NestLoudsTrieIndex(const Schema& schema) {
+NestLoudsTrieIndex::NestLoudsTrieIndex(const Schema& schema) : m_schema(schema) {
 	m_idmapBase = nullptr;
 	m_idmapSize = 0;
 	m_dataInflateSize = 0;
@@ -201,14 +201,14 @@ struct NestLoudsTrieIndex::FileHeader {
 void NestLoudsTrieIndex::load(PathRef path) {
 	BOOST_STATIC_ASSERT(sizeof(FileHeader) == 64);
 	auto pathNLT = path + ".nlt";
-	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(pathNLT.string().c_str()));
+	std::unique_ptr<BaseDFA> dfa(BaseDFA::load_mmap(pathNLT.string(), m_schema.m_mmapPopulate));
 	m_dfa.reset(dynamic_cast<NestLoudsTrieDAWG_SE_512*>(dfa.get()));
 	if (m_dfa) {
 		dfa.release();
 	}
-
+	bool writable = false;
 	auto pathIdMap = path + ".idmap";
-	m_idmapBase = (FileHeader*)mmap_load(pathIdMap.string(), &m_idmapSize);
+	m_idmapBase = (FileHeader*)mmap_load(pathIdMap.string(), &m_idmapSize, writable, m_schema.m_mmapPopulate);
 
 	size_t rows  = m_idmapBase->rows;
 	size_t keys  = m_idmapBase->keys;

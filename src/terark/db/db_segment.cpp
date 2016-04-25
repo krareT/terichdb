@@ -1295,7 +1295,7 @@ void ReadonlySegment::closeFiles() {
 ReadableIndex*
 ReadonlySegment::openIndex(const Schema& schema, PathRef path) const {
 	if (boost::filesystem::exists(path + ".zint")) {
-		std::unique_ptr<ZipIntKeyIndex> store(new ZipIntKeyIndex());
+		std::unique_ptr<ZipIntKeyIndex> store(new ZipIntKeyIndex(schema));
 		store->load(path);
 		return store.release();
 	}
@@ -1318,7 +1318,7 @@ const {
 	const size_t fixlen = schema.getFixedRowLen();
 	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
 		try {
-			std::unique_ptr<ZipIntKeyIndex> index(new ZipIntKeyIndex());
+			std::unique_ptr<ZipIntKeyIndex> index(new ZipIntKeyIndex(schema));
 			index->build(schema.getColumnMeta(0).type, indexData);
 			return index.release();
 		}

@@ -3,11 +3,13 @@
 #include <terark/io/FileStream.hpp>
 #include <terark/io/DataIO.hpp>
 #include <terark/util/mmap.hpp>
+#include <terark/num_to_str.hpp>
 
 namespace terark { namespace db {
 
-ZipIntKeyIndex::ZipIntKeyIndex() {
-	m_keyType = ColumnType::Any;
+ZipIntKeyIndex::ZipIntKeyIndex(const Schema& schema) : m_schema(schema) {
+	TERARK_RT_assert(schema.columnNum() == 1, std::invalid_argument);
+	m_keyType = m_schema.getColumnType(0);
 	m_minKey = 0;
 	m_isOrdered = true;
 	m_mmapBase = nullptr;
@@ -330,7 +332,8 @@ namespace {
 
 void ZipIntKeyIndex::load(PathRef path) {
 	auto fpath = path + ".zint";
-	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize);
+	bool writable = false;
+	m_mmapBase = (byte_t*)mmap_load(fpath.string(), &m_mmapSize, writable, m_schema.m_mmapPopulate);
 	auto h = (const Header*)m_mmapBase;
 	m_isUnique   = h->isUnique ? true : false;
 	m_keyType    = ColumnType(h->keyType);

@@ -30,6 +30,7 @@ protected:
 	size_t      m_mmapSize;
 	llong       m_minValue; // may be unsigned
 	ColumnType  m_intType;
+	const Schema& m_schema;
 
 	template<class Int>
 	void valueAppend(size_t recIdx, valvec<byte>* res) const;

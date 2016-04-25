@@ -50,6 +50,7 @@ protected:
 	UintVecMin0 m_keyToId;
 	UintVecMin0 m_idToKey;
 	rank_select_se_512 m_recBits; // only for dupable index
+	const Schema& m_schema;
 
 	class UniqueIndexIterForward;   friend class UniqueIndexIterForward;
 	class UniqueIndexIterBackward;	friend class UniqueIndexIterBackward;
