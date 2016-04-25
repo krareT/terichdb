@@ -5,6 +5,7 @@
 #include <terark/db/db_segment.hpp>
 #include <terark/util/fstrvec.hpp>
 #include <set>
+#include <mutex>
 
 namespace terark { namespace db {
 
@@ -69,6 +70,7 @@ class TERARK_DB_DLL MockWritableStore : public ReadableStore, public WritableSto
 public:
 	valvec<valvec<byte> > m_rows;
 	llong m_dataSize;
+	mutable SpinRwMutex m_rwMutex;
 
 	MockWritableStore();
 	~MockWritableStore();
@@ -102,6 +104,7 @@ class TERARK_DB_DLL MockWritableIndex : public ReadableIndex, public WritableInd
 	typedef std::pair<Key, llong> kv_t;
 	std::set<kv_t> m_kv;
 	size_t m_keysLen;
+	mutable SpinRwMutex m_rwMutex;
 public:
 	explicit MockWritableIndex(bool isUnique);
 	void save(PathRef) const override;
@@ -136,6 +139,7 @@ class TERARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
 public:
 	MockWritableSegment(PathRef dir);
 	~MockWritableSegment();
+	std::mutex          m_mockTxnMutex;
 protected:
 	DbTransaction* createTransaction();
 	ReadableIndex* createIndex(const Schema&, PathRef path) const override;

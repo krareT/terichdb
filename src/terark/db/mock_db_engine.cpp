@@ -479,6 +479,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WrStore*>(m_store.get());
+		SpinRwLock lock(store->m_rwMutex, false);
 		size_t rowNum = store->m_rows.size();
 		while (m_id < rowNum) {
 			size_t k = m_id++;
@@ -492,6 +493,7 @@ public:
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto store = static_cast<WrStore*>(m_store.get());
+		SpinRwLock lock(store->m_rwMutex, false);
 		if (id < 0 || id >= llong(store->m_rows.size())) {
 			THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
 				, id, store->m_rows.size());
@@ -517,6 +519,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto store = static_cast<WrStore*>(m_store.get());
+		SpinRwLock lock(store->m_rwMutex, false);
 		while (m_id > 0) {
 			size_t k = --m_id;
 			if (!store->m_rows[k].empty()) {
@@ -529,6 +532,7 @@ public:
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto store = static_cast<WrStore*>(m_store.get());
+		SpinRwLock lock(store->m_rwMutex, false);
 		if (id < 0 || id >= llong(store->m_rows.size())) {
 			THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
 				, id, store->m_rows.size());
@@ -579,6 +583,7 @@ llong MockWritableStore::numDataRows() const {
 void MockWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
+	SpinRwLock lock(m_rwMutex, false);
 	val->append(m_rows[id]);
 }
 
@@ -590,6 +595,7 @@ StoreIterator* MockWritableStore::createStoreIterBackward(DbContext*) const {
 }
 
 llong MockWritableStore::append(fstring row, DbContext*) {
+	SpinRwLock lock(m_rwMutex, true);
 	llong id = m_rows.size();
 	m_rows.push_back();
 	m_rows.back().assign(row);
@@ -604,6 +610,7 @@ void MockWritableStore::update(llong id, fstring row, DbContext* ctx) {
 		append(row, ctx);
 		return;
 	}
+	SpinRwLock lock(m_rwMutex, true);
 	size_t oldsize = m_rows[id].size();
 	m_rows[id].assign(row);
 	m_dataSize -= oldsize;
@@ -613,6 +620,7 @@ void MockWritableStore::update(llong id, fstring row, DbContext* ctx) {
 void MockWritableStore::remove(llong id, DbContext*) {
 	assert(id >= 0);
 	assert(id < llong(m_rows.size()));
+	SpinRwLock lock(m_rwMutex, true);
 	if (m_rows.size()-1 == size_t(id)) {
 		m_rows.pop_back();
 	}
@@ -667,6 +675,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
+		SpinRwLock lock(owner->m_rwMutex, false);
 		if (terark_likely(owner->m_kv.end() != m_iter)) {
 			*id = m_iter->second;
 			copyKey(m_iter->first, key);
@@ -682,6 +691,7 @@ public:
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
 		auto kv = std::make_pair(makeKey<Key>(key), 0LL);
+		SpinRwLock lock(owner->m_rwMutex, false);
 		auto iter = owner->m_kv.lower_bound(kv);
 		m_iter = iter;
 		if (owner->m_kv.end() != iter) {
@@ -708,6 +718,7 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
+		SpinRwLock lock(owner->m_rwMutex, false);
 		if (terark_likely(owner->m_kv.begin() != m_iter)) {
 			--m_iter;
 			*id = m_iter->second;
@@ -723,6 +734,7 @@ public:
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		auto owner = static_cast<const MockWritableIndex*>(m_index.get());
 		auto kv = std::make_pair(makeKey<Key>(key), 0LL);
+		SpinRwLock lock(owner->m_rwMutex, false);
 		auto iter = owner->m_kv.upper_bound(kv);
 		if (owner->m_kv.begin() != iter) {
 			m_iter = --iter;
@@ -781,6 +793,7 @@ llong MockWritableIndex<Key>::indexStorageSize() const {
 template<class Key>
 bool MockWritableIndex<Key>::insert(fstring key, llong id, DbContext*) {
 	Key k = makeKey<Key>(key);
+	SpinRwLock lock(m_rwMutex, true);
 	if (this->m_isUnique) {
 		auto iter = m_kv.lower_bound(std::make_pair(k, 0));
 		if (m_kv.end() != iter && iter->first == k && id != iter->second)
@@ -796,6 +809,7 @@ bool MockWritableIndex<Key>::insert(fstring key, llong id, DbContext*) {
 template<class Key>
 bool MockWritableIndex<Key>::replace(fstring key, llong oldId, llong newId, DbContext*) {
 	auto kx = makeKey<Key>(key);
+	SpinRwLock lock(m_rwMutex, true);
 	if (oldId != newId) {
 		m_kv.erase(std::make_pair(kx, oldId));
 	}
@@ -808,6 +822,7 @@ void
 MockWritableIndex<Key>::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*)
 const {
 	auto kx = makeKey<Key>(key);
+	SpinRwLock lock(m_rwMutex, false);
 	auto iter = m_kv.lower_bound(std::make_pair(kx, 0LL));
 	while (m_kv.end() != iter && iter->first == kx) {
 		recIdvec->push_back(iter->second);
@@ -817,6 +832,7 @@ const {
 
 template<class Key>
 bool MockWritableIndex<Key>::remove(fstring key, llong id, DbContext*) {
+	SpinRwLock lock(m_rwMutex, true);
 	auto iter = m_kv.find(std::make_pair(makeKey<Key>(key), id));
 	if (m_kv.end() != iter) {
 		m_keysLen -= keyHeapLen(iter->first);
@@ -828,6 +844,7 @@ bool MockWritableIndex<Key>::remove(fstring key, llong id, DbContext*) {
 
 template<class Key>
 void MockWritableIndex<Key>::clear() {
+	SpinRwLock lock(m_rwMutex, true);
 	m_keysLen = 0;
 	m_kv.clear();
 }
@@ -914,13 +931,12 @@ MockWritableSegment::~MockWritableSegment() {
 
 class MutexLockTransaction : public DbTransaction {
 	const SchemaConfig& m_sconf;
-	WritableSegment*    m_seg;
+	MockWritableSegment*m_seg;
 	DbContextPtr        m_ctx;
-	std::mutex          m_txnMutex;
 	enum Status { started, committed, rollbacked } m_stat;
 public:
 	explicit
-	MutexLockTransaction(WritableSegment* seg) : m_sconf(*seg->m_schema) {
+	MutexLockTransaction(MockWritableSegment* seg) : m_sconf(*seg->m_schema) {
 		m_seg = seg;
 	//	m_ctx = new DbContext();
 		m_stat = committed;
@@ -994,18 +1010,18 @@ public:
 	}
 	void startTransaction() override {
 		m_stat = started;
-		m_txnMutex.lock();
+		m_seg->m_mockTxnMutex.lock();
 	}
 	bool commit() override {
 		assert(started == m_stat);
 		m_stat = committed;
-		m_txnMutex.unlock();
+		m_seg->m_mockTxnMutex.unlock();
 		return true;
 	}
 	void rollback() override {
 		assert(started == m_stat);
 		m_stat = rollbacked;
-		m_txnMutex.unlock();
+		m_seg->m_mockTxnMutex.unlock();
 	}
 	const std::string& strError() const override { return m_strError; }
 
