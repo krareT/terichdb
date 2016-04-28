@@ -174,8 +174,10 @@ public:
 		WT_SESSION* ses = m_session.ses;
 		const char* txnConfig = getenv("TerarkDB_WiredtigerTransactionConfig");
 		if (NULL == txnConfig) {
+		// wiredtiger 2.8.0 is not binary compatible with 2.7.0
 			txnConfig = "isolation=read-committed,sync=false";
 		}
+	//	fprintf(stderr, "INFO: %s: txnConfig=%s\n", BOOST_CURRENT_FUNCTION, txnConfig);
 		int err = ses->begin_transaction(ses, txnConfig);
 		if (err) {
 			THROW_STD(invalid_argument

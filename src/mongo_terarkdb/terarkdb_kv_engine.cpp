@@ -85,6 +85,19 @@ using std::string;
 
 const char* g_terarkTableClass = "DfaDbTable";
 
+boost::filesystem::path  nsToTableDir(StringData ns) {
+	auto dotPos = std::find(ns.begin(), ns.end(), '.');
+	boost::filesystem::path dir;
+	if (ns.end() == dotPos) {
+		dir = ns.toString();
+	}
+	else {
+		dir  = string(ns.begin(), dotPos);
+		dir /= string(dotPos + 1, ns.end());
+	}
+	return dir;
+}
+
 TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 							   const std::string& extraOpenOptions,
 							   size_t cacheSizeGB,
@@ -165,8 +178,8 @@ TerarkDbKVEngine::okToRename(OperationContext* opCtx,
 		return m_wtEngine->
 			okToRename(opCtx, fromNS, toNS, ident, originalRecordStore);
 	}
-	fs::rename(m_pathTerarkTables / fromNS.toString(),
-			   m_pathTerarkTables / toNS.toString());
+	fs::rename(m_pathTerarkTables / nsToTableDir(fromNS),
+			   m_pathTerarkTables / nsToTableDir(toNS));
     return Status::OK();
 }
 
@@ -266,7 +279,7 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 		<< "\noptions.storageEngine: " << options.storageEngine.jsonString(Strict, true)
 		<< "\noptions.indexOptionDefaults: " << options.indexOptionDefaults.jsonString(Strict, true)
 		;
-	auto tabDir = m_pathTerarkTables / ns.toString();
+	auto tabDir = m_pathTerarkTables / nsToTableDir(ns);
     LOG(2)	<< "TerarkDbKVEngine::createRecordStore: ns:" << ns
 			<< ", tabDir=" << tabDir.string();
 	if (fs::exists(tabDir)) {
@@ -306,7 +319,7 @@ TerarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 		return m_wtEngine->getRecordStore(opCtx, ns, ident, options);
     }
 
-	auto tabDir = m_pathTerarkTables / ns.toString();
+	auto tabDir = m_pathTerarkTables / nsToTableDir(ns);
 	if (!fs::exists(tabDir)) {
 		return NULL;
 	}
@@ -361,7 +374,7 @@ TerarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
 			return Status::OK();
 		}
 	}
-	const fs::path tabDir = m_pathTerarkTables / tableNS;
+	const fs::path tabDir = m_pathTerarkTables / nsToTableDir(tableNS);
 	if (fs::exists(tabDir)) {
 		return Status::OK();
 	}
@@ -388,7 +401,7 @@ TerarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
 	if (tableIdent == "_mdb_catalog") {
 		return m_wtEngine->getSortedDataInterface(opCtx, ident, desc);
 	}
-	auto tabDir = m_pathTerarkTables / tableNS;
+	auto tabDir = m_pathTerarkTables / nsToTableDir(tableNS);
 	std::lock_guard<std::mutex> lock(m_mutex);
 	auto& tab = m_tables[tableIdent];
 	if (tab == nullptr) {
