@@ -99,7 +99,7 @@ public:
                                               const DocWriter* doc,
                                               bool enforceQuota);
 
-    virtual StatusWith<RecordId> updateRecord(OperationContext* txn,
+    virtual Status updateRecord(OperationContext* txn,
                                               const RecordId& oldLocation,
                                               const char* data,
                                               int len,

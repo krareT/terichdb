@@ -42,15 +42,6 @@ const size_t DEFAULT_maxSegNum = 4095;
 	} BOOST_SCOPE_EXIT_END
 #endif
 
-template<class IntType>
-class IncrementGuard {
-	IntType& r;
-public:
-	explicit IncrementGuard(IntType& x) : r(x) { x++; }
-	~IncrementGuard() { r--; }
-};
-typedef IncrementGuard<std::atomic_size_t> IncrementGuard_size_t;
-
 CompositeTable* CompositeTable::open(PathRef dbPath) {
 	fs::path jsonFile = dbPath / "dbmeta.json";
 	SchemaConfigPtr sconf = new SchemaConfig();
@@ -392,6 +383,12 @@ size_t CompositeTable::getWritableSegNum() const {
 			wrNum++;
 	}
 	return wrNum;
+}
+
+size_t CompositeTable::getSegmentIndexOfRecordIdNoLock(llong recId) const {
+	MyRwLock lock(m_rwMutex, false);
+	size_t segIdx = lower_bound_a(m_rowNumVec, recId);
+	return segIdx;
 }
 
 struct CompareBy_baseId {

@@ -391,18 +391,32 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
     return insertRecord(txn, buf.get(), len, enforceQuota);
 }
 
-StatusWith<RecordId>
+Status
 TerarkDbRecordStore::updateRecord(OperationContext* txn,
 								const RecordId& id,
 								const char* data,
 								int len,
 								bool enforceQuota,
 								UpdateNotifier* notifier) {
+	terark::db::IncrementGuard_size_t incrGuard(m_table->m_inprogressWritingCount);
+	llong recId = id.repr() - 1;
+	{
+		terark::db::MyRwLock lock(m_table->m_rwMutex, false);
+		size_t segIdx = m_table->getSegmentIndexOfRecordIdNoLock(recId);
+		if (segIdx >= m_table->getSegNum()) {
+			return {ErrorCodes::InvalidIdField, "record id is out of range"};
+		}
+		auto seg = m_table->getSegmentPtr(segIdx);
+		if (seg->m_isFreezed) {
+			return {ErrorCodes::NeedsDocumentMove, "segment of record is frozen"};
+		}
+	}
     auto& td = getMyThreadData();
     BSONObj bson(data);
     td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
-	llong newIdx = m_table->updateRow(id.repr()-1, td.m_recData, &*td.m_dbCtx);
-	return StatusWith<RecordId>(RecordId(newIdx + 1));
+	llong newRecId = m_table->updateRow(recId, td.m_recData, &*td.m_dbCtx);
+	invariant(newRecId == recId);
+	return Status::OK();
 }
 
 bool TerarkDbRecordStore::updateWithDamagesSupported() const {

@@ -193,7 +193,7 @@ TerarkDbRecordStoreCapped::insertRecord(OperationContext* txn,
 	return m_wiredtigerCappedStore->insertRecord(txn, doc, enforceQuota);
 }
 
-StatusWith<RecordId>
+Status
 TerarkDbRecordStoreCapped::updateRecord(OperationContext* txn,
 									  const RecordId& id,
 									  const char* data,

@@ -27,6 +27,15 @@ typedef tbb::queuing_rw_mutex           MyRwMutex;
 
 typedef MyRwMutex::scoped_lock MyRwLock;
 
+template<class IntType>
+class IncrementGuard {
+	IntType& r;
+public:
+	explicit IncrementGuard(IntType& x) : r(x) { x++; }
+	~IncrementGuard() { r--; }
+};
+typedef IncrementGuard<std::atomic_size_t> IncrementGuard_size_t;
+
 class TERARK_DB_DLL ReadableSegment;
 class TERARK_DB_DLL ReadonlySegment;
 class TERARK_DB_DLL WritableSegment;
@@ -203,6 +212,8 @@ public:
 	size_t getWritableSegNum() const;
 
 	size_t getSegArrayUpdateSeq() const { return this->m_segArrayUpdateSeq; }
+
+	size_t getSegmentIndexOfRecordIdNoLock(llong recId) const;
 
 	///@{ internal use only
 	void convWritableSegmentToReadonly(size_t segIdx);
