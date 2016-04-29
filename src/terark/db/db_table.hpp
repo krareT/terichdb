@@ -196,6 +196,7 @@ public:
 
 	void clear();
 	void flush();
+	void compact();
 	void syncFinishWriting();
 	void asyncPurgeDelete();
 

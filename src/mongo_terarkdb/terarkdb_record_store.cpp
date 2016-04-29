@@ -458,7 +458,7 @@ Status TerarkDbRecordStore::compact(OperationContext* txn,
 								  RecordStoreCompactAdaptor* adaptor,
 								  const CompactOptions* options,
 								  CompactStats* stats) {
-	m_table->syncFinishWriting();
+	m_table->compact(); // will wait for compact complete
     return Status::OK();
 }
 

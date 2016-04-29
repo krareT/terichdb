@@ -17,6 +17,7 @@
 #include <tbb/tbb_thread.h>
 #include <terark/util/concurrent_queue.hpp>
 #include <float.h>
+#include <terark/util/profiling.hpp>
 
 #undef min
 #undef max
@@ -990,6 +991,10 @@ CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 	sconf.m_rowSchema->parseRow(row, &ctx->cols1);
 	const Schema& indexSchema = sconf.getIndexSchema(uniqueIndexId);
 	indexSchema.selectParent(ctx->cols1, &ctx->key1);
+	{
+		MyRwLock lock(m_rwMutex, false);
+		ctx->trySyncSegCtxNoLock(this);
+	}
 	for (size_t segIdx = 0; segIdx < ctx->m_segCtx.size()-1; ++segIdx) {
 		auto seg = ctx->m_segCtx[segIdx]->seg;
 		assert(seg->m_isFreezed);
@@ -2289,6 +2294,7 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 
 class CompositeTable::MergeParam : public valvec<SegEntry> {
 public:
+	bool   m_forcePurgeAndMerge = false;
 	size_t m_tabSegNum = 0;
 	size_t m_newSegRows = 0;
 	DbContextPtr   m_ctx;
@@ -2339,13 +2345,17 @@ public:
 			sumSegRows += this->p[i].seg->m_isDel.size();
 		}
 		size_t avgSegRows = sumSegRows / this->size();
+		size_t maxSegRows = avgSegRows * 7/4;
+		if (m_forcePurgeAndMerge) {
+			maxSegRows = avgSegRows * 3;
+		}
 
-		// find max range in which every seg rows < avg*1.75
+		// find max range in which every seg rows < maxSegRows
 		size_t rngBeg = 0, rngLen = 0;
 		for(size_t j = 0; j < this->size(); ) {
 			size_t k = j;
 			for (; k < this->size(); ++k) {
-				if (this->p[k].seg->m_isDel.size() > avgSegRows*7/4)
+				if (this->p[k].seg->m_isDel.size() > maxSegRows)
 					break;
 			}
 			if (k - j > rngLen) {
@@ -2398,7 +2408,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		const ReadonlySegment* seg = e.seg;
 		newSumDelcnt += seg->m_delcnt;
 	}
-	if (newSumDelcnt >= m_newSegRows * purgeThreshold) {
+	if (m_forcePurgeAndMerge || newSumDelcnt >= m_newSegRows * purgeThreshold) {
 		// all colgroups need purge
 		assert(m_oldpurgeBits.empty());
 		assert(m_newpurgeBits.empty());
@@ -3157,6 +3167,9 @@ void CompositeTable::clear() {
 }
 
 void CompositeTable::flush() {
+	if (this->m_tobeDrop) {
+		return;
+	}
 	valvec<ReadableSegmentPtr> segsCopy;
 	{
 		MyRwLock lock(m_rwMutex, false);
@@ -3188,6 +3201,57 @@ static void waitForBackgroundTasks(MyRwMutex& m_rwMutex, size_t& m_bgTaskNum) {
 				, bgTaskNum, retryNum);
 		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	}
+}
+
+void CompositeTable::compact() {
+	profiling pf;
+	llong t0 = pf.now();
+	llong t1 = t0;
+	for (;;) {
+		MyRwLock lock(m_rwMutex, true);
+		DebugCheckRowNumVecNoLock(this);
+		if (m_isMerging) {
+			lock.release();
+			std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+			llong t2 = pf.now();
+			if (pf.ms(t1, t2) > 10000) { // 10 seconds
+				fprintf(stderr, "INFO: wait for merging: %s, %f seconds\n"
+					, m_dir.string().c_str(), pf.sf(t0, t2));
+				t1 = t2;
+			}
+			continue;
+		}
+		if (m_inprogressWritingCount > 0) {
+			lock.release();
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			llong t2 = pf.now();
+			if (pf.ms(t1, t2) > 1000) { // 1 seconds
+				fprintf(stderr, "INFO: wait for inprogress writing: %s, %f seconds\n"
+					, m_dir.string().c_str(), pf.sf(t0, t2));
+				t1 = t2;
+			}
+			continue;
+		}
+		doCreateNewSegmentInLock();
+		break;
+	}
+	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
+
+	MergeParam toMerge;
+	toMerge.m_forcePurgeAndMerge = true;
+	if (toMerge.canMerge(this)) {
+		assert(this->m_isMerging);
+		{
+			MyRwLock lock(m_rwMutex, true);
+			this->m_bgTaskNum++;
+		}
+		BOOST_SCOPE_EXIT(&m_rwMutex, &m_bgTaskNum){
+			MyRwLock lock(m_rwMutex, true);
+			m_bgTaskNum--;
+		}BOOST_SCOPE_EXIT_END;
+
+		this->merge(toMerge);
 	}
 }
 
