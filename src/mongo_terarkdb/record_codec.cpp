@@ -873,6 +873,31 @@ static void terarkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const cha
 	(int&)bb.buf()[arrByteNumOffset] = arrByteNum;
 }
 
+/*
+static void terarkEncodeNull(MyBsonBuilder& bb, ColumnType coltype) {
+	switch (coltype) {
+	default:
+		invariant(!"encodeConvertFrom: bad type conversion");
+		break;
+	case ColumnType::CarBin: bb << uint32_t(0); break;
+	case ColumnType::Binary:
+	case ColumnType::Sint08:
+	case ColumnType::Uint08: bb << uint08_t(0); break;
+	case ColumnType::Sint16:
+	case ColumnType::Uint16: bb << uint16_t(0); break;
+	case ColumnType::Sint32:
+	case ColumnType::Uint32: bb << uint32_t(0); break;
+	case ColumnType::Sint64:
+	case ColumnType::Uint64: bb << uint64_t(0); break;
+	case ColumnType::Float32: bb <<  float(0);  break;
+	case ColumnType::Float64: bb << double(0);  break;
+	case ColumnType::Float128:
+		abort(); // not implemented yet
+		break;
+	}
+}
+*/
+
 SharedBuffer
 SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	assert(nullptr != schema);
@@ -900,9 +925,19 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			invariant(!"terarkDecodeBsonElemVal: encountered EOO");
 			break;
 		case Undefined:
+			LOG(2) << "SchemaRecordCoder::decode: field('" << colname.c_str() << "') = undefined";
+			assert(0);
+			break;
 		case jstNULL:
+			LOG(2) << "SchemaRecordCoder::decode: field('" << colname.c_str() << "') = null";
+			assert(0);
+			break;
 		case MaxKey:
+			LOG(2) << "SchemaRecordCoder::decode: field('" << colname.c_str() << "') = MaxKey";
+			assert(0);
+			break;
 		case MinKey:
+			LOG(2) << "SchemaRecordCoder::decode: field('" << colname.c_str() << "') = MinKey";
 			assert(0);
 			break;
 		case mongo::Bool:
@@ -1047,7 +1082,9 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		default:
 			{
 				StringBuilder ss;
-				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.mongoType;
+				ss << "SchemaRecordCoder::decode(): field('"
+				   << colname.c_str()
+				   << "') = bad subkey.type " << (int)colmeta.mongoType;
 				std::string msg = ss.str();
 				massert(10320, msg.c_str(), false);
 			}
