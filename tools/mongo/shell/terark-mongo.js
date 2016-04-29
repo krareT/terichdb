@@ -7,6 +7,10 @@ function terarkCreateColl(dbname, collname, schemaFile, opt) {
     for (var key in opt) {
         opt2[key] = opt[key];
     }
+	if (!schemaJsonObject["CheckMongoType"]) {
+		 schemaJsonObject["CheckMongoType"] = true;
+		 print("WARN: 'CheckMongoType' is false or missing, set it to true, 'mongoType' for critical fields should have been set");
+	}
     opt2["storageEngine"] = {
         "TerarkSegDB" : schemaJsonObject
     };
