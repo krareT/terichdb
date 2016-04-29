@@ -2688,8 +2688,8 @@ mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 			parts.push_back(store);
 		}
 	}
-	MultiPartStore mpstore(parts);
-	StoreIteratorPtr iter = mpstore.ensureStoreIterForward(m_ctx.get());
+	ReadableStorePtr mpstore = new MultiPartStore(parts);
+	StoreIteratorPtr iter = mpstore->ensureStoreIterForward(m_ctx.get());
 	dseg->m_colgroups[colgroupId] = dseg->buildDictZipStore(schema,
 		dseg->m_segDir, *iter, m_newpurgeBits.bldata(), &m_oldpurgeBits);
 }
@@ -2702,7 +2702,7 @@ mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	assert(m_newpurgeBits.size() == m_newSegRows);
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	fs::path storeFilePath = dseg->m_segDir / ("colgroup-" + schema.m_name);
-	if (m_newpurgeBits.size() == m_newpurgeBits.max_rank0()) {
+	if (m_newpurgeBits.size() == m_newpurgeBits.max_rank1()) {
 	//	dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
 	//	dseg->m_colgroups[colgroupId]->save(storeFilePath);
 		return;
@@ -3233,7 +3233,9 @@ void CompositeTable::compact() {
 			}
 			continue;
 		}
-		doCreateNewSegmentInLock();
+		if (m_wrSeg->m_isDel.size() > 0) {
+			doCreateNewSegmentInLock();
+		}
 		break;
 	}
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);

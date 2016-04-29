@@ -146,6 +146,10 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 				tab->updateColumn(randomRecId, "fix2", fix2);
 			}
 		}
+
+		if (double(rand()) / RAND_MAX < 0.001) {
+			//tab->compact();
+		}
 	}
 
 	{

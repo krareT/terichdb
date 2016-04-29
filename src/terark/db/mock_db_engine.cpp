@@ -886,7 +886,7 @@ const {
 }
 ReadableStore*
 MockReadonlySegment::
-buildDictZipStore(const Schema& schema, PathRef, StoreIterator& iter,
+buildDictZipStore(const Schema& schema, PathRef segDir, StoreIterator& iter,
 				  const bm_uint_t* isDel, const febitvec* isPurged) const {
 	valvec<byte> rec;
 	std::unique_ptr<MockReadonlyStore> store(new MockReadonlyStore(schema));
@@ -914,6 +914,8 @@ buildDictZipStore(const Schema& schema, PathRef, StoreIterator& iter,
 			}
 		}
 	}
+	fs::path fpath = segDir / ("colgroup-" + schema.m_name);
+	store->save(fpath);
 	return store.release();
 }
 
