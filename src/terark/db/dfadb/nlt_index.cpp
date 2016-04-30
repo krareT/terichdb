@@ -290,12 +290,12 @@ public:
 	}
 
 	bool increment(llong* id, valvec<byte>* key) override {
+		assert(nullptr != key);
 		if (m_hasNext) {
 			size_t state = m_iter->word_state();
 			size_t dawgIdx = m_owner->m_dfa->state_to_word_id(state);
 			*id = m_owner->m_keyToId.get(dawgIdx);
-			if (key)
-				key->assign(m_iter->word());
+			key->assign(m_iter->word());
 			m_hasNext = m_iter->incr();
 			return true;
 		}
@@ -303,12 +303,12 @@ public:
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
 		if (m_iter->seek_lower_bound(key)) {
 			size_t state = m_iter->word_state();
 			size_t dawgIdx = m_owner->m_dfa->state_to_word_id(state);
 			*id = m_owner->m_keyToId.get(dawgIdx);
-			if (retKey)
-				retKey->assign(m_iter->word());
+			retKey->assign(m_iter->word());
 			int ret = (m_iter->word() == key) ? 0 : 1;
 			m_hasNext = m_iter->incr();
 			return ret;
@@ -335,12 +335,12 @@ public:
 	}
 
 	bool increment(llong* id, valvec<byte>* key) override {
+		assert(nullptr != key);
 		if (m_hasNext) {
 			size_t state = m_iter->word_state();
 			size_t dawgIdx = m_owner->m_dfa->state_to_word_id(state);
 			*id = m_owner->m_keyToId.get(dawgIdx);
-			if (key)
-				key->assign(m_iter->word());
+			key->assign(m_iter->word());
 			m_hasNext = m_iter->decr();
 			return true;
 		}
@@ -348,12 +348,12 @@ public:
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
 		if (m_iter->seek_lower_bound(key) && m_iter->word() == key) {
 			size_t state = m_iter->word_state();
 			size_t dawgIdx = m_owner->m_dfa->state_to_word_id(state);
 			*id = m_owner->m_keyToId.get(dawgIdx);
-			if (retKey)
-				retKey->assign(key);
+			retKey->assign(key);
 			m_hasNext = m_iter->decr();
 			return 0;
 		}
@@ -397,11 +397,11 @@ public:
 	}
 
 	bool increment(llong* id, valvec<byte>* key) override {
+		assert(nullptr != key);
 		if (m_hasNext) {
 			assert(m_bitPosCur < m_bitPosUpp);
 			*id = m_owner->m_keyToId.get(m_bitPosCur++);
-			if (key)
-				key->assign(m_iter->word());
+			key->assign(m_iter->word());
 			if (m_bitPosCur == m_bitPosUpp)
 				syncBitPos(m_iter->incr());
 			return true;
@@ -410,12 +410,11 @@ public:
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
 		if (m_iter->seek_lower_bound(key)) {
 			syncBitPos(true);
 			*id = m_owner->m_keyToId.get(m_bitPosCur++);
-			if (retKey) {
-				retKey->assign(m_iter->word());
-			}
+			retKey->assign(m_iter->word());
 			int ret = (m_iter->word() == key) ? 0 : 1;
 			if (m_bitPosCur == m_bitPosUpp)
 				syncBitPos(m_iter->incr());
@@ -460,11 +459,11 @@ public:
 	}
 
 	bool increment(llong* id, valvec<byte>* key) override {
+		assert(nullptr != key);
 		if (m_hasNext) {
 			assert(m_bitPosCur > m_bitPosLow);
 			*id = m_owner->m_keyToId.get(--m_bitPosCur);
-			if (key)
-				key->assign(m_iter->word());
+			key->assign(m_iter->word());
 			if (m_bitPosCur == m_bitPosLow)
 				syncBitPos(m_iter->decr());
 			return true;
@@ -473,12 +472,12 @@ public:
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
 		bool hasForwardLowerBound = m_iter->seek_lower_bound(key);
 		if (hasForwardLowerBound && m_iter->word() == key) {
 			syncBitPos(true);
 			*id = m_owner->m_keyToId.get(--m_bitPosCur);
-			if (retKey)
-				retKey->assign(key);
+			retKey->assign(key);
 			if (m_bitPosCur == m_bitPosLow)
 				syncBitPos(m_iter->decr());
 			return 0;
