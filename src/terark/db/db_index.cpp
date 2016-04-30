@@ -94,6 +94,18 @@ IndexIterator::IndexIterator() {
 IndexIterator::~IndexIterator() {
 }
 
+int
+IndexIterator::seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) {
+	int ret = seekLowerBound(key, id, retKey);
+	if (ret == 0) {
+		while (increment(id, retKey)) {
+			if (key != *retKey)
+				return 1;
+		}
+		return -1;
+	}
+	return ret;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 EmptyIndexStore::EmptyIndexStore() {}
@@ -111,6 +123,7 @@ public:
 	void reset() override {}
 	bool increment(llong* id, valvec<byte>* key) override { return false; }
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) { return -1; }
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) { return -1; }
 };
 
 IndexIterator* EmptyIndexStore::createIndexIterForward(DbContext*) const {

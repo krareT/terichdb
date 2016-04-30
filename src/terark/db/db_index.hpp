@@ -27,6 +27,7 @@ public:
 	///          ret >  0 : *retKey < key
 	///          ret <  0 : key is less than all keys, iter is eof
 	virtual int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) = 0;
+	virtual int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey);
 
 	inline bool isUniqueInSchema() const { return m_isUniqueInSchema; }
 };
