@@ -425,6 +425,28 @@ public:
 		m_hasNext = false;
 		return -1;
 	}
+
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
+		if (m_iter->seek_lower_bound(key)) {
+			if (m_iter->word() == key) {
+				if (!m_iter->incr())
+					goto NotFoundUpperBound;
+			}
+			syncBitPos(true);
+			*id = m_owner->m_keyToId.get(m_bitPosCur++);
+			retKey->assign(m_iter->word());
+			int ret = (m_iter->word() == key) ? 0 : 1;
+			if (m_bitPosCur == m_bitPosUpp)
+				syncBitPos(m_iter->incr());
+			return ret;
+		}
+	NotFoundUpperBound:
+		m_bitPosCur = size_t(-1);
+		m_bitPosUpp = size_t(-1);
+		m_hasNext = false;
+		return -1;
+	}
 };
 
 class NestLoudsTrieIndex::DupableIndexIterBackward : public IndexIterator {
@@ -481,6 +503,29 @@ public:
 			if (m_bitPosCur == m_bitPosLow)
 				syncBitPos(m_iter->decr());
 			return 0;
+		}
+		syncBitPos(m_iter->decr());
+		return this->increment(id, retKey) ? 1 : -1;
+	}
+
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
+		bool hasForwardLowerBound = m_iter->seek_lower_bound(key);
+		if (hasForwardLowerBound) {
+			if (m_iter->word() == key) {
+				if (!m_iter->decr()) {
+					m_hasNext = false;
+					m_bitPosCur = size_t(-1);
+					m_bitPosLow = size_t(-1);
+					return -1;
+				}
+			}
+			syncBitPos(true);
+			*id = m_owner->m_keyToId.get(--m_bitPosCur);
+			retKey->assign(key);
+			if (m_bitPosCur == m_bitPosLow)
+				syncBitPos(m_iter->decr());
+			return 1;
 		}
 		syncBitPos(m_iter->decr());
 		return this->increment(id, retKey) ? 1 : -1;
