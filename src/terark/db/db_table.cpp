@@ -338,6 +338,7 @@ void CompositeTable::doLoad(PathRef dir) {
 				getSegPath("xx", i).string().c_str());
 		}
 		if (i < m_segments.size()-1 && m_segments[i]->getWritableStore()) {
+			m_segments[i]->m_isFreezed = true;
 			this->putToCompressionQueue(i);
 		}
 	}
