@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #ifdef _MSC_VER
+	#define WIN32_LEAN_AND_MEAN
 	#include <io.h>
 	#include <Windows.h>
 #else

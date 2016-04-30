@@ -157,7 +157,7 @@ public:
 			if (min_val > src[i]) min_val = src[i];
 		}
 		typedef typename boost::make_unsigned<Int>::type Uint;
-		size_t wire_max = Uint(max_val - min_val);
+		ullong wire_max = Uint(max_val - min_val);
 		resize_with_wire_max_val(num, wire_max);
 		for (size_t i = 0; i < num; ++i)
 			set_wire(i, Uint(src[i] - min_val));

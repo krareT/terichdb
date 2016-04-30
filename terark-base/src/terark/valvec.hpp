@@ -560,6 +560,13 @@ public:
 		append(cont.begin(), cont.end());
 	}
 
+	void push_n(size_t cnt, const T& val) {
+		ensure_capacity(n + cnt);
+		for (size_t i = 0; i < cnt; ++i) {
+			unchecked_push_back(val);
+		}
+	}
+
 	T* grow_no_init(size_t cnt) {
 		size_t oldsize = n;
 		resize_no_init(n + cnt);

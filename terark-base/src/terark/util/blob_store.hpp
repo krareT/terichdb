@@ -11,7 +11,7 @@ protected:
 	size_t m_numRecords;
 	void risk_swap(BlobStore& y);
 public:
-	static BlobStore* load_from(fstring fpath);
+	static BlobStore* load_from(fstring fpath, bool mmapPopulate);
 	BlobStore();
 	virtual ~BlobStore();
 	size_t num_records() const { return m_numRecords; }

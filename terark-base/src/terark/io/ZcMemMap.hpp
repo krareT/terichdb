@@ -20,6 +20,7 @@
 #include <boost/operators.hpp>
 
 #if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
+#   define WIN32_LEAN_AND_MEAN
 #	include <io.h>
 #	include <sys/types.h>
 #	include <sys/stat.h>
