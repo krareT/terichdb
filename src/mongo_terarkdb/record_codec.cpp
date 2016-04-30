@@ -452,6 +452,191 @@ void SchemaRecordCoder::parseToFields(const BSONObj& obj, FieldsMap* fields) {
 */
 }
 
+using terark::db::ColumnMeta;
+static
+void encodeMissingField(const ColumnMeta& colmeta, valvec<char>* encoded) {
+	switch (colmeta.type) {
+	case ColumnType::Any:
+		assert(!"ColumnType::Any");
+		break;
+	case ColumnType::Nested:
+		assert(!"ColumnType::Nested");
+		break;
+	case ColumnType::Binary:
+		assert(!"ColumnType::Binary for mongodb");
+		break;
+	case ColumnType::Float32:
+		unaligned_save(encoded->grow(sizeof(float)), float(0.0));
+		break;
+	case ColumnType::Float64:
+		unaligned_save(encoded->grow(sizeof(double)), double(0.0));
+		break;
+	case ColumnType::CarBin:
+		encoded->push_n(4, 0); // uint32 len = 0
+		break;
+	case ColumnType::TwoStrZero:
+		encoded->push_n(2, 0);
+		break;
+	case ColumnType::StrZero: // zero ended
+	case ColumnType::Uint08:
+	case ColumnType::Sint08:
+		encoded->push_back(0);
+		break;
+	case ColumnType::Uint16:
+	case ColumnType::Sint16:
+		encoded->push_n(2, 0);
+		break;
+	case ColumnType::Uint32:
+	case ColumnType::Sint32:
+		encoded->push_n(4, 0);
+		break;
+	case ColumnType::Uint64:
+	case ColumnType::Sint64:
+		encoded->push_n(8, 0);
+		break;
+	case ColumnType::Uuid:
+	case ColumnType::Uint128:
+	case ColumnType::Sint128:
+	case ColumnType::Decimal128:
+	case ColumnType::Float128:
+		encoded->push_n(16, 0);
+		break;
+	case ColumnType::Fixed:
+		encoded->push_n(colmeta.fixedLen, 0);
+		break;
+	}
+}
+
+static
+void encodeMinValueField(const ColumnMeta& colmeta, valvec<char>* encoded) {
+	switch (colmeta.type) {
+	case ColumnType::Any:
+		assert(!"ColumnType::Any");
+		break;
+	case ColumnType::Nested:
+		assert(!"ColumnType::Nested");
+		break;
+	case ColumnType::Binary:
+		assert(!"ColumnType::Binary for mongodb");
+		break;
+	case ColumnType::Float32:
+		unaligned_save(encoded->grow(sizeof(float)), FLT_MIN);
+		break;
+	case ColumnType::Float64:
+		unaligned_save(encoded->grow(sizeof(double)), DBL_MIN);
+		break;
+	case ColumnType::CarBin:
+		encoded->push_n(4, 0); // uint32 len = 0
+		break;
+	case ColumnType::TwoStrZero:
+		encoded->push_n(2, 0);
+		break;
+	case ColumnType::StrZero: // zero ended
+		encoded->push_back(0);
+		break;
+	case ColumnType::Uint08:
+		encoded->push_back(0);
+		break;
+	case ColumnType::Sint08:
+		encoded->push_back(INT8_MIN);
+		break;
+	case ColumnType::Uint16:
+		unaligned_save(encoded->grow(2), 0);
+		break;
+	case ColumnType::Sint16:
+		unaligned_save(encoded->grow(2), INT16_MIN);
+		break;
+	case ColumnType::Uint32:
+		unaligned_save(encoded->grow(4), 0);
+		break;
+	case ColumnType::Sint32:
+		unaligned_save(encoded->grow(4), INT32_MIN);
+		break;
+	case ColumnType::Uint64:
+		unaligned_save(encoded->grow(8), 0);
+		break;
+	case ColumnType::Sint64:
+		unaligned_save(encoded->grow(8), INT64_MIN);
+		break;
+	case ColumnType::Uuid:
+	case ColumnType::Uint128:
+	case ColumnType::Sint128:
+	case ColumnType::Decimal128:
+	case ColumnType::Float128:
+		encoded->push_n(16, 0);
+		assert(0);
+		break;
+	case ColumnType::Fixed:
+		encoded->push_n(colmeta.fixedLen, 0);
+		break;
+	}
+}
+
+static
+void encodeMaxValueField(const ColumnMeta& colmeta, valvec<char>* encoded) {
+	switch (colmeta.type) {
+	case ColumnType::Any:
+		assert(!"ColumnType::Any");
+		break;
+	case ColumnType::Nested:
+		assert(!"ColumnType::Nested");
+		break;
+	case ColumnType::Binary:
+		assert(!"ColumnType::Binary for mongodb");
+		break;
+	case ColumnType::Float32:
+		unaligned_save(encoded->grow(sizeof(float)), FLT_MAX);
+		break;
+	case ColumnType::Float64:
+		unaligned_save(encoded->grow(sizeof(double)), DBL_MAX);
+		break;
+	case ColumnType::CarBin:
+		encoded->push_n(4, 0); // uint32 len = 0
+		break;
+	case ColumnType::TwoStrZero:
+		encoded->append("\xFF\0\xFF\0", 4);
+		break;
+	case ColumnType::StrZero: // zero ended
+		encoded->append("\xFF\xFF\0", 3);
+		break;
+	case ColumnType::Uint08:
+		encoded->push_back(UINT8_MAX);
+		break;
+	case ColumnType::Sint08:
+		encoded->push_back(INT8_MAX);
+		break;
+	case ColumnType::Uint16:
+		unaligned_save(encoded->grow(2), UINT16_MAX);
+		break;
+	case ColumnType::Sint16:
+		unaligned_save(encoded->grow(2), INT16_MAX);
+		break;
+	case ColumnType::Uint32:
+		unaligned_save(encoded->grow(4), UINT32_MAX);
+		break;
+	case ColumnType::Sint32:
+		unaligned_save(encoded->grow(4), INT32_MAX);
+		break;
+	case ColumnType::Uint64:
+		unaligned_save(encoded->grow(8), UINT64_MAX);
+		break;
+	case ColumnType::Sint64:
+		unaligned_save(encoded->grow(8), INT64_MAX);
+		break;
+	case ColumnType::Uuid:
+	case ColumnType::Uint128:
+	case ColumnType::Sint128:
+	case ColumnType::Decimal128:
+	case ColumnType::Float128:
+		encoded->push_n(16, UINT8_MAX);
+		assert(0);
+		break;
+	case ColumnType::Fixed:
+		encoded->push_n(colmeta.fixedLen, UINT8_MAX);
+		break;
+	}
+}
+
 // for WritableSegment, param schema is m_rowSchema, param exclude is nullptr
 // for ReadonlySegment, param schema is m_nonIndexSchema,
 //                      param exclude is m_uniqIndexFields
@@ -478,6 +663,8 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 					<< ", j=" << j
 					<< ", m_fields.end_i()=" << m_fields.end_i()
 					<< ", bson=" << obj.toString();
+			encodeMissingField(colmeta, encoded);
+			continue;
 		}
 		invariant(j < m_fields.end_i());
 		bool isLastField = schema->m_columnsMeta.end_i() - 1 == i;
@@ -487,10 +674,16 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 		const char* value = elem.value();
 		switch (elemType) {
 		case EOO:
+			break;
 		case Undefined:
 		case jstNULL:
+			encodeMissingField(colmeta, encoded);
+			break;
 		case MaxKey:
+			encodeMaxValueField(colmeta, encoded);
+			break;
 		case MinKey:
+			encodeMinValueField(colmeta, encoded);
 			break;
 		case mongo::Bool:
 			encoded->push_back(value[0] ? 1 : 0);
@@ -1141,19 +1334,23 @@ void encodeIndexKey(const Schema& indexSchema,
 	using terark::db::ColumnType;
 	BSONObj::iterator iter = bson.begin();
 	for(size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
-#if !defined(NDEBUG)
 		fstring     colname = indexSchema.m_columnsMeta.key(i);
-		assert(!colname.empty());
-#endif
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
+		assert(!colname.empty());
 		BSONElement elem(iter.next());
 		const char* value = elem.value();
 		switch (elem.type()) {
 		case EOO:
+			break;
 		case Undefined:
 		case jstNULL:
+			encodeMissingField(colmeta, encoded);
+			break;
 		case MaxKey:
+			encodeMaxValueField(colmeta, encoded);
+			break;
 		case MinKey:
+			encodeMinValueField(colmeta, encoded);
 			break;
 		case mongo::Bool:
 			encoded->push_back(value[0] ? 1 : 0);
