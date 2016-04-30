@@ -43,7 +43,8 @@ protected:
 	size_t       m_fixedLen;
 	size_t       m_uniqKeys;
 
-	std::pair<size_t, bool> searchLowerBound(fstring binkey) const;
+	size_t searchLowerBound(fstring binkey) const;
+	size_t searchUpperBound(fstring binkey) const;
 
 	class MyIndexIterForward;  friend class MyIndexIterForward;
 	class MyIndexIterBackward; friend class MyIndexIterBackward;

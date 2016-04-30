@@ -37,12 +37,11 @@ llong ZipIntKeyIndex::indexStorageSize() const {
 }
 
 template<class Int>
-std::pair<size_t, bool>
-ZipIntKeyIndex::IntVecLowerBound(fstring binkey) const {
+size_t ZipIntKeyIndex::IntVecLowerBound(fstring binkey) const {
 	assert(binkey.size() == sizeof(Int));
 	Int rawkey = unaligned_load<Int>(binkey.data());
-	if (rawkey < Int(m_minKey)) {
-		return std::make_pair(0, false);
+	if (rawkey <= Int(m_minKey)) {
+		return 0;
 	}
 	auto indexData = m_index.data();
 	auto indexBits = m_index.uintbits();
@@ -50,25 +49,18 @@ ZipIntKeyIndex::IntVecLowerBound(fstring binkey) const {
 	auto keysData = m_keys.data();
 	auto keysBits = m_keys.uintbits();
 	auto keysMask = m_keys.uintmask();
-	size_t key = size_t(rawkey - Int(m_minKey));
-	size_t hitPos = 0;
-	size_t hitKey = 0;
+	ullong key = ullong(rawkey - Int(m_minKey));
 	size_t i = 0, j = m_index.size();
 	while (i < j) {
 		size_t mid = (i + j) / 2;
-		hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid);
-		hitKey = UintVecMin0::fast_get(keysData, keysBits, keysMask, hitPos);
+		size_t hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid);
+		ullong hitKey = UintVecMin0::fast_get(keysData, keysBits, keysMask, hitPos);
 		if (hitKey < key)
 			i = mid + 1;
 		else
 			j = mid;
 	}
-	if (i < m_index.size()) {
-		hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, i);
-		hitKey = UintVecMin0::fast_get(keysData, keysBits, keysMask, hitPos);
-		return std::make_pair(i, key == hitKey);
-	}
-	return std::make_pair(i, false);
+	return i;
 }
 
 void ZipIntKeyIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const {
@@ -78,8 +70,7 @@ void ZipIntKeyIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbC
 	}
 }
 
-std::pair<size_t, bool>
-ZipIntKeyIndex::searchLowerBound(fstring key) const {
+size_t ZipIntKeyIndex::searchLowerBound(fstring key) const {
 	switch (m_keyType) {
 	default:
 		THROW_STD(invalid_argument, "Bad m_keyType=%s", Schema::columnTypeStr(m_keyType));
@@ -95,7 +86,53 @@ ZipIntKeyIndex::searchLowerBound(fstring key) const {
 	case ColumnType::VarUint: return IntVecLowerBound<uint64_t>(key); break;
 	}
 	abort();
-	return {};
+	return -1;
+}
+
+template<class Int>
+size_t ZipIntKeyIndex::IntVecUpperBound(fstring binkey) const {
+	assert(binkey.size() == sizeof(Int));
+	Int rawkey = unaligned_load<Int>(binkey.data());
+	if (rawkey < Int(m_minKey)) {
+		return 0;
+	}
+	auto indexData = m_index.data();
+	auto indexBits = m_index.uintbits();
+	auto indexMask = m_index.uintmask();
+	auto keysData = m_keys.data();
+	auto keysBits = m_keys.uintbits();
+	auto keysMask = m_keys.uintmask();
+	size_t key = size_t(rawkey - Int(m_minKey));
+	size_t i = 0, j = m_index.size();
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		size_t hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid);
+		ullong hitKey = UintVecMin0::fast_get(keysData, keysBits, keysMask, hitPos);
+		if (hitKey <= key)
+			i = mid + 1;
+		else
+			j = mid;
+	}
+	return i;
+}
+
+size_t ZipIntKeyIndex::searchUpperBound(fstring key) const {
+	switch (m_keyType) {
+	default:
+		THROW_STD(invalid_argument, "Bad m_keyType=%s", Schema::columnTypeStr(m_keyType));
+	case ColumnType::Sint08 : return IntVecUpperBound< int8_t >(key); break;
+	case ColumnType::Uint08 : return IntVecUpperBound<uint8_t >(key); break;
+	case ColumnType::Sint16 : return IntVecUpperBound< int16_t>(key); break;
+	case ColumnType::Uint16 : return IntVecUpperBound<uint16_t>(key); break;
+	case ColumnType::Sint32 : return IntVecUpperBound< int32_t>(key); break;
+	case ColumnType::Uint32 : return IntVecUpperBound<uint32_t>(key); break;
+	case ColumnType::Sint64 : return IntVecUpperBound< int64_t>(key); break;
+	case ColumnType::Uint64 : return IntVecUpperBound<uint64_t>(key); break;
+	case ColumnType::VarSint: return IntVecUpperBound< int64_t>(key); break;
+	case ColumnType::VarUint: return IntVecUpperBound<uint64_t>(key); break;
+	}
+	abort();
+	return -1;
 }
 
 template<class Int>
@@ -374,32 +411,38 @@ public:
 	}
 
 	bool increment(llong* id, valvec<byte>* key) override {
+		assert(nullptr != key);
 		if (m_keyIdx < m_owner->m_index.size()) {
 			*id = m_owner->m_index.get(m_keyIdx++);
-			if (key) {
-				key->erase_all();
-				m_owner->getValueAppend(*id, key, nullptr);
-			}
+			key->erase_all();
+			m_owner->getValueAppend(*id, key, nullptr);
 			return true;
 		}
 		return false;
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
-		std::pair<size_t, bool> ib;
-		if (key.empty())
-			ib = std::make_pair(0, false);
-		else
-			ib = m_owner->searchLowerBound(key);
-		m_keyIdx = ib.first;
-		if (ib.first < m_owner->m_index.size()) {
-			*id = m_owner->m_index.get(ib.first);
-			if (retKey) {
-				retKey->erase_all();
-				m_owner->getValueAppend(*id, retKey, nullptr);
-			}
+		assert(nullptr != retKey);
+		m_keyIdx = key.empty() ? 0 : m_owner->searchLowerBound(key);
+		if (m_keyIdx < m_owner->m_index.size()) {
+			*id = m_owner->m_index[m_keyIdx];
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
 			m_keyIdx++;
-			return ib.second ? 0 : 1;
+			return key == *retKey ? 0 : 1;
+		}
+		return -1;
+	}
+
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
+		m_keyIdx = key.empty() ? 0 : m_owner->searchUpperBound(key);
+		if (m_keyIdx < m_owner->m_index.size()) {
+			*id = m_owner->m_index[m_keyIdx];
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
+			m_keyIdx++;
+			return 1;
 		}
 		return -1;
 	}
@@ -432,21 +475,31 @@ public:
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
-		std::pair<size_t, bool> ib;
-		if (key.empty())
-			ib = std::make_pair(m_owner->m_index.size(), false);
-		else
-			ib = m_owner->searchLowerBound(key);
-		m_keyIdx = ib.first;
-		if (ib.first > 0 || ib.second) {
-			if (!ib.second)
-				--m_keyIdx; // backward next is backward-greater than key
-			*id = m_owner->m_index[m_keyIdx];
-			if (retKey) {
-				retKey->erase_all();
-				m_owner->getValueAppend(*id, retKey, nullptr);
-			}
-			return ib.second ? 0 : 1;
+		if (key.empty()) {
+			m_keyIdx = m_owner->m_index.size();
+		} else {
+			m_keyIdx = m_owner->searchUpperBound(key);
+		}
+		if (m_keyIdx > 0) {
+			*id = m_owner->m_index[--m_keyIdx];
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
+			return key == *retKey ? 0 : 1;
+		}
+		return -1;
+	}
+
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		if (key.empty()) {
+			m_keyIdx = m_owner->m_index.size();
+		} else {
+			m_keyIdx = m_owner->searchLowerBound(key);
+		}
+		if (m_keyIdx > 0) {
+			*id = m_owner->m_index[--m_keyIdx];
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
+			return 1;
 		}
 		return -1;
 	}

@@ -38,13 +38,10 @@ llong FixedLenKeyIndex::indexStorageSize() const {
 void
 FixedLenKeyIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*)
 const {
-	std::pair<size_t, bool> ib = searchLowerBound(key);
-	if (!ib.second)
-		return;
-	size_t j = ib.first;
+	size_t j = searchLowerBound(key);
 	size_t f = m_fixedLen;
 	size_t id;
-	auto keysData = m_keys.data();
+	const  byte* keysData = m_keys.data();
 	while (j < m_index.size() &&
 		   memcmp(keysData + f*(id=m_index[j]), key.p, f) == 0)
 	{
@@ -53,32 +50,44 @@ const {
 	}
 }
 
-std::pair<size_t, bool>
-FixedLenKeyIndex::searchLowerBound(fstring key) const {
+size_t FixedLenKeyIndex::searchLowerBound(fstring key) const {
 	assert(key.size() == m_fixedLen);
 	auto indexData = m_index.data();
 	auto indexBits = m_index.uintbits();
 	auto indexMask = m_index.uintmask();
 	auto keysData = m_keys.data();
 	size_t fixlen = m_fixedLen;
-	size_t hitPos = 0;
-	const byte* hitKey = nullptr;
 	size_t i = 0, j = m_index.size();
 	while (i < j) {
 		size_t mid = (i + j) / 2;
-		hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid);
-		hitKey = keysData + fixlen * hitPos;
+		size_t hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid);
+		const byte* hitKey = keysData + fixlen * hitPos;
 		if (memcmp(hitKey, key.p, fixlen) < 0)
 			i = mid + 1;
 		else
 			j = mid;
 	}
-	if (i < m_index.size()) {
-		hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, i);
-		hitKey = keysData + fixlen * hitPos;
-		return std::make_pair(i, memcmp(hitKey, key.p, fixlen) == 0);
+	return i;
+}
+
+size_t FixedLenKeyIndex::searchUpperBound(fstring key) const {
+	assert(key.size() == m_fixedLen);
+	auto indexData = m_index.data();
+	auto indexBits = m_index.uintbits();
+	auto indexMask = m_index.uintmask();
+	auto keysData = m_keys.data();
+	size_t fixlen = m_fixedLen;
+	size_t i = 0, j = m_index.size();
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		size_t hitPos = UintVecMin0::fast_get(indexData, indexBits, indexMask, mid);
+		const byte* hitKey = keysData + fixlen * hitPos;
+		if (memcmp(hitKey, key.p, fixlen) <= 0)
+			i = mid + 1;
+		else
+			j = mid;
 	}
-	return std::make_pair(i, false);
+	return i;
 }
 
 ///@}
@@ -211,32 +220,38 @@ public:
 	}
 
 	bool increment(llong* id, valvec<byte>* key) override {
+		assert(nullptr != key);
 		if (m_keyIdx < m_owner->m_index.size()) {
 			*id = m_owner->m_index.get(m_keyIdx++);
-			if (key) {
-				key->erase_all();
-				m_owner->getValueAppend(*id, key, nullptr);
-			}
+			key->erase_all();
+			m_owner->getValueAppend(*id, key, nullptr);
 			return true;
 		}
 		return false;
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
-		std::pair<size_t, bool> ib;
-		if (key.empty())
-			ib = std::make_pair(0, false);
-		else
-			ib = m_owner->searchLowerBound(key);
-		m_keyIdx = ib.first;
-		if (ib.first < m_owner->m_index.size()) {
-			*id = m_owner->m_index.get(ib.first);
-			if (retKey) {
-				retKey->erase_all();
-				m_owner->getValueAppend(*id, retKey, nullptr);
-			}
+		assert(nullptr != retKey);
+		m_keyIdx = key.empty() ? 0 : m_owner->searchLowerBound(key);
+		if (m_keyIdx < m_owner->m_index.size()) {
+			*id = m_owner->m_index.get(m_keyIdx);
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
 			m_keyIdx++;
-			return ib.second ? 0 : 1;
+			return key == *retKey ? 0 : 1;
+		}
+		return -1;
+	}
+
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
+		m_keyIdx = key.empty() ? 0 : m_owner->searchUpperBound(key);
+		if (m_keyIdx < m_owner->m_index.size()) {
+			*id = m_owner->m_index.get(m_keyIdx);
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
+			m_keyIdx++;
+			return 1;
 		}
 		return -1;
 	}
@@ -257,33 +272,44 @@ public:
 	}
 
 	bool increment(llong* id, valvec<byte>* key) override {
+		assert(nullptr != key);
 		if (m_keyIdx > 0) {
 			*id = m_owner->m_index.get(--m_keyIdx);
-			if (key) {
-				key->erase_all();
-				m_owner->getValueAppend(*id, key, nullptr);
-			}
+			key->erase_all();
+			m_owner->getValueAppend(*id, key, nullptr);
 			return true;
 		}
 		return false;
 	}
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
-		std::pair<size_t, bool> ib;
-		if (key.empty())
-			ib = std::make_pair(m_owner->m_index.size(), false);
-		else
-			ib = m_owner->searchLowerBound(key);
-		m_keyIdx = ib.first;
-		if (ib.first > 0 || ib.second) {
-			if (!ib.second)
-				--m_keyIdx; // backward next is backward-greater than key
-			*id = m_owner->m_index[m_keyIdx];
-			if (retKey) {
-				retKey->erase_all();
-				m_owner->getValueAppend(*id, retKey, nullptr);
-			}
-			return ib.second ? 0 : 1;
+		assert(nullptr != retKey);
+		if (key.empty()) {
+			m_keyIdx = m_owner->m_index.size();
+		} else {
+			m_keyIdx = m_owner->searchUpperBound(key);
+		}
+		if (m_keyIdx > 0) {
+			*id = m_owner->m_index[--m_keyIdx];
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
+			return key == *retKey ? 0 : 1;
+		}
+		return -1;
+	}
+
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != retKey);
+		if (key.empty()) {
+			m_keyIdx = m_owner->m_index.size();
+		} else {
+			m_keyIdx = m_owner->searchLowerBound(key);
+		}
+		if (m_keyIdx > 0) {
+			*id = m_owner->m_index[--m_keyIdx];
+			retKey->erase_all();
+			m_owner->getValueAppend(*id, retKey, nullptr);
+			return 1;
 		}
 		return -1;
 	}

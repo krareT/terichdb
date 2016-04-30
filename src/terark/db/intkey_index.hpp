@@ -45,8 +45,12 @@ protected:
 	const Schema& m_schema;
 
 	template<class Int>
-	std::pair<size_t, bool> IntVecLowerBound(fstring binkey) const;
-	std::pair<size_t, bool> searchLowerBound(fstring binkey) const;
+	size_t IntVecLowerBound(fstring binkey) const;
+	size_t searchLowerBound(fstring binkey) const;
+
+	template<class Int>
+	size_t IntVecUpperBound(fstring binkey) const;
+	size_t searchUpperBound(fstring binkey) const;
 
 	template<class Int>
 	std::pair<size_t, size_t> IntVecEqualRange(fstring binkey) const;
