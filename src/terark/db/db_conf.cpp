@@ -20,6 +20,7 @@
 
 namespace terark { namespace db {
 
+/*
 ColumnMeta::ColumnMeta() {
 	fixedLen = 0;
 	fixedOffset = UINT32_MAX;
@@ -29,6 +30,7 @@ ColumnMeta::ColumnMeta() {
 	type = ColumnType::Any;
 	mongoType = 255; // unknown
 }
+*/
 
 ColumnMeta::ColumnMeta(ColumnType t) {
 	fixedOffset = UINT32_MAX;
@@ -245,12 +247,17 @@ void Schema::parseRowAppend(fstring row, size_t start, ColumnVec* columns) const
 	const byte* curr = row.udata() + start;
 	const byte* last = row.size() + base;
 	columns->m_base = base;
-
-#define CHECK_CURR_LAST3(curr, last, len) \
+#if defined(NDEBUG)
+  #define CHECK_CURR_LAST3(curr, last, len) \
 	if (terark_unlikely(curr + (len) > last)) { \
 		THROW_STD(out_of_range, "len=%ld remain=%ld", \
 			long(len), long(last-curr)); \
 	}
+#else
+  #define CHECK_CURR_LAST3(curr, last, len) \
+	assert(terark_unlikely(curr + (len) <= last));
+#endif
+
 #define CHECK_CURR_LAST(len) CHECK_CURR_LAST3(curr, last, len)
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
@@ -2255,8 +2262,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			fprintf(stderr, "TODO: nested column: %s is not supported now, save it to $$\n", name.c_str());
 			continue;
 		}
-		ColumnMeta colmeta;
-		colmeta.type = Schema::parseColumnType(type);
+		ColumnMeta colmeta(Schema::parseColumnType(type));
 		if (ColumnType::Fixed == colmeta.type) {
 			colmeta.fixedLen = col["length"];
 		}

@@ -93,7 +93,7 @@ namespace terark { namespace db {
 		unsigned char mysqlType;
 		ColumnType type;
 		unsigned char mongoType; // user column type, such as mongodb type
-		ColumnMeta();
+	//	ColumnMeta();
 		bool isInteger() const;
 		bool isNumber() const;
 		bool isString() const;
