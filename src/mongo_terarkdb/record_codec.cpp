@@ -1432,6 +1432,10 @@ void encodeIndexKey(const Schema& indexSchema,
 			}
 		}
 	}
+	if (indexSchema.getColumnType(indexSchema.columnNum()-1) == ColumnType::StrZero) {
+		invariant(0 == encoded->back());
+		encoded->pop_back(); // key data don't include ending '\0'
+	}
 }
 
 void encodeIndexKey(const Schema& indexSchema,
