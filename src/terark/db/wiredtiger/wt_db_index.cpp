@@ -66,8 +66,8 @@ public:
 		WT_ITEM item;
 		m_index->setKeyVal(m_iter, key, 0, &item, &m_buf);
 		int err = m_iter->search_near(m_iter, &cmp);
-		WT_CONNECTION* conn = m_iter->session->connection;
 #if 0
+		WT_CONNECTION* conn = m_iter->session->connection;
 		fprintf(stderr
 			, "DEBUG: WtIndexIterForward.lowerBound: dir=%s, key=%s, item=%s, err=%d, cmp=%d\n"
 			, conn->get_home(conn)
@@ -98,11 +98,19 @@ public:
 		m_index->setKeyVal(m_iter, key, INT64_MAX, &item, &m_buf);
 		int err = m_iter->search_near(m_iter, &cmp);
 		if (err == 0) {
+			if (cmp < 0) {
+				return -1;
+			}
 			if (0 == cmp) {
+				// For dupable, INT64_MAX will never be a valid record id
+				// For unique,  INT64_MAX is ignored, just 'key' is searched
 				assert(m_index->m_schema->m_isUnique);
 				return increment(id, retKey) ? 1 : -1;
 			}
 			m_index->getKeyVal(m_iter, retKey, id);
+			if (key == *retKey) {
+				return increment(id, retKey) ? 1 : -1;
+			}
 			return 1;
 		}
 		if (WT_NOTFOUND == err) {
@@ -133,9 +141,8 @@ public:
 		m_index->setKeyVal(m_iter, key, INT64_MAX, &item, &m_buf);
 		int err = m_iter->search_near(m_iter, &cmp);
 		if (err == 0) {
-			if (0 == cmp) {
-				assert(m_index->m_schema->m_isUnique);
-				m_index->getKeyVal(m_iter, retKey, id);
+			m_index->getKeyVal(m_iter, retKey, id);
+			if (key == *retKey) {
 				return 0;
 			}
 			if (increment(id, retKey))
