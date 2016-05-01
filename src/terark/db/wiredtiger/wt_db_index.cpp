@@ -102,9 +102,6 @@ public:
 				assert(m_index->m_schema->m_isUnique);
 				return increment(id, retKey) ? 1 : -1;
 			}
-			if (cmp < 0) {
-				return -1;
-			}
 			m_index->getKeyVal(m_iter, retKey, id);
 			return 1;
 		}
