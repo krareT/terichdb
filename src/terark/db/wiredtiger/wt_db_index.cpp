@@ -66,12 +66,47 @@ public:
 		WT_ITEM item;
 		m_index->setKeyVal(m_iter, key, 0, &item, &m_buf);
 		int err = m_iter->search_near(m_iter, &cmp);
+		WT_CONNECTION* conn = m_iter->session->connection;
+#if 0
+		fprintf(stderr
+			, "DEBUG: WtIndexIterForward.lowerBound: dir=%s, key=%s, item=%s, err=%d, cmp=%d\n"
+			, conn->get_home(conn)
+			, m_index->m_schema->toJsonStr(key).c_str()
+			, m_index->m_schema->toJsonStr(fstring((char*)item.data, item.size)).c_str()
+			, err, cmp);
+		if ("cid" == m_index->m_schema->m_name) {
+			m_index->getKeyVal(m_iter, retKey, id);
+			fprintf(stderr, "DEBUG: retKey=%s, id=%lld\n"
+				, m_index->m_schema->toJsonStr(*retKey).c_str(), *id);
+		}
+#endif
 		if (err == 0) {
 			if (cmp < 0) {
 				return -1;
 			}
 			m_index->getKeyVal(m_iter, retKey, id);
 			return key == fstring(*retKey) ? 0 : 1;
+		}
+		if (WT_NOTFOUND == err) {
+			return -1;
+		}
+		THROW_STD(logic_error, "cursor_search_near failed: %s", wiredtiger_strerror(err));
+	}
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		int cmp = 0;
+		WT_ITEM item;
+		m_index->setKeyVal(m_iter, key, INT64_MAX, &item, &m_buf);
+		int err = m_iter->search_near(m_iter, &cmp);
+		if (err == 0) {
+			if (0 == cmp) {
+				assert(m_index->m_schema->m_isUnique);
+				return increment(id, retKey) ? 1 : -1;
+			}
+			if (cmp < 0) {
+				return -1;
+			}
+			m_index->getKeyVal(m_iter, retKey, id);
+			return 1;
 		}
 		if (WT_NOTFOUND == err) {
 			return -1;
@@ -98,14 +133,31 @@ public:
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		int cmp = 0;
 		WT_ITEM item;
+		m_index->setKeyVal(m_iter, key, INT64_MAX, &item, &m_buf);
+		int err = m_iter->search_near(m_iter, &cmp);
+		if (err == 0) {
+			if (0 == cmp) {
+				assert(m_index->m_schema->m_isUnique);
+				m_index->getKeyVal(m_iter, retKey, id);
+				return 0;
+			}
+			if (increment(id, retKey))
+				return key == fstring(*retKey) ? 0 : 1;
+			else
+				return -1;
+		}
+		if (WT_NOTFOUND == err) {
+			return -1;
+		}
+		THROW_STD(logic_error, "cursor_search_near failed: %s", wiredtiger_strerror(err));
+	}
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		int cmp = 0;
+		WT_ITEM item;
 		m_index->setKeyVal(m_iter, key, 0, &item, &m_buf);
 		int err = m_iter->search_near(m_iter, &cmp);
 		if (err == 0) {
-			if (cmp > 0) {
-				return increment(id, retKey) ? 1 : -1;
-			}
-			m_index->getKeyVal(m_iter, retKey, id);
-			return key == fstring(*retKey) ? 0 : 1;
+			return increment(id, retKey) ? 1 : -1;
 		}
 		if (WT_NOTFOUND == err) {
 			return -1;
@@ -347,8 +399,10 @@ bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* 
 		return false;
 	}
 	if (err) {
-		THROW_STD(invalid_argument, "FATAL: wiredtiger replace(dir=%s, uri=%s, key=%s) = %s"
-			, m_wtSession->connection->get_home(m_wtSession->connection)
+		WT_CONNECTION* conn = m_wtSession->connection;
+		THROW_STD(invalid_argument
+			, "FATAL: wiredtiger replace(dir=%s, uri=%s, key=%s) = %s"
+			, conn->get_home(conn)
 			, m_uri.c_str(), m_schema->toJsonStr(key).c_str()
 			, wiredtiger_strerror(err)
 			);
@@ -374,6 +428,7 @@ const {
 	else {
 		item.data = key.data();
 	}
+	WT_CONNECTION* conn = m_wtSession->connection;
 	if (m_isUnique) {
 		m_wtCursor->set_key(m_wtCursor, &item);
 		int err = m_wtCursor->search(m_wtCursor);
@@ -383,7 +438,7 @@ const {
 		if (err) {
 			THROW_STD(invalid_argument
 				, "FATAL: wiredtiger search(dir=%s, uri=%s, key=%s) = %s"
-				, m_wtSession->connection->get_home(m_wtSession->connection)
+				, conn->get_home(conn)
 				, m_uri.c_str(), m_schema->toJsonStr(key).c_str()
 				, wiredtiger_strerror(err)
 				);
@@ -402,7 +457,7 @@ const {
 		if (err) {
 			THROW_STD(invalid_argument
 				, "FATAL: wiredtiger search_near(dir=%s, uri=%s, key=%s) = %s"
-				, m_wtSession->connection->get_home(m_wtSession->connection)
+				, conn->get_home(conn)
 				, m_uri.c_str(), m_schema->toJsonStr(key).c_str()
 				, wiredtiger_strerror(err)
 				);
