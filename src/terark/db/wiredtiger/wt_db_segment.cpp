@@ -250,12 +250,12 @@ public:
 		WT_CURSOR* cur = m_indices[indexId].insert;
 		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
 		recIdvec->erase_all();
-		int err = cur->search(cur);
-		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
-		if (WT_NOTFOUND == err) {
-			return;
-		}
 		if (schema.m_isUnique) {
+			int err = cur->search(cur);
+			BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
+			if (WT_NOTFOUND == err) {
+				return;
+			}
 			if (err) {
 				THROW_STD(invalid_argument
 					, "ERROR: wiredtiger search: %s", ses->strerror(ses, err));
@@ -269,6 +269,10 @@ public:
 			cur->set_key(cur, &item, recId);
 			int cmp = 0;
 			int err = cur->search_near(cur, &cmp);
+			BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
+			if (WT_NOTFOUND == err) {
+				return;
+			}
 			if (err) {
 				THROW_STD(invalid_argument
 					, "ERROR: wiredtiger search_near: %s", ses->strerror(ses, err));
