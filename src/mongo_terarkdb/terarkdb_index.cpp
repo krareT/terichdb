@@ -226,7 +226,7 @@ Status TerarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, con
 }
 
 bool TerarkDbIndex::isEmpty(OperationContext* txn) {
-    return false;
+    return m_table->numDataRows() == 0;
 }
 
 Status TerarkDbIndex::touch(OperationContext* txn) const {
@@ -424,9 +424,9 @@ protected:
 		if (_cursor->increment(&recIdx, &m_curKey)) {
 	        _cursorAtEof = false;
 			_id = RecordId(recIdx + 1);
-			TRACE_CURSOR << "seekWTCursor(): increment() = true, _id = " << _id;
+			TRACE_CURSOR << "advanceWTCursor(): increment() = true, _id = " << _id;
 		} else {
-			TRACE_CURSOR << "seekWTCursor(): increment() = false, reach eof";
+			TRACE_CURSOR << "advanceWTCursor(): increment() = false, reach eof";
 	        _cursorAtEof = true;
 		}
     }
@@ -440,39 +440,34 @@ protected:
     bool seekWTCursor(bool inclusive) {
 		llong recIdx = -1;
 		_eof = false;
-        int ret = _cursor->seekLowerBound(m_qryKey, &recIdx, &m_curKey);
-        if (ret < 0) {
-            _cursorAtEof = true;
-            TRACE_CURSOR << "seekWTCursor(): not found, queryKey is greater than all keys";
-            return false;
-        }
+        int ret;
+		const char* funcName;
+	//	m_curKey.erase_all();
+		if (inclusive) {
+			funcName = "seekLowerBound";
+			ret = _cursor->seekLowerBound(m_qryKey, &recIdx, &m_curKey);
+		} else {
+			funcName = "seekUpperBound";
+			ret = _cursor->seekUpperBound(m_qryKey, &recIdx, &m_curKey);
+		}
 		bool isEqual = fstring(m_qryKey) == m_curKey;
-		TRACE_CURSOR << "seekWTCursor(): lowerBound ret: " << ret
+		TRACE_CURSOR << "seekWTCursor(): " << funcName << " ret: " << ret
 			<< ", _id = " << (recIdx + 1)
 			<< ", qryKey = " << _idx.getIndexSchema()->toJsonStr(m_qryKey)
 			<< ", curKey = " << _idx.getIndexSchema()->toJsonStr(m_curKey)
 			<< ", inclusive = " << inclusive
 			<< ", isEqual = " << isEqual
 			;
+        if (ret < 0) {
+            _cursorAtEof = true;
+            TRACE_CURSOR << "seekWTCursor(): not found, queryKey is greater than all keys";
+            return false;
+        }
 
-		if (!inclusive && isEqual) {
-			if (_cursor->increment(&recIdx, &m_curKey)) {
-				_cursorAtEof = false;
-				_id = RecordId(recIdx + 1);
-				TRACE_CURSOR << "seekWTCursor(): increment() = true, _id = " << _id;
-				return true;
-			} else {
-				TRACE_CURSOR << "seekWTCursor(): increment() = false";
-				_cursorAtEof = true;
-				return false;
-			}
-		}
-		else {
-			_id = RecordId(recIdx + 1);
-	        _cursorAtEof = false;
-			TRACE_CURSOR << "seekWTCursor(): returning true, _id = " << _id;
-	        return true;
-		}
+		_id = RecordId(recIdx + 1);
+	    _cursorAtEof = false;
+		TRACE_CURSOR << "seekWTCursor(): returning true, _id = " << _id;
+	    return true;
     }
 
     /**
