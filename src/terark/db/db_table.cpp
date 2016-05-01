@@ -64,7 +64,7 @@ CompositeTable::CompositeTable() {
 	m_newWrSegNum = 0;
 	m_bgTaskNum = 0;
 	m_rowNum = 0;
-	m_segArrayUpdateSeq = 0;
+	m_segArrayUpdateSeq = 1;
 //	m_ctxListHead = new DbContextLink();
 }
 
@@ -1820,8 +1820,7 @@ class TableIndexIter : public IndexIterator {
 	friend class HeapKeyCompare;
 	valvec<byte> m_keyBuf;
 	terark::valvec<size_t> m_heap;
-	size_t m_oldmergeSeqNum;
-	size_t m_oldnewWrSegNum;
+	size_t m_oldsegArrayUpdateSeq;
 	const bool m_forward;
 	bool m_isHeapBuilt;
 
@@ -1834,15 +1833,12 @@ class TableIndexIter : public IndexIterator {
 	}
 
 	size_t syncSegPtr() {
-		size_t numChangedSegs = 0;
-		MyRwLock lock(m_tab->m_rwMutex, false);
-		if (m_oldmergeSeqNum == m_tab->m_mergeSeqNum &&
-			m_oldnewWrSegNum == m_tab->m_newWrSegNum)
-		{
+		if (m_oldsegArrayUpdateSeq == m_tab->m_segArrayUpdateSeq) {
 			return 0;
 		}
-		m_oldmergeSeqNum = m_tab->m_mergeSeqNum;
-		m_oldnewWrSegNum = m_tab->m_newWrSegNum;
+		size_t numChangedSegs = 0;
+		MyRwLock lock(m_tab->m_rwMutex, false);
+		m_oldsegArrayUpdateSeq = m_tab->m_segArrayUpdateSeq;
 		m_segs.resize(m_tab->m_segments.size());
 		for (size_t i = 0; i < m_segs.size(); ++i) {
 			auto& cur = m_segs[i];
@@ -1874,8 +1870,7 @@ public:
 			MyRwLock lock(tab->m_rwMutex);
 			tab->m_tableScanningRefCount++;
 		}
-		m_oldmergeSeqNum = size_t(-1);
-		m_oldnewWrSegNum = size_t(-1);
+		m_oldsegArrayUpdateSeq = 0;
 		m_isHeapBuilt = false;
 	}
 	~TableIndexIter() {
@@ -1886,6 +1881,7 @@ public:
 		m_heap.erase_all();
 		m_segs.erase_all();
 		m_keyBuf.erase_all();
+		m_oldsegArrayUpdateSeq = 0;
 		m_isHeapBuilt = false;
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
@@ -1953,14 +1949,17 @@ public:
 		}
 	}
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		return seekBound(key, id, retKey, true);
+	}
+	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
+		return seekBound(key, id, retKey, false);
+	}
+	int seekBound(fstring key, llong* id, valvec<byte>* retKey, bool inclusive) {
 		const Schema& schema = m_tab->m_schema->getIndexSchema(m_indexId);
-#if 0
-		if (key.size() == 0)
-			fprintf(stderr, "TableIndexIter::seekLowerBound: segs=%zd key.len=0\n",
-					m_tab->m_segments.size());
-		else
-			fprintf(stderr, "TableIndexIter::seekLowerBound: segs=%zd key=%s\n",
-					m_tab->m_segments.size(), schema.toJsonStr(key).c_str());
+#if !defined(NDEBUG)
+		fprintf(stderr, "DEBUG: TableIndexIter::%s: segs=%zd key=%s\n",
+				inclusive?"seekLowerBound":"seekUpperBound",
+				m_tab->m_segments.size(), schema.toJsonStr(key).c_str());
 #endif
 		if (key.size() == 0) {
 			// empty key indicate min key in both forward and backword mode
@@ -1986,10 +1985,22 @@ public:
 		m_heap.reserve(m_segs.size());
 		for(size_t i = 0; i < m_segs.size(); ++i) {
 			auto& cur = m_segs[i];
-			int ret = cur.iter->seekLowerBound(key, &cur.subId, &cur.data);
+			int ret = inclusive
+					? cur.iter->seekLowerBound(key, &cur.subId, &cur.data)
+					: cur.iter->seekUpperBound(key, &cur.subId, &cur.data)
+					;
 			if (ret >= 0) {
 				m_heap.push_back(i);
 				cur.subId = cur.seg->getLogicId(cur.subId);
+			}
+			else {
+			#if !defined(NDEBUG)
+				fprintf(stderr
+					, "DEBUG: %s, seg[%zd].iter->%s(%s) = %d\n"
+					, cur.seg->m_segDir.string().c_str()
+					, i, inclusive?"seekLowerBound":"seekUpperBound"
+					, schema.toJsonStr(key).c_str(), ret);
+			#endif
 			}
 		}
 		m_isHeapBuilt = true;
@@ -2005,13 +2016,11 @@ public:
 				#if !defined(NDEBUG)
 					assert(*id < m_tab->numDataRows());
 					if (m_forward) {
-#if !defined(NDEBUG)
 						if (schema.compareData(key, m_keyBuf) > 0) {
 							fprintf(stderr, "ERROR: key=%s m_keyBuf=%s\n"
 								, schema.toJsonStr(key).c_str()
 								, schema.toJsonStr(m_keyBuf).c_str());
 						}
-#endif
 						assert(schema.compareData(key, m_keyBuf) <= 0);
 					} else {
 						assert(schema.compareData(key, m_keyBuf) >= 0);
@@ -2023,6 +2032,12 @@ public:
 					return ret;
 				}
 			}
+		}
+		else {
+		#if !defined(NDEBUG)
+			fprintf(stderr, "DEBUG: heap is empty: key=%s\n"
+				, schema.toJsonStr(key).c_str());
+		#endif
 		}
 		return -1;
 	}
