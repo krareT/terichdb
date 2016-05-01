@@ -430,16 +430,22 @@ public:
 		assert(nullptr != retKey);
 		if (m_iter->seek_lower_bound(key)) {
 			if (m_iter->word() == key) {
-				if (!m_iter->incr())
+				bool hasNext = m_iter->incr();
+			#if !defined(NDEBUG)
+				fprintf(stderr
+					, "DEBUG: %s: found lowerBound(key=%s), incr().hasNext=%d\n"
+					, BOOST_CURRENT_FUNCTION
+					, m_owner->m_schema.toJsonStr(key).c_str(), hasNext);
+			#endif
+				if (!hasNext)
 					goto NotFoundUpperBound;
 			}
 			syncBitPos(true);
 			*id = m_owner->m_keyToId.get(m_bitPosCur++);
 			retKey->assign(m_iter->word());
-			int ret = (m_iter->word() == key) ? 0 : 1;
 			if (m_bitPosCur == m_bitPosUpp)
 				syncBitPos(m_iter->incr());
-			return ret;
+			return 1;
 		}
 	NotFoundUpperBound:
 		m_bitPosCur = size_t(-1);
@@ -510,8 +516,7 @@ public:
 
 	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		assert(nullptr != retKey);
-		bool hasForwardLowerBound = m_iter->seek_lower_bound(key);
-		if (hasForwardLowerBound) {
+		if (m_iter->seek_lower_bound(key)) {
 			if (m_iter->word() == key) {
 				if (!m_iter->decr()) {
 					m_hasNext = false;
@@ -527,8 +532,10 @@ public:
 				syncBitPos(m_iter->decr());
 			return 1;
 		}
-		syncBitPos(m_iter->decr());
-		return this->increment(id, retKey) ? 1 : -1;
+		else {
+			reset();
+			return this->increment(id, retKey) ? 1 : -1;
+		}
 	}
 };
 
