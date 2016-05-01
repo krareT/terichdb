@@ -1956,11 +1956,16 @@ public:
 	}
 	int seekBound(fstring key, llong* id, valvec<byte>* retKey, bool inclusive) {
 		const Schema& schema = m_tab->m_schema->getIndexSchema(m_indexId);
-#if !defined(NDEBUG)
-		fprintf(stderr, "DEBUG: TableIndexIter::%s: segs=%zd key=%s\n",
+#if 0//!defined(NDEBUG)
+		fprintf(stderr, "DEBUG: TableIndexIter::%s: segs=%zd key=%s, keylen=%zd\n",
 				inclusive?"seekLowerBound":"seekUpperBound",
-				m_tab->m_segments.size(), schema.toJsonStr(key).c_str());
+				m_tab->m_segments.size(), schema.toJsonStr(key).c_str(), key.size());
 #endif
+		if (schema.getColumnType(schema.columnNum()-1) == ColumnType::StrZero) {
+			assert(key.size() == 0 || key.ende(1) != 0);
+			if (key.size() > 0 && key.ende(1) == 0)
+				key.n--;
+		}
 		if (key.size() == 0) {
 			// empty key indicate min key in both forward and backword mode
 			this->reset();
@@ -1993,15 +1998,15 @@ public:
 				m_heap.push_back(i);
 				cur.subId = cur.seg->getLogicId(cur.subId);
 			}
-			else {
-			#if !defined(NDEBUG)
-				fprintf(stderr
-					, "DEBUG: %s, seg[%zd].iter->%s(%s) = %d\n"
-					, cur.seg->m_segDir.string().c_str()
-					, i, inclusive?"seekLowerBound":"seekUpperBound"
-					, schema.toJsonStr(key).c_str(), ret);
-			#endif
-			}
+		#if 0//!defined(NDEBUG)
+			fprintf(stderr
+				, "DEBUG: %s, seg[%zd].iter->%s(%s) = %d, retKey=%s\n"
+				, cur.seg->m_segDir.string().c_str()
+				, i, inclusive?"seekLowerBound":"seekUpperBound"
+				, schema.toJsonStr(key).c_str(), ret
+				, schema.toJsonStr(cur.data).c_str()
+				);
+		#endif
 		}
 		m_isHeapBuilt = true;
 		if (m_heap.size()) {
