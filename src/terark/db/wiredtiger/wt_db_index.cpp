@@ -142,6 +142,16 @@ public:
 		int err = m_iter->search_near(m_iter, &cmp);
 		if (err == 0) {
 			m_index->getKeyVal(m_iter, retKey, id);
+			const Schema& schema = *m_index->m_schema;
+		//	fprintf(stderr
+		//		, "DEBUG: WtIndexIterBackward.lowerBound: cmp=%d, key=%s, retKey=%s\n"
+		//		, cmp, schema.toJsonStr(key).c_str(), schema.toJsonStr(*retKey).c_str());
+			if (cmp < 0 && schema.compareData(key, *retKey) < 0) {
+				// when cmp < 0, it should be key > retKey, otherwise,
+				// wiredtiger cursor is wrapped: overflow and seek to begin pos
+			//	fprintf(stderr, "DEBUG: WtIndexIterBackward.lowerBound: wiredtiger cursor wrap to begin\n");
+				return -1;
+			}
 			if (key == *retKey) {
 				return 0;
 			}
@@ -161,6 +171,17 @@ public:
 		m_index->setKeyVal(m_iter, key, 0, &item, &m_buf);
 		int err = m_iter->search_near(m_iter, &cmp);
 		if (err == 0) {
+			m_index->getKeyVal(m_iter, retKey, id);
+			const Schema& schema = *m_index->m_schema;
+		//	fprintf(stderr
+		//		, "DEBUG: WtIndexIterBackward.upperBound: cmp=%d, key=%s, retKey=%s\n"
+		//		, cmp, schema.toJsonStr(key).c_str(), schema.toJsonStr(*retKey).c_str());
+			if (cmp < 0 && schema.compareData(key, *retKey) < 0) {
+				// when cmp < 0, it should be key > retKey, otherwise,
+				// wiredtiger cursor is wrapped: overflow and seek to begin pos
+			//	fprintf(stderr, "DEBUG: WtIndexIterBackward.lowerBound: wiredtiger cursor wrap to begin\n");
+				return -1;
+			}
 			return increment(id, retKey) ? 1 : -1;
 		}
 		if (WT_NOTFOUND == err) {
