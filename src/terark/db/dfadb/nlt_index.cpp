@@ -517,17 +517,15 @@ public:
 	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		assert(nullptr != retKey);
 		if (m_iter->seek_lower_bound(key)) {
-			if (m_iter->word() == key) {
-				if (!m_iter->decr()) {
-					m_hasNext = false;
-					m_bitPosCur = size_t(-1);
-					m_bitPosLow = size_t(-1);
-					return -1;
-				}
+			if (!m_iter->decr()) {
+				m_hasNext = false;
+				m_bitPosCur = size_t(-1);
+				m_bitPosLow = size_t(-1);
+				return -1;
 			}
 			syncBitPos(true);
 			*id = m_owner->m_keyToId.get(--m_bitPosCur);
-			retKey->assign(key);
+			retKey->assign(m_iter->word());
 			if (m_bitPosCur == m_bitPosLow)
 				syncBitPos(m_iter->decr());
 			return 1;
