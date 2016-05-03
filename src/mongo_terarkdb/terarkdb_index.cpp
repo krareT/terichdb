@@ -320,6 +320,7 @@ public:
         // By using a discriminator other than kInclusive, there is no need to distinguish
         // unique vs non-unique key formats since both start with the key.
         // _query.resetToKey(finalKey, _idx.ordering(), discriminator);
+        TRACE_CURSOR << "seek3(): key=" << key.jsonString() << ", inclusive=" << inclusive;
         seekWTCursor(key, inclusive);
         updatePosition();
 		if (!_cursorAtEof)
@@ -333,6 +334,7 @@ public:
         // TODO: don't go to a bson obj then to a KeyString, go straight
         // makeQueryObject handles the discriminator in the real exclusive cases.
         BSONObj key = IndexEntryComparison::makeQueryObject(seekPoint, _forward);
+        TRACE_CURSOR << "seek2(): key=" << key.jsonString();
         seekWTCursor(key, true);
         updatePosition();
 		if (!_cursorAtEof)
