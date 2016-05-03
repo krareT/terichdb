@@ -1966,7 +1966,7 @@ public:
 			if (key.size() > 0 && key.ende(1) == 0)
 				key.n--;
 		}
-		if (key.size() == 0) {
+		if (key.size() == 0 && inclusive) {
 			// empty key indicate min key in both forward and backword mode
 			this->reset();
 			if (increment(id, retKey))
