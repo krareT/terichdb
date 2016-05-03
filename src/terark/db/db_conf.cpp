@@ -1060,6 +1060,7 @@ std::string Schema::toJsonStr(const char* row, size_t rowlen) const {
 					CHECK_CURR_LAST(len + 1);
 				}
 				else { // the last column
+					assert(len + 1 >= last - curr);
 					if (len + 1 < last - curr) {
 						// '\0' is optional, if '\0' exists, it must at string end
 						THROW_STD(invalid_argument,
