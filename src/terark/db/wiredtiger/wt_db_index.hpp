@@ -8,6 +8,14 @@
 
 namespace terark { namespace db { namespace wt {
 
+struct WtItem : public WT_ITEM {
+	WtItem() {
+		memset(this, 0, sizeof(WtItem));
+	}
+	operator fstring() const { return fstring((const char*)data, size); }
+	const char* charData() const { return (const char*)data; }
+};
+
 class TERARK_DB_DLL WtWritableIndex : public ReadableIndex, public WritableIndex {
 	class MyIndexIterBase;     friend class MyIndexIterBase;
 	class MyIndexIterForward;  friend class MyIndexIterForward;
