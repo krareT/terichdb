@@ -4,6 +4,9 @@
 #include "wt_db_context.hpp"
 #include <boost/scope_exit.hpp>
 
+#undef min
+#undef max
+
 namespace terark { namespace db { namespace wt {
 
 WtWritableSegment::WtWritableSegment() {
@@ -22,6 +25,43 @@ WtWritableSegment::~WtWritableSegment() {
 		m_wtConn->close(m_wtConn, NULL);
 }
 
+#if defined(fuck_wiredtiger_brain_damaged_collator_and_recover)
+static
+int DupableIndexKey_compare(WT_COLLATOR *collator,
+							WT_SESSION *session,
+							const WT_ITEM *key1,
+							const WT_ITEM *key2,
+							int *pcmp) {
+	WT_ITEM ikey1, ikey2;
+	int64_t recId1, recId2;
+	int err;
+	WT_CONNECTION* conn = session->connection;
+	err = wiredtiger_struct_unpack(session, key1->data, key1->size, "uq", &ikey1, &recId1);
+	if (err) {
+		THROW_STD(invalid_argument, "FATAL: dir=%s, err(%d)=%s"
+			, conn->get_home(conn), err, session->strerror(session, err));
+	}
+	err = wiredtiger_struct_unpack(session, key2->data, key2->size, "uq", &ikey2, &recId2);
+	if (err) {
+		THROW_STD(invalid_argument, "FATAL: dir=%s, err(%d)=%s"
+			, conn->get_home(conn), err, session->strerror(session, err));
+	}
+	int cmp = memcmp(ikey1.data, ikey2.data, std::min(ikey1.size, ikey2.size));
+	if (cmp) {
+		*pcmp = cmp;
+	}
+	else if (ikey1.size == ikey2.size) {
+		*pcmp = recId1 < recId2 ? -1
+			  : recId1 > recId2 ? +1
+			  : 0;
+	}
+	else { // assume key len are less than INT32_MAX
+		*pcmp = ikey1.size - ikey2.size;
+	}
+	return 0;
+}
+#endif
+
 void WtWritableSegment::init(PathRef segDir) {
 	std::string strDir = segDir.string();
 	char conf[512];
@@ -36,6 +76,10 @@ void WtWritableSegment::init(PathRef segDir) {
 			, strDir.c_str(), conf, wiredtiger_strerror(err)
 			);
 	}
+// brain damaged wiredtiger_open trapped me into fucking log(recover...)
+// Using binary encoded (key,record_id) should save the world
+//	static WT_COLLATOR collator = { DupableIndexKey_compare, NULL, NULL };
+//	m_wtConn->add_collator(m_wtConn, "terark_wt_dup_index_compare", &collator, NULL);
 	m_wrtStore = new WtWritableStore(m_wtConn);
 	m_wrRowStore = m_wrtStore->getWritableStore();
 }
@@ -75,6 +119,13 @@ void WtWritableSegment::load(PathRef path) {
 	}
 }
 
+void WtWritableSegment::save(PathRef path) const {
+	if (m_tobeDel) {
+		return; // not needed
+	}
+	m_wtConn->async_flush(m_wtConn);
+}
+
 extern const char g_dataStoreUri[];
 
 struct WtCursor {
@@ -106,13 +157,6 @@ struct WtSession {
 	WtSession& operator=(const WtSession& y) { assert(NULL == y.ses); }
 #endif
 	operator WT_SESSION*() const { return ses; }
-};
-struct WtItem : public WT_ITEM {
-	WtItem() {
-		memset(this, 0, sizeof(WtItem));
-	}
-	operator fstring() const { return fstring((const char*)data, size); }
-	const char* charData() const { return (const char*)data; }
 };
 
 class WtWritableSegment::WtDbTransaction : public DbTransaction {
