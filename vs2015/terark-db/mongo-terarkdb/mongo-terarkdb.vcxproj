@@ -103,8 +103,9 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>NTDDI_VERSION=0x06030000;_WIN32_WINNT=0x0603;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_ATL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>false</SDLCheck>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
       <DisableSpecificWarnings>4996</DisableSpecificWarnings>
+      <MinimalRebuild>true</MinimalRebuild>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -141,6 +142,7 @@
       <SDLCheck>false</SDLCheck>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DisableSpecificWarnings>4996</DisableSpecificWarnings>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
