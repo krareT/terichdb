@@ -704,7 +704,6 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			encoded->append(value, 8);
 			break;
 		case mongo::Date:
-			encodeConvertFrom<int64_t>(colmeta.type, value, encoded, isLastField);
 			if (colmeta.type == ColumnType::Uint32 ||
 				colmeta.type == ColumnType::Sint32)
 			{
@@ -1333,7 +1332,8 @@ void encodeIndexKey(const Schema& indexSchema,
 	encoded->erase_all();
 	using terark::db::ColumnType;
 	BSONObj::iterator iter = bson.begin();
-	for(size_t i = 0; i < indexSchema.m_columnsMeta.end_i(); ++i) {
+	const size_t colnum = indexSchema.m_columnsMeta.end_i();
+	for(size_t i = 0; i < colnum; ++i) {
 		fstring     colname = indexSchema.m_columnsMeta.key(i);
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
 		assert(!colname.empty());
@@ -1353,25 +1353,45 @@ void encodeIndexKey(const Schema& indexSchema,
 			encodeMinValueField(colmeta, encoded);
 			break;
 		case mongo::Bool:
-			encoded->push_back(value[0] ? 1 : 0);
-			assert(indexSchema.getColumnType(i) == ColumnType::Uint08);
+			if (mongo::Date == colmeta.mongoType) {
+				// bullshit mongodb use bool=true as minkey for Date
+				encodeMinValueField(colmeta, encoded);
+			}
+			else {
+				encoded->push_back(value[0] ? 1 : 0);
+				assert(ColumnType::Uint08 == colmeta.type);
+			}
 			break;
 		case NumberInt:
-			encodeConvertFrom<int32_t>(colmeta.type, value, encoded,
-				indexSchema.m_columnsMeta.end_i()-1 == i);
+			encodeConvertFrom<int32_t>(colmeta.type, value, encoded, colnum-1 == i);
 			break;
 		case NumberDouble:
-			encodeConvertFromDouble(colmeta.type, value, encoded,
-				indexSchema.m_columnsMeta.end_i()-1 == i);
+			encodeConvertFromDouble(colmeta.type, value, encoded, colnum-1 == i);
 			break;
 		case NumberLong:
-			encodeConvertFrom<int64_t>(colmeta.type, value, encoded,
-				indexSchema.m_columnsMeta.end_i()-1 == i);
+			encodeConvertFrom<int64_t>(colmeta.type, value, encoded, colnum-1 == i);
 			break;
 		case bsonTimestamp: // low 32 bit is always positive
+			encoded->append(value, 8);
+			break;
 		case mongo::Date:
-			encodeConvertFrom<int64_t>(colmeta.type, value, encoded,
-				indexSchema.m_columnsMeta.end_i()-1 == i);
+			switch (colmeta.type) {
+			default:
+				invariant(!"SchemaRecordCoder::decode: mongo::Date must map to one of terark sint32, uint32, sint64, uint64");
+				break;
+			case ColumnType::Sint32:
+			case ColumnType::Uint32:
+				{
+					int64_t millisec = ConstDataView(value).read<LittleEndian<int64_t>>();
+					int32_t sec = int32_t(millisec / 1000);
+					DataView(encoded->grow_no_init(4)).write(sec);
+				}
+				break;
+			case ColumnType::Sint64:
+			case ColumnType::Uint64:
+				encoded->append(value, 8);
+				break;
+			}
 			break;
 		case jstOID:
 		//	log() << "encode: OID=" << toHexLower(value, OID::kOIDSize);
@@ -1453,7 +1473,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2*size);
 	bb.skip(sizeof(SharedBuffer::Holder));
 	bb.skip(4); // object size loc
-	size_t colnum = indexSchema.m_columnsMeta.end_i();
+	const size_t colnum = indexSchema.m_columnsMeta.end_i();
 	const char* end = data + size;
 	for (size_t i = 0; i < colnum; ++i) {
 		fstring     colname = indexSchema.m_columnsMeta.key(i);
@@ -1476,8 +1496,30 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 			bb << decodeConvertTo<int>(colmeta.type, pos);
 			break;
 		case bsonTimestamp:
+			assert(ColumnType::Uint64==colmeta.type || ColumnType::Sint64==colmeta.type);
+			bb.ensureWrite(pos, 8);
+			pos += 8;
+			break;
 		case mongo::Date:
-			bb << decodeConvertTo<int64_t>(colmeta.type, pos);
+			switch (colmeta.type) {
+			default:
+				invariant(!"decodeIndexKey: mongo::Date must map to one of terark sint32, uint32, sint64, uint64");
+				break;
+			case ColumnType::Sint32:
+			case ColumnType::Uint32:
+				{
+					int64_t ival = ConstDataView(pos).read<LittleEndian<int>>();
+					int64_t millisec = 1000 * ival;
+					bb << millisec;
+					pos += 4;
+				}
+				break;
+			case ColumnType::Sint64:
+			case ColumnType::Uint64:
+				bb.ensureWrite(pos, 8);
+				pos += 8;
+				break;
+			}
 			break;
 		case NumberDouble:
 			bb << decodeConvertTo<double>(colmeta.type, pos);
