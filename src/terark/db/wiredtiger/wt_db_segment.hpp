@@ -24,6 +24,7 @@ protected:
 
 public:
 	void load(PathRef path) override;
+	void save(PathRef path) const override;
 
 	size_t m_cacheSize;
 };
