@@ -1095,7 +1095,7 @@ MockDbTable::createWritableSegment(PathRef dir) const {
 
 WritableSegment*
 MockDbTable::openWritableSegment(PathRef dir) const {
-	auto isDelPath = dir / "isDel";
+	auto isDelPath = dir / "IsDel";
 	if (boost::filesystem::exists(isDelPath)) {
 		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
 		seg->m_schema = this->m_schema;

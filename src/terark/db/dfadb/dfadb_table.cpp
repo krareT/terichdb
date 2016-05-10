@@ -49,7 +49,7 @@ DfaDbTable::createWritableSegment(PathRef dir) const {
 
 WritableSegment*
 DfaDbTable::openWritableSegment(PathRef dir) const {
-	auto isDelPath = dir / "isDel";
+	auto isDelPath = dir / "IsDel";
 	if (boost::filesystem::exists(isDelPath)) {
 		const char* dfaWritableSeg = getenv("TerarkDB_DfaWritableSegment");
 		if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock") == 0) {

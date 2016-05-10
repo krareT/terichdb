@@ -71,11 +71,24 @@ CompositeTable::CompositeTable() {
 CompositeTable::~CompositeTable() {
 	if (m_tobeDrop) {
 		// should delete m_dir?
-		fs::remove_all(m_dir);
+		try {
+			fs::remove_all(m_dir);
+		}
+		catch (const std::exception& ex) {
+			fprintf(stderr, "ERROR: remove_all(%s) failed: %s\n"
+				, m_dir.string().c_str(), ex.what());
+		}
 		return;
 	}
 	flush();
 	m_segments.clear();
+	try {
+		fs::remove(m_dir / "run.lock");
+	}
+	catch (const std::exception& ex) {
+		fprintf(stderr, "ERROR: remove(%s/run.lock) failed: %s\n"
+			, m_dir.string().c_str(), ex.what());
+	}
 //	removeStaleDir(m_dir, m_mergeSeqNum);
 //	if (m_wrSeg)
 //		m_wrSeg->flushSegment();
@@ -283,6 +296,19 @@ void CompositeTable::load(PathRef dir) {
 void CompositeTable::doLoad(PathRef dir) {
 	assert(m_schema.get() != nullptr);
 	m_dir = dir;
+	fs::path runLockFpath = dir / "run.lock";
+	if (fs::exists(runLockFpath)) {
+		THROW_STD(invalid_argument
+			, "Table is in using or closed unclean/crashed: %s"
+			, dir.string().c_str());
+	}
+	FileStream runLockFile(runLockFpath.string().c_str(), "w");
+	BOOST_SCOPE_EXIT(&runLockFile, &runLockFpath) {
+		if (runLockFile.fp()) { // failed
+			runLockFile.close();
+			fs::remove(runLockFpath);
+		}
+	} BOOST_SCOPE_EXIT_END;
 	discoverMergeDir(m_dir);
 	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
 	SortableStrVec segDirList = getWorkingSegDirList(mergeDir);
@@ -365,6 +391,7 @@ void CompositeTable::doLoad(PathRef dir) {
 	}
 	m_rowNumVec.back() = baseId; // the end guard
 	m_rowNum = baseId;
+	runLockFile.close();
 }
 
 size_t CompositeTable::findSegIdx(size_t segIdxBeg, ReadableSegment* seg) const {

@@ -96,7 +96,7 @@ WtWritableSegment::openIndex(const Schema& schema, PathRef segDir) const {
 
 void WtWritableSegment::load(PathRef path) {
 	init(path);
-	if (boost::filesystem::exists(path / "isDel")) {
+	if (boost::filesystem::exists(path / "IsDel")) {
 		PlainWritableSegment::load(path);
 		size_t rows = (size_t)m_wrtStore->numDataRows();
 		if (rows+1 < m_isDel.size() || (rows+1 == m_isDel.size() && !m_isDel[rows])) {

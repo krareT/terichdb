@@ -94,7 +94,7 @@ void ReadableSegment::saveIsDel(PathRef dir) const {
 		// need not to save, mmap is sys memory
 		return;
 	}
-	fs::path isDelFpath = dir / "isDel";
+	fs::path isDelFpath = dir / "IsDel";
 	fs::path tmpFpath = isDelFpath + ".tmp";
 	{
 		NativeDataOutput<FileStream> file;
@@ -119,7 +119,7 @@ void ReadableSegment::loadIsDel(PathRef dir) {
 }
 
 byte* ReadableSegment::loadIsDel_aux(PathRef segDir, febitvec& isDel) const {
-	fs::path isDelFpath = segDir / "isDel";
+	fs::path isDelFpath = segDir / "IsDel";
 	size_t bytes = 0;
 	bool writable = true;
 	std::string fpath = isDelFpath.string();
@@ -1390,7 +1390,7 @@ void WritableSegment::pushIsDel(bool val) {
 #endif
 		size_t newCap = ((64+m_isDel.size()+2*ChunkBits-1) & ~(ChunkBits-1));
 		closeIsDel();
-		std::string fpath = (m_segDir / "isDel").string();
+		std::string fpath = (m_segDir / "IsDel").string();
 		truncate_file(fpath, newCap/8);
 		m_isDelMmap = loadIsDel_aux(m_segDir, m_isDel);
 		assert(nullptr != m_isDelMmap);
