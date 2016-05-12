@@ -990,8 +990,18 @@ Fail:
 }
 
 // dup keys in unique index errors will be ignored
+llong CompositeTable::upsertRow(fstring row, DbContext* ctx) {
+	for (size_t retry = 0; retry < 2; ++retry) {
+		llong recId = doUpsertRow(row, ctx);
+		if (recId >= 0) {
+			return recId;
+		}
+	}
+	TERARK_THROW(NeedRetryException, "Insertion temporary failed, retry later");
+}
+
 llong
-CompositeTable::upsertRow(fstring row, DbContext* ctx) {
+CompositeTable::doUpsertRow(fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
 	if (sconf.m_uniqIndices.size() > 1) {
 		THROW_STD(invalid_argument

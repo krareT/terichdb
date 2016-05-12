@@ -246,6 +246,8 @@ protected:
 	bool updateWithSyncIndex(llong newSubId, fstring row, DbContext*);
 	void updateSyncMultIndex(llong newSubId, class TransactionGuard&, DbContext*);
 
+	llong doUpsertRow(fstring row, DbContext*);
+
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
 	boost::filesystem::path getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx) const;

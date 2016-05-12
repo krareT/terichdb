@@ -173,6 +173,11 @@ public:
 	using DbException::DbException;
 };
 
+class TERARK_DB_DLL NeedRetryException : public DbException {
+public:
+	using DbException::DbException;
+};
+
 } } // namespace terark::db
 
 #endif // __terark_db_db_store_hpp__

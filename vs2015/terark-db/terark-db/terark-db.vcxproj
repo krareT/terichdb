@@ -172,12 +172,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\src\terark\db\appendonly.hpp" />
+    <ClInclude Include="..\..\..\src\terark\db\db_dll_decl.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_index.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_store.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_conf.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_context.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_segment.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\db_table.hpp" />
+    <ClInclude Include="..\..\..\src\terark\db\delete_on_close_file_lock.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_segment.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_table.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_index.hpp" />
@@ -187,6 +189,7 @@
     <ClInclude Include="..\..\..\src\terark\db\intkey_index.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\json.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\mock_db_engine.hpp" />
+    <ClInclude Include="..\..\..\src\terark\db\rocksdb-api.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\zip_int_store.hpp" />
@@ -207,6 +210,7 @@
     <ClCompile Include="..\..\..\src\terark\db\db_context.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_segment.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\db_table.cpp" />
+    <ClCompile Include="..\..\..\src\terark\db\delete_on_close_file_lock.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_segment.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_table.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_index.cpp" />

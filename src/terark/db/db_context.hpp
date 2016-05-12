@@ -108,6 +108,7 @@ public:
 	valvec<byte> row2;
 	valvec<byte> key1;
 	valvec<byte> key2;
+	valvec<byte> userBuf; // TerarkDB will not use userBuf
 	valvec<uint32_t> offsets;
 	ColumnVec    cols1;
 	ColumnVec    cols2;
