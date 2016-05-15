@@ -44,7 +44,14 @@ typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
 // Now BatchWriter is supported only when table has at most one unique index
 class TERARK_DB_DLL BatchWriter : public RefCounter {
+protected:
+	DbContextPtr m_ctx;
+	BatchWriter();
+	~BatchWriter();
 public:
+	DbContext* getCtx() const { return m_ctx.get(); }
+	const std::string& strError() const;
+	const char* szError() const;
 	virtual llong upsertRow(fstring row) = 0;
 	virtual void  removeRow(llong recId) = 0;
 	virtual bool  commit() = 0;

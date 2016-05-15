@@ -657,16 +657,24 @@ public:
 	}
 };
 
+BatchWriter::BatchWriter() {}
+BatchWriter::~BatchWriter() {}
+
+const std::string& BatchWriter::strError() const {
+	return m_ctx->m_transaction->strError();
+}
+const char* BatchWriter::szError() const {
+	return m_ctx->m_transaction->strError().c_str();
+}
+
 class CompositeTable::BatchWriterImpl : public BatchWriter {
 protected:
 	enum Status { started, committed, rollbacked } m_status;
 	CompositeTable* m_tab;
-	DbContextPtr    m_ctx;
 	valvec<llong>   m_removeOnCommit;
 	valvec<llong>   m_removeOnRollback; // the subId, must be in m_wrSeg
 //	valvec<byte>    m_buf;
 //	ColumnVec       m_cols;
-	Status          m_status;
 	llong overwriteExisting(fstring row);
 public:
 	explicit BatchWriterImpl(CompositeTable* tab);
@@ -698,6 +706,7 @@ CompositeTable::BatchWriterImpl::BatchWriterImpl(CompositeTable* tab)
 		DebugCheckRowNumVecNoLock(tab);
 		tab->maybeCreateNewSegment(lock);
 		m_ctx = tab->createDbContextNoLock();
+		m_ctx->m_transaction->startTransaction();
 	}
 	catch (const std::exception&) {
 		m_tab->m_inprogressWritingCount--;
@@ -846,12 +855,14 @@ bool CompositeTable::BatchWriterImpl::commit() {
 		}
 	}
 	m_status = committed;
+	return commitOk;
 }
 
 void CompositeTable::BatchWriterImpl::rollback() {
 	auto ctx = m_ctx.get();
 	auto tab = m_tab;
 	DbTransaction* txn(ctx->m_transaction.get());
+	txn->rollback();
 	MyRwLock lock(tab->m_rwMutex, false);
 	auto& ws = *tab->m_wrSeg;
 	for (llong wrSubId : m_removeOnRollback) {
