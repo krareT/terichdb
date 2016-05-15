@@ -1455,6 +1455,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 		// faster than m_schema->getIndexSchema(indexId).m_isUnique
 		// use lock if m_isDel.unused() is less than ProtectCnt
 		const size_t ProtectCnt = 10;
+		assert(iter->isUniqueInSchema() == m_schema->getIndexSchema(indexId).m_isUnique);
 		if (iter->isUniqueInSchema()) {
 			if (this->m_isFreezed || m_isDel.unused() >= ProtectCnt) {
 				if (!m_isDel[recId])

@@ -1877,6 +1877,8 @@ const {
 	recIdvec->erase_all();
 	const bool isUnique = m_schema->getIndexSchema(indexId).m_isUnique;
 	size_t segNum = ctx->m_segCtx.size();
+#if 0
+	// search older segments first
 	for (size_t i = 0; i < segNum; ++i) {
 		auto seg = ctx->m_segCtx[i]->seg;
 		if (seg->m_isDel.size() == seg->m_delcnt)
@@ -1900,6 +1902,33 @@ const {
 		}
 	}
 //	std::reverse(recIdvec->begin(), recIdvec->end()); // make descending
+#else
+	// search newer segments first
+	for (size_t i = segNum; i > 0; ) {
+		auto seg = ctx->m_segCtx[--i]->seg;
+		if (seg->m_isDel.size() == seg->m_delcnt)
+			continue;
+		size_t oldsize = recIdvec->size();
+		seg->indexSearchExactAppend(i, indexId, key, recIdvec, ctx);
+		size_t newsize = recIdvec->size();
+		size_t len = newsize - oldsize;
+		if (len) {
+			llong* p = recIdvec->data() + oldsize;
+			llong baseId = ctx->m_rowNumVec[i];
+			for (size_t j = 0; j < len; ++j) {
+				p[j] += baseId;
+			}
+			if (isUnique) {
+			//	assert(1 == newsize);
+				TERARK_IF_DEBUG(;,return);
+			}
+			if (len >= 2) {
+				std::sort(p, p + len); // don't use std::greater
+				std::reverse(p, p + len); // in descending order
+			}
+		}
+	}
+#endif
 }
 
 // implemented in DfaDbTable
