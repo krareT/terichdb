@@ -155,6 +155,9 @@ override CXXFLAGS += ${extf}
 
 override INCS += -I${BDB_HOME}/include
 override INCS += -I/opt/include
+override INCS += -Iapi/leveldb/leveldb/include
+override INCS += -Iapi/leveldb/leveldb
+override INCS += -Iapi/leveldb
 override LIBS += -L${BDB_HOME}/lib
 override LIBS += -L/opt/lib
 
@@ -168,6 +171,9 @@ endif
 
 TerarkDB_src := $(wildcard src/terark/db/*.cpp)
 TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
+TerarkDB_src += $(wildcard api/leveldb/leveldb_terark.cc)
+TerarkDB_src += $(wildcard api/leveldb/leveldb/db/*.cc)
+TerarkDB_src += $(wildcard api/leveldb/leveldb/util/*.cc)
 
 ifeq (1,${WITH_DFA_DB})
   TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
