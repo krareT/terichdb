@@ -623,7 +623,7 @@ IteratorImpl::Next() {
 			m_valid = true;
 		}
 		catch (const std::exception& ex) {
-			m_valid = false;
+			iterIncrement();
 		}
 	}
 }
@@ -651,7 +651,7 @@ IteratorImpl::Prev() {
 			m_valid = true;
 		}
 		catch (const std::exception& ex) {
-			m_valid = false;
+			iterIncrement();
 		}
 	}
 }
