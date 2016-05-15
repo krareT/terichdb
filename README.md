@@ -41,7 +41,7 @@ TerarkDB is:
 ### 3.2.Compiler Support
 
 - Linux : `g++-4.8`, `g++-4.9`, `g++-5.3`
-- OS X : `g++-5.3`, `g++-6.0`, `clang++-7.3`
+- Mac OS : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.0`, `clang++-7.3`
 - Windows : `vs2015`
 
 ### 3.3.`dfadb` alternative
