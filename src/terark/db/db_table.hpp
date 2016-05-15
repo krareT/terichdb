@@ -42,8 +42,19 @@ class TERARK_DB_DLL WritableSegment;
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
+// Now BatchWriter is supported only when table has at most one unique index
+class TERARK_DB_DLL BatchWriter : public RefCounter {
+public:
+	virtual llong upsertRow(fstring row) = 0;
+	virtual void  removeRow(llong recId) = 0;
+	virtual bool  commit() = 0;
+	virtual void  rollback() = 0;
+};
+typedef boost::intrusive_ptr<BatchWriter> BatchWriterPtr;
+
 // is not a WritableStore
 class TERARK_DB_DLL CompositeTable : public ReadableStore {
+	class BatchWriterImpl;      friend class BatchWriterImpl;
 	class MyStoreIterBase;	    friend class MyStoreIterBase;
 	class MyStoreIterForward;	friend class MyStoreIterForward;
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
@@ -71,6 +82,8 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	DbContext* createDbContext() const;
 	virtual DbContext* createDbContextNoLock() const = 0;
+
+	BatchWriter* createBatchWriter();
 
 	llong inlineGetRowNum() const { return m_rowNum; }
 	llong totalStorageSize() const;
@@ -164,6 +177,7 @@ public:
 
 	void selectOneColgroup(llong id, size_t cgId, valvec<byte>* cgData, DbContext*) const;
 
+protected:
 	void selectColumnsNoLock(llong id, const valvec<size_t>& cols,
 					   valvec<byte>* colsData, DbContext*) const;
 	void selectColumnsNoLock(llong id, const size_t* colsId, size_t colsNum,
@@ -194,6 +208,7 @@ public:
 	const;
 #endif
 
+public:
 	void clear();
 	void flush();
 	void compact();
@@ -241,10 +256,11 @@ protected:
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
 	llong insertRowDoInsert(fstring row, DbContext*);
-	bool insertSyncIndex(llong subId, class TransactionGuard&, DbContext*);
+	llong insertRowDoInsertNoCommit(fstring row, DbContext*);
+	bool insertSyncIndex(llong subId, DbTransaction*, DbContext*);
 	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool updateWithSyncIndex(llong newSubId, fstring row, DbContext*);
-	void updateSyncMultIndex(llong newSubId, class TransactionGuard&, DbContext*);
+	void updateSyncMultIndex(llong newSubId, DbTransaction*, DbContext*);
 
 	llong doUpsertRow(fstring row, DbContext*);
 

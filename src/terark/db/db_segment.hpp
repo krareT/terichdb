@@ -193,6 +193,7 @@ class DbTransaction : boost::noncopyable {
 	friend class TransactionGuard;
 	friend class DefaultCommitTransaction;
 	friend class DefaultRollbackTransaction;
+public:
 	virtual void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) = 0;
 	virtual void indexRemove(size_t indexId, fstring key, llong recId) = 0;
 	virtual bool indexInsert(size_t indexId, fstring key, llong recId) = 0;
@@ -204,7 +205,6 @@ class DbTransaction : boost::noncopyable {
 	virtual bool commit() = 0;
 	virtual void rollback() = 0;
 	virtual const std::string& strError() const = 0;
-public:
 	virtual ~DbTransaction();
 };
 class TransactionGuard : boost::noncopyable {
@@ -221,6 +221,7 @@ public:
 	~TransactionGuard() {
 		assert(committed == m_status || rollbacked == m_status);
 	}
+	DbTransaction* getTxn() const { return m_txn; }
 	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) {
 		m_txn->indexSearch(indexId, key, recIdvec);
 	}
