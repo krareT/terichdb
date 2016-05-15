@@ -618,6 +618,13 @@ IteratorImpl::Next() {
 		if (cmp < 0) {
 			m_valid = false;
 		}
+		else try {
+			m_tab->selectOneColgroup(m_recId, 1, &m_val, m_ctx.get());
+			m_valid = true;
+		}
+		catch (const std::exception& ex) {
+			m_valid = false;
+		}
 	}
 }
 
@@ -637,6 +644,13 @@ IteratorImpl::Prev() {
 		m_posKey.swap(m_key);
 		int cmp = m_iter->seekLowerBound(m_posKey, &m_recId, &m_key);
 		if (cmp < 0) {
+			m_valid = false;
+		}
+		else try {
+			m_tab->selectOneColgroup(m_recId, 1, &m_val, m_ctx.get());
+			m_valid = true;
+		}
+		catch (const std::exception& ex) {
 			m_valid = false;
 		}
 	}
