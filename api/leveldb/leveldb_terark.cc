@@ -196,16 +196,23 @@ static const char g_keyValueSchema[] = R"(
 Status
 DB::Open(const Options &options, const std::string &name, leveldb::DB** dbptr) {
 	fs::path dbdir = fs::path(name) / "TerarkDB";
+	fs::path metaPath = dbdir / "dbmeta.json";
 	if (fs::exists(dbdir)) {
 		if (options.error_if_exists) {
+			fprintf(stderr, "ERROR: options.error_if_exists: %s\n", dbdir.string().c_str());
 			return Status::InvalidArgument("Database have existed", dbdir.string());
 		}
 	}
 	else if (options.create_if_missing) {
-		fs::create_directories(dbdir);
-		WriteStringToFile(Env::Default(), g_keyValueSchema, "dbmeta.json");
+		if (!fs::exists(dbdir)) {
+			fs::create_directories(dbdir);
+		}
+		if (!fs::exists(metaPath)) {
+			WriteStringToFile(Env::Default(), g_keyValueSchema, metaPath.string());
+		}
 	}
-	if (!fs::exists(dbdir / "dbmeta.json")) {
+	if (!fs::exists(metaPath)) {
+		fprintf(stderr, "ERROR: not exists: %s\n", metaPath.string().c_str());
 		return Status::InvalidArgument("dbmeta.json is missing", dbdir.string());
 	}
 	try {
@@ -213,6 +220,8 @@ DB::Open(const Options &options, const std::string &name, leveldb::DB** dbptr) {
 		return Status::OK();
 	}
 	catch (const std::exception& ex) {
+		fprintf(stderr, "ERROR: caught exception: %s for dbdir: %s\n"
+				, ex.what(), dbdir.string().c_str());
 		return Status::InvalidArgument("CompositeTable::open failed", ex.what());
 	}
 }
