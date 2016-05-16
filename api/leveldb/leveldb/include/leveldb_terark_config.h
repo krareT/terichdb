@@ -17,7 +17,7 @@
 /* #undef HAVE_HYPERLEVELDB */
 
 /* Define to 1 if you have the `snappy' library (-lsnappy). */
-#define HAVE_LIBSNAPPY 1
+//#define HAVE_LIBSNAPPY 1
 
 /* Build the LevelDB API with RocksDB support. */
 //#define HAVE_ROCKSDB 1
