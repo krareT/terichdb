@@ -719,7 +719,13 @@ CompositeTable::BatchWriterImpl::BatchWriterImpl(CompositeTable* tab)
 }
 
 CompositeTable::BatchWriterImpl::~BatchWriterImpl() {
-	TERARK_RT_assert(committed == m_status || rollbacked == m_status, std::logic_error);
+	assert(committed == m_status || rollbacked == m_status);
+	if ( !(committed == m_status || rollbacked == m_status) ) {
+		// abort();
+		fprintf(stderr
+			, "ERROR: commit or rollback was not called for BatchWriter, rollback by default\n");
+		this->rollback();
+	}
 	m_tab->m_inprogressWritingCount--;
 }
 
