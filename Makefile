@@ -325,7 +325,18 @@ depends : ${alldep}
 samples : TerarkDB
 	${MAKE} -C samples/TerarkDB/abstract_api
 
+.PHONY : leveldb_test
+leveldb_test: ${ddir}/api/leveldb/leveldb_test.exe
+
 -include ${alldep}
+
+${ddir}/%.exe: ${ddir}/%.o
+	@echo Linking ... $@
+	${LD} ${LDFLAGS} -o $@ $< -Llib -lterark-db-${COMPILER}-d -L../terark/lib -lterark-fsa_all-${COMPILER}-d ${LIBS}
+
+${rdir}/%.exe: ${ddir}/%.o
+	@echo Linking ... $@
+	${LD} ${LDFLAGS} -o $@ $< -Llib -lterark-db-${COMPILER}-r -L../terark/lib -lterark-fsa_all-${COMPILER}-r ${LIBS}
 
 ${ddir}/%.o: %.cpp
 	@echo file: $< "->" $@
