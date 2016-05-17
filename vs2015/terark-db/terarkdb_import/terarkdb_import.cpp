@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include <terark/util/autoclose.hpp>
 #include <terark/util/linebuf.hpp>
 #include <terark/util/profiling.hpp>
@@ -36,9 +36,8 @@ GetoptDone:
 		return 1;
 	}
 	const char* dbdir = argv[optind + 0];
-	terark::db::CompositeTablePtr tab(terark::db::CompositeTable::createTable("DfaDbTable"));
+	terark::db::CompositeTablePtr tab = terark::db::CompositeTable::open(dbdir);
 	terark::db::DbContextPtr ctx = tab->createDbContext();
-	tab->load(dbdir);
 	ctx->syncIndex = false;
 	terark::LineBuf line;
 	terark::valvec<unsigned char> row;
@@ -48,7 +47,6 @@ GetoptDone:
 	size_t lines = 0;
 	size_t bytes = 0;
 	size_t colnum = tab->rowSchema().columnNum();
-//	std::thread thr(std::bind(&compactThreadProc, &tab));
 	for (int argIdx = optind + 1; argIdx < argc; ++argIdx) {
 		const char* fname = argv[argIdx];
 		terark::Auto_fclose fp(fopen(fname, "r"));
