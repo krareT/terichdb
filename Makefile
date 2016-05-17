@@ -171,16 +171,17 @@ endif
 
 TerarkDB_src := $(wildcard src/terark/db/*.cpp)
 TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
-TerarkDB_src += $(wildcard api/leveldb/leveldb_terark.cc)
-TerarkDB_src += $(wildcard api/leveldb/leveldb/db/*.cc)
 
-TerarkDB_src += api/leveldb/leveldb/util/coding.cc
-TerarkDB_src += api/leveldb/leveldb/util/comparator.cc
-TerarkDB_src += api/leveldb/leveldb/util/env.cc
-TerarkDB_src += api/leveldb/leveldb/util/env_posix.cc
-TerarkDB_src += api/leveldb/leveldb/util/logging.cc
-TerarkDB_src += api/leveldb/leveldb/util/options.cc
-TerarkDB_src += api/leveldb/leveldb/util/status.cc
+LeveldbApi_src =
+LeveldbApi_src += $(wildcard api/leveldb/leveldb_terark.cc)
+LeveldbApi_src += $(wildcard api/leveldb/leveldb/db/*.cc)
+LeveldbApi_src += api/leveldb/leveldb/util/coding.cc
+LeveldbApi_src += api/leveldb/leveldb/util/comparator.cc
+LeveldbApi_src += api/leveldb/leveldb/util/env.cc
+LeveldbApi_src += api/leveldb/leveldb/util/env_posix.cc
+LeveldbApi_src += api/leveldb/leveldb/util/logging.cc
+LeveldbApi_src += api/leveldb/leveldb/util/options.cc
+LeveldbApi_src += api/leveldb/leveldb/util/status.cc
 
 ifeq (1,${WITH_DFA_DB})
   TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
@@ -213,17 +214,28 @@ TerarkDB_r := lib/lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX}
 static_TerarkDB_d := lib/lib${TerarkDB_lib}-${COMPILER}-d.a
 static_TerarkDB_r := lib/lib${TerarkDB_lib}-${COMPILER}-r.a
 
-ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} TerarkDB
+LeveldbApi_lib := terark-db-leveldb-api
+LeveldbApi_d_o := $(call objs,LeveldbApi,d)
+LeveldbApi_r_o := $(call objs,LeveldbApi,r)
+LeveldbApi_d := lib/lib${LeveldbApi_lib}-${COMPILER}-d${DLL_SUFFIX}
+LeveldbApi_r := lib/lib${LeveldbApi_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_LeveldbApi_d := lib/lib${LeveldbApi_lib}-${COMPILER}-d.a
+static_LeveldbApi_r := lib/lib${LeveldbApi_lib}-${COMPILER}-r.a
+
+ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} TerarkDB LeveldbApi
 DBG_TARGETS = ${MAYBE_DBB_DBG} ${TerarkDB_d}
 RLS_TARGETS = ${MAYBE_DBB_RLS} ${TerarkDB_r}
 
-.PHONY : default all TerarkDB
+.PHONY : default all TerarkDB LeveldbApi
 
-default : TerarkDB
+default : TerarkDB LeveldbApi
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
+LeveldbApi: ${LeveldbApi_d} ${LeveldbApi_r} ${static_LeveldbApi_d} ${static_LeveldbApi_r}
+${LeveldbApi_d}: ${TerarkDB_d}
+${LeveldbApi_r}: ${TerarkDB_r}
 
-allsrc = ${TerarkDB_src}
+allsrc = ${TerarkDB_src} ${LeveldbApi_src}
 alldep = $(addprefix ${rdir}/, $(addsuffix .dep, $(basename ${allsrc}))) \
          $(addprefix ${ddir}/, $(addsuffix .dep, $(basename ${allsrc})))
 
@@ -239,12 +251,20 @@ endif
 ${TerarkDB_d} : override LIBS += ${LIB_TERARK_D} -ltbb
 ${TerarkDB_r} : override LIBS += ${LIB_TERARK_R} -ltbb
 
+${LeveldbApi_d} : override LIBS += -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} -ltbb
+${LeveldbApi_r} : override LIBS += -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} -ltbb
+
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 
 ${TerarkDB_d} : $(call objs,TerarkDB,d)
 ${TerarkDB_r} : $(call objs,TerarkDB,r)
 ${static_TerarkDB_d} : $(call objs,TerarkDB,d)
 ${static_TerarkDB_r} : $(call objs,TerarkDB,r)
+
+${LeveldbApi_d} : $(call objs,LeveldbApi,d)
+${LeveldbApi_r} : $(call objs,LeveldbApi,r)
+${static_LeveldbApi_d} : $(call objs,LeveldbApi,d)
+${static_LeveldbApi_r} : $(call objs,LeveldbApi,r)
 
 TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
 .PHONY : pkg
@@ -264,6 +284,7 @@ endif
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
 	cp    ${TerarkDB_r} ${TarBall}/lib
+	cp    ${LeveldbApi_r} ${TarBall}/lib
 	cp    ../terark/lib/libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
 	cp    src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 	cp    src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
@@ -278,11 +299,11 @@ endif
 	cp    terark-base/src/terark/util/*.hpp   ${TarBall}/include/terark/util
 	cp -r api/leveldb/leveldb/include         ${TarBall}/api/leveldb
 	ln -s lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-r${DLL_SUFFIX}
+	ln -s lib${LeveldbApi_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${LeveldbApi_lib}-r${DLL_SUFFIX}
 	ln -s libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-r${DLL_SUFFIX}
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
 	tar czf ${TarBall}.tgz ${TarBall}
-
 
 %${DLL_SUFFIX}:
 	@echo "----------------------------------------------------------------------------------"
