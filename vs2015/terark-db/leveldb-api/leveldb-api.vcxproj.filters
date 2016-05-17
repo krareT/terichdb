@@ -36,9 +36,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="..\..\..\api\leveldb\leveldb\db\dbformat.h">
       <Filter>Header Files\leveldb\db</Filter>
     </ClInclude>

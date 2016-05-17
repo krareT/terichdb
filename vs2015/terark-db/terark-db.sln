@@ -39,7 +39,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "db-regex-test", "db-regex-t
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "terark-db-schema-compile", "terark-db-schema-compile\terark-db-schema-compile.vcxproj", "{C712F901-0A81-452A-9311-6FD8923A29DD}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "api-leveldb", "api-leveldb\api-leveldb.vcxproj", "{1A8C2DE8-ED76-4146-B97E-C39B53958F9C}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leveldb-api", "leveldb-api\leveldb-api.vcxproj", "{1A8C2DE8-ED76-4146-B97E-C39B53958F9C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

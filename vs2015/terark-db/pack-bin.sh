@@ -4,6 +4,7 @@ set -x
 
 TarBall=terark-db-win-x64
 rm -rf ${TarBall}
+mkdir -p ${TarBall}/api
 mkdir -p ${TarBall}/bin
 mkdir -p ${TarBall}/lib
 mkdir -p ${TarBall}/include/terark/db
@@ -16,6 +17,7 @@ cp x64/Release/terark*.lib                   ${TarBall}/lib
 #cp ../../../terark/vs2015/terark-fsa/x64/Release/*.dll  ${TarBall}/lib
 #cp ../../../terark/vs2015/terark-fsa/x64/Release/*.lib  ${TarBall}/lib
 cp x64/Release/terark-db-schema-compile.exe  ${TarBall}/bin
+cp -r ../../api/leveldb/leveldb/include      ${TarBall}/api
 cp ../../src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 cp ../../src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
 cp ../../src/terark/db/db_index.hpp          ${TarBall}/include/terark/db

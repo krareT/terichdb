@@ -146,9 +146,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="..\..\..\api\leveldb\leveldb\db\dbformat.h" />
     <ClInclude Include="..\..\..\api\leveldb\leveldb\db\skiplist.h" />
     <ClInclude Include="..\..\..\api\leveldb\leveldb\db\write_batch_internal.h" />
