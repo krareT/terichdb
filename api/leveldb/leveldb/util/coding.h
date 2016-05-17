@@ -24,48 +24,48 @@ const unsigned int kMaxVarint32Length = 5;
 const unsigned int kMaxVarint64Length = 10;
 
 // Standard Put... routines append to a string
-extern void PutFixed32(std::string* dst, uint32_t value);
-extern void PutFixed64(std::string* dst, uint64_t value);
-extern void PutVarint32(std::string* dst, uint32_t value);
-extern void PutVarint64(std::string* dst, uint64_t value);
-extern void PutLengthPrefixedSlice(std::string* dst, const Slice& value);
+TERARK_DB_DLL void PutFixed32(std::string* dst, uint32_t value);
+TERARK_DB_DLL void PutFixed64(std::string* dst, uint64_t value);
+TERARK_DB_DLL void PutVarint32(std::string* dst, uint32_t value);
+TERARK_DB_DLL void PutVarint64(std::string* dst, uint64_t value);
+TERARK_DB_DLL void PutLengthPrefixedSlice(std::string* dst, const Slice& value);
 
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
-extern bool GetVarint32(Slice* input, uint32_t* value);
-extern bool GetVarint64(Slice* input, uint64_t* value);
-extern bool GetLengthPrefixedSlice(Slice* input, Slice* result);
+TERARK_DB_DLL bool GetVarint32(Slice* input, uint32_t* value);
+TERARK_DB_DLL bool GetVarint64(Slice* input, uint64_t* value);
+TERARK_DB_DLL bool GetLengthPrefixedSlice(Slice* input, Slice* result);
 
 #ifdef HAVE_ROCKSDB
-extern void PutLengthPrefixedSliceParts(std::string* dst,
+TERARK_DB_DLL void PutLengthPrefixedSliceParts(std::string* dst,
                                         const SliceParts& slice_parts);
-extern bool GetFixed64(Slice* input, uint64_t* value);
+TERARK_DB_DLL bool GetFixed64(Slice* input, uint64_t* value);
 // This function assumes data is well-formed.
-extern Slice GetLengthPrefixedSlice(const char* data);
+TERARK_DB_DLL Slice GetLengthPrefixedSlice(const char* data);
 
-extern Slice GetSliceUntil(Slice* slice, char delimiter);
+TERARK_DB_DLL Slice GetSliceUntil(Slice* slice, char delimiter);
 #endif
 
 // Pointer-based variants of GetVarint...  These either store a value
 // in *v and return a pointer just past the parsed value, or return
 // NULL on error.  These routines only look at bytes in the range
 // [p..limit-1]
-extern const char* GetVarint32Ptr(const char* p,const char* limit, uint32_t* v);
-extern const char* GetVarint64Ptr(const char* p,const char* limit, uint64_t* v);
+TERARK_DB_DLL const char* GetVarint32Ptr(const char* p,const char* limit, uint32_t* v);
+TERARK_DB_DLL const char* GetVarint64Ptr(const char* p,const char* limit, uint64_t* v);
 
 // Returns the length of the varint32 or varint64 encoding of "v"
-extern int VarintLength(uint64_t v);
+TERARK_DB_DLL int VarintLength(uint64_t v);
 
 // Lower-level versions of Put... that write directly into a character buffer
 // REQUIRES: dst has enough space for the value being written
-extern void EncodeFixed32(char* dst, uint32_t value);
-extern void EncodeFixed64(char* dst, uint64_t value);
+TERARK_DB_DLL void EncodeFixed32(char* dst, uint32_t value);
+TERARK_DB_DLL void EncodeFixed64(char* dst, uint64_t value);
 
 // Lower-level versions of Put... that write directly into a character buffer
 // and return a pointer just past the last byte written.
 // REQUIRES: dst has enough space for the value being written
-extern char* EncodeVarint32(char* dst, uint32_t value);
-extern char* EncodeVarint64(char* dst, uint64_t value);
+TERARK_DB_DLL char* EncodeVarint32(char* dst, uint32_t value);
+TERARK_DB_DLL char* EncodeVarint64(char* dst, uint64_t value);
 
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
@@ -98,7 +98,7 @@ inline uint64_t DecodeFixed64(const char* ptr) {
 }
 
 // Internal routine for use by fallback path of GetVarint32Ptr
-extern const char* GetVarint32PtrFallback(const char* p,
+TERARK_DB_DLL const char* GetVarint32PtrFallback(const char* p,
                                           const char* limit,
                                           uint32_t* value);
 inline const char* GetVarint32Ptr(const char* p,
@@ -123,7 +123,7 @@ inline const char* GetVarint32Ptr(const char* p,
 // value is truncated to the bits number of least significant bits.
 // REQUIRES: (offset+bits+7)/8 <= dstlen
 // REQUIRES: bits <= 64
-extern void BitStreamPutInt(char* dst, size_t dstlen, size_t offset,
+TERARK_DB_DLL void BitStreamPutInt(char* dst, size_t dstlen, size_t offset,
                             uint32_t bits, uint64_t value);
 
 // Reads an unsigned integer with bits number of bits with its least
@@ -131,15 +131,15 @@ extern void BitStreamPutInt(char* dst, size_t dstlen, size_t offset,
 // Bits are numbered in the same way as ByteStreamPutInt().
 // REQUIRES: (offset+bits+7)/8 <= srclen
 // REQUIRES: bits <= 64
-extern uint64_t BitStreamGetInt(const char* src, size_t srclen, size_t offset,
+TERARK_DB_DLL uint64_t BitStreamGetInt(const char* src, size_t srclen, size_t offset,
                                 uint32_t bits);
 
 // Convenience functions
-extern void BitStreamPutInt(std::string* dst, size_t offset, uint32_t bits,
+TERARK_DB_DLL void BitStreamPutInt(std::string* dst, size_t offset, uint32_t bits,
                             uint64_t value);
-extern uint64_t BitStreamGetInt(const std::string* src, size_t offset,
+TERARK_DB_DLL uint64_t BitStreamGetInt(const std::string* src, size_t offset,
                                 uint32_t bits);
-extern uint64_t BitStreamGetInt(const Slice* src, size_t offset,
+TERARK_DB_DLL uint64_t BitStreamGetInt(const Slice* src, size_t offset,
                                 uint32_t bits);
 
 #endif // HAVE_ROCKSDB
