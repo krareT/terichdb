@@ -262,6 +262,7 @@ endif
 	cp    src/terark/db/db_index.hpp          ${TarBall}/include/terark/db
 	cp    src/terark/db/db_store.hpp          ${TarBall}/include/terark/db
 	cp    src/terark/db/db_segment.hpp        ${TarBall}/include/terark/db
+	cp    src/terark/db/db_dll_decl.hpp       ${TarBall}/include/terark/db
 	cp    src/terark/db/db_table.hpp          ${TarBall}/include/terark/db
 	cp    terark-base/src/terark/*.hpp        ${TarBall}/include/terark
 	cp    terark-base/src/terark/io/*.hpp     ${TarBall}/include/terark/io
