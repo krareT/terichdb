@@ -3841,6 +3841,9 @@ public:
 			size_t n2 = atoi(env);
 			n = std::min(n, n2);
 		}
+		else {
+			n = std::min<size_t>(n, 4);
+		}
 		this->resize(n);
 		for (size_t i = 0; i < n; ++i) {
 			(*this)[i] = new tbb::tbb_thread(&CompressThreadFunc);
