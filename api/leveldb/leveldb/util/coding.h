@@ -114,6 +114,8 @@ inline const char* GetVarint32Ptr(const char* p,
   return GetVarint32PtrFallback(p, limit, value);
 }
 
+#ifdef HAVE_ROCKSDB
+
 // Writes an unsigned integer with bits number of bits with its least
 // significant bit at offset.
 // Bits are numbered from 0 to 7 in the first byte, 8 to 15 in the second and
@@ -139,6 +141,8 @@ extern uint64_t BitStreamGetInt(const std::string* src, size_t offset,
                                 uint32_t bits);
 extern uint64_t BitStreamGetInt(const Slice* src, size_t offset,
                                 uint32_t bits);
+
+#endif // HAVE_ROCKSDB
 
 // -- Implementation of the functions declared above
 inline void EncodeFixed32(char* buf, uint32_t value) {
@@ -294,7 +298,6 @@ inline Slice GetSliceUntil(Slice* slice, char delimiter) {
   slice->remove_prefix(len + ((len < slice->size()) ? 1 : 0));
   return ret;
 }
-#endif
 
 inline uint64_t BitStreamGetInt(const std::string* src, size_t offset,
                                 uint32_t bits) {
@@ -305,6 +308,8 @@ inline uint64_t BitStreamGetInt(const Slice* src, size_t offset,
                                 uint32_t bits) {
   return BitStreamGetInt(src->data(), src->size(), offset, bits);
 }
+
+#endif
 
 }  // namespace leveldb
 

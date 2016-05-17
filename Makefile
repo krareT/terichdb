@@ -173,7 +173,14 @@ TerarkDB_src := $(wildcard src/terark/db/*.cpp)
 TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 TerarkDB_src += $(wildcard api/leveldb/leveldb_terark.cc)
 TerarkDB_src += $(wildcard api/leveldb/leveldb/db/*.cc)
-TerarkDB_src += $(wildcard api/leveldb/leveldb/util/*.cc)
+
+TerarkDB_src += api/leveldb/leveldb/util/coding.cc
+TerarkDB_src += api/leveldb/leveldb/util/comparator.cc
+TerarkDB_src += api/leveldb/leveldb/util/env.cc
+TerarkDB_src += api/leveldb/leveldb/util/env_posix.cc
+TerarkDB_src += api/leveldb/leveldb/util/logging.cc
+TerarkDB_src += api/leveldb/leveldb/util/options.cc
+TerarkDB_src += api/leveldb/leveldb/util/status.cc
 
 ifeq (1,${WITH_DFA_DB})
   TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)

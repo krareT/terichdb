@@ -28,6 +28,8 @@
 #endif
 #include "status.h"
 
+#undef DeleteFile
+
 namespace leveldb {
 
 class FileLock;

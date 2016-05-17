@@ -27,8 +27,6 @@
 
 #include "leveldb_terark.h"
 #include <errno.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <sstream>
 #include <stdint.h>
 #include <terark/stdtypes.hpp>
@@ -59,10 +57,9 @@ class StringValue : public Value {
 
 Status DestroyDB(const fs::path& name, const Options& options) {
   fs::path dbdir = name / "TerarkDB";
-  std::string strDbDir = dbdir.string();
-  if (access(strDbDir.c_str(), F_OK) != 0)
+  if (!fs::exists(dbdir))
     return Status::OK();
-  boost::filesystem::remove_all(strDbDir);
+  fs::remove_all(dbdir);
   return Status::OK();
 }
 
@@ -556,6 +553,7 @@ void IteratorImpl::iterIncrement() {
 			break;
 		}
 		catch (const std::exception& ex) {
+			fprintf(stderr, "ERROR: %s: what=%s\n", BOOST_CURRENT_FUNCTION, ex.what());
 			m_valid = m_iter->increment(&m_recId, &m_key);
 		}
 	}
@@ -636,6 +634,7 @@ IteratorImpl::Next() {
 			m_valid = true;
 		}
 		catch (const std::exception& ex) {
+			fprintf(stderr, "ERROR: %s: what=%s\n", BOOST_CURRENT_FUNCTION, ex.what());
 			iterIncrement();
 		}
 	}
@@ -664,6 +663,7 @@ IteratorImpl::Prev() {
 			m_valid = true;
 		}
 		catch (const std::exception& ex) {
+			fprintf(stderr, "ERROR: %s: what=%s\n", BOOST_CURRENT_FUNCTION, ex.what());
 			iterIncrement();
 		}
 	}
