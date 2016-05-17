@@ -40,33 +40,6 @@
     <Filter Include="Header Files\nlohmann">
       <UniqueIdentifier>{63c92b33-47f6-4eef-a698-02c8ec25e05a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\api-leveldb">
-      <UniqueIdentifier>{577f93b6-2450-4c46-ba16-f8a9c4f2eca6}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\api-leveldb\leveldb">
-      <UniqueIdentifier>{9b54c28a-9564-4777-b8d4-58e180068ff6}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\api-leveldb\leveldb\db">
-      <UniqueIdentifier>{7a0daa64-9085-49c6-82dd-99ee4cac43a7}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\api-leveldb\leveldb\util">
-      <UniqueIdentifier>{3840b9f3-0b35-4cf6-8a1d-325656249106}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\api-leveldb">
-      <UniqueIdentifier>{1e386e6c-8e42-473f-8850-750ccf7a926a}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\api-leveldb\leveldb">
-      <UniqueIdentifier>{cd610589-af2d-486c-ae1f-e57967faaf0a}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\api-leveldb\leveldb\db">
-      <UniqueIdentifier>{997bed40-9cc3-40ba-b597-92595e4bca84}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\api-leveldb\leveldb\util">
-      <UniqueIdentifier>{1f328fe6-d5ed-4413-8a31-3ba9354df926}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\api-leveldb\leveldb\leveldb">
-      <UniqueIdentifier>{4cd38e1c-c3f6-43bb-8da1-4fc3be9e9a6a}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -162,63 +135,6 @@
     <ClInclude Include="..\..\..\src\terark\db\rocksdb-api.hpp">
       <Filter>Header Files\terark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\dbformat.h">
-      <Filter>Header Files\api-leveldb\leveldb\db</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\skiplist.h">
-      <Filter>Header Files\api-leveldb\leveldb\db</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\write_batch_internal.h">
-      <Filter>Header Files\api-leveldb\leveldb\db</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\cache.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\comparator.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\db.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\env.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\filter_policy.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\iterator.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\leveldb_terark_config.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\options.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\slice.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\status.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\write_batch.h">
-      <Filter>Header Files\api-leveldb\leveldb\leveldb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\arena.h">
-      <Filter>Header Files\api-leveldb\leveldb\util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\coding.h">
-      <Filter>Header Files\api-leveldb\leveldb\util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\logging.h">
-      <Filter>Header Files\api-leveldb\leveldb\util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\random.h">
-      <Filter>Header Files\api-leveldb\leveldb\util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\win_logger.h">
-      <Filter>Header Files\api-leveldb\leveldb\util</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -292,36 +208,6 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\delete_on_close_file_lock.cpp">
       <Filter>Source Files\terark\db</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb_terark.cc">
-      <Filter>Source Files\api-leveldb</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\db\write_batch.cc">
-      <Filter>Source Files\api-leveldb\leveldb\db</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\coding.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\comparator.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\env.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\logging.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\options.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\status.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\env_windows.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\win_logger.cc">
-      <Filter>Source Files\api-leveldb\leveldb\util</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

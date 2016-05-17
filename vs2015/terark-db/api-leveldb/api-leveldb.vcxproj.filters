@@ -1,0 +1,135 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\leveldb">
+      <UniqueIdentifier>{7228adab-f5c9-46dd-8b25-c024e4414534}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\leveldb\db">
+      <UniqueIdentifier>{d67e06cf-c0cf-42d0-95f0-60b8e9157a00}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\leveldb\util">
+      <UniqueIdentifier>{2b308256-56e7-4c4a-a5e9-c6078c234da8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\leveldb">
+      <UniqueIdentifier>{293054e1-18f8-4804-aa8c-cd2946f2d42c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\leveldb\db">
+      <UniqueIdentifier>{25ac8881-c286-4ded-8437-517749fdc40e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\leveldb\util">
+      <UniqueIdentifier>{be57cb68-fd1c-43de-b39c-54b22ccd6ac7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\leveldb\leveldb">
+      <UniqueIdentifier>{cd6a66f8-b19d-4949-8340-ebc2d5bff6dc}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\dbformat.h">
+      <Filter>Header Files\leveldb\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\skiplist.h">
+      <Filter>Header Files\leveldb\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\write_batch_internal.h">
+      <Filter>Header Files\leveldb\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\arena.h">
+      <Filter>Header Files\leveldb\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\coding.h">
+      <Filter>Header Files\leveldb\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\logging.h">
+      <Filter>Header Files\leveldb\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\random.h">
+      <Filter>Header Files\leveldb\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\win_logger.h">
+      <Filter>Header Files\leveldb\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\cache.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\comparator.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\db.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\env.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\filter_policy.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\iterator.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\leveldb_terark_config.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\options.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\slice.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\status.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\write_batch.h">
+      <Filter>Header Files\leveldb\leveldb</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\db\write_batch.cc">
+      <Filter>Source Files\leveldb\db</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\coding.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\comparator.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\env.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\logging.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\options.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\status.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\env_windows.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\win_logger.cc">
+      <Filter>Source Files\leveldb\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\api\leveldb\leveldb_terark.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
