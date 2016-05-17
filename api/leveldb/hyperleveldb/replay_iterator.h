@@ -5,7 +5,7 @@
 #ifndef STORAGE_LEVELDB_INCLUDE_REPLAY_ITERATOR_H_
 #define STORAGE_LEVELDB_INCLUDE_REPLAY_ITERATOR_H_
 
-#include "leveldb_terark_config.h"
+#include <leveldb/leveldb_terark_config.h>
 
 #include "slice.h"
 #include "status.h"

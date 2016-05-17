@@ -242,7 +242,7 @@ encodeKeyVal(terark::valvec<unsigned char>& buf,
 	buf.erase_all();
 	aligned_save(buf.grow_no_init(4), uint32_t(key.size()));
 	buf.append((unsigned char*)key.begin(), key.size());
-	unaligned_save(buf.grow_no_init(4), uint32_t(val.size()));
+//	unaligned_save(buf.grow_no_init(4), uint32_t(val.size()));
 	buf.append((unsigned char*)val.begin(), val.size());
 };
 
@@ -350,6 +350,9 @@ DbImpl::Get(const ReadOptions& options, const Slice& key, std::string* value) {
 	  auto recId = ctx->exactMatchRecIdvec[0];
 	  try {
 		  ctx->selectOneColgroup(recId, 1, &ctx->userBuf);
+	//	  fprintf(stderr
+	//		, "DEBUG: recId=%lld, colgroup[1]={size=%zd, content=%.*s}\n"
+	//		, recId, ctx->userBuf.size(), (int)ctx->userBuf.size(), ctx->userBuf.data());
 		  value->resize(0);
 		  value->append((char*)ctx->userBuf.data(), ctx->userBuf.size());
 		  return Status::OK();
@@ -535,6 +538,7 @@ terark::db::DbContext* DbImpl::GetDbContext() {
 
 IteratorImpl::IteratorImpl(terark::db::CompositeTable *db) {
 	m_tab = db;
+	m_ctx = db->createDbContext();
 	m_recId = -1;
 	m_valid = false;
 	m_direction = Direction::forward;

@@ -28,7 +28,7 @@
 #ifndef _INCLUDE_LEVELDB_WT_H
 #define _INCLUDE_LEVELDB_WT_H 1
 
-#include "leveldb_terark_config.h"
+#include <leveldb/leveldb_terark_config.h>
 
 #include <thread>
 #include "leveldb/cache.h"

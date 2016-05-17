@@ -23,7 +23,7 @@
 #ifndef STORAGE_LEVELDB_INCLUDE_PERF_COUNT_H_
 #define STORAGE_LEVELDB_INCLUDE_PERF_COUNT_H_
 
-#include "leveldb_terark_config.h"
+#include <leveldb/leveldb_terark_config.h>
 
 #include <stdint.h>
 #include <string>

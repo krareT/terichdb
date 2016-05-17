@@ -153,11 +153,11 @@ override CXXFLAGS += ${extf}
 #override CXXFLAGS += -g3
 #CXXFLAGS += -fnothrow-opt
 
-override INCS += -I${BDB_HOME}/include
-override INCS += -I/opt/include
 override INCS += -Iapi/leveldb/leveldb/include
 override INCS += -Iapi/leveldb/leveldb
 override INCS += -Iapi/leveldb
+override INCS += -I${BDB_HOME}/include
+override INCS += -I/opt/include
 override LIBS += -L${BDB_HOME}/lib
 override LIBS += -L/opt/lib
 
@@ -249,6 +249,7 @@ pkg: ${TerarkDB_d} ${TerarkDB_r}
 	mkdir -p ${TarBall}/include/terark/io
 	mkdir -p ${TarBall}/include/terark/thread
 	mkdir -p ${TarBall}/include/terark/util
+	mkdir -p ${TarBall}/api/leveldb/include
 ifeq (${PKG_WITH_DBG},1)
 	cp    ${TerarkDB_d} ${TarBall}/lib
 	ln -s lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-d${DLL_SUFFIX}
@@ -268,6 +269,7 @@ endif
 	cp    terark-base/src/terark/io/*.hpp     ${TarBall}/include/terark/io
 	cp    terark-base/src/terark/thread/*.hpp ${TarBall}/include/terark/thread
 	cp    terark-base/src/terark/util/*.hpp   ${TarBall}/include/terark/util
+	cp -r api/leveldb/leveldb/include/*.h     ${TarBall}/api/leveldb/include
 	ln -s lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-r${DLL_SUFFIX}
 	ln -s libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-r${DLL_SUFFIX}
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
