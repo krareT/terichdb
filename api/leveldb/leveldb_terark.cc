@@ -55,8 +55,8 @@ class StringValue : public Value {
 };
 #endif
 
-Status DestroyDB(const fs::path& name, const Options& options) {
-  fs::path dbdir = name / "TerarkDB";
+Status DestroyDB(const std::string& name, const Options& options) {
+  fs::path dbdir = fs::path(name) / "TerarkDB";
   if (!fs::exists(dbdir))
     return Status::OK();
   fs::remove_all(dbdir);
