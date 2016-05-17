@@ -69,6 +69,9 @@ CompositeTable::CompositeTable() {
 }
 
 CompositeTable::~CompositeTable() {
+	if (m_dir.empty() || m_segments.empty()) {
+		return;
+	}
 	if (m_tobeDrop) {
 		// should delete m_dir?
 		try {
@@ -295,7 +298,6 @@ void CompositeTable::load(PathRef dir) {
 
 void CompositeTable::doLoad(PathRef dir) {
 	assert(m_schema.get() != nullptr);
-	m_dir = dir;
 	fs::path runLockFpath = dir / "run.lock";
 	if (fs::exists(runLockFpath)) {
 		THROW_STD(invalid_argument
@@ -309,6 +311,7 @@ void CompositeTable::doLoad(PathRef dir) {
 			fs::remove(runLockFpath);
 		}
 	} BOOST_SCOPE_EXIT_END;
+	m_dir = dir;
 	discoverMergeDir(m_dir);
 	fs::path mergeDir = getMergePath(m_dir, m_mergeSeqNum);
 	SortableStrVec segDirList = getWorkingSegDirList(mergeDir);

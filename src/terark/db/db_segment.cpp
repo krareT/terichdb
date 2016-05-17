@@ -1561,7 +1561,7 @@ const {
 	for(size_t i = 0; i < colsNum; ++i) {
 		size_t columnId = colsId[i];
 		assert(columnId < schema.columnNum());
-		if (i < colsNum)
+		if (i < colsNum-1)
 			schema.projectToNorm(ctx->cols1[columnId], columnId, colsData);
 		else
 			schema.projectToLast(ctx->cols1[columnId], columnId, colsData);
@@ -1605,7 +1605,7 @@ const {
 			size_t subColumnId = sconf.m_rowSchemaColToWrtCol[columnId];
 			assert(subColumnId < sconf.m_wrtSchema->columnNum());
 			fstring coldata = ctx->cols1[subColumnId];
-			if (i < colsNum)
+			if (i < colsNum-1)
 				rowSchema.projectToNorm(coldata, columnId, colsData);
 			else
 				rowSchema.projectToLast(coldata, columnId, colsData);
