@@ -27,8 +27,11 @@
 
 #include "leveldb_terark.h"
 #include <errno.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  #include <sys/stat.h>
+  #include <unistd.h>
+#endif
 #include <sstream>
 
 using leveldb::Cache;
@@ -77,59 +80,42 @@ DB::ListColumnFamilies(
 	std::vector<std::string> *column_families)
 {
 	std::vector<std::string> cf;
-	DB *dbptr;
-	Status status = DB::Open(options, name, &dbptr);
-	if (!status.ok())
-		return status;
-	DbImpl *db = static_cast<DbImpl *>(dbptr);
-	OperationContext *context = db->GetContext();
-	WT_SESSION *session = context->GetSession();
-	WT_CURSOR *c;
-	int ret = session->open_cursor(session, "metadata:", NULL, NULL, &c);
-	if (ret != 0)
-		goto err;
-	c->set_key(c, "table:");
-	/* Position on the first table entry */
-	int cmp;
-	ret = c->search_near(c, &cmp);
-	if (ret != 0 || (cmp < 0 && (ret = c->next(c)) != 0))
-		goto err;
-	/* Add entries while we are getting "table" URIs. */
-	for (; ret == 0; ret = c->next(c)) {
-		const char *key;
-		if ((ret = c->get_key(c, &key)) != 0)
-			goto err;
-		if (strncmp(key, "table:", strlen("table:")) != 0)
-			break;
-		printf("List column families: [%d] = %s\n", (int)cf.size(), key);
-		cf.push_back(std::string(key + strlen("table:")));
+	fs::path dbdir = fs::path(name) / "TerarkDB";
+	fs::path metaPath = dbdir / "dbmeta.json";
+	if (!fs::exists(metaPath)) {
+		fprintf(stderr, "ERROR: not exists: %s\n", metaPath.string().c_str());
+		return Status::InvalidArgument("ListColumnFamilies: dbmeta.json is missing", dbdir.string());
 	}
-
-err:	delete db;
-	/*
-	 * WT_NOTFOUND is not an error: it just means we got to the end of the
-	 * list of tables.
-	 */
-	if (ret == 0 || ret == WT_NOTFOUND) {
-		*column_families = cf;
-		ret = 0;
+	try {
+		terark::db::SchemaConfigPtr sconf = new terark::db::SchemaConfig();
+		sconf->loadJsonFile(metaPath.string());
+		column_families->resize(0);
+		size_t cgNum = sconf->getColgroupNum();
+		for (size_t i = 0; i < cgNum; ++i) {
+			const terark::db::Schema& schema = sconf->getColgroupSchema(i);
+			column_families->push_back(schema.m_name);
+		}
 	}
-	return WiredTigerErrorToStatus(ret);
+	catch (const std::exception& ex) {
+		return Status::InvalidArgument("ListColumnFamilies: load dbmeta.json failed", dbdir.string());
+	}
 }
 
 Status
-DB::Open(Options const &options, std::string const &name, const std::vector<ColumnFamilyDescriptor> &column_families, std::vector<ColumnFamilyHandle*> *handles, DB**dbptr)
+DB::Open(Options const &options,
+		 std::string const &name,
+		 const std::vector<ColumnFamilyDescriptor> &column_families,
+		 std::vector<ColumnFamilyHandle*> *handles,
+		 DB**dbptr)
 {
 	Status status = Open(options, name, dbptr);
 	if (!status.ok())
 		return status;
-	DbImpl *db = static_cast<DbImpl *>(*dbptr);
-	std::vector<ColumnFamilyHandle*> cfhandles(
-	    column_families.size());
+	DbImpl *db = static_cast<DbImpl*>(*dbptr);
+	std::vector<ColumnFamilyHandle*> cfhandles(column_families.size());
 	for (size_t i = 0; i < column_families.size(); i++) {
 		printf("Open column families: [%d] = %s\n", (int)i, column_families[i].name.c_str());
-		cfhandles[i] = new ColumnFamilyHandleImpl(
-		    db, column_families[i].name, (int)i);
+		cfhandles[i] = new ColumnFamilyHandleImpl(db, column_families[i].name, i);
 	}
 	db->SetColumns(*handles = cfhandles);
 	return Status::OK();

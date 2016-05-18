@@ -167,14 +167,11 @@ class ColumnFamilyHandleImpl : public ColumnFamilyHandle {
   ColumnFamilyHandleImpl(DbImpl* db, std::string const &name, uint32_t id) : db_(db), id_(id), name_(name) {}
   ColumnFamilyHandleImpl(const ColumnFamilyHandleImpl &copyfrom) : db_(copyfrom.db_), id_(copyfrom.id_), name_(copyfrom.name_) {}
   virtual ~ColumnFamilyHandleImpl() {}
-  virtual uint32_t GetID() const { return id_; }
-
+  size_t GetID() const { return id_; }
   std::string const &GetName() const { return name_; }
-  std::string const GetURI() const { return "table:" + name_; }
-
  private:
   DbImpl* db_;
-  uint32_t id_;
+  size_t  id_;
   std::string const name_;
 };
 #endif
