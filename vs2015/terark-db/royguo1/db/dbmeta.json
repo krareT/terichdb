@@ -3,7 +3,11 @@
      "columns" : {
        "id"   : { "type" : "uint32" },
        "name" : { "type" : "strzero" },
-       "age" : { "type" : "int08" },
+       "age" : { "type" : "uint8" },
+       "email" : { "type" : "strzero" },
+       "city" : { "type" : "strzero" },
+       "street" : { "type" : "strzero" },
+       "zipcode" : { "type" : "strzero" },
        "description" : { "type" : "strzero" },
        "update_time" : { "type" : "int32" }
      }
@@ -11,7 +15,8 @@
   "TableIndex" : [
     { "name":"id", "fields": "id", "ordered" : true, "unique": true },
     { "fields": "update_time", "ordered": true, "unique": false},
-    { "fields": ["id", "name"], "ordered": true, "unique": false}
+    { "fields": ["city", "street"], "ordered": true, "unique": false},
+    { "fields": "email", "ordered": true, "unique": false}
   ],
   "ColumnGroups": {
     "name_and_description": {

@@ -38,12 +38,19 @@ int main(int argc, char* argv[]){
   // read data(1000 records)
   terark::valvec<terark::byte> nameVal;     // column value
   terark::valvec<terark::byte> descVal;     // column value
+  terark::valvec<terark::byte> nameDescVal;    // column group value
   terark::valvec<terark::llong> idvec;      // id vector of index
+  terark::db::ColumnVec nameDescCV;
 
   size_t indexId = tab->getIndexId("id");
 
+  // get data by column id is faster than by column name
   size_t nameColumnId = tab->getColumnId("name");
   size_t descColumnId = tab->getColumnId("description");
+
+  // get a full column group is faster than separately get every column
+  size_t nameDescColgroupId = tab->getColgroupId("name_and_description");
+  auto& nameDescColgroupSchema = tab->getColgroupSchema(nameDescColgroupId);
 
   std::cout<<"name colId = "<<nameColumnId<<", desc colId ="<<descColumnId<<std::endl;
 
@@ -60,10 +67,20 @@ int main(int argc, char* argv[]){
     // print ids
     // std::cout<<tab->getIndexSchema(indexId).toJsonStr(key).c_str()<<std::endl;
     for (auto recId : idvec) {
+      // the simplest way
       ctx->selectOneColumn(recId, nameColumnId, &nameVal);
       ctx->selectOneColumn(recId, descColumnId, &descVal);
-      printf("%.*s  ", (int)nameVal.size(), nameVal.data());
+      printf("--%.*s  ", (int)nameVal.size(), nameVal.data());
       printf("%.*s\n", (int)descVal.size(), descVal.data());
+
+	  // name and description are defined in one column group
+	  // using selectOneColgroup is much faster
+	  ctx->selectOneColgroup(recId, nameDescColgroupId, &nameDescVal);
+	  nameDescColgroupSchema.parseRow(nameDescVal, &nameDescCV);
+	  terark::fstring name = nameDescCV[0];
+	  terark::fstring desc = nameDescCV[1];
+      printf("++%.*s  ", name.ilen(), name.data());
+      printf("%.*s\n", desc.ilen(), desc.data());
     }
   }
 
