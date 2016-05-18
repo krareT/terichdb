@@ -148,7 +148,13 @@ int main(int argc, char* argv[]) {
 	const char* ns = argv[2];
 	const char* tabName = argv[3];
 	SchemaConfig sconf;
-	sconf.loadJsonFile(jsonFilePath);
+	try {
+		sconf.loadJsonFile(jsonFilePath);
+	}
+	catch (const std::exception& ex) {
+		fprintf(stderr, "ERROR: loadJsonFile(%s) failed: %s\n", jsonFilePath, ex.what());
+		return 1;
+	}
 	printf(R"EOS(#pragma once
 #include <terark/db/db_table.hpp>
 #include <terark/io/DataIO.hpp>
@@ -174,6 +180,9 @@ int main(int argc, char* argv[]) {
 		className += "_Colgroup_";
 		className += cgName;
 		compileOneSchema(schema, className.c_str());
+		if (i < sconf.m_indexSchemaSet->indexNum()) {
+			printf("  typedef %s %s_Index_%s;\n\n", className.c_str(), tabName, cgName.c_str());
+		}
 	}
 	printf("} // namespace %s\n", ns);
     return 0;
