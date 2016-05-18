@@ -36,7 +36,7 @@ void ReadableIndex::encodeIndexKey(const Schema& schema, valvec<byte>& key) cons
 	//
 	if (m_isIndexKeyByteLex) {
 		assert(schema.m_canEncodeToLexByteComparable);
-		schema.byteLexConvert(key);
+		schema.byteLexEncode(key);
 	}
 }
 
@@ -46,7 +46,7 @@ void ReadableIndex::decodeIndexKey(const Schema& schema, valvec<byte>& key) cons
 
 	if (m_isIndexKeyByteLex) {
 		assert(schema.m_canEncodeToLexByteComparable);
-		schema.byteLexConvert(key);
+		schema.byteLexDecode(key);
 	}
 }
 
@@ -61,7 +61,7 @@ void ReadableIndex::encodeIndexKey(const Schema& schema, byte* key, size_t keyLe
 	//
 	if (m_isIndexKeyByteLex) {
 		assert(schema.m_canEncodeToLexByteComparable);
-		schema.byteLexConvert(key, keyLen);
+		schema.byteLexEncode(key, keyLen);
 	}
 }
 
@@ -71,7 +71,7 @@ void ReadableIndex::decodeIndexKey(const Schema& schema, byte* key, size_t keyLe
 
 	if (m_isIndexKeyByteLex) {
 		assert(schema.m_canEncodeToLexByteComparable);
-		schema.byteLexConvert(key, keyLen);
+		schema.byteLexDecode(key, keyLen);
 	}
 }
 

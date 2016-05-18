@@ -422,7 +422,7 @@ DbContext::selectColumns(llong id, const size_t* colsId, size_t colsNum, valvec<
 	m_tab->selectColumns(id, colsId, colsNum, colsData, this);
 }
 inline void
-DbContext::selectOneColumn(llong id, size_t columnId, valvec<byte>* colsData, DbContext*) {
+DbContext::selectOneColumn(llong id, size_t columnId, valvec<byte>* colsData) {
 	m_tab->selectOneColumn(id, columnId, colsData, this);
 }
 

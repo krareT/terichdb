@@ -9,7 +9,7 @@ namespace terark { namespace db {
 
 class TERARK_DB_DLL FixedLenKeyIndex : public ReadableIndex, public ReadableStore {
 public:
-	FixedLenKeyIndex();
+	FixedLenKeyIndex(const Schema& schema);
 	~FixedLenKeyIndex();
 
 	///@{ ordered and unordered index
@@ -38,6 +38,7 @@ public:
 protected:
 	valvec<byte> m_keys;   // key   = m_keys[recId]
 	UintVecMin0  m_index;  // recId = m_index.lower_bound(key)
+	const Schema&m_schema;
 	byte_t*      m_mmapBase;
 	size_t       m_mmapSize;
 	size_t       m_fixedLen;
@@ -45,6 +46,9 @@ protected:
 
 	size_t searchLowerBound(fstring binkey) const;
 	size_t searchUpperBound(fstring binkey) const;
+
+	size_t searchLowerBound_cvt(fstring binkey) const;
+	size_t searchUpperBound_cvt(fstring binkey) const;
 
 	class MyIndexIterForward;  friend class MyIndexIterForward;
 	class MyIndexIterBackward; friend class MyIndexIterBackward;

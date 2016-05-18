@@ -161,6 +161,7 @@ class MockReadonlyIndexIterator : public IndexIterator {
 	size_t m_pos;
 public:
 	MockReadonlyIndexIterator(const MockReadonlyIndex* owner) {
+		m_isUniqueInSchema = owner->m_schema->m_isUnique;
 		m_index.reset(const_cast<MockReadonlyIndex*>(owner));
 		m_pos = 0;
 	}
@@ -194,6 +195,7 @@ class MockReadonlyIndexIterBackward : public IndexIterator {
 	size_t m_pos;
 public:
 	MockReadonlyIndexIterBackward(const MockReadonlyIndex* owner) {
+		m_isUniqueInSchema = owner->m_schema->m_isUnique;
 		m_index.reset(const_cast<MockReadonlyIndex*>(owner));
 		m_pos = owner->m_ids.size();
 	}
@@ -453,7 +455,7 @@ IndexIterator* MockReadonlyIndex::createIndexIterForward(DbContext*) const {
 	return new MockReadonlyIndexIterator(this);
 }
 IndexIterator* MockReadonlyIndex::createIndexIterBackward(DbContext*) const {
-	return new MockReadonlyIndexIterator(this);
+	return new MockReadonlyIndexIterBackward(this);
 }
 
 llong MockReadonlyIndex::indexStorageSize() const {
@@ -670,6 +672,7 @@ class MockWritableIndex<Key>::MyIndexIterForward : public IndexIterator {
 	typename std::set<kv_t>::const_iterator m_iter;
 public:
 	MyIndexIterForward(const MockWritableIndex* owner) {
+		m_isUniqueInSchema = owner->isUnique();
 		m_index.reset(const_cast<MockWritableIndex*>(owner));
 		m_iter = owner->m_kv.begin();
 	}
@@ -713,6 +716,7 @@ class MockWritableIndex<Key>::MyIndexIterBackward : public IndexIterator {
 	typename std::set<kv_t>::const_iterator m_iter;
 public:
 	MyIndexIterBackward(const MockWritableIndex* owner) {
+		m_isUniqueInSchema = owner->isUnique();
 		m_index.reset(const_cast<MockWritableIndex*>(owner));
 		m_iter = owner->m_kv.end();
 	}

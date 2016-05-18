@@ -719,9 +719,36 @@ void Schema::selectParent(const ColumnVec& parentCols, ColumnVec* myCols) const 
 	myCols->m_base = parentCols.m_base;
 }
 
-void Schema::byteLexConvert(valvec<byte>& indexKey) const {
-	byteLexConvert(indexKey.data(), indexKey.size());
+void Schema::byteLexEncode(valvec<byte>& indexKey) const {
+	byteLexEncode(indexKey.data(), indexKey.size());
 }
+void Schema::byteLexDecode(valvec<byte>& indexKey) const {
+	byteLexDecode(indexKey.data(), indexKey.size());
+}
+struct EncodeOffsetCoding {
+	template<class Integer>
+	static Integer convert(Integer x) {
+		x ^= Integer(1) << (sizeof(Integer)*8 - 1);
+		BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+		return x;
+	}
+};
+struct DecodeOffsetCoding {
+	template<class Integer>
+	static Integer convert(Integer x) {
+		BYTE_SWAP_IF_LITTLE_ENDIAN(x);
+		x ^= Integer(1) << (sizeof(Integer)*8 - 1);
+		return x;
+	}
+};
+void Schema::byteLexEncode(byte* data, size_t size) const {
+	byteLexConvert<EncodeOffsetCoding>(data, size);
+}
+void Schema::byteLexDecode(byte* data, size_t size) const {
+	byteLexConvert<DecodeOffsetCoding>(data, size);
+}
+
+template<class Converter>
 void Schema::byteLexConvert(byte* data, size_t size) const {
 	assert(size_t(-1) != m_fixedLen);
 	assert(m_canEncodeToLexByteComparable);
@@ -759,8 +786,7 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 			CHECK_CURR_LAST(2);
 			{
 				uint16_t x = unaligned_load<uint16_t>(curr);
-				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
-				x ^= 1 << 15;
+				x = Converter::convert(x);
 				unaligned_save(curr, x);
 			}
 			curr += 2;
@@ -779,8 +805,7 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 			CHECK_CURR_LAST(4);
 			{
 				uint32_t x = unaligned_load<uint32_t>(curr);
-				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
-				x ^= uint32_t(1) << 31;
+				x = Converter::convert(x);
 				unaligned_save(curr, x);
 			}
 			curr += 4;
@@ -799,8 +824,7 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 			CHECK_CURR_LAST(8);
 			{
 				uint64_t x = unaligned_load<uint64_t>(curr);
-				BYTE_SWAP_IF_LITTLE_ENDIAN(x);
-				x ^= uint64_t(1) << 63;
+				x = Converter::convert(x);
 				unaligned_save(curr, x);
 			}
 			curr += 8;

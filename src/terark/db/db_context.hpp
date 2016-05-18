@@ -62,7 +62,7 @@ public:
 
 	void selectColumns(llong id, const valvec<size_t>& cols, valvec<byte>* colsData);
 	void selectColumns(llong id, const size_t* colsId, size_t colsNum, valvec<byte>* colsData);
-	void selectOneColumn(llong id, size_t columnId, valvec<byte>* colsData, DbContext*);
+	void selectOneColumn(llong id, size_t columnId, valvec<byte>* colsData);
 
 	void selectColgroups(llong id, const valvec<size_t>& cgIdvec, valvec<valvec<byte> >* cgDataVec);
 	void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize, valvec<byte>* cgDataVec);

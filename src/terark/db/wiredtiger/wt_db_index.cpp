@@ -354,7 +354,7 @@ void WtWritableIndex::getKeyVal(const Schema& schema, WT_CURSOR* cursor,
 		*recId = BigEndianValue(r);
 	}
 	if (schema.m_needEncodeToLexByteComparable) {
-		schema.byteLexConvert(*key);
+		schema.byteLexDecode(*key);
 	}
 }
 
@@ -371,7 +371,7 @@ void WtWritableIndex::setKeyVal(const Schema& schema, WT_CURSOR* cursor,
 	item->size = key.size();
 	if (schema.m_needEncodeToLexByteComparable) {
 		buf->assign(key);
-		schema.byteLexConvert(*buf);
+		schema.byteLexEncode(*buf);
 		if (schema.m_isUnique) {
 			cursor->set_value(cursor, recId);
 		}
@@ -527,14 +527,16 @@ bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* 
 void
 WtWritableIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
+#if 1
 	THROW_STD(invalid_argument, "This method should not be called");
+#else
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	WT_ITEM item;
 	memset(&item, 0, sizeof(item));
 	item.size = key.size();
 	if (m_schema->m_needEncodeToLexByteComparable) {
 		ctx->buf1.assign(key);
-		m_schema->byteLexConvert(ctx->buf1);
+		m_schema->byteLexEncode(ctx->buf1);
 		item.data = ctx->buf1.data();
 	}
 	else {
@@ -591,6 +593,7 @@ const {
 		}
 	}
 	m_wtCursor->reset(m_wtCursor);
+#endif
 }
 
 bool WtWritableIndex::remove(fstring key, llong id, DbContext* ctx) {

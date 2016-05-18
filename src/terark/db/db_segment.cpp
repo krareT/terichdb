@@ -1300,7 +1300,7 @@ ReadonlySegment::openIndex(const Schema& schema, PathRef path) const {
 		return store.release();
 	}
 	if (boost::filesystem::exists(path + ".fixlen")) {
-		std::unique_ptr<FixedLenKeyIndex> store(new FixedLenKeyIndex());
+		std::unique_ptr<FixedLenKeyIndex> store(new FixedLenKeyIndex(schema));
 		store->load(path);
 		return store.release();
 	}
@@ -1327,7 +1327,7 @@ const {
 		}
 	}
 	if (fixlen && fixlen <= 16) {
-		std::unique_ptr<FixedLenKeyIndex> index(new FixedLenKeyIndex());
+		std::unique_ptr<FixedLenKeyIndex> index(new FixedLenKeyIndex(schema));
 		index->build(schema, indexData);
 		return index.release();
 	}

@@ -143,8 +143,10 @@ namespace terark { namespace db {
 		}
 		const valvec<size_t>& getProj() const { return m_proj; }
 
-		void byteLexConvert(valvec<byte>&) const;
-		void byteLexConvert(byte* data, size_t size) const;
+		void byteLexEncode(valvec<byte>&) const;
+		void byteLexDecode(valvec<byte>&) const;
+		void byteLexEncode(byte* data, size_t size) const;
+		void byteLexDecode(byte* data, size_t size) const;
 
 		size_t parseDelimText(char delim, fstring text, valvec<byte>* row) const;
 
@@ -211,6 +213,8 @@ namespace terark { namespace db {
 	protected:
 		void compileProject(const Schema* parent);
 		size_t computeFixedRowLen() const; // return 0 if RowLen is not fixed
+		template<class Converter>
+		void byteLexConvert(byte* data, size_t size) const;
 
 	protected:
 		size_t m_fixedLen;

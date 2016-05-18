@@ -5,7 +5,7 @@
 
 namespace terark { namespace db {
 
-FixedLenKeyIndex::FixedLenKeyIndex() {
+FixedLenKeyIndex::FixedLenKeyIndex(const Schema& schema) : m_schema(schema) {
 	m_isOrdered = true;
 	m_isIndexKeyByteLex = true;
 	m_mmapBase = nullptr;
@@ -38,15 +38,47 @@ llong FixedLenKeyIndex::indexStorageSize() const {
 void
 FixedLenKeyIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*)
 const {
-	size_t j = searchLowerBound(key);
 	size_t f = m_fixedLen;
+	if (m_schema.m_needEncodeToLexByteComparable) {
+		byte* cvtbuf = (byte*)alloca(f);
+		memcpy(cvtbuf, key.data(), f);
+		m_schema.byteLexEncode(cvtbuf, f);
+		key.p = (char*)cvtbuf;
+	}
+	size_t j = searchLowerBound(key);
 	size_t id;
 	const  byte* keysData = m_keys.data();
-	while (j < m_index.size() &&
+	while (j < m_index.size() && 
 		   memcmp(keysData + f*(id=m_index[j]), key.p, f) == 0)
 	{
 		recIdvec->push_back(id);
 		++j;
+	}
+}
+
+size_t FixedLenKeyIndex::searchLowerBound_cvt(fstring key) const {
+	if (m_schema.m_needEncodeToLexByteComparable) {
+		size_t fixlen = m_fixedLen;
+		byte*  cvtbuf = (byte*)alloca(fixlen);
+		memcpy(cvtbuf, key.data(), fixlen);
+		m_schema.byteLexEncode(cvtbuf, fixlen);
+		return searchLowerBound(fstring(cvtbuf, fixlen));
+	}
+	else {
+		return searchLowerBound(key);
+	}
+}
+
+size_t FixedLenKeyIndex::searchUpperBound_cvt(fstring key) const {
+	if (m_schema.m_needEncodeToLexByteComparable) {
+		size_t fixlen = m_fixedLen;
+		byte*  cvtbuf = (byte*)alloca(fixlen);
+		memcpy(cvtbuf, key.data(), fixlen);
+		m_schema.byteLexEncode(cvtbuf, fixlen);
+		return searchUpperBound(fstring(cvtbuf, fixlen));
+	}
+	else {
+		return searchUpperBound(key);
 	}
 }
 
@@ -108,8 +140,13 @@ void FixedLenKeyIndex::getValueAppend(llong id, valvec<byte>* val, DbContext*) c
 	assert(id >= 0);
 	size_t idx = size_t(id);
 	assert(idx < m_keys.size());
-	const byte* dataPtr = m_keys.data() + m_fixedLen * idx;
-	val->append(dataPtr, m_fixedLen);
+	size_t fixlen = m_fixedLen;
+	const byte* dataPtr = m_keys.data() + fixlen * idx;
+	size_t oldsize = val->size();
+	val->append(dataPtr, fixlen);
+	if (m_schema.m_needEncodeToLexByteComparable) {
+		m_schema.byteLexDecode(val->data() + oldsize, fixlen);
+	}
 }
 
 StoreIterator* FixedLenKeyIndex::createStoreIterForward(DbContext*) const {
@@ -126,8 +163,10 @@ void FixedLenKeyIndex::build(const Schema& schema, SortableStrVec& strVec) {
 	size_t rows = strVec.m_strpool.size() / fixlen;
 	assert(strVec.m_index.size() == 0);
 	assert(strVec.m_strpool.size() % fixlen == 0);
-	for (size_t i = 0; i < rows; ++i) {
-		schema.byteLexConvert(data + i*fixlen, fixlen);
+	if (schema.m_needEncodeToLexByteComparable) {
+		for (size_t i = 0; i < rows; ++i) {
+			schema.byteLexEncode(data + i*fixlen, fixlen);
+		}
 	}
 	valvec<uint32_t> index(rows, valvec_no_init());
 	for (size_t i = 0; i < rows; ++i) index[i] = i;
@@ -232,7 +271,7 @@ public:
 
 	int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		assert(nullptr != retKey);
-		m_keyIdx = key.empty() ? 0 : m_owner->searchLowerBound(key);
+		m_keyIdx = key.empty() ? 0 : m_owner->searchLowerBound_cvt(key);
 		if (m_keyIdx < m_owner->m_index.size()) {
 			*id = m_owner->m_index.get(m_keyIdx);
 			retKey->erase_all();
@@ -245,7 +284,7 @@ public:
 
 	int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override {
 		assert(nullptr != retKey);
-		m_keyIdx = key.empty() ? 0 : m_owner->searchUpperBound(key);
+		m_keyIdx = key.empty() ? 0 : m_owner->searchUpperBound_cvt(key);
 		if (m_keyIdx < m_owner->m_index.size()) {
 			*id = m_owner->m_index.get(m_keyIdx);
 			retKey->erase_all();
@@ -287,7 +326,7 @@ public:
 		if (key.empty()) {
 			m_keyIdx = m_owner->m_index.size();
 		} else {
-			m_keyIdx = m_owner->searchUpperBound(key);
+			m_keyIdx = m_owner->searchUpperBound_cvt(key);
 		}
 		if (m_keyIdx > 0) {
 			*id = m_owner->m_index[--m_keyIdx];
@@ -303,7 +342,7 @@ public:
 		if (key.empty()) {
 			m_keyIdx = m_owner->m_index.size();
 		} else {
-			m_keyIdx = m_owner->searchLowerBound(key);
+			m_keyIdx = m_owner->searchLowerBound_cvt(key);
 		}
 		if (m_keyIdx > 0) {
 			*id = m_owner->m_index[--m_keyIdx];
