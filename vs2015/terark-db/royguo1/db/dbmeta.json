@@ -1,0 +1,22 @@
+{
+  "RowSchema": {
+     "columns" : {
+       "id"   : { "type" : "uint32" },
+       "name" : { "type" : "strzero" },
+       "age" : { "type" : "int08" },
+       "description" : { "type" : "strzero" },
+       "update_time" : { "type" : "int32" }
+     }
+  },
+  "TableIndex" : [
+    { "name":"id", "fields": "id", "ordered" : true, "unique": true },
+    { "fields": "update_time", "ordered": true, "unique": false},
+    { "fields": ["id", "name"], "ordered": true, "unique": false}
+  ],
+  "ColumnGroups": {
+    "name_and_description": {
+      "fields": ["name", "description"],
+      "dictZipSampleRatio": 0.01
+    }
+  }
+}

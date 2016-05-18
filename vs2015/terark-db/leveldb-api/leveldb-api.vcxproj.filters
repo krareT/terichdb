@@ -93,6 +93,9 @@
     <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\write_batch.h">
       <Filter>Header Files\leveldb\leveldb</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\api\leveldb\leveldb_terark.h">
+      <Filter>Header Files\leveldb</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

@@ -19,37 +19,37 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{1A8C2DE8-ED76-4146-B97E-C39B53958F9C}</ProjectGuid>
+    <ProjectGuid>{3673A6D4-193C-4166-A1BB-B48939CD7321}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>apileveldb</RootNamespace>
+    <RootNamespace>dbtest</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
-    <CharacterSet>NotSet</CharacterSet>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>NotSet</CharacterSet>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -71,129 +71,82 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..\..\..\..\boost-home;..\..\..\..\tbb\include;..\..\..\..\terark\src;..\..\..\api\leveldb\leveldb\include;..\..\..\api\leveldb\leveldb;..\..\..\api\leveldb;..\..\..\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Debug-MT;..\..\..\..\boost-home\stage\lib;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64</LibraryPath>
-    <TargetName>terark-db-$(ProjectName)-d</TargetName>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\boost-home\stage\lib;C:\osc\tbb\build\vs2010\intel64\Debug-MT;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>C:\osc\tbb\build\vs2010\intel64\Debug-MT;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\..\..\boost-home;..\..\..\..\tbb\include;..\..\..\..\terark\src;..\..\..\api\leveldb\leveldb\include;..\..\..\api\leveldb\leveldb;..\..\..\api\leveldb;..\..\..\src;$(IncludePath)</IncludePath>
-    <LibraryPath>..\..\..\..\tbb\build\vs2010\intel64\Release-MT;..\..\..\..\boost-home\stage\lib;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64</LibraryPath>
-    <TargetName>terark-db-$(ProjectName)-r</TargetName>
+    <IncludePath>..\..\..\..\terark\src;..\..\..\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\boost-home\stage\lib;C:\osc\tbb\build\vs2010\intel64\Release-MT;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>C:\osc\tbb\build\vs2010\intel64\Release-MT;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;APILEVELDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TERARK_USE_DLL;TERARK_DB_USE_DLL;_CRT_SECURE_NO_WARNINGS;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>TERARK_CREATE_DLL;TERARK_DB_CREATE_DLL;_CRT_SECURE_NO_WARNINGS;_DEBUG;_WINDOWS;_USRDLL;APILEVELDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TERARK_USE_DLL;TERARK_DB_USE_DLL;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;APILEVELDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>TERARK_CREATE_DLL;TERARK_DB_CREATE_DLL;_CRT_SECURE_NO_WARNINGS;NDEBUG;_WINDOWS;_USRDLL;APILEVELDB_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\dbformat.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\skiplist.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\db\write_batch_internal.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\cache.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\comparator.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\db.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\env.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\filter_policy.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\iterator.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\leveldb_terark_config.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\options.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\slice.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\status.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\include\leveldb\write_batch.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\arena.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\coding.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\logging.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\random.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb\util\win_logger.h" />
-    <ClInclude Include="..\..\..\api\leveldb\leveldb_terark.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\db\write_batch.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\coding.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\comparator.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\env.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\env_windows.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\logging.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\options.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\status.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb\util\win_logger.cc" />
-    <ClCompile Include="..\..\..\api\leveldb\leveldb_terark.cc" />
-    <ClCompile Include="dllmain.cpp">
-      <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-      </PrecompiledHeader>
-      <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</CompileAsManaged>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-      </PrecompiledHeader>
-      <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</CompileAsManaged>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-      </PrecompiledHeader>
-      <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</CompileAsManaged>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-      </PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="royguo1.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\terark\vs2015\terark-fsa\terark-fsa\terark-fsa.vcxproj">
