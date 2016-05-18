@@ -3,10 +3,10 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerCommandArguments>D:\Xiaomi\sina.tweet.debug -L 100000 E:\Data.YiDianZiXun\tweet_2012_test</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerEnvironment>PATH=C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\wiredtiger-2.7.0;%PATH%</LocalDebuggerEnvironment>
+    <LocalDebuggerEnvironment>PATH=C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\wiredtiger-2.8.0;%PATH%</LocalDebuggerEnvironment>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerEnvironment>PATH=C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\wiredtiger-2.7.0;%PATH%</LocalDebuggerEnvironment>
+    <LocalDebuggerEnvironment>PATH=C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\wiredtiger-2.8.0;%PATH%</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerCommandArguments>D:\Xiaomi\sina.tweet E:\Data.YiDianZiXun\tweet_2012_test</LocalDebuggerCommandArguments>
   </PropertyGroup>

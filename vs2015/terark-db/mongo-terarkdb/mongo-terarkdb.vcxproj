@@ -70,16 +70,16 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\wiredtiger-2.8.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\wiredtiger-2.8.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\wiredtiger-2.8.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\osc\wiredtiger-2.7.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
+    <IncludePath>C:\osc\wiredtiger-2.8.0;C:\osc\mongo\src;C:\osc\boost-home;..\..\..\..\terark\src;C:\osc\tbb\include;..\..\..\src;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
