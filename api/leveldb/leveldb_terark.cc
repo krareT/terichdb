@@ -310,9 +310,9 @@ Status
 DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 //	return Status::NotSupported("Batch write is not supported");
   Status status = Status::OK();
-  OperationContext *context = GetContext();
+  std::unique_ptr<OperationContext> context(GetContext());
   terark::db::BatchWriter* batch = context->m_batchWriter.get();
-  WriteBatchHandler handler(this, context);
+  WriteBatchHandler handler(this, context.get());
 #if 0
   status = updates->Iterate(&handler);
 #else
