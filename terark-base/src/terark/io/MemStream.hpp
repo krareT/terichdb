@@ -125,6 +125,19 @@ public:
 	MemIO(void* buf, size_t size) { set(buf, size); }
 	MemIO(void* beg, void* end) { set(beg, end); }
 
+	MemIO(const std::pair<byte*, byte*>& range) {
+		m_pos = range.first;
+		m_end = range.second;
+	}
+	MemIO(const std::pair<char*, char*>& range) {
+		m_pos = (byte*)range.first;
+		m_end = (byte*)range.second;
+	}
+	MemIO(const std::pair<signed char*, signed char*>& range) {
+		m_pos = (byte*)range.first;
+		m_end = (byte*)range.second;
+	}
+
 	void set(void* buf, size_t size) {
 		m_pos = (byte*)buf;
 		m_end = (byte*)buf + size;
@@ -278,10 +291,11 @@ public:
 
 	//@{
 	//! return part of (*this) as a MemIO
-	MemIO range(size_t ibeg, size_t iend) const;
-	MemIO head() const throw() { return MemIO(m_beg, m_pos); }
-	MemIO tail() const throw() { return MemIO(m_pos, m_end); }
-	MemIO whole()const throw() { return MemIO(m_beg, m_end); }
+	std::pair<byte*, byte*> range(size_t ibeg, size_t iend) const;
+	std::pair<byte*, byte*> written() const { return std::pair<byte*, byte*>(m_beg, m_pos); }
+	std::pair<byte*, byte*> head() const { return written(); }
+	std::pair<byte*, byte*> tail() const { return std::pair<byte*, byte*>(m_pos, m_end); }
+	std::pair<byte*, byte*> whole()const { return std::pair<byte*, byte*>(m_beg, m_end); }
 	//@}
 
 protected:

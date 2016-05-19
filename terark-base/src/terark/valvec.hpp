@@ -218,10 +218,12 @@ public:
 	}
 
 	template<class AnyIter>
+	explicit
 	valvec(const std::pair<AnyIter, AnyIter>& rng
 		 , typename boost::enable_if<is_iterator<AnyIter>,int>::type = 1) {
 		construct(rng.first, rng.second, typename std::iterator_traits<AnyIter>::iterator_category());
 	}
+	explicit
 	valvec(const std::pair<const T*, const T*>& rng) {
 		construct(rng.first, rng.second - rng.first);
 	}
@@ -984,6 +986,31 @@ bool valvec_lessThan(const valvec<T>& x, const valvec<T>& y) {
 template<class T>
 bool valvec_equalTo(const valvec<T>& x, const valvec<T>& y) {
 	return valvec<T>::equalTo(x, y, std::equal_to<T>());
+}
+
+template<class T>
+bool operator==(const valvec<T>& x, const valvec<T>& y) {
+	return valvec<T>::equalTo(x, y, std::equal_to<T>());
+}
+template<class T>
+bool operator!=(const valvec<T>& x, const valvec<T>& y) {
+	return !valvec<T>::equalTo(x, y, std::equal_to<T>());
+}
+template<class T>
+bool operator<(const valvec<T>& x, const valvec<T>& y) {
+	return valvec<T>::lessThan(x, y, std::less<T>(), std::equal_to<T>());
+}
+template<class T>
+bool operator>(const valvec<T>& x, const valvec<T>& y) {
+	return valvec<T>::lessThan(y, x, std::less<T>(), std::equal_to<T>());
+}
+template<class T>
+bool operator<=(const valvec<T>& x, const valvec<T>& y) {
+	return !valvec<T>::lessThan(y, x, std::less<T>(), std::equal_to<T>());
+}
+template<class T>
+bool operator>=(const valvec<T>& x, const valvec<T>& y) {
+	return !valvec<T>::lessThan(x, y, std::less<T>(), std::equal_to<T>());
 }
 
 /// STL like algorithm with array/RanIt and size_t param

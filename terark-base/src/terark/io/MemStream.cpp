@@ -99,14 +99,14 @@ void SeekableMemIO::seek(ptrdiff_t offset, int origin)
 // rarely used methods....
 //
 
-MemIO SeekableMemIO::range(size_t ibeg, size_t iend) const
+std::pair<byte*, byte*> SeekableMemIO::range(size_t ibeg, size_t iend) const
 {
 	assert(ibeg <= iend);
 	assert(ibeg <= size());
 	assert(iend <= size());
 	if (ibeg <= iend && ibeg <= size() && iend <= size())
 	{
-		return MemIO(m_beg + ibeg, m_beg + iend);
+		return std::pair<byte*, byte*>(m_beg + ibeg, m_beg + iend);
 	}
 	string_appender<> oss;
 	oss << BOOST_CURRENT_FUNCTION

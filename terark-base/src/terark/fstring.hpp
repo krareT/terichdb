@@ -138,6 +138,8 @@ struct basic_fstring {
 	template<class C> basic_fstring(const C* x, fstring_enable_if_same_size(C)) { assert(NULL != x); p = (const Char*)x; n = terark_fstrlen((const Char*)x); }
 	template<class C> basic_fstring(const C* x, ptrdiff_t l, fstring_enable_if_same_size(C)) : p((const Char*)x), n(l  ) { assert(l >= 0); }
 	template<class C> basic_fstring(const C* x, const C*  y, fstring_enable_if_same_size(C)) : p((const Char*)x), n(y-x) { assert(y >= x); }
+	template<class C> basic_fstring(std::pair<const C*, const C*> x, fstring_enable_if_same_size(C)) : p((const Char*)x.first), n(x.second - x.first) { assert(x.first <= x.second); }
+	template<class C> basic_fstring(std::pair<C*, C*> x, fstring_enable_if_same_size(C)) : p((const Char*)x.first), n(x.second - x.first) { assert(x.first <= x.second); }
 #undef fstring_enable_if_same_size
 
 	basic_fstring(const std::pair<Char*, Char*>& rng) : p(rng.first), n(rng.second - rng.first) { assert(n >= 0); }
