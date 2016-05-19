@@ -1387,15 +1387,21 @@ void WritableSegment::pushIsDel(bool val) {
 #if !defined(NDEBUG)
 		assert((64 + m_isDel.size()) % ChunkBits == 0);
 		size_t oldsize = m_isDel.size();
+		size_t delcnt0 = m_isDel.popcnt();
+		assert(delcnt0 == m_delcnt);
 #endif
 		size_t newCap = ((64+m_isDel.size()+2*ChunkBits-1) & ~(ChunkBits-1));
 		closeIsDel();
 		std::string fpath = (m_segDir / "IsDel").string();
 		truncate_file(fpath, newCap/8);
 		m_isDelMmap = loadIsDel_aux(m_segDir, m_isDel);
+#if !defined(NDEBUG)
+		size_t delcnt1 = m_isDel.popcnt();
 		assert(nullptr != m_isDelMmap);
-		assert(m_isDel.popcnt() == m_delcnt);
 		assert(m_isDel.size() == oldsize);
+		assert(delcnt1 == delcnt0);
+		assert(delcnt1 == m_delcnt);
+#endif
 	}
 	assert(m_isDel.size() < m_isDel.capacity());
 	assert(m_isDel.size() == size_t(((uint64_t*)m_isDelMmap)[0]));
