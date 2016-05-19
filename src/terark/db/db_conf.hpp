@@ -7,6 +7,7 @@
 #include <terark/pass_by_value.hpp>
 #include <terark/util/refcount.hpp>
 #include <boost/intrusive_ptr.hpp>
+#include <boost/type_traits/is_arithmetic.hpp>
 #include <boost/version.hpp>
 #include "db_dll_decl.hpp"
 
@@ -115,6 +116,15 @@ namespace terark { namespace db {
 		}
 		void push_back(Elem e) { m_cols.push_back(e); }
 		void reserve(size_t cap) { m_cols.reserve(cap); }
+
+		template<class NumberType>
+		typename boost::enable_if<boost::is_arithmetic<NumberType>, NumberType>::type
+		getNumber(size_t idx) const {
+			assert(idx < m_cols.size());
+			Elem e = m_cols[idx];
+			assert(sizeof(NumberType) == e.len);
+			return unaligned_load<NumberType>(m_base + e.pos);
+		}
 	};
 
 	class TERARK_DB_DLL Schema : public RefCounter {
@@ -317,6 +327,37 @@ namespace terark { namespace db {
 		public:
 			using std::pair<std::string, std::string>::pair;
 		};
+
+		template<class NumberType>
+		static inline
+		typename boost::enable_if<boost::is_arithmetic<NumberType>, NumberType>::type
+		numberOf(fstring coldata) {
+			assert(coldata.size() == sizeof(NumberType));
+			return unaligned_load<NumberType>(coldata.p);
+		}
+
+		template<class NumberType>
+		static inline
+		typename boost::enable_if<boost::is_arithmetic<NumberType>, fstring>::type
+		fstringOf(const NumberType* x) {
+			return fstring((const char*)x, sizeof(NumberType));
+		}
+
+		template<class NumberType>
+		inline
+		typename boost::enable_if<boost::is_arithmetic<NumberType>, NumberType>::type
+		getNumber(const ColumnVec& colvec, size_t columnId) const {
+		#if !defined(NDEBUG)
+			const ColumnMeta& colmeta = m_columnsMeta.val(columnId);
+			assert(columnId < colvec.size());
+			assert(colvec.size() == m_columnsMeta.end_i());
+			assert(colmeta.isNumber());
+			assert(colmeta.fixedLen == sizeof(NumberType));
+		#endif
+			ColumnVec::Elem e = colvec.m_cols[columnId];
+			assert(sizeof(NumberType) == e.len);
+			return unaligned_load<NumberType>(colvec.m_base + e.pos);
+		}
 	};
 	typedef boost::intrusive_ptr<Schema> SchemaPtr;
 

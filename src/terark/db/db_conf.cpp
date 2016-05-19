@@ -2289,7 +2289,11 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		}
 		ColumnMeta colmeta(Schema::parseColumnType(type));
 		if (ColumnType::Fixed == colmeta.type) {
-			colmeta.fixedLen = col["length"];
+			long fixlen = col["length"];
+			if (fixlen <= 0) {
+				THROW_STD(invalid_argument, "invalid fixed length=%ld, must > 0", fixlen);
+			}
+			colmeta.fixedLen = (uint32_t)fixlen;
 		}
 		if (checkMongoType) {
 			std::string mongoTypeName = getJsonValue(col, "mongoType", std::string());
