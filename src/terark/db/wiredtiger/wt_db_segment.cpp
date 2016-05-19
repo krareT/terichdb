@@ -68,6 +68,7 @@ void WtWritableSegment::init(PathRef segDir) {
 	snprintf(conf, sizeof(conf)
 		, "create,cache_size=%zd,"
 		  "log=(enabled,recover=on),"
+		  "session_max=10000,"
 		  "checkpoint=(log_size=64MB,wait=60)"
 		, m_cacheSize);
 	int err = wiredtiger_open(strDir.c_str(), NULL, conf, &m_wtConn);
