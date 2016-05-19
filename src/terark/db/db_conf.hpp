@@ -73,6 +73,47 @@ namespace terark { namespace db {
 		bool isString() const;
 		explicit ColumnMeta(ColumnType);
 		size_t fixedEndOffset() const { return fixedOffset + fixedLen; }
+
+		static ColumnType numberType(int       x) { return sintType(x); }
+		static ColumnType numberType(short     x) { return sintType(x); }
+		static ColumnType numberType(long      x) { return sintType(x); }
+		static ColumnType numberType(long long x) { return sintType(x); }
+
+		static ColumnType numberType(unsigned int       x) { return uintType(x); }
+		static ColumnType numberType(unsigned short     x) { return uintType(x); }
+		static ColumnType numberType(unsigned long      x) { return uintType(x); }
+		static ColumnType numberType(unsigned long long x) { return uintType(x); }
+
+		static ColumnType numberType(float  x) { return ColumnType::Float32; }
+		static ColumnType numberType(double x) { return ColumnType::Float64; }
+		static ColumnType numberType(long double x) {
+			if (sizeof(long double) > 8) // 16 for gcc
+				return ColumnType::Float128;
+			else
+				return ColumnType::Float64; // msvc
+		}
+
+	private:
+		template<class Uint>
+		static ColumnType uintType(Uint) {
+			if (sizeof(Uint) ==  1) return ColumnType::Uint08;
+			if (sizeof(Uint) ==  2) return ColumnType::Uint16;
+			if (sizeof(Uint) ==  4) return ColumnType::Uint32;
+			if (sizeof(Uint) ==  8) return ColumnType::Uint64;
+			if (sizeof(Uint) == 16) return ColumnType::Uint128;
+			abort();
+			return ColumnType::Any;
+		}
+		template<class Sint>
+		static ColumnType sintType(Sint) {
+			if (sizeof(Sint) ==  1) return ColumnType::Sint08;
+			if (sizeof(Sint) ==  2) return ColumnType::Sint16;
+			if (sizeof(Sint) ==  4) return ColumnType::Sint32;
+			if (sizeof(Sint) ==  8) return ColumnType::Sint64;
+			if (sizeof(Sint) == 16) return ColumnType::Sint128;
+			abort();
+			return ColumnType::Any;
+		}
 	};
 
 	class TERARK_DB_DLL ColumnVec {
@@ -353,6 +394,7 @@ namespace terark { namespace db {
 			assert(colvec.size() == m_columnsMeta.end_i());
 			assert(colmeta.isNumber());
 			assert(colmeta.fixedLen == sizeof(NumberType));
+			assert(colmeta.numberType(NumberType()) == colmeta.type);
 		#endif
 			ColumnVec::Elem e = colvec.m_cols[columnId];
 			assert(sizeof(NumberType) == e.len);
