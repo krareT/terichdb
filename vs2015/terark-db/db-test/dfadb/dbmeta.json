@@ -11,7 +11,7 @@
 				}
 			},
 			"str0" : { "type" : "strzero" },
-			"str1" : { "type" : "binary" },
+			"str1" : { "type" : "strzero" },
 			"str2" : { "type" : "binary" },
 			"str3" : { "type" : "binary" },
 			"str4" : { "type" : "binary" }
@@ -31,7 +31,7 @@
 	},
 	"CompressingWorkMemSize" : "10K",
   "MaxWritingSegmentSize": "20K",
-  "TableClass" : "MockDbTable",
+  "//TableClass" : "MockDbTable",
 	"TableIndex" : [
 		{ "fields": "id"  , "ordered" : true, "unique" : true },
 		{ "fields": "str0", "ordered" : true },

@@ -24,8 +24,7 @@ struct TestRow {
 
 		// StrZero would never be serialized as LastColumn/RestAll
 		&terark::db::Schema::StrZero(str0)
-
-		&str1
+		&terark::db::Schema::StrZero(str1)
 		&str2
 		&str3
 		&terark::RestAll(str4)
@@ -39,7 +38,8 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 	CompositeTablePtr tab = CompositeTable::open(tableDir);
 	DbContextPtr ctx = tab->createDbContext();
 
-	valvec<byte> recBuf;
+	valvec<llong> recIdvec;
+	valvec<byte>  recBuf;
 	NativeDataOutput<AutoGrownMemIO> rowBuilder;
 	TestRow recRow;
 
@@ -57,12 +57,14 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 		sprintf(recRow.fix2.data, "F2.%06lld", recRow.id);
 		rowBuilder.rewind();
 		rowBuilder << recRow;
-		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
+		fstring binRow(rowBuilder.written());
 		if (bits[recRow.id]) {
-			if (!tab->indexKeyExists(0, fstring((char*)&recRow.id, 8), &*ctx)) {
+			if (!ctx->indexKeyExists(0, Schema::fstringOf(&recRow.id))) {
 				i = i;
 			}
 			printf("dupkey: %s\n", tab->rowSchema().toJsonStr(binRow).c_str());
+			ctx->indexSearchExact(0, Schema::fstringOf(&recRow.id), &recIdvec);
+			assert(recIdvec.size() > 0);
 		}
 		if (600 == i)
 			i = i;
@@ -76,11 +78,13 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 			ctx->getValue(recId, &recBuf);
 			std::string js1 = tab->toJsonStr(binRow);
 			printf("Insert recId = %lld: %s\n", recId, js1.c_str());
-			if (fstring(binRow) != recBuf) {
+			if (binRow != recBuf) {
 				std::string js2 = tab->toJsonStr(recBuf);
 				printf("Fetch_ recId = %lld: %s\n", recId, js2.c_str());
 				assert(0);
 			}
+			ctx->indexSearchExact(0, Schema::fstringOf(&recRow.id), &recIdvec);
+			assert(recIdvec.size() > 0);
 			insertedRows++;
 			if (bits.is1(recRow.id)) {
 				ctx->removeRow(recId);
@@ -102,7 +106,7 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 			if (tab->exists(randomRecId)) {
 				size_t indexId = tab->getIndexId("id");
 				assert(indexId < tab->getIndexNum());
-				tab->selectOneColumn(randomRecId, indexId, &recBuf, &*ctx);
+				ctx->selectOneColumn(randomRecId, indexId, &recBuf);
 				keyId = unaligned_load<uint64_t>(recBuf.data());
 				if (keyId == 20538)
 					keyId = keyId;
@@ -116,13 +120,13 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 				// may remove deleted record
 				ctx->removeRow(randomRecId);
 				assert(!tab->exists(randomRecId));
-				assert(!ctx->indexKeyExists(0, fstring((char*)&keyId, 8)));
+				assert(!ctx->indexKeyExists(0, Schema::fstringOf(&keyId)));
 				isDeleted = true;
 			}
 			else if (tab->exists(randomRecId)) {
 				ctx->removeRow(randomRecId);
 				assert(!tab->exists(randomRecId));
-				assert(!ctx->indexKeyExists(0, fstring((char*)&keyId, 8)));
+				assert(!ctx->indexKeyExists(0, Schema::fstringOf(&keyId)));
 				isDeleted = true;
 			}
 			if (isDeleted && keyId > 0) {
@@ -138,9 +142,9 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 			if (tab->exists(randomRecId)) {
 				size_t keyId_ColumnId = 0;
 				Schema::Fixed<10> fix2;
-				tab->selectOneColumn(randomRecId, keyId_ColumnId, &recBuf, &*ctx);
+				ctx->selectOneColumn(randomRecId, keyId_ColumnId, &recBuf);
 				assert(recBuf.size() == sizeof(llong));
-				llong keyId = (llong&)recBuf[0];
+				llong keyId = Schema::numberOf<llong>(recBuf);
 				int len = sprintf(fix2.data, "F-%lld", keyId);
 				TERARK_RT_assert(len < sizeof(fix2.data), std::out_of_range);
 				tab->updateColumn(randomRecId, "fix2", fix2);
@@ -158,7 +162,7 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 		for (size_t indexId = 0; indexId < tab->getIndexNum(); ++indexId) {
 			IndexIteratorPtr indexIter = tab->createIndexIterForward(indexId);
 			const Schema& indexSchema = tab->getIndexSchema(indexId);
-			std::string keyData;
+			valvec<byte> keyData;
 			for (size_t i = 0; i < maxRowNum/5; ++i) {
 				llong keyInt = rand() % (maxRowNum * 11 / 10);
 				char keyBuf[64];
@@ -167,34 +171,29 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 					assert(0);
 					break;
 				case 0:
-					keyData.assign((char*)&keyInt, 8);
+					keyData.assign(Schema::fstringOf(&keyInt));
 					break;
 				case 1: // str0
-					sprintf(keyBuf, "s0:%06lld", keyInt);
-					keyData = keyBuf;
+					keyData.assign(keyBuf, sprintf(keyBuf, "s0:%06lld", keyInt));
 					break;
 				case 2: // str1
-					sprintf(keyBuf, "s1:%06lld", keyInt);
-					keyData = keyBuf;
+					keyData.assign(keyBuf, sprintf(keyBuf, "s1:%06lld", keyInt));
 					break;
 				case 3: // str2
-					sprintf(keyBuf, "s2:%06lld", keyInt);
-					keyData = keyBuf;
+					keyData.assign(keyBuf, sprintf(keyBuf, "s2:%06lld", keyInt));
 					break;
 				case 4: // fix
 					assert(indexSchema.getFixedRowLen() > 0);
-					keyData.resize(0);
+					keyData.assign(keyBuf, sprintf(keyBuf, "%06lld", keyInt));
 					keyData.resize(indexSchema.getFixedRowLen());
-					sprintf(&keyData[0], "%06lld", keyInt);
 					break;
 				case 5: // str0,str1
-					sprintf(keyBuf, "s0:%06lld", keyInt);
-					keyData = keyBuf;
+					keyData.assign(keyBuf, sprintf(keyBuf, "s0:%06lld", keyInt));
 					keyData.push_back('\0');
-					sprintf(keyBuf, "s0:%06lld", keyInt);
-					keyData.append(keyBuf);
+					keyData.append(keyBuf, sprintf(keyBuf, "s1:%06lld", keyInt));
 					break;
 				}
+				keyData.push_back('\0'); keyData.pop_back(); // add an extra '\0'
 				idvec.resize(0);
 				std::string keyJson = indexSchema.toJsonStr(keyData);
 				printf("find index key = %s", keyJson.c_str());

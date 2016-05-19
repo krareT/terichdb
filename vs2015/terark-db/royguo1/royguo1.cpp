@@ -28,9 +28,8 @@ int main(int argc, char* argv[]){
     u.update_time = 1463472964753 + i;
     // insert row
     rowBuilder.rewind();
-    rowBuilder<<u;
-    terark::fstring binRow(rowBuilder.begin(), rowBuilder.tell());
-    if (ctx->insertRow(binRow) < 0) {
+    rowBuilder << u;
+    if (ctx->insertRow(rowBuilder.written()) < 0) {
       printf("Insert failed: %s\n", ctx->errMsg.c_str());
     }
   }
@@ -62,7 +61,7 @@ int main(int argc, char* argv[]){
 
   // iterate ids, read name and description values
   for(int i = 1; i <= count; i++) {
-    terark::fstring key = terark::fstring((char*)&i, 4);
+    terark::fstring key = terark::db::Schema::fstringOf(&i);
     ctx->indexSearchExact(indexId, key, &idvec);
     // print ids
     // std::cout<<tab->getIndexSchema(indexId).toJsonStr(key).c_str()<<std::endl;
@@ -79,6 +78,8 @@ int main(int argc, char* argv[]){
 	  nameDescColgroupSchema.parseRow(nameDescVal, &nameDescCV);
 	  terark::fstring name = nameDescCV[0];
 	  terark::fstring desc = nameDescCV[1];
+// Schema::getNumber has many debug check for type consistency
+//	  int assertFail = nameDescColgroupSchema.getNumber<int>(nameDescCV, 0);
       printf("++%.*s  ", name.ilen(), name.data());
       printf("%.*s\n", desc.ilen(), desc.data());
     }
@@ -86,7 +87,7 @@ int main(int argc, char* argv[]){
 
   // delete data(1000 records)
   for(int i = 1; i <= count; i++) {
-    terark::fstring key = terark::fstring((char*)&i, 4);
+    terark::fstring key = terark::db::Schema::fstringOf(&i);
     ctx->indexSearchExact(indexId, key, &idvec);
     for (auto recId : idvec) {
       ctx->removeRow(recId);

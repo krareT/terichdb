@@ -2128,6 +2128,7 @@ class TableIndexIter : public IndexIterator {
 	};
 	friend class HeapKeyCompare;
 	valvec<byte> m_keyBuf;
+	ColumnVec    m_keyColvec;
 	terark::valvec<size_t> m_heap;
 	size_t m_oldsegArrayUpdateSeq;
 	const bool m_forward;
@@ -2271,9 +2272,19 @@ public:
 				m_tab->m_segments.size(), schema.toJsonStr(key).c_str(), key.size());
 #endif
 		if (schema.getColumnType(schema.columnNum()-1) == ColumnType::StrZero) {
-			assert(key.size() == 0 || key.ende(1) != 0);
-			if (key.size() > 0 && key.ende(1) == 0)
-				key.n--;
+			if (schema.columnNum() == 1) {
+				assert(key.size() == 0 || key.ende(1) != 0);
+				if (key.size() > 0 && key.ende(1) == 0)
+					key.n--;
+			}
+			else {
+				schema.parseRow(key, &m_keyColvec);
+				assert(m_keyColvec.size() == schema.columnNum());
+				fstring lastCol = m_keyColvec[schema.columnNum()-1];
+				assert(lastCol.size() == 0 || lastCol.ende(1) != 0);
+				if (key.end() > lastCol.begin() && key.ende(1) == 0)
+					key.n--;
+			}
 		}
 		if (key.size() == 0 && inclusive) {
 			// empty key indicate min key in both forward and backword mode

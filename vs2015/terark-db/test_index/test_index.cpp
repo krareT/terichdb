@@ -55,7 +55,7 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 		sprintf(recRow.fix2.data, "F2.%06lld", recRow.id);
 		rowBuilder.rewind();
 		rowBuilder << recRow;
-		fstring binRow(rowBuilder.begin(), rowBuilder.tell());
+		fstring binRow(rowBuilder.written());
 		if (bits[recRow.id]) {
 			if (!tab->indexKeyExists(0, fstring((char*)&recRow.id, 8), &*ctx)) {
 				i = i;
@@ -76,7 +76,7 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 			ctx->getValue(recId, &recBuf);
 			std::string js1 = tab->toJsonStr(binRow);
 			printf("Insert recId = %lld: %s\n", recId, js1.c_str());
-			if (fstring(binRow) != recBuf) {
+			if (binRow != recBuf) {
 				std::string js2 = tab->toJsonStr(recBuf);
 				printf("Fetch_ recId = %lld: %s\n", recId, js2.c_str());
 				assert(0);

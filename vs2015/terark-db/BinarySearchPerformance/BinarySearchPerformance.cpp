@@ -6,6 +6,7 @@
 
 int main(int argc, char* argv[]) {
 	using namespace terark;
+	printf("sizeof(long double) = %zd\n", sizeof(long double));
 	valvec<size_t> vec(50);
 	for (size_t i = 0; i < vec.size(); ++i) {
 		vec[i] = rand();
