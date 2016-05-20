@@ -413,7 +413,8 @@ SnapshotImpl::SnapshotImpl(DbImpl *db) :
 // state.  The caller must call ReleaseSnapshot(result) when the
 // snapshot is no longer needed.
 const Snapshot* DbImpl::GetSnapshot() {
-	return NULL;
+  THROW_STD(invalid_argument, "terark-db-leveldb-api doesn't support snapshot");
+  return NULL;
 }
 
 // Release a previously acquired snapshot.  The caller must not
@@ -421,6 +422,7 @@ const Snapshot* DbImpl::GetSnapshot() {
 void
 DbImpl::ReleaseSnapshot(const Snapshot* snapshot)
 {
+  THROW_STD(invalid_argument, "terark-db-leveldb-api doesn't support snapshot");
   SnapshotImpl *si =
     static_cast<SnapshotImpl*>(const_cast<Snapshot*>(snapshot));
   if (si != NULL) {
@@ -507,14 +509,16 @@ OperationContext* DbImpl::GetContext() {
 }
 
 OperationContext* DbImpl::GetContext(const ReadOptions &options) {
-  if (options.snapshot == NULL)
+  if (options.snapshot == NULL) {
     return GetContext();
-  else {
-    const SnapshotImpl *si =
-        static_cast<const SnapshotImpl *>(options.snapshot);
-    assert(si->GetStatus().ok());
-    return si->GetContext();
   }
+  THROW_STD(invalid_argument,
+    "terark-db-leveldb-api doesn't support snapshot, "
+    "ReadOptions.snapshot should alsway be NULL"
+    );
+  auto si = static_cast<const SnapshotImpl*>(options.snapshot);
+  assert(si->GetStatus().ok());
+  return si->GetContext();
 }
 
 terark::db::DbContext* DbImpl::GetDbContext() {
@@ -529,6 +533,9 @@ terark::db::DbContext* DbImpl::GetDbContext() {
   auto& refctx = m_ctxMap.val(idx);
   if (!refctx) {
 	  refctx.reset(m_tab->createDbContext());
+#if !defined(NDEBUG)
+	  fprintf(stderr, "DEBUG: thread DbContext object number = %zd\n", m_ctxMap.size());
+#endif
   }
   return refctx.get();
 }

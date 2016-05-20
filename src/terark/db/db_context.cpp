@@ -60,6 +60,9 @@ DbContextLink::DbContextLink() {
 DbContextLink::~DbContextLink() {
 }
 
+static std::atomic<size_t> g_dbCtxLiveCnt;
+static std::atomic<size_t> g_dbCtxCreatedCnt;
+
 DbContext::DbContext(const CompositeTable* tab)
   : m_tab(const_cast<CompositeTable*>(tab))
 {
@@ -84,6 +87,12 @@ DbContext::DbContext(const CompositeTable* tab)
 	isUpsertOverwritten = 0;
 	TERARK_RT_assert(tab->getSegArrayUpdateSeq() == oldtab_segArrayUpdateSeq,
 					 std::logic_error);
+	g_dbCtxLiveCnt++;
+	g_dbCtxCreatedCnt++;
+#if !defined(NDEBUG)
+	fprintf(stderr, "DEBUG: DbContext live count = %zd, created = %zd\n"
+		, g_dbCtxLiveCnt.load(), g_dbCtxCreatedCnt.load());
+#endif
 }
 
 DbContext::~DbContext() {
@@ -94,6 +103,7 @@ DbContext::~DbContext() {
 		assert(NULL != x);
 		SegCtx::destory(x, indexNum);
 	}
+	g_dbCtxLiveCnt--;
 }
 
 void DbContext::doSyncSegCtxNoLock(const CompositeTable* tab) {
@@ -170,6 +180,7 @@ StoreIterator* DbContext::getWrtStoreIterNoLock(size_t segIdx) {
 	if (p->wrtStoreIter == nullptr) {
 		auto wrseg = p->seg->getWritableSegment();
 		p->wrtStoreIter = wrseg->m_wrtStore->createStoreIterForward(this);
+		p->wrtStoreIter->add_ref();
 	}
 	return p->wrtStoreIter;
 }
@@ -179,11 +190,12 @@ IndexIterator* DbContext::getIndexIterNoLock(size_t segIdx, size_t indexId) {
 	assert(segIdx < m_segCtx.size());
 	assert(indexId < m_tab->getIndexNum());
 	SegCtx* sc = m_segCtx[segIdx];
-	if (sc->indexIter[indexId] == nullptr) {
-		sc->indexIter[indexId] = m_segCtx[segIdx]->seg->
-			m_indices[indexId]->createIndexIterForward(this);
+	auto& indexIter = sc->indexIter[indexId];
+	if (indexIter == nullptr) {
+		indexIter = m_segCtx[segIdx]->seg->m_indices[indexId]->createIndexIterForward(this);
+		indexIter->add_ref();
 	}
-	return sc->indexIter[indexId];
+	return indexIter;
 }
 
 void DbContext::debugCheckUnique(fstring row, size_t uniqueIndexId) {

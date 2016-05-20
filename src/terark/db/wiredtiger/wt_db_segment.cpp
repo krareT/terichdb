@@ -160,6 +160,8 @@ struct WtSession {
 	operator WT_SESSION*() const { return ses; }
 };
 
+static std::atomic<size_t> g_wtDbTxnLiveCnt;
+static std::atomic<size_t> g_wtDbTxnCreatedCnt;
 class WtWritableSegment::WtDbTransaction : public DbTransaction {
 	WtWritableSegment* m_seg;
 	WtSession m_session;
@@ -171,6 +173,7 @@ class WtWritableSegment::WtDbTransaction : public DbTransaction {
 	WtWritableStore* m_wrtStore;
 public:
 	~WtDbTransaction() {
+		g_wtDbTxnLiveCnt--;
 	}
 	explicit WtDbTransaction(WtWritableSegment* seg)
 		: m_seg(seg), m_sconf(*seg->m_schema)
@@ -212,6 +215,12 @@ public:
 		m_sizeDiff = 0;
 		m_wrtStore = dynamic_cast<WtWritableStore*>(seg->m_wrtStore.get());
 		assert(nullptr != m_store);
+		g_wtDbTxnLiveCnt++;
+		g_wtDbTxnCreatedCnt++;
+	#if !defined(NDEBUG)
+		fprintf(stderr, "DEBUG: WtDbTransaction live count = %zd, created = %zd\n"
+			, g_wtDbTxnLiveCnt.load(), g_wtDbTxnCreatedCnt.load());
+	#endif
 	}
 #define TERARK_WT_USE_TXN 1
 	void startTransaction() override {

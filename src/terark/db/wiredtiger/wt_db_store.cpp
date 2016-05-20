@@ -11,7 +11,8 @@ namespace terark { namespace db { namespace wt {
 namespace fs = boost::filesystem;
 
 extern const char g_dataStoreUri[] = "table:__BlobStore__";
-
+std::atomic<size_t> g_wtStoreIterLiveCnt;
+std::atomic<size_t> g_wtStoreIterCreatedCnt;
 //////////////////////////////////////////////////////////////////
 class WtWritableStoreIterBase : public StoreIterator {
 	WT_CURSOR* m_cursor;
@@ -35,11 +36,18 @@ public:
 		}
 		m_store.reset(const_cast<WtWritableStore*>(store));
 		m_cursor = cursor;
+		g_wtStoreIterLiveCnt++;
+		g_wtStoreIterCreatedCnt++;
+	#if !defined(NDEBUG)
+		fprintf(stderr, "DEBUG: WtWritableStoreIter live count = %zd, created = %zd\n"
+			, g_wtStoreIterLiveCnt.load(), g_wtStoreIterCreatedCnt.load());
+	#endif
 	}
 	~WtWritableStoreIterBase() {
 		WT_SESSION* session = m_cursor->session;
 		m_cursor->close(m_cursor);
 		session->close(session, NULL);
+		g_wtStoreIterLiveCnt--;
 	}
 	virtual int advance(WT_CURSOR*) = 0;
 

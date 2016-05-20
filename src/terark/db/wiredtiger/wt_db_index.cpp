@@ -11,6 +11,9 @@ namespace terark { namespace db { namespace wt {
 
 namespace fs = boost::filesystem;
 
+std::atomic<size_t> g_wtIndexIterLiveCnt;
+std::atomic<size_t> g_wtIndexIterCreatedCnt;
+
 class WtWritableIndex::MyIndexIterBase : public IndexIterator {
 protected:
 	typedef boost::intrusive_ptr<WtWritableIndex> MockWritableIndexPtr;
@@ -35,11 +38,18 @@ protected:
 			session->close(session, NULL);
 			THROW_STD(logic_error, "open_cursor failed: %s", wiredtiger_strerror(err));
 		}
+		g_wtIndexIterLiveCnt++;
+		g_wtIndexIterCreatedCnt++;
+	#if !defined(NDEBUG)
+		fprintf(stderr, "DEBUG: WtWritableStoreIter live count = %zd, created = %zd\n"
+			, g_wtIndexIterLiveCnt.load(), g_wtIndexIterCreatedCnt.load());
+	#endif
 	}
 	~MyIndexIterBase() {
 		WT_SESSION* session = m_iter->session;
 		m_iter->close(m_iter);
 		session->close(session, NULL);
+		g_wtIndexIterLiveCnt--;
 	}
 	void reset() override {
 		m_iter->reset(m_iter);

@@ -251,11 +251,11 @@ friend class IteratorImpl;
 friend class SnapshotImpl;
 public:
   DbImpl(const fs::path& dbRoot);
-  virtual ~DbImpl();
-  virtual Status Put(const WriteOptions& options, const Slice& key, const Slice& value);
-  virtual Status Delete(const WriteOptions& options, const Slice& key);
-  virtual Status Write(const WriteOptions& options, WriteBatch* updates);
-  virtual Status Get(const ReadOptions& options, const Slice& key, std::string* value);
+  ~DbImpl();
+  Status Put(const WriteOptions& options, const Slice& key, const Slice& value) override;
+  Status Delete(const WriteOptions& options, const Slice& key) override;
+  Status Write(const WriteOptions& options, WriteBatch* updates) override;
+  Status Get(const ReadOptions& options, const Slice& key, std::string* value) override;
 
 #if HAVE_BASHOLEVELDB
   virtual Status Get(const ReadOptions& options, const Slice& key, Value* value);
@@ -342,17 +342,17 @@ public:
   }
 #endif
 
-  virtual Iterator* NewIterator(const ReadOptions& options);
-  virtual OperationContext* NewContext() { return NULL; }
+  Iterator* NewIterator(const ReadOptions& options) override;
+  OperationContext* NewContext() { return NULL; }
 
-  virtual const Snapshot* GetSnapshot();
+  const Snapshot* GetSnapshot() override;
 
-  virtual void ReleaseSnapshot(const Snapshot* snapshot);
-  virtual bool GetProperty(const Slice& property, std::string* value);
-  virtual void GetApproximateSizes(const Range* range, int n, uint64_t* sizes);
-  virtual void CompactRange(const Slice* begin, const Slice* end);
-  virtual void SuspendCompactions();
-  virtual void ResumeCompactions();
+  void ReleaseSnapshot(const Snapshot* snapshot) override;
+  bool GetProperty(const Slice& property, std::string* value) override;
+  void GetApproximateSizes(const Range* range, int n, uint64_t* sizes) override;
+  void CompactRange(const Slice* begin, const Slice* end) override;
+  void SuspendCompactions() override;
+  void ResumeCompactions() override;
 
   terark::db::DbContext* GetDbContext();
 
