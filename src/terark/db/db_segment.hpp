@@ -194,6 +194,10 @@ class DbTransaction : boost::noncopyable {
 	friend class DefaultCommitTransaction;
 	friend class DefaultRollbackTransaction;
 public:
+	///@{ just for BatchWriter
+	valvec<llong>   m_removeOnCommit;
+	valvec<llong>   m_removeOnRollback; // the subId, must be in m_wrSeg
+	// @}
 	virtual void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) = 0;
 	virtual void indexRemove(size_t indexId, fstring key, llong recId) = 0;
 	virtual bool indexInsert(size_t indexId, fstring key, llong recId) = 0;

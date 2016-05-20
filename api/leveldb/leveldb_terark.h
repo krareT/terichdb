@@ -101,8 +101,8 @@ class DbImpl;
 /* Context for operations (including snapshots, write batches, transactions) */
 class OperationContext {
 public:
-  OperationContext(terark::db::CompositeTable* tab) {
-	  m_batchWriter = tab->createBatchWriter();
+  OperationContext(terark::db::CompositeTable* tab, terark::db::DbContext* ctx) {
+	  m_batchWriter = tab->createBatchWriter(ctx);
   }
 
   ~OperationContext() {

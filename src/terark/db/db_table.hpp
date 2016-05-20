@@ -90,7 +90,7 @@ public:
 	DbContext* createDbContext() const;
 	virtual DbContext* createDbContextNoLock() const = 0;
 
-	BatchWriter* createBatchWriter();
+	BatchWriter* createBatchWriter(DbContext*);
 
 	llong inlineGetRowNum() const { return m_rowNum; }
 	llong totalStorageSize() const;

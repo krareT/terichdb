@@ -505,7 +505,7 @@ void DbImpl::ResumeCompactions()
 }
 
 OperationContext* DbImpl::GetContext() {
-	return new OperationContext(m_tab.get());
+	return new OperationContext(m_tab.get(), GetDbContext());
 }
 
 OperationContext* DbImpl::GetContext(const ReadOptions &options) {
@@ -540,16 +540,27 @@ terark::db::DbContext* DbImpl::GetDbContext() {
   return refctx.get();
 }
 
+std::atomic<size_t> g_iterLiveCnt;
+std::atomic<size_t> g_iterCreatedCnt;
+
 IteratorImpl::IteratorImpl(terark::db::CompositeTable *db) {
 	m_tab = db;
 	m_ctx = db->createDbContext();
 	m_recId = -1;
 	m_valid = false;
 	m_direction = Direction::forward;
+	g_iterLiveCnt++;
+	g_iterCreatedCnt++;
+#if !defined(NDEBUG)
+  fprintf(stderr
+    , "DEBUG: teark-db-leveldb-api: Iterator live count = %zd, created = %zd\n"
+    , g_iterLiveCnt.load(), g_iterCreatedCnt.load());
+#endif
 }
 
 IteratorImpl::~IteratorImpl() {
 	m_iter = nullptr;
+	g_iterLiveCnt--;
 }
 
 void IteratorImpl::iterIncrement() {
