@@ -21,12 +21,27 @@ class RefCountable : public Clazz
 {
 	DECLARE_NONE_COPYABLE_CLASS(RefCountable)
 protected:
-	boost::detail::atomic_count nRef;
+	boost::detail::atomic_count m_intrusive_refcnt;
 public:
-	explicit RefCountable(long nInitRef = 0) : nRef(nInitRef) { }
-	long get_refcount() const  { return nRef; }
-	friend void intrusive_ptr_add_ref(RefCountable* p) { ++p->nRef; }
-	friend void intrusive_ptr_release(RefCountable* p) { if (0 == --p->nRef) delete p; }
+	explicit
+	RefCountable(long nInitRef = 0) : m_intrusive_refcnt(nInitRef) {
+		assert(nInitRef >= 0);
+	}
+	long get_refcount() const  {
+		assert(m_intrusive_refcnt >= 0);
+		return m_intrusive_refcnt;
+	}
+	friend void intrusive_ptr_add_ref(RefCountable* p) {
+		assert(NULL != p);
+		assert(p->m_intrusive_refcnt >= 0);
+		++p->m_intrusive_refcnt;
+	}
+	friend void intrusive_ptr_release(RefCountable* p) {
+		assert(NULL != p);
+		assert(p->m_intrusive_refcnt > 0);
+		if (0 == --p->m_intrusive_refcnt)
+			delete p;
+	}
 };
 
 /**
@@ -38,15 +53,27 @@ class TERARK_DLL_EXPORT RefCounter
 	boost::detail::atomic_count nRef;
 
 public:
-	explicit RefCounter(long nInitRef = 0) : nRef(nInitRef) { }
+	explicit RefCounter(long nInitRef = 0) : nRef(nInitRef) {
+		assert(nInitRef >= 0);
+	}
 	virtual ~RefCounter() {}
-
-	long get_refcount() const  { assert(this); return nRef; }
-	void add_ref() { assert(this); ++nRef; }
-	void release() { assert(this); if (0 == --nRef) delete this; }
-
-	friend void intrusive_ptr_add_ref(RefCounter* p) { ++p->nRef; }
-	friend void intrusive_ptr_release(RefCounter* p) { if (0 == --p->nRef) delete p; }
+	long get_refcount() const { assert(nRef >= 0); return nRef; }
+	void add_ref() { assert(nRef >= 0); ++nRef; }
+	void release() { assert(nRef > 0);
+		if (0 == --nRef)
+			delete this;
+	}
+	friend void intrusive_ptr_add_ref(RefCounter* p) {
+		assert(NULL != p);
+		assert(p->nRef >= 0);
+		++p->nRef;
+	}
+	friend void intrusive_ptr_release(RefCounter* p) {
+		assert(NULL != p);
+		assert(p->nRef > 0);
+		if (0 == --p->nRef)
+			delete p;
+	}
 };
 
 template<class T>
