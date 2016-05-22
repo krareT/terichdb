@@ -119,10 +119,13 @@ void DbContext::doSyncSegCtxNoLock(const CompositeTable* tab) {
 			m_segCtx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
 	}
 	if (tab->m_wrSeg.get() != m_wrSegPtr) {
-		m_wrSegPtr = tab->m_wrSeg.get();
+		auto new_wrseg = tab->m_wrSeg.get();
+		assert(DbTransaction::started != m_transaction->m_status);
 		m_transaction.reset();
-		if (m_wrSegPtr)
-			m_transaction.reset(m_wrSegPtr->createTransaction());
+		if (new_wrseg) {
+			m_transaction.reset(new_wrseg->createTransaction());
+		}
+		m_wrSegPtr = new_wrseg;
 	}
 	SegCtx** sctx = m_segCtx.data();
 	for (size_t i = 0; i < segNum; ++i) {
