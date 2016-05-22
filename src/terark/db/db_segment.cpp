@@ -1361,6 +1361,30 @@ const {
 ///////////////////////////////////////////////////////////////////////////////
 
 DbTransaction::~DbTransaction() {
+	assert(started != m_status);
+}
+DbTransaction::DbTransaction() {
+	m_status = committed;
+}
+void DbTransaction::startTransaction() {
+	assert(started != m_status);
+	do_startTransaction();
+	m_status = started;
+}
+bool DbTransaction::commit() {
+	assert(started == m_status);
+	if (do_commit()) {
+		m_status = committed;
+		return true;
+	} else {
+		m_status = rollbacked;
+		return false;
+	}
+}
+void DbTransaction::rollback() {
+	assert(started == m_status);
+	do_rollback();
+	m_status = rollbacked;
 }
 
 WritableSegment::WritableSegment() {

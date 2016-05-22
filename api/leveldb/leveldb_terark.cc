@@ -287,19 +287,19 @@ void
 WriteBatchHandler::Put(const Slice& key, const Slice& value) {
 //	THROW_STD(invalid_argument, "Not supported");
 	auto opctx = context_;
-	terark::db::DbContext* ctx = opctx->m_batchWriter->getCtx();
+	terark::db::DbContext* ctx = opctx->m_batchWriter.getCtx();
 	encodeKeyVal(ctx->userBuf, key, value);
-	opctx->m_batchWriter->upsertRow(ctx->userBuf);
+	opctx->m_batchWriter.upsertRow(ctx->userBuf);
 }
 
 void WriteBatchHandler::Delete(const Slice& key) {
 //	THROW_STD(invalid_argument, "Not supported");
 	auto opctx = context_;
-	terark::db::DbContext* ctx = opctx->m_batchWriter->getCtx();
+	terark::db::DbContext* ctx = opctx->m_batchWriter.getCtx();
 	ctx->indexSearchExact(0, key, &ctx->exactMatchRecIdvec);
 	if (!ctx->exactMatchRecIdvec.empty()){
 		long long recId = ctx->exactMatchRecIdvec[0];
-		opctx->m_batchWriter->removeRow(recId);
+		opctx->m_batchWriter.removeRow(recId);
 	}
 }
 
@@ -311,7 +311,6 @@ DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 //	return Status::NotSupported("Batch write is not supported");
   Status status = Status::OK();
   std::unique_ptr<OperationContext> context(GetContext());
-  terark::db::BatchWriter* batch = context->m_batchWriter.get();
   WriteBatchHandler handler(this, context.get());
 #if 0
   status = updates->Iterate(&handler);
@@ -319,15 +318,15 @@ DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   try {
     status = updates->Iterate(&handler);
   } catch(...) {
-    batch->rollback();
+    context->m_batchWriter.rollback();
     throw;
   }
 #endif
-  if (batch->commit()) {
+  if (context->m_batchWriter.commit()) {
 	return status;
   }
   else {
-	return Status::InvalidArgument("Commit BatchWriter failed", batch->strError());
+	return Status::InvalidArgument("Commit BatchWriter failed", context->m_batchWriter.strError());
   }
 }
 

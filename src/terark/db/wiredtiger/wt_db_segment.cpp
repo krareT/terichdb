@@ -223,7 +223,7 @@ public:
 	#endif
 	}
 #define TERARK_WT_USE_TXN 1
-	void startTransaction() override {
+	void do_startTransaction() override {
 #if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		const char* txnConfig = getenv("TerarkDB_WiredtigerTransactionConfig");
@@ -241,13 +241,14 @@ public:
 #endif
 		m_sizeDiff = 0;
 	}
-	bool commit() override {
+	bool do_commit() override {
 #if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		int err = ses->commit_transaction(ses, NULL);
 		if (err) {
 			m_strError = "wiredtiger commit_transaction: ";
 			m_strError += ses->strerror(ses, err);
+			assert(!"wiredtiger commit_transaction failed");
 			return false;
 		}
 #endif
@@ -255,7 +256,7 @@ public:
 		return true;
 	}
 	const std::string& strError() const override { return m_strError; }
-	void rollback() override {
+	void do_rollback() override {
 #if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		int err = ses->rollback_transaction(ses, NULL);

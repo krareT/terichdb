@@ -660,9 +660,6 @@ public:
 	}
 };
 
-BatchWriter::BatchWriter() {}
-BatchWriter::~BatchWriter() {}
-
 const std::string& BatchWriter::strError() const {
 	return m_ctx->m_transaction->strError();
 }
@@ -670,24 +667,8 @@ const char* BatchWriter::szError() const {
 	return m_ctx->m_transaction->strError().c_str();
 }
 
-class CompositeTable::BatchWriterImpl : public BatchWriter {
-protected:
-	enum Status { started, committed, rollbacked } m_status;
-	CompositeTable* m_tab;
-	llong overwriteExisting(fstring row);
-	llong upsertRowImpl(fstring row);
-public:
-	BatchWriterImpl(CompositeTable* tab, DbContext* ctx);
-	~BatchWriterImpl();
-
-	llong upsertRow(fstring row) override;
-	void  removeRow(llong recId) override;
-	bool  commit() override;
-	void  rollback() override;
-};
-
-CompositeTable::BatchWriterImpl::BatchWriterImpl(CompositeTable* tab, DbContext* ctx)
-	: m_tab(tab)
+// if ctx is NULL, will create a new DbContext for m_ctx
+BatchWriter::BatchWriter(CompositeTable* tab, DbContext* ctx)
 {
 	if (!tab->m_wrSeg) {
 		THROW_STD(invalid_argument, "the writing segment is NULL: %s"
@@ -700,7 +681,7 @@ CompositeTable::BatchWriterImpl::BatchWriterImpl(CompositeTable* tab, DbContext*
 				"must have at most one unique index for calling this method"
 			, sconf.m_uniqIndices.size());
 	}
-	tab->m_inprogressWritingCount++;
+	bool inprogressWritingCountInced = false;
 	try {
 		MyRwLock lock(tab->m_rwMutex, false);
 		DebugCheckRowNumVecNoLock(tab);
@@ -708,43 +689,52 @@ CompositeTable::BatchWriterImpl::BatchWriterImpl(CompositeTable* tab, DbContext*
 		if (ctx == nullptr) {
 			ctx = tab->createDbContextNoLock();
 		}
+		tab->m_inprogressWritingCount += 2;
+		inprogressWritingCountInced = true;
+		m_wrSeg = tab->m_wrSeg.get();
+		m_txn = ctx->m_transaction.get();
 		m_ctx = ctx;
-		ctx->m_transaction->startTransaction();
+		ctx->trySyncSegCtxNoLock(tab);
 		auto txn = ctx->m_transaction.get();
+		txn->startTransaction();
 		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
 		assert(txn->m_removeOnRollback.size() == 0);
 		txn->m_removeOnCommit.erase_all(); // tolerate on release
 		txn->m_removeOnRollback.erase_all();
 	}
 	catch (const std::exception&) {
-		m_tab->m_inprogressWritingCount--;
+		if (inprogressWritingCountInced) {
+			tab->m_inprogressWritingCount -= 2;
+		}
 		throw;
 	}
-	m_status = started;
 }
 
-CompositeTable::BatchWriterImpl::~BatchWriterImpl() {
-	assert(committed == m_status || rollbacked == m_status);
-	if ( !(committed == m_status || rollbacked == m_status) ) {
+BatchWriter::~BatchWriter() {
+	auto tab = m_ctx->m_tab;
+	auto txn = m_ctx->m_transaction.get();
+	assert(DbTransaction::started != txn->m_status);
+	if (DbTransaction::started == txn->m_status) {
 		// abort();
 		fprintf(stderr
 			, "ERROR: commit or rollback was not called for BatchWriter, rollback by default\n");
 		this->rollback();
 	}
-	m_tab->m_inprogressWritingCount--;
-	auto txn = m_ctx->m_transaction.get();
+	tab->m_inprogressWritingCount -= 2;
 	txn->m_removeOnCommit.erase_all();
 	txn->m_removeOnRollback.erase_all();
 }
 
-llong CompositeTable::BatchWriterImpl::overwriteExisting(fstring row) {
+llong BatchWriter::overwriteExisting(fstring row) {
 	auto ctx = m_ctx.get();
-	auto tab = m_tab;
+	auto tab = ctx->m_tab;
 	const SchemaConfig& sconf = *tab->m_schema;
 	llong subId = ctx->exactMatchRecIdvec[0];
 	llong baseId = tab->m_rowNumVec.ende(2);
 	assert(ctx->exactMatchRecIdvec.size() == 1);
 	DbTransaction* txn(ctx->m_transaction.get());
+	assert(tab->m_wrSeg.get() == m_wrSeg);
+	assert(txn == m_txn);
 	if (!sconf.m_multIndices.empty()) {
 		try {
 			txn->storeGetRow(subId, &ctx->row2);
@@ -763,7 +753,7 @@ llong CompositeTable::BatchWriterImpl::overwriteExisting(fstring row) {
 	return baseId + subId;
 }
 
-llong CompositeTable::BatchWriterImpl::upsertRow(fstring row) {
+llong BatchWriter::upsertRow(fstring row) {
 	for (size_t retry = 0; retry < 3; ++retry) {
 		llong recId = upsertRowImpl(row);
 		if (recId >= 0)
@@ -773,11 +763,13 @@ llong CompositeTable::BatchWriterImpl::upsertRow(fstring row) {
 	TERARK_THROW(NeedRetryException, "Concurrent transaction conflict, retry again");
 }
 
-llong CompositeTable::BatchWriterImpl::upsertRowImpl(fstring row) {
+llong BatchWriter::upsertRowImpl(fstring row) {
 	auto ctx = m_ctx.get();
-	auto tab = m_tab;
+	auto tab = ctx->m_tab;
 	auto txn = ctx->m_transaction.get();
 	const SchemaConfig& sconf = *tab->m_schema;
+	assert(tab->m_wrSeg.get() == m_wrSeg);
+	assert(txn == m_txn);
 	if (!tab->m_wrSeg) {
 		THROW_STD(invalid_argument
 			, "syncFinishWriting('%s') was called, now writing is not allowed"
@@ -844,13 +836,15 @@ FindInFrozenSegments:
 	return newRecId;
 }
 
-void CompositeTable::BatchWriterImpl::removeRow(llong recId) {
+void BatchWriter::removeRow(llong recId) {
 	auto ctx = m_ctx.get();
-	auto tab = m_tab;
+	auto tab = ctx->m_tab;
 	auto txn = ctx->m_transaction.get();
 	auto& sconf = *tab->m_schema;
 	assert(recId >= 0);
 	assert(recId < tab->m_rowNum);
+	assert(tab->m_wrSeg.get() == m_wrSeg);
+	assert(txn == m_txn);
 	ctx->trySyncSegCtxSpeculativeLock(tab);
 	size_t upp = upper_bound_a(ctx->m_rowNumVec, recId);
 	llong baseId = ctx->m_rowNumVec[upp-1];
@@ -900,11 +894,14 @@ void CompositeTable::BatchWriterImpl::removeRow(llong recId) {
 	}
 }
 
-bool CompositeTable::BatchWriterImpl::commit() {
-	auto tab = m_tab;
+bool BatchWriter::commit() {
+	auto tab = m_ctx->m_tab;
 	DbTransaction* txn(m_ctx->m_transaction.get());
-	bool commitOk = txn->commit();
 	auto& ws = *tab->m_wrSeg;
+	assert(&ws == m_wrSeg);
+	assert(txn == m_txn);
+	assert(DbTransaction::started == txn->m_status);
+	bool commitOk = txn->commit();
 	const size_t batchCnt = 100; // don't lock too long time
 	if (commitOk) {
 		sort_a(txn->m_removeOnCommit);
@@ -951,13 +948,15 @@ bool CompositeTable::BatchWriterImpl::commit() {
 			}
 		}
 	}
-	m_status = committed;
 	return commitOk;
 }
 
-void CompositeTable::BatchWriterImpl::rollback() {
-	auto tab = m_tab;
+void BatchWriter::rollback() {
+	auto tab = m_ctx->m_tab;
 	DbTransaction* txn(m_ctx->m_transaction.get());
+	assert(tab->m_wrSeg.get() == m_wrSeg);
+	assert(txn == m_txn);
+	assert(DbTransaction::started == txn->m_status);
 	txn->rollback();
 	MyRwLock lock(tab->m_rwMutex, false);
 	auto& ws = *tab->m_wrSeg;
@@ -983,10 +982,6 @@ StoreIterator* CompositeTable::createStoreIterBackward(DbContext* ctx) const {
 DbContext* CompositeTable::createDbContext() const {
 	MyRwLock lock(m_rwMutex, false);
 	return this->createDbContextNoLock();
-}
-
-BatchWriter* CompositeTable::createBatchWriter(DbContext* ctx) {
-	return new BatchWriterImpl(this, ctx);
 }
 
 llong CompositeTable::totalStorageSize() const {
@@ -3662,7 +3657,7 @@ void CompositeTable::compact() {
 			}
 			continue;
 		}
-		if (m_wrSeg->m_isDel.size() > 0) {
+		if (m_wrSeg->m_isDel.size() > 0 && 0 == m_inprogressWritingCount) {
 			doCreateNewSegmentInLock();
 		}
 		break;

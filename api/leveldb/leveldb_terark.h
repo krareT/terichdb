@@ -101,9 +101,8 @@ class DbImpl;
 /* Context for operations (including snapshots, write batches, transactions) */
 class OperationContext {
 public:
-  OperationContext(terark::db::CompositeTable* tab, terark::db::DbContext* ctx) {
-	  m_batchWriter = tab->createBatchWriter(ctx);
-  }
+  OperationContext(terark::db::CompositeTable* tab, terark::db::DbContext* ctx)
+   : m_batchWriter(tab, ctx) {}
 
   ~OperationContext() {
 #ifdef WANT_SHUTDOWN_RACES
@@ -113,7 +112,6 @@ public:
   }
 
   int Close() {
-	m_batchWriter = NULL;
     return 0;
   }
 /*
@@ -131,7 +129,7 @@ public:
 #endif
   WT_SESSION *GetSession() { return session_; }
 */
-  terark::db::BatchWriterPtr m_batchWriter;
+  terark::db::BatchWriter m_batchWriter;
 //  terark::valvec<unsigned char> m_rowBuf;
 //  terark::valvec<long long> m_exactRecIdvec;
 private:

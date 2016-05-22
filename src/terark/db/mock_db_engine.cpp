@@ -939,16 +939,13 @@ class MutexLockTransaction : public DbTransaction {
 	const SchemaConfig& m_sconf;
 	MockWritableSegment*m_seg;
 	DbContextPtr        m_ctx;
-	enum Status { started, committed, rollbacked } m_stat;
 public:
 	explicit
 	MutexLockTransaction(MockWritableSegment* seg) : m_sconf(*seg->m_schema) {
 		m_seg = seg;
 	//	m_ctx = new DbContext();
-		m_stat = committed;
 	}
 	~MutexLockTransaction() {
-		assert(committed == m_stat || rollbacked == m_stat);
 	}
 	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec)
 	override {
@@ -1014,19 +1011,14 @@ public:
 			}
 		}
 	}
-	void startTransaction() override {
-		m_stat = started;
+	void do_startTransaction() override {
 		m_seg->m_mockTxnMutex.lock();
 	}
-	bool commit() override {
-		assert(started == m_stat);
-		m_stat = committed;
+	bool do_commit() override {
 		m_seg->m_mockTxnMutex.unlock();
 		return true;
 	}
-	void rollback() override {
-		assert(started == m_stat);
-		m_stat = rollbacked;
+	void do_rollback() override {
 		m_seg->m_mockTxnMutex.unlock();
 	}
 	const std::string& strError() const override { return m_strError; }

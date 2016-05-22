@@ -43,25 +43,29 @@ typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
 // Now BatchWriter is supported only when table has at most one unique index
-class TERARK_DB_DLL BatchWriter : public RefCounter {
+class TERARK_DB_DLL BatchWriter {
+	DECLARE_NONE_COPYABLE_CLASS(BatchWriter);
 protected:
-	DbContextPtr m_ctx;
-	BatchWriter();
-	~BatchWriter();
+	DbContextPtr     m_ctx;
+	WritableSegment* m_wrSeg; // for debug only
+	DbTransaction*   m_txn; // for debug only
+	llong overwriteExisting(fstring row);
+	llong upsertRowImpl(fstring row);
 public:
+	explicit BatchWriter(CompositeTable* tab, DbContext* ctx = NULL);
+	~BatchWriter();
 	DbContext* getCtx() const { return m_ctx.get(); }
 	const std::string& strError() const;
 	const char* szError() const;
-	virtual llong upsertRow(fstring row) = 0;
-	virtual void  removeRow(llong recId) = 0;
-	virtual bool  commit() = 0;
-	virtual void  rollback() = 0;
+	llong upsertRow(fstring row);
+	void  removeRow(llong recId);
+	bool  commit();
+	void  rollback();
 };
-typedef boost::intrusive_ptr<BatchWriter> BatchWriterPtr;
 
 // is not a WritableStore
 class TERARK_DB_DLL CompositeTable : public ReadableStore {
-	class BatchWriterImpl;      friend class BatchWriterImpl;
+	friend class BatchWriter;
 	class MyStoreIterBase;	    friend class MyStoreIterBase;
 	class MyStoreIterForward;	friend class MyStoreIterForward;
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
@@ -89,8 +93,6 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	DbContext* createDbContext() const;
 	virtual DbContext* createDbContextNoLock() const = 0;
-
-	BatchWriter* createBatchWriter(DbContext*);
 
 	llong inlineGetRowNum() const { return m_rowNum; }
 	llong totalStorageSize() const;

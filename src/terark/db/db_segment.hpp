@@ -190,10 +190,8 @@ protected:
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
 class DbTransaction : boost::noncopyable {
-	friend class TransactionGuard;
-	friend class DefaultCommitTransaction;
-	friend class DefaultRollbackTransaction;
 public:
+	enum Status { started, committed, rollbacked } m_status;
 	///@{ just for BatchWriter
 	valvec<llong>   m_removeOnCommit;
 	valvec<llong>   m_removeOnRollback; // the subId, must be in m_wrSeg
@@ -205,25 +203,29 @@ public:
 	virtual void storeRemove(llong recId) = 0;
 	virtual void storeUpsert(llong recId, fstring row) = 0;
 	virtual void storeGetRow(llong recId, valvec<byte>* row) = 0;
-	virtual void startTransaction() = 0;
-	virtual bool commit() = 0;
-	virtual void rollback() = 0;
+	void startTransaction();
+	bool commit();
+	void rollback();
 	virtual const std::string& strError() const = 0;
 	virtual ~DbTransaction();
+	DbTransaction();
+
+	virtual void do_startTransaction() = 0;
+	virtual bool do_commit() = 0;
+	virtual void do_rollback() = 0;
 };
 class TransactionGuard : boost::noncopyable {
 protected:
 	DbTransaction* m_txn;
-	enum Status { started, committed, rollbacked } m_status;
 public:
 	explicit TransactionGuard(DbTransaction* txn) {
 		assert(NULL != txn);
 		txn->startTransaction();
 		m_txn = txn;
-		m_status = started;
 	}
 	~TransactionGuard() {
-		assert(committed == m_status || rollbacked == m_status);
+		assert(DbTransaction::committed == m_txn->m_status ||
+			   DbTransaction::rollbacked == m_txn->m_status);
 	}
 	DbTransaction* getTxn() const { return m_txn; }
 	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) {
@@ -248,19 +250,12 @@ public:
 		m_txn->storeGetRow(recId, row);
 	}
 	bool commit() {
-		assert(started == m_status);
-		if (m_txn->commit()) {
-			m_status = committed;
-			return true;
-		} else {
-			m_status = rollbacked;
-			return false;
-		}
+		assert(DbTransaction::started == m_txn->m_status);
+		return m_txn->commit();
 	}
 	void rollback() {
-		assert(started == m_status);
+		assert(DbTransaction::started == m_txn->m_status);
 		m_txn->rollback();
-		m_status = rollbacked;
 	}
 	const std::string& strError() const { return m_txn->strError(); }
 	const char* szError() const { return m_txn->strError().c_str(); }
@@ -270,9 +265,8 @@ public:
 	explicit
 	DefaultRollbackTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
 	~DefaultRollbackTransaction() {
-		if (started == m_status) {
+		if (DbTransaction::started == m_txn->m_status) {
 			m_txn->rollback();
-			m_status = rollbacked;
 		}
 	}
 };
