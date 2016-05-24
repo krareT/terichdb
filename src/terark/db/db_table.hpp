@@ -226,6 +226,8 @@ public:
 
 	void dropTable();
 
+	PathRef getDir() const { return m_dir; }
+
 	std::string toJsonStr(fstring row) const;
 
 	ReadableSegment* getSegmentPtr(size_t segIdx) const {

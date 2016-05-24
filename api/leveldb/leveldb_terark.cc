@@ -34,6 +34,75 @@
 
 //using namespace terark;
 using terark::string_appender;
+#if !defined(NDEBUG)
+static std::string escape(terark::fstring x) {
+	std::string y;
+	y.reserve(2*x.size());
+	for (size_t i = 0; i < x.size(); ++i) {
+		unsigned char c = x[i];
+		switch (c) {
+		default: y.push_back(c); break;
+		case '\0': y.append("\\0"); break;
+		case '\1': y.append("\\1"); break;
+		case '\2': y.append("\\2"); break;
+		case '\3': y.append("\\3"); break;
+		case '\4': y.append("\\4"); break;
+		case '\5': y.append("\\5"); break;
+		case '\6': y.append("\\6"); break;
+		case '\7': y.append("\\7"); break;
+		case '\x08': y.append("\\x08"); break;
+		case '\x0B': y.append("\\x0B"); break;
+		case '\x0C': y.append("\\x0C"); break;
+		case '\x0E': y.append("\\x0E"); break;
+		case '\x0F': y.append("\\x0F"); break;
+		case '\x10': y.append("\\x10"); break;
+		case '\x11': y.append("\\x11"); break;
+		case '\x12': y.append("\\x12"); break;
+		case '\x13': y.append("\\x13"); break;
+		case '\x14': y.append("\\x14"); break;
+		case '\x15': y.append("\\x15"); break;
+		case '\x16': y.append("\\x16"); break;
+		case '\x17': y.append("\\x17"); break;
+		case '\x18': y.append("\\x18"); break;
+		case '\x19': y.append("\\x19"); break;
+		case '\x1A': y.append("\\x1A"); break;
+		case '\x1B': y.append("\\x1B"); break;
+		case '\x1C': y.append("\\x1C"); break;
+		case '\x1D': y.append("\\x1D"); break;
+		case '\x1E': y.append("\\x1E"); break;
+		case '\x1F': y.append("\\x1F"); break;
+		case '\\': y.append("\\\\"); break;
+		case '\t': y.append("\\t"); break;
+		case '\r': y.append("\\r"); break;
+		case '\n': y.append("\\n"); break;
+		}
+	}
+	return y;
+}
+
+#define TRACE_KEY_VAL(key, val) \
+  fprintf(stderr \
+    , "TRACE: teark-db-leveldb-api: dbdir=%s : %s: key=[%zd: %s] val=[%zd: %s]\n" \
+    , m_tab->getDir().string().c_str() \
+    , BOOST_CURRENT_FUNCTION \
+    , key.size(), escape(key).c_str() \
+    , val.size(), escape(val).c_str() \
+    )
+
+#define TRACE_CMP_KEY_VAL() \
+  fprintf(stderr \
+    , "TRACE: teark-db-leveldb-api: dbdir=%s : %s: cmp=%d, posKey=[%zd: %s] key=[%zd: %s] val=[%zd: %s]\n" \
+    , m_tab->getDir().string().c_str() \
+    , BOOST_CURRENT_FUNCTION, cmp \
+    , m_posKey.size(), escape(m_posKey).c_str() \
+    , m_key.size(), escape(m_key).c_str() \
+    , m_val.size(), escape(m_val).c_str() \
+    )
+
+#else
+  #define TRACE_KEY_VAL(key, val)
+  #define TRACE_CMP_KEY_VAL()
+#endif
 
 namespace leveldb {
 
@@ -251,6 +320,7 @@ DbImpl::Put(const WriteOptions& options, const Slice& key, const Slice& value) {
   terark::db::DbContext* ctx = GetDbContext();
   assert(NULL != ctx);
   try {
+	  TRACE_KEY_VAL(key, value);
 	  encodeKeyVal(ctx->userBuf, key, value);
 	  long long recId = ctx->upsertRow(ctx->userBuf);
 	  TERARK_RT_assert(recId >= 0, std::logic_error);
@@ -552,7 +622,8 @@ IteratorImpl::IteratorImpl(terark::db::CompositeTable *db) {
 	g_iterCreatedCnt++;
 #if !defined(NDEBUG)
   fprintf(stderr
-    , "DEBUG: teark-db-leveldb-api: Iterator live count = %zd, created = %zd\n"
+    , "DEBUG: teark-db-leveldb-api: dbdir=%s : %s : Iterator live count = %zd, created = %zd\n"
+    , db->getDir().string().c_str(), BOOST_CURRENT_FUNCTION
     , g_iterLiveCnt.load(), g_iterCreatedCnt.load());
 #endif
 }
@@ -590,6 +661,7 @@ IteratorImpl::SeekToFirst() {
 	}
 	m_iter->reset();
 	iterIncrement();
+	TRACE_KEY_VAL(m_key, m_val);
 }
 
 // Position at the last key in the source.  The iterator is
@@ -605,6 +677,7 @@ IteratorImpl::SeekToLast() {
 	}
 	m_iter->reset();
 	iterIncrement();
+	TRACE_KEY_VAL(m_key, m_val);
 }
 
 // Position at the first key in the source that at or past target
@@ -616,16 +689,23 @@ IteratorImpl::Seek(const Slice& target) {
 		if (!m_iter) {
 			m_iter = m_tab->createIndexIterBackward(0);
 		}
+		fprintf(stderr, "DEBUG: %s: direction=backward\n", BOOST_CURRENT_FUNCTION);
 	}
 	else {
 		if (!m_iter) {
 			m_iter = m_tab->createIndexIterForward(0);
 		}
+		fprintf(stderr, "DEBUG: %s: direction=forward\n", BOOST_CURRENT_FUNCTION);
 	}
 	int cmp = m_iter->seekLowerBound(target, &m_recId, &m_key);
 	if (cmp < 0) {
 		m_valid = false;
 	}
+	else {
+		m_tab->selectOneColgroup(m_recId, 1, &m_val, m_ctx.get());
+		m_valid = true;
+	}
+	TRACE_KEY_VAL(m_key, m_val);
 }
 
 // Moves to the next entry in the source.  After this call, Valid() is
@@ -637,18 +717,25 @@ IteratorImpl::Next() {
 	assert(m_iter != nullptr);
 	if (Direction::forward == m_direction) {
 		iterIncrement();
+		TRACE_KEY_VAL(m_key, m_val);
 	}
 	else {
 		m_iter = m_tab->createIndexIterForward(0);
 		m_direction = Direction::forward;
 		m_posKey.swap(m_key);
 		int cmp = m_iter->seekLowerBound(m_posKey, &m_recId, &m_key);
+		TRACE_CMP_KEY_VAL();
 		if (cmp < 0) {
 			m_valid = false;
+		}
+		else if (0 == cmp) {
+			iterIncrement();
+			TRACE_KEY_VAL(m_key, m_val);
 		}
 		else try {
 			m_tab->selectOneColgroup(m_recId, 1, &m_val, m_ctx.get());
 			m_valid = true;
+			TRACE_KEY_VAL(m_key, m_val);
 		}
 		catch (const std::exception& ex) {
 			fprintf(stderr, "ERROR: %s: what=%s\n", BOOST_CURRENT_FUNCTION, ex.what());
@@ -666,18 +753,25 @@ IteratorImpl::Prev() {
 	assert(m_iter != nullptr);
 	if (Direction::backward == m_direction) {
 		iterIncrement();
+		TRACE_KEY_VAL(m_key, m_val);
 	}
 	else {
 		m_iter = m_tab->createIndexIterBackward(0);
 		m_direction = Direction::backward;
 		m_posKey.swap(m_key);
 		int cmp = m_iter->seekLowerBound(m_posKey, &m_recId, &m_key);
+		TRACE_CMP_KEY_VAL();
 		if (cmp < 0) {
 			m_valid = false;
+		}
+		else if (0 == cmp) {
+			iterIncrement();
+			TRACE_KEY_VAL(m_key, m_val);
 		}
 		else try {
 			m_tab->selectOneColgroup(m_recId, 1, &m_val, m_ctx.get());
 			m_valid = true;
+			TRACE_KEY_VAL(m_key, m_val);
 		}
 		catch (const std::exception& ex) {
 			fprintf(stderr, "ERROR: %s: what=%s\n", BOOST_CURRENT_FUNCTION, ex.what());
