@@ -1766,7 +1766,7 @@ CompositeTable::updateColumn(llong recordId, fstring colname,
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
 			, colname.ilen(), colname.data());
 	}
-	updateColumn(recordId, columnId, newColumnData);
+	updateColumn(recordId, columnId, newColumnData, ctx);
 }
 
 template<class WireType, class LlongOrFloat, class OP>
@@ -1817,7 +1817,7 @@ CompositeTable::updateColumnInteger(llong recordId, fstring colname,
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
 			, colname.ilen(), colname.data());
 	}
-	updateColumnInteger(recordId, colname, op);
+	updateColumnInteger(recordId, colname, op, ctx);
 }
 
 void
@@ -1854,7 +1854,7 @@ CompositeTable::updateColumnDouble(llong recordId, fstring colname,
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
 			, colname.ilen(), colname.data());
 	}
-	updateColumnDouble(recordId, colname, op);
+	updateColumnDouble(recordId, colname, op, ctx);
 }
 
 void
@@ -1892,7 +1892,7 @@ CompositeTable::incrementColumnValue(llong recordId, fstring colname,
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
 			, colname.ilen(), colname.data());
 	}
-	incrementColumnValue(recordId, colname, incVal);
+	incrementColumnValue(recordId, colname, incVal, ctx);
 }
 
 void
@@ -1930,7 +1930,7 @@ CompositeTable::incrementColumnValue(llong recordId, fstring colname,
 		THROW_STD(invalid_argument, "colname = %.*s is not existed"
 			, colname.ilen(), colname.data());
 	}
-	incrementColumnValue(recordId, colname, incVal);
+	incrementColumnValue(recordId, colname, incVal, ctx);
 }
 
 bool
