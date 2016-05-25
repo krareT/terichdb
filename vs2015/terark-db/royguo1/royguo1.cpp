@@ -38,6 +38,7 @@ int main(int argc, char* argv[]){
   terark::valvec<terark::byte> nameVal;     // column value
   terark::valvec<terark::byte> descVal;     // column value
   terark::valvec<terark::byte> nameDescVal;    // column group value
+  terark::valvec<terark::byte> rowBuf;    // column group value
   terark::valvec<terark::llong> idvec;      // id vector of index
   terark::db::ColumnVec nameDescCV;
 
@@ -82,6 +83,21 @@ int main(int argc, char* argv[]){
 //	  int assertFail = nameDescColgroupSchema.getNumber<int>(nameDescCV, 0);
       printf("++%.*s  ", name.ilen(), name.data());
       printf("%.*s\n", desc.ilen(), desc.data());
+
+	  // update:
+	  ctx->getValue(recId, &rowBuf); // get old value
+
+	  // deserialize
+	  terark::NativeDataInput<terark::MemIO>(rowBuf.range()) >> u;
+
+	  // update columns
+	  u.name += " - Add updated suffix ...";
+	  u.description += " - add some description ...";
+
+	  rowBuilder.rewind(); // rewind and
+	  rowBuilder << u;     // serialize
+
+	  ctx->upsertRow(rowBuilder.written());
     }
   }
 

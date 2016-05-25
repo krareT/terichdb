@@ -253,6 +253,10 @@ public: \
 template<class StreamT>
 class LittleEndianDataOutput : public StreamT {
 public:
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+	defined(_MSC_VER) && _MSC_VER >= 1800
+	using StreamT::StreamT;
+#endif
 	typedef StreamT stream_t;
 	StreamT* getStream() { return this; }
 typedef LittleEndianDataOutput MyType;
@@ -275,6 +279,10 @@ typedef LittleEndianDataOutput MyType;
 template<class StreamT>
 class BigEndianDataOutput : public StreamT {
 public:
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+	defined(_MSC_VER) && _MSC_VER >= 1800
+	using StreamT::StreamT;
+#endif
 	typedef StreamT stream_t;
 	StreamT* getStream() { return this; }
 typedef BigEndianDataOutput MyType;
@@ -298,6 +306,10 @@ typedef BigEndianDataOutput MyType;
 template<class StreamT>
 class LittleEndianNoVarIntOutput : public StreamT {
 public:
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+	defined(_MSC_VER) && _MSC_VER >= 1800
+	using StreamT::StreamT;
+#endif
 	typedef StreamT stream_t;
 	StreamT* getStream() { return this; }
 typedef LittleEndianNoVarIntOutput MyType;
@@ -320,6 +332,10 @@ typedef LittleEndianNoVarIntOutput MyType;
 template<class StreamT>
 class BigEndianNoVarIntOutput : public StreamT {
 public:
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+	defined(_MSC_VER) && _MSC_VER >= 1800
+	using StreamT::StreamT;
+#endif
 	typedef StreamT stream_t;
 	StreamT* getStream() { return this; }
 typedef BigEndianNoVarIntOutput MyType;
