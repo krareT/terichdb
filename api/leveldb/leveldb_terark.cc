@@ -607,7 +607,7 @@ terark::db::DbContext* DbImpl::GetDbContext() {
   if (!refctx) {
 	  refctx.reset(m_tab->createDbContext());
 #if !defined(NDEBUG)
-	  fprintf(stderr, "DEBUG: thread DbContext object number = %zd\n", m_ctxMap.size());
+	  fprintf(stderr, "DEBUG: thread DbContext object number = %zd\n", m_ctx.size());
 #endif
   }
   return refctx.get();
