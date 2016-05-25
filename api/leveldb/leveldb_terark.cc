@@ -298,8 +298,8 @@ DbImpl::DbImpl(const fs::path& dbdir) {
 }
 
 DbImpl::~DbImpl() {
-  m_ctxMap.clear();
-  m_tab.reset(NULL);
+  // m_tab destruct must after m_ctx destruct
+  BOOST_STATIC_ASSERT(offsetof(DbImpl, m_tab) < offsetof(DbImpl, m_ctx));
 }
 
 static void
@@ -591,6 +591,7 @@ OperationContext* DbImpl::GetContext(const ReadOptions &options) {
 }
 
 terark::db::DbContext* DbImpl::GetDbContext() {
+#if 0
   terark::db::MyRwLock lock(m_ctxMapRwMutex, false);
   std::thread::id tid = std::this_thread::get_id();
   size_t idx = m_ctxMap.find_i(tid);
@@ -600,6 +601,9 @@ terark::db::DbContext* DbImpl::GetDbContext() {
   lock.upgrade_to_writer();
   idx = m_ctxMap.insert_i(tid).first;
   auto& refctx = m_ctxMap.val(idx);
+#else
+  DbContextPtr& refctx = m_ctx.local();
+#endif
   if (!refctx) {
 	  refctx.reset(m_tab->createDbContext());
 #if !defined(NDEBUG)

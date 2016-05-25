@@ -46,6 +46,9 @@
 
 #include <terark/db/db_table.hpp>
 #include <boost/filesystem.hpp>
+#include <tbb/enumerable_thread_specific.h>
+#undef min
+#undef max
 
 using terark::db::CompositeTablePtr;
 using terark::db::DbContextPtr;
@@ -358,8 +361,12 @@ public:
 //ThreadLocal<OperationContext> *context_;
   terark::db::CompositeTablePtr m_tab;
 private:
+#if 0
   mutable terark::db::MyRwMutex m_ctxMapRwMutex;
   mutable gold_hash_map<std::thread::id, DbContextPtr> m_ctxMap;
+#else
+  tbb::enumerable_thread_specific<DbContextPtr> m_ctx;
+#endif
 
 #ifdef HAVE_ROCKSDB
   std::vector<ColumnFamilyHandle*> columns_;

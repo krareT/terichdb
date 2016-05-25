@@ -4,6 +4,8 @@
 
 #include "leveldb_terark.h"
 
+#undef DeleteFile  // for windows
+
 namespace leveldb {
 
 Env::~Env() {
