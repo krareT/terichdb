@@ -140,25 +140,6 @@ CompositeTable* CompositeTable::createTable(fstring tableClass) {
 	return table;
 }
 
-void
-CompositeTable::init(PathRef dir, SchemaConfigPtr schema) {
-	assert(!dir.empty());
-	assert(schema->columnNum() > 0);
-	assert(schema->getIndexNum() > 0);
-	if (!m_segments.empty()) {
-		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
-			long(m_segments.size()));
-	}
-	m_schema = schema;
-	m_dir = dir;
-	m_mergeSeqNum = 0;
-
-	m_wrSeg = this->myCreateWritableSegment(getSegPath("wr", 0));
-	m_segments.push_back(m_wrSeg);
-	m_rowNumVec.erase_all();
-	m_rowNumVec.push_back(0);
-}
-
 static void tryReduceSymlink(PathRef segDir, PathRef mergeDir) {
 	if (fs::is_symlink(segDir)) {
 		std::string strDir = segDir.string();

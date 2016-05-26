@@ -84,8 +84,6 @@ public:
 
 	static CompositeTable* open(PathRef dbPath);
 
-	virtual void init(PathRef dir, SchemaConfigPtr);
-
 	void load(PathRef dir) override;
 	void save(PathRef dir) const override;
 
@@ -237,9 +235,7 @@ public:
 	size_t findSegIdx(size_t segIdxBeg, ReadableSegment* seg) const;
 	size_t getSegNum() const { return m_segments.size(); }
 	size_t getWritableSegNum() const;
-
 	size_t getSegArrayUpdateSeq() const { return this->m_segArrayUpdateSeq; }
-
 	size_t getSegmentIndexOfRecordIdNoLock(llong recId) const;
 
 	///@{ internal use only
