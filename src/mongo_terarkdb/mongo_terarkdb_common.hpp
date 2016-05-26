@@ -19,7 +19,6 @@
 #include <boost/filesystem.hpp>
 #include <thread>
 #include <terark/db/db_table.hpp>
-#include <terark/db/mock_db_engine.hpp>
 #include "record_codec.h"
 
 namespace terark { namespace db {
@@ -31,7 +30,6 @@ namespace mongo { namespace terarkdb {
 namespace fs = boost::filesystem;
 using terark::db::CompositeTable;
 using terark::db::CompositeTablePtr;
-using terark::db::MockDbTable;
 
 using terark::ulong;
 using terark::llong;

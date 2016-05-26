@@ -41,7 +41,6 @@
 #endif
 
 #include "terarkdb_kv_engine.h"
-#include <terark/db/dfadb/dfadb_table.hpp>
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
