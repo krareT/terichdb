@@ -67,7 +67,7 @@ public:
     TerarkDbRecordStore(OperationContext* txn,
 					  StringData ns,
 					  StringData ident,
-					  CompositeTable* tab,
+					  ThreadSafeTable* tab,
 					  TerarkDbSizeStorer* sizeStorer);
 
     virtual ~TerarkDbRecordStore();
@@ -171,22 +171,11 @@ public:
 
     bool inShutdown() const;
 
-    CompositeTablePtr m_table;
+    ThreadSafeTablePtr m_table;
 
 private:
     class Cursor;
     const std::string _ident;
-
-    class MyThreadData {
-    public:
-    	terark::db::DbContextPtr m_dbCtx;
-    	mongo::terarkdb::SchemaRecordCoder m_coder;
-    	terark::valvec<unsigned char> m_recData;
-    };
-//  mutable terark::db::MyRwMutex m_threadcacheMutex;
-    mutable std::mutex m_threadcacheMutex;
-    mutable terark::gold_hash_map_p<std::thread::id, MyThreadData> m_threadcache;
-    MyThreadData& getMyThreadData() const;
 
     bool _shuttingDown;
 };

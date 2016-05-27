@@ -18,6 +18,7 @@
 #include <mongo/bson/bsonobjbuilder.h>
 #include <boost/filesystem.hpp>
 #include <thread>
+#include <tbb/enumerable_thread_specific.h>
 #include <terark/db/db_table.hpp>
 #include "record_codec.h"
 
@@ -40,11 +41,23 @@ using terark::hash_strmap;
 
 extern const std::string kTerarkDbEngineName;
 
-class MongoTerarkDbContext : public terark::db::DbContext {
+class TableThreadData : public terark::RefCounter {
 public:
-	SchemaRecordCoder m_coder;
+	explicit TableThreadData(CompositeTable* tab);
+    terark::db::DbContextPtr m_dbCtx;
+    terark::valvec<unsigned char> m_buf;
+    mongo::terarkdb::SchemaRecordCoder m_coder;
 };
-typedef boost::intrusive_ptr<MongoTerarkDbContext> MongoTerarkDbContextPtr;
+typedef boost::intrusive_ptr<TableThreadData> TableThreadDataPtr;
+
+class ThreadSafeTable : public terark::RefCounter {
+	tbb::enumerable_thread_specific<TableThreadDataPtr> m_ttd;
+public:
+	CompositeTablePtr m_tab;
+	explicit ThreadSafeTable(const fs::path& dbPath);
+	TableThreadData& getMyThreadData();
+};
+typedef boost::intrusive_ptr<ThreadSafeTable> ThreadSafeTablePtr;
 
 } }
 

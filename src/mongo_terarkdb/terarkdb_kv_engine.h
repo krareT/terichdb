@@ -128,7 +128,7 @@ public:
 	const KVCatalog* m_fuckKVCatalog;
 
 private:
-    std::unique_ptr<WiredTigerSessionCache> _sessionCache;
+//  std::unique_ptr<WiredTigerSessionCache> _sessionCache;
     std::string _path;
     fs::path m_pathTerark;
     fs::path m_pathTerarkTables;
@@ -139,13 +139,12 @@ private:
     fs::path m_pathWt;
     std::unique_ptr<WiredTigerKVEngine> m_wtEngine;
 
-    typedef terark::hash_strmap<CompositeTablePtr> TableMap;
+    typedef terark::hash_strmap<ThreadSafeTablePtr> TableMap;
 
     mutable TableMap m_tables;
-
     struct TableIndex {
     	size_t indexId;
-    	CompositeTablePtr m_table;
+    	ThreadSafeTablePtr m_table;
     	SortedDataInterface* m_index = nullptr;
     };
 

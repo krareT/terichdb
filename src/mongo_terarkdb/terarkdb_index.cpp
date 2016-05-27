@@ -54,7 +54,7 @@
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
-#define TRACING_ENABLED 1
+#define TRACING_ENABLED TERARK_IF_DEBUG(1, 0)
 
 #if TRACING_ENABLED
 #define TRACE_CURSOR log() << "TerarkDb index (" << (const void*)&_idx << "), " << (_forward?"Forward":"Backward") << "Cursor."
@@ -124,7 +124,7 @@ Status TerarkDbIndex::dupKeyError(const BSONObj& key) {
     return Status(ErrorCodes::DuplicateKey, sb.str());
 }
 
-TerarkDbIndex::TerarkDbIndex(CompositeTable* table, OperationContext* ctx, const IndexDescriptor* desc)
+TerarkDbIndex::TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, const IndexDescriptor* desc)
     : m_table(table)
 	, _ordering(Ordering::make(desc->keyPattern()))
     , _collectionNamespace(desc->parentNS())
@@ -138,8 +138,9 @@ TerarkDbIndex::TerarkDbIndex(CompositeTable* table, OperationContext* ctx, const
 	}
 	indexColumnNames.pop_back();
 	LOG(2) << "TerarkDbIndex::TerarkDbIndex(): indexColumnNames=" << indexColumnNames;
-	const size_t indexId = table->getIndexId(indexColumnNames);
-	if (indexId == table->getIndexNum()) {
+	CompositeTable* tab = table->m_tab.get();
+	const size_t indexId = tab->getIndexId(indexColumnNames);
+	if (indexId == tab->getIndexNum()) {
 		// no such index
 		THROW_STD(invalid_argument,
 			"index(%s) on collection(%s) is not defined",
@@ -150,27 +151,17 @@ TerarkDbIndex::TerarkDbIndex(CompositeTable* table, OperationContext* ctx, const
 	invariant(desc->unique() == getIndexSchema()->m_isUnique);
 }
 
-TerarkDbIndex::MyThreadData& TerarkDbIndex::getMyThreadData() const {
-	auto tid = std::this_thread::get_id();
-	std::lock_guard<std::mutex> lock(m_threadcacheMutex);
-	auto& tdptr = m_threadcache.get_map()[tid];
-	if (tdptr == nullptr) {
-		tdptr = new MyThreadData();
-		tdptr->m_dbCtx = m_table->createDbContext();
-	}
-	return *tdptr;
-}
-
 Status TerarkDbIndex::insert(OperationContext* txn,
                            const BSONObj& key,
                            const RecordId& id,
                            bool dupsAllowed)
 {
-	auto& td = getMyThreadData();
+	auto& td = m_table->getMyThreadData();
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
-	if (m_table->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
+	CompositeTable* tab = m_table->m_tab.get();
+	if (tab->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
 		return Status::OK();
 	} else {
 		return Status(ErrorCodes::DuplicateKey, "dup key in TerarkDbIndex::insert");
@@ -184,11 +175,12 @@ void TerarkDbIndex::unindex(OperationContext* txn,
 {
     invariant(id.isNormal());
     dassert(!hasFieldNames(key));
-	auto& td = getMyThreadData();
+	auto& td = m_table->getMyThreadData();
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
-	m_table->indexRemove(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx);
+	CompositeTable* tab = m_table->m_tab.get();
+	tab->indexRemove(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx);
 }
 
 void TerarkDbIndex::fullValidate(OperationContext* txn,
@@ -210,11 +202,12 @@ bool TerarkDbIndex::appendCustomStats(OperationContext* txn,
 Status TerarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, const RecordId& id) {
     invariant(!hasFieldNames(key));
     invariant(unique());
-	auto& td = getMyThreadData();
+	auto& td = m_table->getMyThreadData();
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	auto& tmpIdvec = td.m_dbCtx->exactMatchRecIdvec;
-	m_table->indexSearchExact(m_indexId, td.m_buf, &tmpIdvec, &*td.m_dbCtx);
+	CompositeTable* tab = m_table->m_tab.get();
+	tab->indexSearchExact(m_indexId, td.m_buf, &tmpIdvec, &*td.m_dbCtx);
 	if (tmpIdvec.empty()) {
 	    return Status::OK();
 	}
@@ -226,7 +219,8 @@ Status TerarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, con
 }
 
 bool TerarkDbIndex::isEmpty(OperationContext* txn) {
-    return m_table->numDataRows() == 0;
+	CompositeTable* tab = m_table->m_tab.get();
+    return tab->numDataRows() == 0;
 }
 
 Status TerarkDbIndex::touch(OperationContext* txn) const {
@@ -234,7 +228,8 @@ Status TerarkDbIndex::touch(OperationContext* txn) const {
 }
 
 long long TerarkDbIndex::getSpaceUsedBytes(OperationContext* txn) const {
-    return m_table->indexStorageSize(m_indexId);
+	CompositeTable* tab = m_table->m_tab.get();
+    return tab->indexStorageSize(m_indexId);
 }
 
 Status TerarkDbIndex::initAsEmpty(OperationContext* txn) {
@@ -244,9 +239,10 @@ Status TerarkDbIndex::initAsEmpty(OperationContext* txn) {
 
 bool
 TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id,
-							MyThreadData* td) {
+							TableThreadData* td) {
 	encodeIndexKey(*getIndexSchema(), newKey, &td->m_buf);
-	return m_table->indexInsert(m_indexId, td->m_buf, id.repr()-1, &*td->m_dbCtx);
+	CompositeTable* tab = m_table->m_tab.get();
+	return tab->indexInsert(m_indexId, td->m_buf, id.repr()-1, &*td->m_dbCtx);
 }
 
 namespace {
@@ -258,10 +254,11 @@ class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor {
 public:
     TerarkDbIndexCursorBase(const TerarkDbIndex& idx, OperationContext* txn, bool forward)
         : _txn(txn), _idx(idx), _forward(forward) {
+		CompositeTable* tab = idx.m_table->m_tab.get();
 		if (forward)
-			_cursor = idx.m_table->createIndexIterForward(idx.m_indexId);
+			_cursor = tab->createIndexIterForward(idx.m_indexId);
 		else
-			_cursor = idx.m_table->createIndexIterBackward(idx.m_indexId);
+			_cursor = tab->createIndexIterBackward(idx.m_indexId);
     }
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
         if (_eof) { // Advance on a cursor at the end is a no-op
@@ -529,9 +526,9 @@ class TerarkDbIndex::BulkBuilder : public SortedDataBuilderInterface {
 public:
     BulkBuilder(TerarkDbIndex* idx, OperationContext* txn, bool dupsAllowed)
         : _idx(idx), _txn(txn)
+		, m_td(idx->m_table->m_tab.get())
 		, _dupsAllowed(dupsAllowed)
 	{
-		m_td.m_dbCtx = idx->m_table->createDbContext();
 	}
 
     Status addKey(const BSONObj& newKey, const RecordId& id) override {
@@ -558,11 +555,11 @@ public:
 private:
     TerarkDbIndex*      const _idx;
     OperationContext* const _txn;
-	MyThreadData  m_td;
+	TableThreadData  m_td;
     const bool _dupsAllowed;
 };
 
-TerarkDbIndexUnique::TerarkDbIndexUnique(CompositeTable* tab,
+TerarkDbIndexUnique::TerarkDbIndexUnique(ThreadSafeTable* tab,
 									 OperationContext* opCtx,
                                      const IndexDescriptor* desc)
     : TerarkDbIndex(tab, opCtx, desc)
@@ -584,7 +581,7 @@ bool TerarkDbIndexUnique::unique() const {
 
 // ------------------------------
 
-TerarkDbIndexStandard::TerarkDbIndexStandard(CompositeTable* tab,
+TerarkDbIndexStandard::TerarkDbIndexStandard(ThreadSafeTable* tab,
                                          OperationContext* opCtx,
                                          const IndexDescriptor* desc)
     : TerarkDbIndex(tab, opCtx, desc) {}

@@ -82,7 +82,23 @@ namespace mongo { namespace terarkdb {
 using std::set;
 using std::string;
 
-const char* g_terarkTableClass = "DfaDbTable";
+TableThreadData::TableThreadData(CompositeTable* tab) {
+	m_dbCtx.reset(tab->createDbContext());
+	m_dbCtx->syncIndex = false;
+}
+
+ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
+	m_tab = CompositeTable::open(dbPath);
+}
+
+TableThreadData& ThreadSafeTable::getMyThreadData() {
+	TableThreadDataPtr& ttd = m_ttd.local();
+	if (terark_unlikely(!ttd)) {
+		CompositeTable* tab = m_tab.get();
+		ttd = new TableThreadData(tab);
+	}
+	return *ttd;
+}
 
 boost::filesystem::path  nsToTableDir(StringData ns) {
 	auto dotPos = std::find(ns.begin(), ns.end(), '.');
@@ -116,6 +132,12 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 		boost::filesystem::create_directories(m_pathWt);
 	}
 	catch (const std::exception&) {
+		if ( ! ( boost::filesystem::exists(m_pathWt) &&
+			     boost::filesystem::is_directory(m_pathWt) )
+		   ) {
+		    LOG(1) << BOOST_CURRENT_FUNCTION << ": \"" << m_pathWt.string() << "\" is not a directory";
+			throw;
+		}
 	}
 	m_wtEngine.reset(new WiredTigerKVEngine(
 				kWiredTigerEngineName,
@@ -132,8 +154,7 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
     log() << "terarkdb_open : " << path;
     for (auto& tabDir : fs::directory_iterator(m_pathTerark / "tables")) {
     //	std::string strTabDir = tabDir.path().string();
-    	// CompositeTablePtr tab = CompositeTable::createTable(g_terarkTableClass);
-    	// tab->load(strTabDir);
+    	// CompositeTablePtr tab = CompositeTable::open(strTabDir);
     //	std::string tabIdent = tabDir.path().filename().string();
     //	auto ib = m_tables.insert_i(tabIdent, nullptr);
     //	invariant(ib.second);
@@ -189,7 +210,8 @@ TerarkDbKVEngine::getIdentSize(OperationContext* opCtx, StringData ident) {
 	if (m_tables.end_i() == i) {
 		return m_wtEngine->getIdentSize(opCtx, ident);
 	}
-	return m_tables.val(i)->dataStorageSize();
+	ThreadSafeTable* tab = m_tables.val(i).get();
+	return tab->m_tab->dataStorageSize();
 }
 
 Status
@@ -213,7 +235,7 @@ int TerarkDbKVEngine::flushAllFiles(bool sync) {
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		m_tables.for_each([&](const TableMap::value_type& x) {
-			tabCopy.push_back(x.second);
+			tabCopy.push_back(x.second->m_tab);
 		});
 	}
 //  syncSizeInfo(true);
@@ -288,12 +310,21 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 		// TODO: parse options.storageEngine.TerarkSegDB to define schema
 		// return Status(ErrorCodes::CommandNotSupported,
 		//	"dynamic create RecordStore is not supported, schema is required");
+		BSONElement dbmetaElem = options.storageEngine[kTerarkDbEngineName];
+		if (!dbmetaElem) {
+			// damn! mongodb does not allowing createRecordStore fails
+			// but we still must fail
+			std::ostringstream oss;
+			oss << "TerarkDbKVEngine::createRecordStore: TerarkSegDB does not support dynamic creating collections, "
+				   "must calling terarkCreateColl(...) in mongo shell client before inserting data into collection: ns = "
+				<< ns.toString() << ", " << "ident = " << ident.toString() << "";
+			return Status(ErrorCodes::CommandNotSupported, oss.str());
+		}
 		fs::create_directories(tabDir);
 		bool includeFieldName = false;
 		bool pretty = true;
 		std::string dbmetaFile = (tabDir / "dbmeta.json").string();
-		std::string dbmetaData = options.storageEngine[kTerarkDbEngineName]
-							.jsonString(Strict, includeFieldName, pretty);
+		std::string dbmetaData = dbmetaElem.jsonString(Strict, includeFieldName, pretty);
 		terark::FileStream fp(dbmetaFile.c_str(), "w");
 		fp.ensureWrite(dbmetaData.c_str(), dbmetaData.size());
 	}
@@ -323,10 +354,9 @@ TerarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 		return NULL;
 	}
 	std::lock_guard<std::mutex> lock(m_mutex);
-	CompositeTablePtr& tab = m_tables[ident];
+	ThreadSafeTablePtr& tab = m_tables[ident];
 	if (tab == nullptr) {
-		tab = CompositeTable::createTable(g_terarkTableClass);
-		tab->load(tabDir.string());
+		tab = new ThreadSafeTable(tabDir);
 	}
     return new TerarkDbRecordStore(opCtx, ns, ident, &*tab, NULL);
 }
@@ -404,8 +434,7 @@ TerarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
 	std::lock_guard<std::mutex> lock(m_mutex);
 	auto& tab = m_tables[tableIdent];
 	if (tab == nullptr) {
-		tab = CompositeTable::createTable(g_terarkTableClass);
-		tab->load(tabDir.string());
+		tab = new ThreadSafeTable(tabDir);
 	}
     if (desc->unique())
         return new TerarkDbIndexUnique(&*tab, opCtx, desc);
@@ -424,7 +453,8 @@ Status TerarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
 		size_t i = m_tables.find_i(tableIdent);
 		if (i < m_tables.end_i()) {
 			if (ident == tableIdent) {
-				m_tables.val(i)->dropTable();
+				ThreadSafeTablePtr& tabPtr = m_tables.val(i);
+				tabPtr->m_tab->dropTable();
 				m_tables.erase_i(i);
 				isTerarkDb = true;
 			}

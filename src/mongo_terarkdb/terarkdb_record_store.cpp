@@ -93,11 +93,12 @@ public:
     Cursor(OperationContext* txn, const TerarkDbRecordStore& rs, bool forward = true)
         : _rs(rs),
           _txn(txn) {
-    	m_ctx = rs.m_table->createDbContext();
+		CompositeTable* tab = rs.m_table->m_tab.get();
+    	m_ctx = tab->createDbContext();
     	if (forward)
-    		_cursor = rs.m_table->createStoreIterForward(m_ctx.get());
+    		_cursor = tab->createStoreIterForward(m_ctx.get());
     	else
-    		_cursor = rs.m_table->createStoreIterBackward(m_ctx.get());
+    		_cursor = tab->createStoreIterBackward(m_ctx.get());
     }
 
     boost::optional<Record> next() final {
@@ -115,7 +116,8 @@ public:
 		else {
 			assert(!m_recBuf.empty());
 		}
-        SharedBuffer sbuf = m_coder.decode(&_rs.m_table->rowSchema(), m_recBuf);
+		CompositeTable* tab = _rs.m_table->m_tab.get();
+        SharedBuffer sbuf = m_coder.decode(&tab->rowSchema(), m_recBuf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
         _lastReturnedId = id;
@@ -131,7 +133,8 @@ public:
             return {};
         }
 		assert(!m_recBuf.empty());
-        SharedBuffer sbuf = m_coder.decode(&_rs.m_table->rowSchema(), m_recBuf);
+		CompositeTable* tab = _rs.m_table->m_tab.get();
+        SharedBuffer sbuf = m_coder.decode(&tab->rowSchema(), m_recBuf);
         _lastReturnedId = id;
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
         return {{id, {sbuf, len}}};
@@ -271,7 +274,7 @@ StatusWith<std::string> TerarkDbRecordStore::generateCreateString(
 TerarkDbRecordStore::TerarkDbRecordStore(OperationContext* ctx,
 									 StringData ns,
 									 StringData ident,
-									 CompositeTable* tab,
+									 ThreadSafeTable* tab,
 									 TerarkDbSizeStorer* sizeStorer)
 		: RecordStore(ns),
 		  m_table(tab),
@@ -288,7 +291,7 @@ TerarkDbRecordStore::TerarkDbRecordStore(OperationContext* ctx,
 
 TerarkDbRecordStore::~TerarkDbRecordStore() {
     _shuttingDown = true;
-	m_table->flush();
+	m_table->m_tab->flush();
     LOG(1) << "~TerarkDbRecordStore for: " << ns();
 }
 
@@ -301,11 +304,11 @@ bool TerarkDbRecordStore::inShutdown() const {
 }
 
 long long TerarkDbRecordStore::dataSize(OperationContext* txn) const {
-    return m_table->dataStorageSize();
+    return m_table->m_tab->dataStorageSize();
 }
 
 long long TerarkDbRecordStore::numRecords(OperationContext* txn) const {
-    return m_table->numDataRows();
+    return m_table->m_tab->numDataRows();
 }
 
 bool TerarkDbRecordStore::isCapped() const {
@@ -315,19 +318,7 @@ bool TerarkDbRecordStore::isCapped() const {
 int64_t TerarkDbRecordStore::storageSize(OperationContext* txn,
 									   BSONObjBuilder* extraInfo,
 									   int infoLevel) const {
-	return m_table->dataStorageSize();
-}
-
-TerarkDbRecordStore::MyThreadData& TerarkDbRecordStore::getMyThreadData() const {
-//	terark::db::MyRwLock lock(m_threadcacheMutex, false);
-	std::lock_guard<std::mutex> lock(m_threadcacheMutex);
-	MyThreadData*& td = m_threadcache.get_map()[std::this_thread::get_id()];
-	if (td == nullptr) {
-		td = new MyThreadData();
-		td->m_dbCtx = m_table->createDbContext();
-		td->m_dbCtx->syncIndex = false;
-	}
-	return *td;
+	return m_table->m_tab->dataStorageSize();
 }
 
 RecordData
@@ -341,9 +332,10 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 	if (id.isNull())
 		return false;
     llong recIdx = id.repr() - 1;
-    auto& td = getMyThreadData();
-    m_table->getValue(recIdx, &td.m_recData, &*td.m_dbCtx);
-    SharedBuffer bson = td.m_coder.decode(&m_table->rowSchema(), td.m_recData);
+	CompositeTable* tab = m_table->m_tab.get();
+    auto& td = m_table->getMyThreadData();
+    tab->getValue(recIdx, &td.m_buf, &*td.m_dbCtx);
+    SharedBuffer bson = td.m_coder.decode(&tab->rowSchema(), td.m_buf);
 
 //  size_t bufsize = sizeof(SharedBuffer::Holder) + bson.objsize();
     int bufsize = ConstDataView(bson.get()).read<LittleEndian<int>>();
@@ -352,18 +344,19 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 }
 
 void TerarkDbRecordStore::deleteRecord(OperationContext* txn, const RecordId& id) {
-    auto& td = getMyThreadData();
-    m_table->removeRow(id.repr()-1, &*td.m_dbCtx);
+    auto& td = m_table->getMyThreadData();
+    m_table->m_tab->removeRow(id.repr()-1, &*td.m_dbCtx);
 }
 
 Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
 										std::vector<Record>* records,
 										bool enforceQuota) {
-    auto& td = getMyThreadData();
+	CompositeTable* tab = m_table->m_tab.get();
+    auto& td = m_table->getMyThreadData();
     for (Record& rec : *records) {
     	BSONObj bson(rec.data.data());
-    	td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
-    	rec.id = RecordId(1 + m_table->insertRow(td.m_recData, &*td.m_dbCtx));
+    	td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+    	rec.id = RecordId(1 + tab->insertRow(td.m_buf, &*td.m_dbCtx));
     }
     return Status::OK();
 }
@@ -372,11 +365,12 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
 													 const char* data,
 													 int len,
 													 bool enforceQuota) {
-    auto& td = getMyThreadData();
+	CompositeTable* tab = m_table->m_tab.get();
+    auto& td = m_table->getMyThreadData();
     BSONObj bson(data);
 	invariant(bson.objsize() == len);
-    td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
-    llong recIdx = m_table->insertRow(td.m_recData, &*td.m_dbCtx);
+    td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+    llong recIdx = tab->insertRow(td.m_buf, &*td.m_dbCtx);
 	return {RecordId(recIdx + 1)};
 }
 
@@ -398,23 +392,24 @@ TerarkDbRecordStore::updateRecord(OperationContext* txn,
 								int len,
 								bool enforceQuota,
 								UpdateNotifier* notifier) {
-	terark::db::IncrementGuard_size_t incrGuard(m_table->m_inprogressWritingCount);
+	CompositeTable* tab = m_table->m_tab.get();
+	terark::db::IncrementGuard_size_t incrGuard(tab->m_inprogressWritingCount);
 	llong recId = id.repr() - 1;
 	{
-		terark::db::MyRwLock lock(m_table->m_rwMutex, false);
-		size_t segIdx = m_table->getSegmentIndexOfRecordIdNoLock(recId);
-		if (segIdx >= m_table->getSegNum()) {
+		terark::db::MyRwLock lock(tab->m_rwMutex, false);
+		size_t segIdx = tab->getSegmentIndexOfRecordIdNoLock(recId);
+		if (segIdx >= tab->getSegNum()) {
 			return {ErrorCodes::InvalidIdField, "record id is out of range"};
 		}
-		auto seg = m_table->getSegmentPtr(segIdx);
+		auto seg = tab->getSegmentPtr(segIdx);
 		if (seg->m_isFreezed) {
 			return {ErrorCodes::NeedsDocumentMove, "segment of record is frozen"};
 		}
 	}
-    auto& td = getMyThreadData();
+    auto& td = m_table->getMyThreadData();
     BSONObj bson(data);
-    td.m_coder.encode(&m_table->rowSchema(), nullptr, bson, &td.m_recData);
-	llong newRecId = m_table->updateRow(recId, td.m_recData, &*td.m_dbCtx);
+    td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+	llong newRecId = tab->updateRow(recId, td.m_buf, &*td.m_dbCtx);
 	invariant(newRecId == recId);
 	return Status::OK();
 }
@@ -450,7 +445,8 @@ TerarkDbRecordStore::getManyCursors(OperationContext* txn) const {
 }
 
 Status TerarkDbRecordStore::truncate(OperationContext* txn) {
-	m_table->clear();
+	CompositeTable* tab = m_table->m_tab.get();
+	tab->clear();
     return Status::OK();
 }
 
@@ -458,7 +454,8 @@ Status TerarkDbRecordStore::compact(OperationContext* txn,
 								  RecordStoreCompactAdaptor* adaptor,
 								  const CompactOptions* options,
 								  CompactStats* stats) {
-	m_table->compact(); // will wait for compact complete
+	CompositeTable* tab = m_table->m_tab.get();
+	tab->compact(); // will wait for compact complete
     return Status::OK();
 }
 
@@ -468,7 +465,8 @@ Status TerarkDbRecordStore::validate(OperationContext* txn,
                                    ValidateAdaptor* adaptor,
                                    ValidateResults* results,
                                    BSONObjBuilder* output) {
-    output->appendNumber("nrecords", m_table->numDataRows());
+	CompositeTable* tab = m_table->m_tab.get();
+    output->appendNumber("nrecords", tab->numDataRows());
     return Status::OK();
 }
 

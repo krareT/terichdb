@@ -44,7 +44,7 @@ public:
      * @param unique - If this is a unique index.
      *                 Note: even if unique, it may be allowed to be non-unique at times.
      */
-    TerarkDbIndex(CompositeTable* table, OperationContext* ctx, const IndexDescriptor* desc);
+    TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, const IndexDescriptor* desc);
 
     virtual Status insert(OperationContext* txn,
                           const BSONObj& key,
@@ -88,26 +88,17 @@ public:
 
     // terark::db
     size_t m_indexId;
-    terark::db::CompositeTablePtr m_table;
+    ThreadSafeTablePtr m_table;
 
 	const terark::db::Schema* getIndexSchema() const {
-		return &m_table->getIndexSchema(m_indexId);
+		return &m_table->m_tab->getIndexSchema(m_indexId);
 	}
 
-	class MyThreadData {
-    public:
-    	terark::db::DbContextPtr m_dbCtx;
-    	terark::valvec<unsigned char> m_buf;
-    };
 	bool insertIndexKey(const BSONObj& newKey, const RecordId& id,
-						MyThreadData* td);
+						TableThreadData* td);
 
 protected:
     class BulkBuilder;
-	mutable terark::gold_hash_map_p<std::thread::id, MyThreadData> m_threadcache;
-	mutable std::mutex m_threadcacheMutex;
-    MyThreadData& getMyThreadData() const;
-
     const Ordering _ordering;
     std::string _uri;
     std::string _collectionNamespace;
@@ -117,7 +108,7 @@ protected:
 
 class TerarkDbIndexUnique : public TerarkDbIndex {
 public:
-    TerarkDbIndexUnique(CompositeTable* tab,
+    TerarkDbIndexUnique(ThreadSafeTable* tab,
                       OperationContext* opCtx,
                       const IndexDescriptor* desc);
 
@@ -132,7 +123,7 @@ public:
 
 class TerarkDbIndexStandard : public TerarkDbIndex {
 public:
-    TerarkDbIndexStandard(CompositeTable* tab,
+    TerarkDbIndexStandard(ThreadSafeTable* tab,
                         OperationContext* opCtx,
                         const IndexDescriptor* desc);
 
