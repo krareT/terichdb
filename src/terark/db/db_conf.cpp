@@ -1411,14 +1411,16 @@ int Schema::compareData(fstring x, fstring y) const {
 			abort(); // not implemented yet
 			break;
 		case ColumnType::Uint08:
-			CHECK_CURR_LAST3(xcurr, ylast, 1);
+			CHECK_CURR_LAST3(xcurr, xlast, 1);
+			CHECK_CURR_LAST3(ycurr, ylast, 1);
 			if (*xcurr != *ycurr)
 				return *xcurr - *ycurr;
 			xcurr += 1;
 			ycurr += 1;
 			break;
 		case ColumnType::Sint08:
-			CHECK_CURR_LAST3(xcurr, ylast, 1);
+			CHECK_CURR_LAST3(xcurr, xlast, 1);
+			CHECK_CURR_LAST3(ycurr, ylast, 1);
 			if (sbyte(*xcurr) != sbyte(*ycurr))
 				return sbyte(*xcurr) - sbyte(*ycurr);
 			xcurr += 1;
