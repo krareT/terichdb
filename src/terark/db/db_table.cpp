@@ -767,8 +767,7 @@ llong BatchWriter::upsertRowImpl(fstring row) {
 	MyRwLock lock(tab->m_rwMutex, false);
 	wrBaseId = tab->m_rowNumVec.ende(2);
 	ctx->trySyncSegCtxNoLock(tab);
-	tab->m_wrSeg->indexSearchExact(tab->m_segments.size()-1, uniqueIndexId,
-		ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+	txn->indexSearch(uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec);
 	if (!ctx->exactMatchRecIdvec.empty()) {
 		return overwriteExisting(row);
 	}
