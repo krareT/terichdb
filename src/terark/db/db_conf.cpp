@@ -2292,8 +2292,8 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		ColumnMeta colmeta(Schema::parseColumnType(type));
 		if (ColumnType::Fixed == colmeta.type) {
 			long fixlen = col["length"];
-			if (fixlen <= 0) {
-				THROW_STD(invalid_argument, "invalid fixed length=%ld, must > 0", fixlen);
+			if (fixlen <= 0 || fixlen > 65536) {
+				THROW_STD(invalid_argument, "invalid fixed length=%ld, must > 0 and <= 65536", fixlen);
 			}
 			colmeta.fixedLen = (uint32_t)fixlen;
 		}
