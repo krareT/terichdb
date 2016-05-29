@@ -107,6 +107,13 @@ IndexIterator::seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) {
 	return ret;
 }
 
+size_t
+IndexIterator::seekMaxPrefix(fstring key, llong* id, valvec<byte>* retKey) {
+	THROW_STD(invalid_argument,
+		"NotSupported: this function can be just called on DfaDbTable with StrZero/Binary/CarBin index"
+		);
+}
+
 /////////////////////////////////////////////////////////////////////////////
 EmptyIndexStore::EmptyIndexStore() {}
 EmptyIndexStore::EmptyIndexStore(const Schema&) {}

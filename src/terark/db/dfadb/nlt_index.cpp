@@ -316,6 +316,18 @@ public:
 		m_hasNext = false;
 		return -1;
 	}
+
+	size_t seekMaxPrefix(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != id);
+		assert(nullptr != retKey);
+		size_t matchLen = m_iter->seek_max_prefix(key);
+		size_t state = m_iter->word_state();
+		size_t dawgIdx = m_owner->m_dfa->state_to_word_id(state);
+		*id = m_owner->m_keyToId.get(dawgIdx);
+		retKey->assign(m_iter->word());
+		m_hasNext = m_iter->incr();
+		return matchLen;
+	}
 };
 
 class NestLoudsTrieIndex::UniqueIndexIterBackward : public IndexIterator {
@@ -359,6 +371,18 @@ public:
 		}
 		m_hasNext = m_iter->decr();
 		return increment(id, retKey) ? 1 : -1;
+	}
+
+	size_t seekMaxPrefix(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != id);
+		assert(nullptr != retKey);
+		size_t matchLen = m_iter->seek_max_prefix(key);
+		size_t state = m_iter->word_state();
+		size_t dawgIdx = m_owner->m_dfa->state_to_word_id(state);
+		*id = m_owner->m_keyToId.get(dawgIdx);
+		retKey->assign(m_iter->word());
+		m_hasNext = m_iter->decr();
+		return matchLen;
 	}
 };
 
@@ -453,6 +477,18 @@ public:
 		m_hasNext = false;
 		return -1;
 	}
+
+	size_t seekMaxPrefix(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != id);
+		assert(nullptr != retKey);
+		size_t matchLen = m_iter->seek_max_prefix(key);
+		syncBitPos(true);
+		*id = m_owner->m_keyToId.get(m_bitPosCur++);
+		retKey->assign(m_iter->word());
+		if (m_bitPosCur == m_bitPosUpp)
+			syncBitPos(m_iter->incr());
+		return matchLen;
+	}
 };
 
 class NestLoudsTrieIndex::DupableIndexIterBackward : public IndexIterator {
@@ -534,6 +570,18 @@ public:
 			reset();
 			return this->increment(id, retKey) ? 1 : -1;
 		}
+	}
+
+	size_t seekMaxPrefix(fstring key, llong* id, valvec<byte>* retKey) override {
+		assert(nullptr != id);
+		assert(nullptr != retKey);
+		size_t matchLen = m_iter->seek_max_prefix(key);
+		syncBitPos(true);
+		*id = m_owner->m_keyToId.get(--m_bitPosCur);
+		retKey->assign(m_iter->word());
+		if (m_bitPosCur == m_bitPosLow)
+			syncBitPos(m_iter->decr());
+		return matchLen;
 	}
 };
 

@@ -29,6 +29,14 @@ public:
 	virtual int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) = 0;
 	virtual int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey);
 
+	///@returns the matching prefix length, the returned {id, retKey} which
+	///         retKey is the min key which has the longest matching prefix
+	///         with the input key
+	///         after calling this function, the caller can use increment to
+	///         retrieve more data
+	///         if the return value is 0, it has the same effect as reset
+	virtual size_t seekMaxPrefix(fstring key, llong* id, valvec<byte>* retKey);
+
 	inline bool isUniqueInSchema() const { return m_isUniqueInSchema; }
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;

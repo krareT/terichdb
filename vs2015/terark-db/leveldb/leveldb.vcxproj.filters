@@ -31,6 +31,12 @@
     <Filter Include="Source Files\table">
       <UniqueIdentifier>{d5ff0f6a-fa27-4917-bf5d-252febe22fba}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\db">
+      <UniqueIdentifier>{1b5307fe-5a03-4b42-94ca-ee5cdb9cbe8a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\table">
+      <UniqueIdentifier>{075406b1-59cb-40c7-9cc1-cce700b53000}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -193,6 +199,72 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\leveldb_terark\port\port.h">
       <Filter>Header Files\port</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\builder.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\db_impl.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\db_iter.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\dbformat.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\filename.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\log_format.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\log_reader.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\log_writer.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\memtable.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\skiplist.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\snapshot.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\table_cache.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\version_edit.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\version_set.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\db\write_batch_internal.h">
+      <Filter>Header Files\db</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\table\block.h">
+      <Filter>Header Files\table</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\table\block_builder.h">
+      <Filter>Header Files\table</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\table\filter_block.h">
+      <Filter>Header Files\table</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\table\format.h">
+      <Filter>Header Files\table</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\table\iterator_wrapper.h">
+      <Filter>Header Files\table</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\table\merger.h">
+      <Filter>Header Files\table</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\leveldb_terark\table\two_level_iterator.h">
+      <Filter>Header Files\table</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
