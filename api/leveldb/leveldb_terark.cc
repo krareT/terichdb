@@ -34,7 +34,7 @@
 
 //using namespace terark;
 using terark::string_appender;
-#if !defined(NDEBUG)
+
 static std::string escape(terark::fstring x) {
 	std::string y;
 	y.reserve(2*x.size());
@@ -80,6 +80,7 @@ static std::string escape(terark::fstring x) {
 	return y;
 }
 
+#if !defined(NDEBUG)
 #define TRACE_KEY_VAL(key, val) \
   fprintf(stderr \
     , "TRACE: teark-db-leveldb-api: dbdir=%s : %s: key=[%zd: %s] val=[%zd: %s]\n" \
@@ -370,6 +371,9 @@ void WriteBatchHandler::Delete(const Slice& key) {
 	if (!ctx->exactMatchRecIdvec.empty()){
 		long long recId = ctx->exactMatchRecIdvec[0];
 		opctx->m_batchWriter.removeRow(recId);
+	}
+	else {
+		fprintf(stderr, "ERROR: Delete(key = %s), NotFound\n", escape(key).c_str());
 	}
 }
 

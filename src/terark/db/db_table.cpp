@@ -830,6 +830,9 @@ void BatchWriter::removeRow(llong recId) {
 	llong baseId = ctx->m_rowNumVec[upp-1];
 	llong subId = recId - baseId;
 	assert(recId >= baseId);
+//	fprintf(stderr
+//		, "TRACE: BatchWriter::removeRow: recId = %lld, subId = %lld, segIdx = %zd, segNum = %zd\n"
+//		, recId, subId, upp-1, tab->m_segments.size());
 	auto seg = ctx->m_segCtx[upp-1]->seg;
 	if (upp == ctx->m_rowNumVec.size()-1) {
 		auto wrseg = tab->m_wrSeg.get();
@@ -837,12 +840,7 @@ void BatchWriter::removeRow(llong recId) {
 		assert(!wrseg->m_isFreezed);
 		assert(!wrseg->m_bookUpdates);
 		{
-			bool isDel;
-			{
-				SpinRwLock wsLock(wrseg->m_segMutex);
-				isDel = wrseg->m_isDel[subId];
-			}
-			if (isDel)
+			if (wrseg->locked_testIsDel(subId))
 				return;
 			else
 				txn->m_removeOnCommit.push_back(recId);
@@ -883,8 +881,10 @@ bool BatchWriter::commit() {
 	assert(DbTransaction::started == txn->m_status);
 	bool commitOk = txn->commit();
 	const size_t batchCnt = 100; // don't lock too long time
+	size_t myDelcnt = 0;
 	if (commitOk) {
 		sort_a(txn->m_removeOnCommit);
+	//	fprintf(stderr, "TRACE: BatchWriter::commit: txn->m_removeOnCommit.size = %zd\n", txn->m_removeOnCommit.size());
 		for(size_t i = 0; i < txn->m_removeOnCommit.size(); ) {
 			size_t upper = std::min(i + batchCnt, txn->m_removeOnCommit.size());
 			MyRwLock lock(tab->m_rwMutex, false);
@@ -895,6 +895,9 @@ bool BatchWriter::commit() {
 				size_t subId = size_t(recId - baseId);
 				auto seg = tab->m_segments[upp-1].get();
 				SpinRwLock segLock(seg->m_segMutex, true);
+			//	fprintf(stderr
+			//		, "TRACE: BatchWriter::commit: remove: recId = %lld, subId = %zd, segIdx = %zd, segNum = %zd, seg[del = %zd, all = %zd], delratio = %f\n"
+			//		, recId, subId, upp-1, tab->m_segments.size(), seg->m_delcnt, seg->m_isDel.size(), double(seg->m_delcnt) / seg->m_isDel.size());
 				if (seg->m_isDel[subId]) {
 					continue;
 				}
@@ -907,6 +910,7 @@ bool BatchWriter::commit() {
 				}
 			}
 		}
+		myDelcnt = txn->m_removeOnCommit.size();
 	}
 	else {
 		sort_a(txn->m_removeOnRollback);
@@ -924,6 +928,20 @@ bool BatchWriter::commit() {
 					terark_bit_set1(isDel, wrSubId);
 					ws.m_delcnt++;
 					ws.m_deletedWrIdSet.push_back(wrSubId);
+				}
+			}
+		}
+		myDelcnt = txn->m_removeOnRollback.size();
+	}
+	if (myDelcnt > 0) {
+		MyRwLock lock(tab->m_rwMutex, true);
+		const size_t segNum = tab->m_segments.size();
+		for(size_t i = 0; i < segNum-1; ) {
+			auto seg = tab->m_segments[i].get();
+			if (seg->getReadonlySegment()) {
+				if (tab->checkPurgeDeleteNoLock(seg)) {
+					tab->asyncPurgeDeleteInLock();
+					break;
 				}
 			}
 		}

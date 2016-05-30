@@ -75,6 +75,11 @@ public:
 
 	void addtoUpdateList(size_t logicId);
 
+	bool locked_testIsDel(size_t logicId) const {
+		SpinRwLock wsLock(m_segMutex, false);
+		return m_isDel[logicId];
+	}
+
 	SchemaConfigPtr         m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
 	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
