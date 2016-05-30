@@ -319,7 +319,6 @@ void CompositeTable::doLoad(PathRef dir) {
 			auto wseg = openWritableSegment(segDir);
 			wseg->m_segDir = segDir;
 			seg = wseg;
-			fprintf(stdout, "done!\n");
 		}
 		else if (sscanf(fname.c_str(), "rd-%ld", &segIdx) > 0) {
 			if (segIdx < 0) {
@@ -334,7 +333,9 @@ void CompositeTable::doLoad(PathRef dir) {
 			// so record id will be changed in this case
 			seg->m_withPurgeBits = m_schema->m_usePermanentRecordId;
 			seg->load(seg->m_segDir);
-			fprintf(stdout, "done!\n");
+		}
+		if (seg) {
+			fprintf(stdout, "done, records: total = %zd, deleted = %zd !\n", seg->m_isDel.size(), seg->m_delcnt);
 		}
 		if (m_segments.size() <= size_t(segIdx)) {
 			m_segments.resize(segIdx + 1);

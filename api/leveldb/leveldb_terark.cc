@@ -244,8 +244,7 @@ Cache *NewLRUCache(size_t capacity) {
   return new CacheImpl(capacity);
 }
 
-static const char g_keyValueSchema[] = R"(
-{
+static const char g_keyValueSchema[] = R"({
   "RowSchema" : {
     "columns" : {
       "key": { "type": "carbin" },
@@ -257,7 +256,8 @@ static const char g_keyValueSchema[] = R"(
        "fields": "key",
        "unique": true
     }
-  ]
+  ],
+  "MinMergeSegNum": 3
 }
 )";
 Status
@@ -561,7 +561,8 @@ DbImpl::CompactRange(const Slice* begin, const Slice* end)
 {
   // The compact doesn't need a cursor, but the context always opens a
   // cursor when opening the session - so grab that, and use the session.
-  // TerarkDB: do nothing
+  fprintf(stderr, "INFO: %s\n", BOOST_CURRENT_FUNCTION);
+  m_tab->compact();
 }
 
 // Suspends the background compaction thread.  This methods
@@ -697,13 +698,13 @@ IteratorImpl::Seek(const Slice& target) {
 		if (!m_iter) {
 			m_iter = m_tab->createIndexIterBackward(0);
 		}
-		fprintf(stderr, "DEBUG: %s: direction=backward\n", BOOST_CURRENT_FUNCTION);
+	//	fprintf(stderr, "DEBUG: %s: direction=backward\n", BOOST_CURRENT_FUNCTION);
 	}
 	else {
 		if (!m_iter) {
 			m_iter = m_tab->createIndexIterForward(0);
 		}
-		fprintf(stderr, "DEBUG: %s: direction=forward\n", BOOST_CURRENT_FUNCTION);
+	//	fprintf(stderr, "DEBUG: %s: direction=forward\n", BOOST_CURRENT_FUNCTION);
 	}
 	int cmp = m_iter->seekLowerBound(target, &m_recId, &m_key);
 	if (cmp < 0) {
