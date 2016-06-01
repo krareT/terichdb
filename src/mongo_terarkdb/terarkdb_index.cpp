@@ -151,6 +151,11 @@ TerarkDbIndex::TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, cons
 	invariant(desc->unique() == getIndexSchema()->m_isUnique);
 }
 
+TerarkDbIndex::~TerarkDbIndex() {
+	CompositeTable* tab = m_table->m_tab.get();
+    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
+}
+
 Status TerarkDbIndex::insert(OperationContext* txn,
                            const BSONObj& key,
                            const RecordId& id,

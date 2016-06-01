@@ -53,6 +53,8 @@ typedef boost::intrusive_ptr<TableThreadData> TableThreadDataPtr;
 class ThreadSafeTable : public terark::RefCounter {
 	tbb::enumerable_thread_specific<TableThreadDataPtr> m_ttd;
 public:
+	~ThreadSafeTable();
+	void destroy(); // workaround mongodb
 	CompositeTablePtr m_tab;
 	explicit ThreadSafeTable(const fs::path& dbPath);
 	TableThreadData& getMyThreadData();

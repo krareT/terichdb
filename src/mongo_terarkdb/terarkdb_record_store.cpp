@@ -291,8 +291,9 @@ TerarkDbRecordStore::TerarkDbRecordStore(OperationContext* ctx,
 
 TerarkDbRecordStore::~TerarkDbRecordStore() {
     _shuttingDown = true;
-	m_table->m_tab->flush();
-    LOG(1) << "~TerarkDbRecordStore for: " << ns();
+	CompositeTable* tab = m_table->m_tab.get();
+	tab->flush();
+    LOG(1) << BOOST_CURRENT_FUNCTION << ": namespace: " << ns() << ", dir: " << tab->getDir().string();
 }
 
 const char* TerarkDbRecordStore::name() const {

@@ -143,6 +143,7 @@ private:
 
     mutable TableMap m_tables;
     struct TableIndex {
+		~TableIndex() {}
     	size_t indexId;
     	ThreadSafeTablePtr m_table;
     	SortedDataInterface* m_index = nullptr;

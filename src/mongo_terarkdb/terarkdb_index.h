@@ -45,7 +45,7 @@ public:
      *                 Note: even if unique, it may be allowed to be non-unique at times.
      */
     TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, const IndexDescriptor* desc);
-
+	~TerarkDbIndex();
     virtual Status insert(OperationContext* txn,
                           const BSONObj& key,
                           const RecordId& id,

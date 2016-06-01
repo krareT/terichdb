@@ -82,6 +82,12 @@ namespace mongo { namespace terarkdb {
 using std::set;
 using std::string;
 
+struct FuckFuck___ {
+	~FuckFuck___() {
+		fprintf(stderr, "Exiting process: %s\n", BOOST_CURRENT_FUNCTION);
+	}
+} fuckfuckfuck____;
+
 TableThreadData::TableThreadData(CompositeTable* tab) {
 	m_dbCtx.reset(tab->createDbContext());
 	m_dbCtx->syncIndex = false;
@@ -89,6 +95,19 @@ TableThreadData::TableThreadData(CompositeTable* tab) {
 
 ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
 	m_tab = CompositeTable::open(dbPath);
+}
+
+ThreadSafeTable::~ThreadSafeTable() {
+	log() << BOOST_CURRENT_FUNCTION << ": tabDir: " << m_tab->getDir().string() << m_tab->get_refcount();
+}
+
+// brain dead mongodb may not delete RecordStore and SortedDataInterface
+// so, workaround mongodb, call destroy in cleanShutdown()
+void ThreadSafeTable::destroy() {
+	log() << BOOST_CURRENT_FUNCTION
+		<< ": mongodb will leak RecordStore and SortedDataInterface, destory underlying objects now";
+	m_ttd.clear();
+	m_tab = nullptr;
 }
 
 TableThreadData& ThreadSafeTable::getMyThreadData() {
@@ -175,11 +194,26 @@ TerarkDbKVEngine::~TerarkDbKVEngine() {
 }
 
 void TerarkDbKVEngine::cleanShutdown() {
-    log() << "TerarkDbKVEngine shutting down";
+    log() << "TerarkDbKVEngine shutting down ...";
 //  syncSizeInfo(true);
 	std::lock_guard<std::mutex> lock(m_mutex);
+	m_indices.clear();
+	for (size_t i = 0; i < m_tables.end_i(); ++i) {
+		if (m_tables.is_deleted(i))
+			continue;
+		const fstring    key = m_tables.key(i);
+		ThreadSafeTable* tab = m_tables.val(i).get();
+		log() << "table: " << key.str() << ", dir: " << tab->m_tab->getDir().string()
+			<< ", ThreadSafeTable.refcnt = " << tab->get_refcount()
+			<< ", CompositeTable.refcnt = " << tab->m_tab->get_refcount();
+
+		// brain damaged mongodb leaks objects, so destroy it manually
+		tab->destroy();
+	}
     m_tables.clear();
 	CompositeTable::safeStopAndWaitForFlush();
+    log() << "TerarkDbKVEngine shutting down successed!";
+	std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
 void TerarkDbKVEngine::setJournalListener(JournalListener* jl) {
@@ -354,7 +388,7 @@ TerarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 		return NULL;
 	}
 	std::lock_guard<std::mutex> lock(m_mutex);
-	ThreadSafeTablePtr& tab = m_tables[ident];
+	ThreadSafeTablePtr& tab = m_tables[ident]; 
 	if (tab == nullptr) {
 		tab = new ThreadSafeTable(tabDir);
 	}

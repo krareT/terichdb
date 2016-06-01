@@ -779,13 +779,24 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			encoded->append(value, elem.objsize());
 			break;
 		case BinData:
-			{
-				assert(colmeta.type == terark::db::ColumnType::CarBin);
+			if (colmeta.type == terark::db::ColumnType::CarBin) {
 				uint32_t len = elem.valuestrsize() + 1; // 1 is for subtype byte
 				encoded->resize(encoded->size() + 4);
 				DataView(encoded->end() - 4)
 						.write(LittleEndian<uint32_t>(len));
 				encoded->append(value + 4, 1 + elem.valuestrsize());
+			}
+			else if (colmeta.type == terark::db::ColumnType::StrZero) {
+				uint32_t len = elem.valuestrsize() + 1; // 1 is for subtype byte
+				auto data = value + 5;
+				size_t slen = strnlen(data, len);
+				encoded->append(data, slen);
+				if (i < schema->m_columnsMeta.end_i() - 1) {
+					encoded->push_back('\0');
+				}
+			}
+			else {
+				invariant(!"mongo bindata must be terark carbin or strzero");
 			}
 			break;
 		case RegEx:
@@ -1182,6 +1193,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		case Code:
 		case mongo::String:
 			invariant(colmeta.type == ColumnType::StrZero);
+		DecodeStrZero:
 			if (colnum-1 == i) {
 				size_t len = end - pos;
 				if (terark_unlikely(0 == len)) {
@@ -1247,12 +1259,17 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			}
 			break;
 		case BinData:
-			{
-				invariant(colmeta.type == ColumnType::CarBin);
+			if (colmeta.type == ColumnType::CarBin) {
 				int len = ConstDataView(pos).read<LittleEndian<int>>();
 				bb << len - 1; // pos[4] is binary data subtype
 				bb.ensureWrite(pos + 4, len);
 				pos += 4 + len;
+			}
+			else if (colmeta.type == ColumnType::StrZero) {
+				goto DecodeStrZero;
+			}
+			else {
+				invariant(!"mongo bindata must be terark carbin or strzero");
 			}
 			break;
 		case RegEx:
