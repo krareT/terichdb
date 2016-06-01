@@ -35,12 +35,12 @@ TerarkDB is:
 
   - libboost_system.so(1.60.0) (boost_1_60_0)
   - libboost_filesystem(1.60.0)(Could be found in boost_1_60_0)
-  - libwiredtiger.so(v2.7.0)
+  - libwiredtiger.so(v2.8.0)
   - libtbb.so(tbb44_20160128)
 
 ### 3.2.Compiler Support
 
-- Linux : `g++-4.8`, `g++-4.9`, `g++-5.3`
+- Linux : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.1`
 - Mac OS : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.0`, `clang++-7.3`
 - Windows : `vs2015`
 
