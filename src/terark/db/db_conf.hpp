@@ -448,6 +448,7 @@ namespace terark { namespace db {
 		};
 		SchemaPtr      m_rowSchema;
 		SchemaPtr      m_wrtSchema;
+		SchemaPtr      m_snapshotSchema;
 		SchemaSetPtr   m_indexSchemaSet;
 		SchemaSetPtr   m_colgroupSchemaSet;
 		valvec<size_t> m_uniqIndices;
@@ -461,6 +462,7 @@ namespace terark { namespace db {
 		double   m_purgeDeleteThreshold;
 		std::string m_tableClass;
 		bool     m_usePermanentRecordId;
+		bool     m_enableSnapshot;
 
 		SchemaConfig();
 		~SchemaConfig();

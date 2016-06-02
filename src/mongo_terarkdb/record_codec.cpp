@@ -19,11 +19,61 @@ namespace mongo { namespace terarkdb {
 // all non-schema fields packed into this field as ColumnType::CarBin
 const char G_schemaLessFieldName[] = "$$";
 
+static const unsigned char GenericBinarySubType = 0;
+
 using namespace terark;
 using terark::db::ColumnType;
 
+typedef LittleEndianDataOutput<AutoGrownMemIO> MyBsonBuilder;
+
 static void terarkEncodeBsonArray(const BSONObj& arr, valvec<char>& encoded);
 static void terarkEncodeBsonObject(const BSONObj& obj, valvec<char>& encoded);
+
+void BsonBinDataToTerarkStrZero(const BSONElement& elem, valvec<char>& encoded, bool isLastField) {
+	const size_t vaLen = elem.valuestrsize();
+	const char*  value = elem.value();
+	const char*  vaEnd = value + 5 + vaLen;
+	const auto   zero = std::find(value + 5, vaEnd, '\0');
+	if (zero < vaEnd) {
+		THROW_STD(invalid_argument, "zero byte found in StrZero BinData");
+	}
+	if (byte_t(value[4]) == 255) {
+		THROW_STD(invalid_argument, "subtype can not be 255 for StrZero BinData");
+	}
+	encoded.push_back(byte_t(value[4]+1));
+	encoded.append(value + 5, vaLen);
+	if (!isLastField) {
+		encoded.push_back('\0');
+	}
+}
+
+void TerarkStrZeroToBsonBinData(MyBsonBuilder& bb, const char*& pos, const char* end, bool isLastField) {
+	const byte_t subType = byte_t(pos[0] - 1);
+	if (subType == 255) {
+		LOG(1) << "TerarkStrZeroToBsonBinData: subType = 255";
+	}
+	if (isLastField) {
+		size_t len = end - pos;
+		const auto zero = std::find(pos, end, '\0');
+		if (zero < end-1) {
+			THROW_STD(invalid_argument, "zero byte found in StrZero of some last field");
+		}
+		bb << int(len-1);
+		bb << subType;
+		bb.ensureWrite(pos+1, len-1);
+		pos = end;
+	}
+	else {
+		size_t len = strlen(pos);
+		if (len >= end-pos) {
+			THROW_STD(invalid_argument, "zero byte not found in StrZero of some non-last field");
+		}
+		bb << int(len-1);
+		bb << subType;
+		bb.ensureWrite(pos+1, len-1);
+		pos += len + 1;
+	}
+}
 
 static
 void terarkEncodeBsonElemVal(const BSONElement& elem, valvec<char>& encoded) {
@@ -787,13 +837,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 				encoded->append(value + 4, 1 + elem.valuestrsize());
 			}
 			else if (colmeta.type == terark::db::ColumnType::StrZero) {
-				uint32_t len = elem.valuestrsize() + 1; // 1 is for subtype byte
-				auto data = value + 5;
-				size_t slen = strnlen(data, len);
-				encoded->append(data, slen);
-				if (i < schema->m_columnsMeta.end_i() - 1) {
-					encoded->push_back('\0');
-				}
+				BsonBinDataToTerarkStrZero(elem, *encoded, isLastField);
 			}
 			else {
 				invariant(!"mongo bindata must be terark carbin or strzero");
@@ -856,8 +900,6 @@ SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude, const BSO
 	encode(schema, exclude, obj, &encoded);
 	return encoded;
 }
-
-typedef LittleEndianDataOutput<AutoGrownMemIO> MyBsonBuilder;
 
 static void terarkDecodeBsonObject(MyBsonBuilder& bb, const char*& pos, const char* end);
 static void terarkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const char* end);
@@ -1193,7 +1235,6 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		case Code:
 		case mongo::String:
 			invariant(colmeta.type == ColumnType::StrZero);
-		DecodeStrZero:
 			if (colnum-1 == i) {
 				size_t len = end - pos;
 				if (terark_unlikely(0 == len)) {
@@ -1266,7 +1307,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 				pos += 4 + len;
 			}
 			else if (colmeta.type == ColumnType::StrZero) {
-				goto DecodeStrZero;
+				TerarkStrZeroToBsonBinData(bb, pos, end, colnum-1 == i);
 			}
 			else {
 				invariant(!"mongo bindata must be terark carbin or strzero");
@@ -1446,8 +1487,24 @@ void encodeIndexKey(const Schema& indexSchema,
 			abort(); // not supported
 			break;
 		case BinData:
-			assert(indexSchema.getColumnType(i) == ColumnType::CarBin);
-			abort(); // not supported
+			if (colmeta.type == ColumnType::CarBin) {
+				if (colnum-1 == i) {
+					uint32_t len = elem.valuestrsize();
+					DataView(encoded->grow_no_init(4)).write(len);
+					encoded->append(value + 4, len);
+				}
+				else {
+					THROW_STD(invalid_argument,
+						"mongo::BinData could'nt not be non-last field of an index key");
+				}
+			}
+			else if (colmeta.type == ColumnType::StrZero) {
+				BsonBinDataToTerarkStrZero(elem, *encoded, colnum-1 == i);
+			}
+			else {
+				THROW_STD(invalid_argument,
+					"mongo::BinData must be terarkdb CarBin or StrZero");
+			}
 			break;
 		case RegEx:
 			{
@@ -1590,7 +1647,26 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 			THROW_STD(invalid_argument, "mongo::CodeWScope must not be a index key field");
 			break;
 		case BinData:
-			THROW_STD(invalid_argument, "mongo::BinData could'nt not be a index key field");
+			if (colmeta.type == ColumnType::CarBin) {
+				if (colnum-1 == i) {
+					size_t len = ConstDataView(pos).read<LittleEndian<int>>();
+					bb << int(len);
+					bb << GenericBinarySubType;
+					bb.ensureWrite(pos, len);
+					pos += 4;
+				}
+				else {
+					THROW_STD(invalid_argument,
+						"mongo::BinData could'nt not be non-last field of an index key");
+				}
+			}
+			else if (colmeta.type == ColumnType::StrZero) {
+				TerarkStrZeroToBsonBinData(bb, pos, end, colnum-1 == i);
+			}
+			else {
+				THROW_STD(invalid_argument,
+					"mongo::BinData must be terarkdb CarBin or StrZero");
+			}
 			break;
 		case RegEx:
 			invariant(colmeta.type == ColumnType::TwoStrZero);

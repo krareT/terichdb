@@ -47,6 +47,7 @@ GetoptDone:
 	size_t lines = 0;
 	size_t bytes = 0;
 	size_t colnum = tab->rowSchema().columnNum();
+	printf("skip existed %zd rows and import %zd rows\n", existedRows, rowsLimit);
 	for (int argIdx = optind + 1; argIdx < argc; ++argIdx) {
 		const char* fname = argv[argIdx];
 		terark::Auto_fclose fp(fopen(fname, "r"));
@@ -85,6 +86,7 @@ GetoptDone:
 		}
 	}
 	printf("waiting for compact thread complete...\n");
+	tab->syncFinishWriting();
 	terark::db::CompositeTable::safeStopAndWaitForCompress();
 	printf("done!\n");
     return 0;

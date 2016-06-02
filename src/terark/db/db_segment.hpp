@@ -92,6 +92,7 @@ public:
 	mutable SpinRwMutex m_segMutex;
 	valvec<uint32_t> m_updateList; // including deletions
 	febitvec    m_updateBits; // if m_updateList is too large, use updateBits
+	ReadableStorePtr m_deletionTime; // for snapshot, an uint64 array
 	bool        m_tobeDel;
 	bool        m_isDirty;
 	bool        m_isFreezed;

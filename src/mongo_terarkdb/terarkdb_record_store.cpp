@@ -122,7 +122,8 @@ public:
         const RecordId id(recIdx + 1);
         _lastReturnedId = id;
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
-        return {{id, {sbuf, len}}};
+		LOG(2) << "RecordBson: " << BSONObj(sbuf.get()).toString();
+		return {{id, {sbuf, len}}};
     }
 
     boost::optional<Record> seekExact(const RecordId& id) final {

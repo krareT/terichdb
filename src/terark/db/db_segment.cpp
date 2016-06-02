@@ -174,6 +174,9 @@ llong ReadableSegment::totalIndexSize() const {
 
 void ReadableSegment::load(PathRef segDir) {
 	assert(!segDir.empty());
+	if (m_schema->m_snapshotSchema) {
+		m_deletionTime = new FixedLenStore(*m_schema->m_snapshotSchema);
+	}
 	this->loadIsDel(segDir);
 	this->openIndices(segDir);
 	this->loadRecordStore(segDir);

@@ -213,7 +213,7 @@ void TerarkDbKVEngine::cleanShutdown() {
     m_tables.clear();
 	CompositeTable::safeStopAndWaitForFlush();
     log() << "TerarkDbKVEngine shutting down successed!";
-	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+//	std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
 void TerarkDbKVEngine::setJournalListener(JournalListener* jl) {

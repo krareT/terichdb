@@ -1780,6 +1780,7 @@ SchemaConfig::SchemaConfig() {
 	m_minMergeSegNum = DEFAULT_minMergeSegNum;
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
 	m_usePermanentRecordId = false;
+	m_enableSnapshot = false;
 }
 SchemaConfig::~SchemaConfig() {
 }
@@ -2223,6 +2224,9 @@ static int getMongoTypeChecked(const ColumnMeta& colmeta, fstring mongoTypeName)
 		if (ColumnType::CarBin == terarkType) {
 			return MongoBson::BinData;
 		}
+		if (ColumnType::StrZero == terarkType) {
+			return MongoBson::BinData;
+		}
 		THROW_STD(invalid_argument,
 			"mongoType binary must map to terark type CarBin");
 	}
@@ -2325,9 +2329,9 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		size_t nonSchemaField = m_rowSchema->getColumnId("$$");
 		if (nonSchemaField >= m_rowSchema->columnNum()) {
 			fprintf(stderr,
-				"WARN: missing '$$' field for mongodb, auto fields will be disable\n");
+				"WARN: missing '$$' field for mongodb, auto fields will be disabled\n");
 		}
-		if (nonSchemaField != m_rowSchema->columnNum()-1) {
+		else if (nonSchemaField != m_rowSchema->columnNum()-1) {
 			THROW_STD(invalid_argument,
 				"mongodb '$$' field must be the last field\n");
 		}
@@ -2412,8 +2416,26 @@ if (colgroupsIter != meta.end()) {
 	m_purgeDeleteThreshold = getJsonValue(
 		meta, "PurgeDeleteThreshold", DEFAULT_purgeDeleteThreshold);
 
+	m_enableSnapshot = getJsonValue(meta, "EnableSnapshot", false);
+{
 	// PermanentRecordId means record id will not be changed by table reload
-	m_usePermanentRecordId = getJsonValue(meta, "UsePermanentRecordId", false);
+	auto it = meta.find("UsePermanentRecordId");
+	if (meta.end() != it) {
+	//	m_usePermanentRecordId = getJsonValue(meta, "UsePermanentRecordId", false);
+		m_usePermanentRecordId = static_cast<bool>(it.value());
+		if (m_enableSnapshot && !m_usePermanentRecordId) {
+			THROW_STD(invalid_argument, "When EnableSnapshot, UsePermanentRecordId must be true or remain undefined");
+		}
+	}
+	else { // when EnableSnapshot, UsePermanentRecordId must be true
+		m_usePermanentRecordId = m_enableSnapshot;
+	}
+}
+	if (m_enableSnapshot) {
+		m_snapshotSchema = new Schema();
+		m_snapshotSchema->m_columnsMeta.insert_i("__mvccDeletionTime", ColumnMeta(ColumnType::Uint64));
+		m_snapshotSchema->compile();
+	}
 
 	const json& tableIndex = meta["TableIndex"];
 	if (!tableIndex.is_array()) {
