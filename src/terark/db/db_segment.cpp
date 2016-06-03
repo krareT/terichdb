@@ -57,6 +57,7 @@ ReadableSegment::~ReadableSegment() {
 	}
 	m_indices.clear(); // destroy index objects
 	m_colgroups.clear();
+	m_deletionTime = nullptr;
 	assert(!m_segDir.empty());
 	if (m_tobeDel && !m_segDir.empty()) {
 		fprintf(stderr, "INFO: remove: %s\n", m_segDir.string().c_str());
@@ -174,12 +175,20 @@ llong ReadableSegment::totalIndexSize() const {
 
 void ReadableSegment::load(PathRef segDir) {
 	assert(!segDir.empty());
-	if (m_schema->m_snapshotSchema) {
-		m_deletionTime = new FixedLenStore(*m_schema->m_snapshotSchema);
-	}
 	this->loadIsDel(segDir);
 	this->openIndices(segDir);
 	this->loadRecordStore(segDir);
+	if (m_schema->m_snapshotSchema) {
+		m_deletionTime = new FixedLenStore(*m_schema->m_snapshotSchema);
+		fs::path fpath = segDir / "deletion-time.fixlen";
+		m_deletionTime->load(fpath);
+		size_t physicRows = this->getPhysicRows();
+		if (size_t(m_deletionTime->numDataRows()) != physicRows) {
+			THROW_STD(invalid_argument
+				, "m_deletionTime->numDataRows() = %lld, m_isDel.size() = %zd, must be the same"
+				, m_deletionTime->numDataRows(), physicRows);
+		}
+	}
 }
 
 void ReadableSegment::save(PathRef segDir) const {
@@ -190,6 +199,10 @@ void ReadableSegment::save(PathRef segDir) const {
 	this->saveRecordStore(segDir);
 	this->saveIndices(segDir);
 	this->saveIsDel(segDir);
+	if (m_deletionTime) {
+		assert(getPhysicRows() == size_t(m_deletionTime->numDataRows()));
+		m_deletionTime->save(segDir / "deletion-time");
+	}
 }
 
 size_t ReadableSegment::getPhysicRows() const {
@@ -900,6 +913,11 @@ ReadonlySegment::syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,
 		auto dstDataPtr = dstColstore->getRecordsBasePtr() + fixlen * dstPhysicId;
 		auto srcDataPtr = srcColstore->getRecordsBasePtr() + fixlen * srcPhysicId;
 		memcpy(dstDataPtr, srcDataPtr, fixlen);
+	}
+	if (m_deletionTime) {
+		auto dstDataPtr = (uint64_t*)this->m_deletionTime->getRecordsBasePtr();
+		auto srcDataPtr = (uint64_t*)input->m_deletionTime->getRecordsBasePtr();
+		dstDataPtr[dstPhysicId] = srcDataPtr[srcPhysicId];
 	}
 }
 
