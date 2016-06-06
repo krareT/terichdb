@@ -373,10 +373,8 @@ ReadonlySegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	}
 	size_t newsize = oldsize;
 	llong* recIdvecData = recIdvec->data();
-	const Schema& schema = m_schema->getIndexSchema(indexId);
 	if (m_deletionTime) {
 		auto deltime = (const llong*)m_deletionTime->getRecordsBasePtr();
-		auto myBaseId = ctx->m_rowNumVec[mySegIdx];
 		auto snapshotVersion = ctx->m_mySnapshotVersion;
 		if (m_isPurged.empty()) {
 			for(size_t k = oldsize; k < recIdvec->size(); ++k) {
