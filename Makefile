@@ -253,6 +253,8 @@ ${TerarkDB_r} : override LIBS += ${LIB_TERARK_R} -ltbb
 
 ${LeveldbApi_d} : override LIBS += -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} -ltbb
 ${LeveldbApi_r} : override LIBS += -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} -ltbb
+${LeveldbApi_d} : ${TerarkDB_d}
+${LeveldbApi_r} : ${TerarkDB_r}
 
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 
