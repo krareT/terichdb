@@ -1876,6 +1876,15 @@ void SchemaConfig::compileSchema() {
 		else
 			m_multIndices.push_back(i);
 	}
+	m_bestUniqueIndexId = size_t(-1);
+	for(size_t i = 0; i < m_uniqIndices.size(); ++i) {
+		size_t indexId = m_uniqIndices[i];
+		auto&  schema = this->getIndexSchema(i);
+		if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
+			m_bestUniqueIndexId = i;
+			break;
+		}
+	}
 	m_uniqIndices.shrink_to_fit_malloc_free();
 	m_multIndices.shrink_to_fit_malloc_free();
 

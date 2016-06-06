@@ -368,24 +368,53 @@ ReadonlySegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	size_t oldsize = recIdvec->size();
 	auto index = m_indices[indexId].get();
 	index->searchExactAppend(key, recIdvec, ctx);
+	if (recIdvec->size() == oldsize) {
+		return;
+	}
 	size_t newsize = oldsize;
 	llong* recIdvecData = recIdvec->data();
-	if (m_isPurged.empty()) {
-		for (size_t k = oldsize; k < recIdvec->size(); ++k) {
-			llong logicId = recIdvecData[k];
-			if (!m_isDel[logicId])
-				recIdvecData[newsize++] = logicId;
+	const Schema& schema = m_schema->getIndexSchema(indexId);
+	if (m_deletionTime) {
+		auto deltime = (const llong*)m_deletionTime->getRecordsBasePtr();
+		auto myBaseId = ctx->m_rowNumVec[mySegIdx];
+		auto snapshotVersion = ctx->m_mySnapshotVersion;
+		if (m_isPurged.empty()) {
+			for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+				llong logicId = recIdvecData[k];
+				if (deltime[logicId] > snapshotVersion)
+					recIdvecData[newsize++] = logicId;
+			}
+		}
+		else {
+			assert(m_isPurged.size() == m_isDel.size());
+			assert(this->getReadonlySegment() != NULL);
+			for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+				size_t physicId = (size_t)recIdvecData[k];
+				assert(physicId < m_isPurged.max_rank0());
+				size_t logicId = m_isPurged.select0(physicId);
+				if (deltime[physicId] > snapshotVersion)
+					recIdvecData[newsize++] = logicId;
+			}
 		}
 	}
 	else {
-		assert(m_isPurged.size() == m_isDel.size());
-		assert(this->getReadonlySegment() != NULL);
-		for(size_t k = oldsize; k < recIdvec->size(); ++k) {
-			size_t physicId = (size_t)recIdvecData[k];
-			assert(physicId < m_isPurged.max_rank0());
-			size_t logicId = m_isPurged.select0(physicId);
-			if (!m_isDel[logicId])
-				recIdvecData[newsize++] = logicId;
+		if (m_isPurged.empty()) {
+			for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+				llong logicId = recIdvecData[k];
+				if (!m_isDel[logicId])
+					recIdvecData[newsize++] = logicId;
+			}
+		}
+		else {
+			assert(m_isPurged.size() == m_isDel.size());
+			assert(this->getReadonlySegment() != NULL);
+			for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+				size_t physicId = (size_t)recIdvecData[k];
+				assert(physicId < m_isPurged.max_rank0());
+				size_t logicId = m_isPurged.select0(physicId);
+				if (!m_isDel[logicId])
+					recIdvecData[newsize++] = logicId;
+			}
 		}
 	}
 	recIdvec->risk_set_size(newsize);

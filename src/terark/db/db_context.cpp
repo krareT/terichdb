@@ -82,6 +82,11 @@ DbContext::DbContext(const CompositeTable* tab)
 		m_transaction.reset(m_wrSegPtr->createTransaction());
 	}
 	m_rowNumVec.assign(tab->m_rowNumVec);
+
+	// record id is also used as a snapshot version
+	m_mySnapshotVersion = tab->m_rowNum - 1;
+	m_isUserDefineSnapshot = false;
+
 	segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 	syncIndex = true;
 	isUpsertOverwritten = 0;
@@ -109,6 +114,9 @@ DbContext::~DbContext() {
 void DbContext::doSyncSegCtxNoLock(const CompositeTable* tab) {
 	assert(tab == m_tab);
 	assert(this->segArrayUpdateSeq < tab->getSegArrayUpdateSeq());
+	if (!m_isUserDefineSnapshot) {
+		m_mySnapshotVersion = tab->m_rowNum - 1;
+	}
 	size_t indexNum = tab->getIndexNum();
 	size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
 	size_t oldSegNum = m_segCtx.size();

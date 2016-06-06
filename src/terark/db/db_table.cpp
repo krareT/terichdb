@@ -64,6 +64,7 @@ CompositeTable::CompositeTable() {
 	m_newWrSegNum = 0;
 	m_bgTaskNum = 0;
 	m_rowNum = 0;
+	m_oldestSnapshotVersion = 0;
 	m_segArrayUpdateSeq = 1;
 //	m_ctxListHead = new DbContextLink();
 }
@@ -1657,6 +1658,8 @@ bool
 CompositeTable::removeRow(llong id, DbContext* ctx) {
 	assert(ctx != nullptr);
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
+	const llong snapshotVersion = this->m_rowNum - 1;
+	assert(snapshotVersion >= id);
 	MyRwLock lock(m_rwMutex, false);
 	DebugCheckRowNumVecNoLock(this);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
@@ -1716,7 +1719,16 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 		}
 	}
 	else { // freezed segment, just set del mark
-		{
+		if (seg->m_deletionTime) {
+			assert(nullptr != m_schema->m_snapshotSchema);
+			llong* deltime = (llong*)seg->getRecordsBasePtr();
+			SpinRwLock wsLock(seg->m_segMutex);
+			if (deltime[subId] != LLONG_MAX) {
+				deltime[subId] = snapshotVersion;
+				seg->addtoUpdateList(size_t(subId));
+			}
+		}
+		else {
 			SpinRwLock wsLock(seg->m_segMutex);
 			if (!seg->m_isDel[subId]) {
 				seg->addtoUpdateList(size_t(subId));

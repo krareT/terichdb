@@ -101,6 +101,7 @@ public:
 	std::unique_ptr<class DbTransaction> m_transaction;
 	valvec<SegCtx*> m_segCtx;
 	valvec<llong>   m_rowNumVec; // copy of CompositeTable::m_rowNumVec
+	llong           m_mySnapshotVersion;
 	std::string  errMsg;
 	valvec<byte> buf1;
 	valvec<byte> buf2;
@@ -116,6 +117,7 @@ public:
 	size_t regexMatchMemLimit;
 	size_t segArrayUpdateSeq;
 	bool syncIndex;
+	bool m_isUserDefineSnapshot;
 	byte isUpsertOverwritten;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;

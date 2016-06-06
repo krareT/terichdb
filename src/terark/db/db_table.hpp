@@ -313,6 +313,7 @@ protected:
 	size_t m_bgTaskNum;
 	size_t m_segArrayUpdateSeq;
 	llong  m_rowNum;
+	llong  m_oldestSnapshotVersion;
 	bool m_tobeDrop;
 	bool m_isMerging;
 	PurgeStatus m_purgeStatus;
@@ -482,7 +483,11 @@ void DbContext::trySyncSegCtxNoLock(const CompositeTable* tab) {
 		assert(m_segCtx.size() == tab->m_segments.size());
 		assert(m_rowNumVec.size() == tab->m_segments.size()+1);
 		assert(m_rowNumVec.size() == tab->m_rowNumVec.size());
-		m_rowNumVec.back() = tab->m_rowNum;
+		llong rowNum = tab->m_rowNum;
+		if (!m_isUserDefineSnapshot) {
+			m_mySnapshotVersion = rowNum - 1;
+		}
+		m_rowNumVec.back() = rowNum;
 	}
 }
 
@@ -497,7 +502,11 @@ void DbContext::trySyncSegCtxSpeculativeLock(const CompositeTable* tab) {
 		assert(m_rowNumVec.size() == tab->m_rowNumVec.size());
 	}
 	else {
-		m_rowNumVec.back() = tab->m_rowNum;
+		llong rowNum = tab->m_rowNum;
+		if (!m_isUserDefineSnapshot) {
+			m_mySnapshotVersion = rowNum - 1;
+		}
+		m_rowNumVec.back() = rowNum;
 	}
 }
 

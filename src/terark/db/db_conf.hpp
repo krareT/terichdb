@@ -459,6 +459,7 @@ namespace terark { namespace db {
 		llong    m_compressingWorkMemSize;
 		llong    m_maxWritingSegmentSize;
 		size_t   m_minMergeSegNum;
+		size_t   m_bestUniqueIndexId;
 		double   m_purgeDeleteThreshold;
 		std::string m_tableClass;
 		bool     m_usePermanentRecordId;
