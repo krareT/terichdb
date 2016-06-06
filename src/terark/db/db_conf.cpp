@@ -1879,7 +1879,7 @@ void SchemaConfig::compileSchema() {
 	m_bestUniqueIndexId = size_t(-1);
 	for(size_t i = 0; i < m_uniqIndices.size(); ++i) {
 		size_t indexId = m_uniqIndices[i];
-		auto&  schema = this->getIndexSchema(i);
+		auto&  schema = this->getIndexSchema(indexId);
 		if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
 			m_bestUniqueIndexId = i;
 			break;
