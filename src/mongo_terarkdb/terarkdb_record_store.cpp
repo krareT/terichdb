@@ -366,6 +366,7 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 }
 
 void TerarkDbRecordStore::deleteRecord(OperationContext* txn, const RecordId& id) {
+    log() << "mongo_terarkdb@panda deleteRecord";
     auto& td = m_table->getMyThreadData();
     m_table->m_tab->removeRow(id.repr()-1, &*td.m_dbCtx);
 }
