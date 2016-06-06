@@ -115,42 +115,6 @@ Status checkKeySize(const BSONObj& key) {
 
 }  // namespace
 
-TerarkDbIndex::IterDataPtr TerarkDbIndex::allocIter(bool forward) const {
-	auto tab = this->m_table->m_tab.get();
-	IterDataPtr iter;
-	{
-		std::unique_lock<std::mutex> lock(m_iterCacheMutex);
-		if (forward) {
-			if (m_forwardIterCache.empty()) {
-				lock.unlock();
-				iter = new IterData();
-				iter->m_cursor = tab->createIndexIterForward(m_indexId);
-			} else {
-				iter = m_forwardIterCache.pop_val();
-			}
-		}
-		else {
-			if (m_backwardIterCache.empty()) {
-				lock.unlock();
-				iter = new IterData();
-				iter->m_cursor = tab->createIndexIterBackward(m_indexId);
-			} else {
-				iter = m_backwardIterCache.pop_val();
-			}
-		}
-	}
-	return iter;
-}
-
-void TerarkDbIndex::releaseIter(bool forward, IterDataPtr iter) const {
-	std::unique_lock<std::mutex> lock(m_iterCacheMutex);
-	if (forward) {
-		m_forwardIterCache.push_back(std::move(iter));
-	} else {
-		m_backwardIterCache.push_back(std::move(iter));
-	}
-}
-
 Status TerarkDbIndex::dupKeyError(const BSONObj& key) {
     StringBuilder sb;
     sb << "E11000 duplicate key error";
@@ -188,8 +152,6 @@ TerarkDbIndex::TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, cons
 }
 
 TerarkDbIndex::~TerarkDbIndex() {
-	m_forwardIterCache.clear();
-	m_backwardIterCache.clear();
 	CompositeTable* tab = m_table->m_tab.get();
     LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
 }
@@ -297,11 +259,10 @@ class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor {
 public:
     TerarkDbIndexCursorBase(const TerarkDbIndex& idx, OperationContext* txn, bool forward)
         : _txn(txn), _idx(idx), _forward(forward) {
-		CompositeTable* tab = idx.m_table->m_tab.get();
-		_cursor = idx.allocIter(forward);
+		_cursor = idx.m_table->allocIndexIter(idx.m_indexId, forward);
     }
 	~TerarkDbIndexCursorBase() {
-		_idx.releaseIter(_forward, _cursor);
+		_idx.m_table->releaseIndexIter(_idx.m_indexId, _forward, _cursor);
 	}
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
         if (_eof) { // Advance on a cursor at the end is a no-op
@@ -535,7 +496,7 @@ protected:
 
     OperationContext*  _txn;
     const TerarkDbIndex& _idx;  // not owned
-    TerarkDbIndex::IterDataPtr  _cursor;
+    IndexIterDataPtr  _cursor;
 
     // These are where this cursor instance is. They are not changed in the face of a failing
     // next().

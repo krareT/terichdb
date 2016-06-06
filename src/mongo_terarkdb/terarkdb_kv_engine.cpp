@@ -95,6 +95,8 @@ TableThreadData::TableThreadData(CompositeTable* tab) {
 
 ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
 	m_tab = CompositeTable::open(dbPath);
+	m_indexForwardIterCache.resize(m_tab->getIndexNum());
+	m_indexBackwardIterCache.resize(m_tab->getIndexNum());
 }
 
 ThreadSafeTable::~ThreadSafeTable() {
@@ -118,6 +120,47 @@ TableThreadDataPtr ThreadSafeTable::allocTableThreadData() {
 void ThreadSafeTable::releaseTableThreadData(TableThreadDataPtr ttd) {
 	std::unique_lock<std::mutex> lock(this->m_cursorCacheMutex);
 	m_cursorCache.push_back(std::move(ttd));
+}
+
+IndexIterDataPtr ThreadSafeTable::allocIndexIter(size_t indexId, bool forward) {
+	auto tab = m_tab.get();
+	IndexIterDataPtr iter;
+	assert(indexId < tab->getIndexNum());
+	assert(m_indexForwardIterCache.size() == tab->getIndexNum());
+	assert(m_indexBackwardIterCache.size() == tab->getIndexNum());
+	{
+		std::unique_lock<std::mutex> lock(m_cursorCacheMutex);
+		if (forward) {
+			if (m_indexForwardIterCache[indexId].empty()) {
+				lock.unlock();
+				iter = new IndexIterData();
+				iter->m_cursor = tab->createIndexIterForward(indexId);
+			} else {
+				iter = m_indexForwardIterCache[indexId].pop_val();
+			}
+		}
+		else {
+			if (m_indexBackwardIterCache[indexId].empty()) {
+				lock.unlock();
+				iter = new IndexIterData();
+				iter->m_cursor = tab->createIndexIterBackward(indexId);
+			} else {
+				iter = m_indexBackwardIterCache[indexId].pop_val();
+			}
+		}
+	}
+	return iter;
+}
+
+void ThreadSafeTable::releaseIndexIter(size_t indexId, bool forward, IndexIterDataPtr iter) {
+	assert(indexId < m_indexForwardIterCache.size());
+	assert(m_indexForwardIterCache.size() == m_indexBackwardIterCache.size());
+	std::unique_lock<std::mutex> lock(m_cursorCacheMutex);
+	if (forward) {
+		m_indexForwardIterCache[indexId].push_back(std::move(iter));
+	} else {
+		m_indexBackwardIterCache[indexId].push_back(std::move(iter));
+	}
 }
 
 // brain dead mongodb may not delete RecordStore and SortedDataInterface
@@ -408,11 +451,15 @@ TerarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 		return NULL;
 	}
 	std::lock_guard<std::mutex> lock(m_mutex);
-	ThreadSafeTablePtr& tab = m_tables[ident]; 
-	if (tab == nullptr) {
+	size_t fidx = m_tables.find_i(ident);
+	ThreadSafeTable* tab = NULL;
+	if (fidx < m_tables.end_i()) {
+		tab = m_tables.val(fidx).get();
+	} else {
 		tab = new ThreadSafeTable(tabDir);
+		m_tables.insert_i(ident, tab);
 	}
-    return new TerarkDbRecordStore(opCtx, ns, ident, &*tab, NULL);
+    return new TerarkDbRecordStore(opCtx, ns, ident, tab, NULL);
 }
 
 Status
@@ -486,14 +533,19 @@ TerarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
 	}
 	auto tabDir = m_pathTerarkTables / nsToTableDir(tableNS);
 	std::lock_guard<std::mutex> lock(m_mutex);
-	auto& tab = m_tables[tableIdent];
-	if (tab == nullptr) {
+
+	ThreadSafeTable* tab = NULL;
+	size_t fidx = m_tables.find_i(tableIdent);
+	if (fidx < m_tables.end_i()) {
+		tab = m_tables.val(fidx).get();
+	} else {
 		tab = new ThreadSafeTable(tabDir);
+		m_tables.insert_i(tableIdent, tab);
 	}
     if (desc->unique())
-        return new TerarkDbIndexUnique(&*tab, opCtx, desc);
+        return new TerarkDbIndexUnique(tab, opCtx, desc);
     else
-    	return new TerarkDbIndexStandard(&*tab, opCtx, desc);
+    	return new TerarkDbIndexStandard(tab, opCtx, desc);
 }
 
 Status TerarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {

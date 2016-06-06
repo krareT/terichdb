@@ -38,6 +38,7 @@ using terark::ullong;
 using terark::fstring;
 using terark::gold_hash_map;
 using terark::hash_strmap;
+using terark::valvec;
 
 extern const std::string kTerarkDbEngineName;
 
@@ -49,6 +50,28 @@ public:
     mongo::terarkdb::SchemaRecordCoder m_coder;
 };
 typedef boost::intrusive_ptr<TableThreadData> TableThreadDataPtr;
+
+struct IndexIterData : public terark::RefCounter {
+	terark::db::IndexIteratorPtr  m_cursor;
+	terark::valvec<unsigned char> m_curKey;
+	terark::valvec<         char> m_qryKey;
+//	mongo::terarkdb::SchemaRecordCoder m_coder;
+	terark::valvec<unsigned char> m_endPositionKey;
+
+	int seekLowerBound(llong* recId) {
+		return m_cursor->seekLowerBound(m_qryKey, recId, &m_curKey);
+	}
+	int seekUpperBound(llong* recId) {
+		return m_cursor->seekUpperBound(m_qryKey, recId, &m_curKey);
+	}
+	bool increment(llong* recId) {
+		return m_cursor->increment(recId, &m_curKey);
+	}
+	void reset() {
+		m_cursor->reset();
+	}
+};
+typedef boost::intrusive_ptr<IndexIterData> IndexIterDataPtr;
 
 class ThreadSafeTable : public terark::RefCounter {
 public:
@@ -62,10 +85,15 @@ public:
 	TableThreadDataPtr allocTableThreadData();
 	void releaseTableThreadData(TableThreadDataPtr ttd);
 
+	IndexIterDataPtr allocIndexIter(size_t indexId, bool forward);
+	void releaseIndexIter(size_t indexId, bool forward, IndexIterDataPtr);
+
 protected:
 	tbb::enumerable_thread_specific<TableThreadDataPtr> m_ttd;
 	std::mutex m_cursorCacheMutex;
-	terark::valvec<TableThreadDataPtr> m_cursorCache;
+	valvec<TableThreadDataPtr> m_cursorCache; // for RecordStore Iterator
+	valvec<valvec<IndexIterDataPtr> > m_indexForwardIterCache;
+	valvec<valvec<IndexIterDataPtr> > m_indexBackwardIterCache;
 };
 typedef boost::intrusive_ptr<ThreadSafeTable> ThreadSafeTablePtr;
 

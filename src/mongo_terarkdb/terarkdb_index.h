@@ -97,40 +97,12 @@ public:
 	bool insertIndexKey(const BSONObj& newKey, const RecordId& id,
 						TableThreadData* td);
 
-	struct IterData : public terark::RefCounter {
-		terark::db::IndexIteratorPtr  m_cursor;
-		terark::valvec<unsigned char> m_curKey;
-		terark::valvec<         char> m_qryKey;
-	//	mongo::terarkdb::SchemaRecordCoder m_coder;
-		terark::valvec<unsigned char> m_endPositionKey;
-
-		int seekLowerBound(llong* recId) {
-			return m_cursor->seekLowerBound(m_qryKey, recId, &m_curKey);
-		}
-		int seekUpperBound(llong* recId) {
-			return m_cursor->seekUpperBound(m_qryKey, recId, &m_curKey);
-		}
-		bool increment(llong* recId) {
-			return m_cursor->increment(recId, &m_curKey);
-		}
-		void reset() {
-			m_cursor->reset();
-		}
-	};
-	typedef boost::intrusive_ptr<IterData> IterDataPtr;
-	IterDataPtr allocIter(bool forward) const;
-	void releaseIter(bool forward, IterDataPtr) const;
-
 protected:
     class BulkBuilder;
     const Ordering _ordering;
     std::string _uri;
     std::string _collectionNamespace;
     std::string _indexName;
-
-	mutable std::mutex m_iterCacheMutex;
-	mutable terark::valvec<IterDataPtr> m_forwardIterCache;
-	mutable terark::valvec<IterDataPtr> m_backwardIterCache;
 };
 
 
