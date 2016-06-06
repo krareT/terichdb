@@ -98,10 +98,10 @@ const {
 			, "can not MatchRegex on non-string indexId=%zd indexName=%s"
 			, indexId, schema.m_name.c_str());
 	}
+	ctx->trySyncSegCtxSpeculativeLock(this);
 	recIdvec->erase_all();
-	MyRwLock lock(this->m_rwMutex, false);
-	for (size_t i = 0; i < m_segments.size(); ++i) {
-		auto seg = m_segments[i].get();
+	for (size_t i = 0; i < ctx->m_segCtx.size(); ++i) {
+		auto seg = ctx->m_segCtx[i]->seg;
 		if (seg->getWritableStore()) {
 			if (seg->m_isDel.size() > 0) {
 			  fprintf(stderr
@@ -115,14 +115,26 @@ const {
 			THROW_STD(logic_error, "MatchRegex must be run on NestLoudsTrieIndex\n");
 		}
 		size_t oldsize = recIdvec->size();
+		const llong* deltime = nullptr;
+		const llong  baseId = ctx->m_rowNumVec[i];
+		llong snapshotVersion = ctx->m_mySnapshotVersion;
+		if (seg->m_deletionTime) {
+			assert(nullptr != m_schema->m_snapshotSchema);
+			deltime = (const llong*)(seg->m_deletionTime->getRecordsBasePtr());
+		}
 		if (index->matchRegexAppend(regexDFA, recIdvec, ctx)) {
-			llong baseId = m_rowNumVec[i];
 			size_t i = oldsize;
 			for(size_t j = oldsize; j < recIdvec->size(); ++j) {
 				size_t subPhysicId = (*recIdvec)[j];
 				size_t subLogicId = seg->getLogicId(subPhysicId);
-				if (!seg->m_isDel[subLogicId])
-					(*recIdvec)[i++] = baseId + subLogicId;
+				if (deltime) {
+					if (deltime[subPhysicId] > snapshotVersion)
+						(*recIdvec)[i++] = baseId + subLogicId;
+				}
+				else {
+					if (!seg->m_isDel[subLogicId])
+						(*recIdvec)[i++] = baseId + subLogicId;
+				}
 			}
 			recIdvec->risk_set_size(i);
 		}
@@ -144,16 +156,24 @@ const {
 			StoreIteratorPtr iter = seqStore->createStoreIterForward(ctx);
 			const bm_uint_t* isDel = seg->m_isDel.bldata();
 			const bm_uint_t* isPurged = seg->m_isPurged.bldata();
-			const llong baseId = m_rowNumVec[i];
 			for (; subLogicId < subRowsNum; subLogicId++) {
 				if (!isPurged || !terark_bit_test(isPurged, subLogicId)) {
 					llong subCheckPhysicId = INT_MAX; // for fail fast
 					bool hasData = iter->increment(&subCheckPhysicId, &key);
 					TERARK_RT_assert(hasData, std::logic_error);
 					TERARK_RT_assert(size_t(subCheckPhysicId) == subPhysicId, std::logic_error);
-					if (!terark_bit_test(isDel, subLogicId)) {
-						if (matchDFA->first_mismatch_pos(key) == key.size()) {
-							recIdvec->push_back(baseId + subLogicId);
+					if (deltime) {
+						if (deltime[subPhysicId] > snapshotVersion) {
+							if (matchDFA->first_mismatch_pos(key) == key.size()) {
+								recIdvec->push_back(baseId + subLogicId);
+							}
+						}
+					}
+					else {
+						if (!terark_bit_test(isDel, subLogicId)) {
+							if (matchDFA->first_mismatch_pos(key) == key.size()) {
+								recIdvec->push_back(baseId + subLogicId);
+							}
 						}
 					}
 					subPhysicId++;
