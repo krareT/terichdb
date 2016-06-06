@@ -138,9 +138,6 @@
     <ClCompile Include="..\..\..\..\mongo\src\mongo\base\data_type_terminated.cpp">
       <Filter>Source Files\mongo\base</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\error_codes.cpp">
-      <Filter>Source Files\mongo\base</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\..\mongo\src\mongo\base\global_initializer.cpp">
       <Filter>Source Files\mongo\base</Filter>
     </ClCompile>
@@ -344,6 +341,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\..\mongo\src\mongo\logger\rotatable_file_writer.cpp">
       <Filter>Source Files\mongo\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\mongo\src\mongo\base\error_codes.cpp">
+      <Filter>Source Files\mongo\base</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

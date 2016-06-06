@@ -101,11 +101,31 @@ ThreadSafeTable::~ThreadSafeTable() {
 	log() << BOOST_CURRENT_FUNCTION << ": tabDir: " << m_tab->getDir().string() << m_tab->get_refcount();
 }
 
+
+TableThreadDataPtr ThreadSafeTable::allocTableThreadData() {
+	TableThreadDataPtr ret;
+	std::unique_lock<std::mutex> lock(this->m_cursorCacheMutex);
+	if (m_cursorCache.empty()) {
+		lock.unlock();
+		ret = new TableThreadData(this->m_tab.get());
+	}
+	else {
+		ret = m_cursorCache.pop_val();
+	}
+	return ret;
+}
+
+void ThreadSafeTable::releaseTableThreadData(TableThreadDataPtr ttd) {
+	std::unique_lock<std::mutex> lock(this->m_cursorCacheMutex);
+	m_cursorCache.push_back(std::move(ttd));
+}
+
 // brain dead mongodb may not delete RecordStore and SortedDataInterface
 // so, workaround mongodb, call destroy in cleanShutdown()
 void ThreadSafeTable::destroy() {
 	log() << BOOST_CURRENT_FUNCTION
 		<< ": mongodb will leak RecordStore and SortedDataInterface, destory underlying objects now";
+	m_cursorCache.clear();
 	m_ttd.clear();
 	m_tab = nullptr;
 }

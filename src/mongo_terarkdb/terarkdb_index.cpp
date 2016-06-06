@@ -115,6 +115,42 @@ Status checkKeySize(const BSONObj& key) {
 
 }  // namespace
 
+TerarkDbIndex::IterDataPtr TerarkDbIndex::allocIter(bool forward) const {
+	auto tab = this->m_table->m_tab.get();
+	IterDataPtr iter;
+	{
+		std::unique_lock<std::mutex> lock(m_iterCacheMutex);
+		if (forward) {
+			if (m_forwardIterCache.empty()) {
+				lock.unlock();
+				iter = new IterData();
+				iter->m_cursor = tab->createIndexIterForward(m_indexId);
+			} else {
+				iter = m_forwardIterCache.pop_val();
+			}
+		}
+		else {
+			if (m_backwardIterCache.empty()) {
+				lock.unlock();
+				iter = new IterData();
+				iter->m_cursor = tab->createIndexIterBackward(m_indexId);
+			} else {
+				iter = m_backwardIterCache.pop_val();
+			}
+		}
+	}
+	return iter;
+}
+
+void TerarkDbIndex::releaseIter(bool forward, IterDataPtr iter) const {
+	std::unique_lock<std::mutex> lock(m_iterCacheMutex);
+	if (forward) {
+		m_forwardIterCache.push_back(std::move(iter));
+	} else {
+		m_backwardIterCache.push_back(std::move(iter));
+	}
+}
+
 Status TerarkDbIndex::dupKeyError(const BSONObj& key) {
     StringBuilder sb;
     sb << "E11000 duplicate key error";
@@ -152,6 +188,8 @@ TerarkDbIndex::TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, cons
 }
 
 TerarkDbIndex::~TerarkDbIndex() {
+	m_forwardIterCache.clear();
+	m_backwardIterCache.clear();
 	CompositeTable* tab = m_table->m_tab.get();
     LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
 }
@@ -260,22 +298,23 @@ public:
     TerarkDbIndexCursorBase(const TerarkDbIndex& idx, OperationContext* txn, bool forward)
         : _txn(txn), _idx(idx), _forward(forward) {
 		CompositeTable* tab = idx.m_table->m_tab.get();
-		if (forward)
-			_cursor = tab->createIndexIterForward(idx.m_indexId);
-		else
-			_cursor = tab->createIndexIterBackward(idx.m_indexId);
+		_cursor = idx.allocIter(forward);
     }
+	~TerarkDbIndexCursorBase() {
+		_idx.releaseIter(_forward, _cursor);
+	}
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
         if (_eof) { // Advance on a cursor at the end is a no-op
 	        TRACE_CURSOR << "next(): _eof=true";
             return {};
 		}
+ 		auto cur = _cursor.get();
         if (!_lastMoveWasRestore) {
 			llong recIdx = -1;
-			if (_cursor->increment(&recIdx, &m_curKey)) {
+			if (_cursor->increment(&recIdx)) {
 				_cursorAtEof = false;
 				_id = RecordId(recIdx + 1);
-		        TRACE_CURSOR << "next(): increment() ret true, curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
+		        TRACE_CURSOR << "next(): increment() ret true, curKey=" << _idx.getIndexSchema()->toJsonStr(cur->m_curKey);
 		        return curr(parts);
 			}
 			else {
@@ -285,7 +324,7 @@ public:
 			}
 		}
 		else {
-			TRACE_CURSOR << "next(): curKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey);
+			TRACE_CURSOR << "next(): curKey=" << _idx.getIndexSchema()->toJsonStr(cur->m_curKey);
 			_lastMoveWasRestore = false;
 	        return curr(parts);
 		}
@@ -293,10 +332,11 @@ public:
 
     void setEndPosition(const BSONObj& key, bool inclusive) override {
         TRACE_CURSOR << "setEndPosition: inclusive = " << inclusive << ", bsonKey = " << key;
+		auto cur = _cursor.get();
         if (key.isEmpty()) {
 		EmptyKey:
             // This means scan to end of index.
-            _endPositionKey.erase_all();
+            cur->m_endPositionKey.erase_all();
 			_endPositionInclude = false;
         }
 		else {
@@ -305,10 +345,10 @@ public:
 		        TRACE_CURSOR << "setEndPosition: first field is an empty object";
 				goto EmptyKey;
 			}
-			encodeIndexKey(*_idx.getIndexSchema(), key, &_endPositionKey);
+			encodeIndexKey(*_idx.getIndexSchema(), key, &cur->m_endPositionKey);
 			_endPositionInclude = inclusive;
 	        TRACE_CURSOR << "setEndPosition: _endPositionKey="
-						 << _idx.getIndexSchema()->toJsonStr(_endPositionKey);
+						 << _idx.getIndexSchema()->toJsonStr(cur->m_endPositionKey);
 		}
     }
 
@@ -373,7 +413,8 @@ public:
             // Standard (non-unique) indices *do* include the record id in their KeyStrings. This
             // means that restoring to the same key with a new record id will return false, and we
             // will *not* skip the key with the new record id.
-			m_qryKey.assign(m_curKey);
+			auto cur = _cursor.get();
+			cur->m_qryKey.assign(cur->m_curKey);
             _lastMoveWasRestore = !seekWTCursor(true);
             TRACE_CURSOR << "restore _lastMoveWasRestore:" << _lastMoveWasRestore;
         }
@@ -398,7 +439,7 @@ protected:
         dassert(!_id.isNull());
         BSONObj bson;
         if (TRACING_ENABLED || (parts & kWantKey)) {
-            bson = BSONObj(decodeIndexKey(*_idx.getIndexSchema(), m_curKey));
+            bson = BSONObj(decodeIndexKey(*_idx.getIndexSchema(), _cursor->m_curKey));
             TRACE_CURSOR << "curr() returning " << bson << ' ' << _id;
         }
         return {{std::move(bson), _id}};
@@ -407,9 +448,10 @@ protected:
     bool atOrPastEndPointAfterSeeking() const {
         if (_eof)
             return true;
-        if (_endPositionKey.empty())
+		auto cur = _cursor.get();
+        if (cur->m_endPositionKey.empty())
             return false;
-        const int cmp = _idx.getIndexSchema()->compareData(m_curKey, _endPositionKey);
+        const int cmp = _idx.getIndexSchema()->compareData(cur->m_curKey, cur->m_endPositionKey);
 		bool ret;
         if (_forward) {
             ret = cmp > 0 || (cmp == 0 && !_endPositionInclude);
@@ -417,15 +459,15 @@ protected:
             ret = cmp < 0 || (cmp == 0 && !_endPositionInclude);
         }
 		TRACE_CURSOR << "atOrPastEndPointAfterSeeking(): returning " << ret
-			<< "\\\n\tcurKey=" << _idx.getIndexSchema()->toJsonStr(m_curKey)
-			<< ", endKey=" << _idx.getIndexSchema()->toJsonStr(_endPositionKey)
+			<< "\\\n\tcurKey=" << _idx.getIndexSchema()->toJsonStr(cur->m_curKey)
+			<< ", endKey=" << _idx.getIndexSchema()->toJsonStr(cur->m_endPositionKey)
 			<< ", cmp=" << cmp << ", endInclude=" << _endPositionInclude;
 		return ret;
     }
 
     void advanceWTCursor() {
 		llong recIdx = -1;
-		if (_cursor->increment(&recIdx, &m_curKey)) {
+		if (_cursor->increment(&recIdx)) {
 	        _cursorAtEof = false;
 			_id = RecordId(recIdx + 1);
 			TRACE_CURSOR << "advanceWTCursor(): increment() = true, _id = " << _id;
@@ -438,7 +480,7 @@ protected:
     // Seeks to query. Returns true on exact match.
     bool seekWTCursor(const BSONObj& bsonKey, bool inclusive) {
 		auto indexSchema = _idx.getIndexSchema();
-		encodeIndexKey(*indexSchema, bsonKey, &m_qryKey);
+		encodeIndexKey(*indexSchema, bsonKey, &_cursor->m_qryKey);
 		return seekWTCursor(inclusive);
 	}
     bool seekWTCursor(bool inclusive) {
@@ -446,19 +488,20 @@ protected:
 		_eof = false;
         int ret;
 		const char* funcName;
+		auto cur = _cursor.get();
 	//	m_curKey.erase_all();
 		if (inclusive) {
 			funcName = "seekLowerBound";
-			ret = _cursor->seekLowerBound(m_qryKey, &recIdx, &m_curKey);
+			ret = cur->seekLowerBound(&recIdx);
 		} else {
 			funcName = "seekUpperBound";
-			ret = _cursor->seekUpperBound(m_qryKey, &recIdx, &m_curKey);
+			ret = cur->seekUpperBound(&recIdx);
 		}
-		bool isEqual = fstring(m_qryKey) == m_curKey;
+		bool isEqual = fstring(cur->m_qryKey) == cur->m_curKey;
 		TRACE_CURSOR << "seekWTCursor(): " << funcName << " ret: " << ret
 			<< ", _id = " << (recIdx + 1)
-			<< ", qryKey = " << _idx.getIndexSchema()->toJsonStr(m_qryKey)
-			<< ", curKey = " << _idx.getIndexSchema()->toJsonStr(m_curKey)
+			<< ", qryKey = " << _idx.getIndexSchema()->toJsonStr(cur->m_qryKey)
+			<< ", curKey = " << _idx.getIndexSchema()->toJsonStr(cur->m_curKey)
 			<< ", inclusive = " << inclusive
 			<< ", isEqual = " << isEqual
 			;
@@ -492,10 +535,7 @@ protected:
 
     OperationContext*  _txn;
     const TerarkDbIndex& _idx;  // not owned
-    terark::db::IndexIteratorPtr  _cursor;
-	terark::valvec<unsigned char> m_curKey;
-	terark::valvec<         char> m_qryKey;
-//	mongo::terarkdb::SchemaRecordCoder m_coder;
+    TerarkDbIndex::IterDataPtr  _cursor;
 
     // These are where this cursor instance is. They are not changed in the face of a failing
     // next().
@@ -514,7 +554,6 @@ protected:
 
 	bool _endPositionInclude;
 	bool m_isEndKeyMax = true;
-    terark::valvec<unsigned char> _endPositionKey;
 };
 
 }  // namespace

@@ -93,12 +93,13 @@ public:
     Cursor(OperationContext* txn, const TerarkDbRecordStore& rs, bool forward = true)
         : _rs(rs),
           _txn(txn) {
-		CompositeTable* tab = rs.m_table->m_tab.get();
-    	m_ctx = tab->createDbContext();
+		ThreadSafeTable* tst = rs.m_table.get();
+		CompositeTable* tab = tst->m_tab.get();
+    	m_ttd = tst->allocTableThreadData();
     	if (forward)
-    		_cursor = tab->createStoreIterForward(m_ctx.get());
+    		_cursor = tab->createStoreIterForward(m_ttd->m_dbCtx.get());
     	else
-    		_cursor = tab->createStoreIterBackward(m_ctx.get());
+    		_cursor = tab->createStoreIterBackward(m_ttd->m_dbCtx.get());
     }
 
     boost::optional<Record> next() final {
@@ -107,17 +108,17 @@ public:
 
         llong recIdx = _lastReturnedId.repr() - 1;
         if (!_skipNextAdvance) {
-            if (!_cursor->increment(&recIdx, &m_recBuf)) {
+            if (!_cursor->increment(&recIdx, &m_ttd->m_buf)) {
                 _eof = true;
                 return {};
             }
-			assert(!m_recBuf.empty());
+			assert(!m_ttd->m_buf.empty());
         }
 		else {
-			assert(!m_recBuf.empty());
+			assert(!m_ttd->m_buf.empty());
 		}
 		CompositeTable* tab = _rs.m_table->m_tab.get();
-        SharedBuffer sbuf = m_coder.decode(&tab->rowSchema(), m_recBuf);
+        SharedBuffer sbuf = m_ttd->m_coder.decode(&tab->rowSchema(), m_ttd->m_buf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
         _lastReturnedId = id;
@@ -129,13 +130,13 @@ public:
     boost::optional<Record> seekExact(const RecordId& id) final {
         _skipNextAdvance = false;
         llong recIdx = id.repr() - 1;
-        if (!_cursor->seekExact(recIdx, &m_recBuf)) {
+        if (!_cursor->seekExact(recIdx, &m_ttd->m_buf)) {
             _eof = true;
             return {};
         }
-		assert(!m_recBuf.empty());
+		assert(!m_ttd->m_buf.empty());
 		CompositeTable* tab = _rs.m_table->m_tab.get();
-        SharedBuffer sbuf = m_coder.decode(&tab->rowSchema(), m_recBuf);
+        SharedBuffer sbuf = m_ttd->m_coder.decode(&tab->rowSchema(), m_ttd->m_buf);
         _lastReturnedId = id;
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
         return {{id, {sbuf, len}}};
@@ -166,7 +167,7 @@ public:
             return true;
 
         llong recIdx = _lastReturnedId.repr() - 1;
-        if (!_cursor->seekExact(recIdx, &m_recBuf)) {
+        if (!_cursor->seekExact(recIdx, &m_ttd->m_buf)) {
             _eof = true;
             return false;
         }
@@ -190,10 +191,8 @@ private:
     OperationContext* _txn;
     bool _skipNextAdvance = false;
     bool _eof = false;
-	SchemaRecordCoder m_coder;
-    terark::db::DbContextPtr m_ctx;
+	TableThreadDataPtr m_ttd;
     terark::db::StoreIteratorPtr _cursor;
-    terark::valvec<unsigned char> m_recBuf;
     RecordId _lastReturnedId;  // If null, need to seek to first/last record.
 };
 
@@ -500,5 +499,6 @@ void TerarkDbRecordStore::temp_cappedTruncateAfter(OperationContext* txn,
 												 bool inclusive) {
 	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, not implemented now";
 }
+
 
 } } // namespace mongo::terarkdb
