@@ -157,7 +157,6 @@ public:
                                 long long numRecords,
                                 long long dataSize) override;
 
-	TerarkDbKVEngine* m_terarkEngine;
 	std::unique_ptr<RecordStore> m_wiredtigerCappedStore;
 
 private:

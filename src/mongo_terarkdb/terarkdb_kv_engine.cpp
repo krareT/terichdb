@@ -168,6 +168,8 @@ void ThreadSafeTable::releaseIndexIter(size_t indexId, bool forward, IndexIterDa
 void ThreadSafeTable::destroy() {
 	log() << BOOST_CURRENT_FUNCTION
 		<< ": mongodb will leak RecordStore and SortedDataInterface, destory underlying objects now";
+	m_indexForwardIterCache.clear();
+	m_indexBackwardIterCache.clear();
 	m_cursorCache.clear();
 	m_ttd.clear();
 	m_tab = nullptr;

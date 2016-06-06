@@ -258,7 +258,7 @@ namespace {
 class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor {
 public:
     TerarkDbIndexCursorBase(const TerarkDbIndex& idx, OperationContext* txn, bool forward)
-        : _txn(txn), _idx(idx), _forward(forward) {
+        : _txn(txn), _idx(idx), _forward(forward), _endPositionInclude(false) {
 		_cursor = idx.m_table->allocIndexIter(idx.m_indexId, forward);
     }
 	~TerarkDbIndexCursorBase() {
