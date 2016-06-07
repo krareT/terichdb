@@ -2179,6 +2179,7 @@ class TableIndexIter : public IndexIterator {
 	const DbTablePtr m_tab;
 	const DbContextPtr m_ctx;
 	const size_t m_indexId;
+	const Schema& m_ischema;
 	struct OneSeg {
 		ReadableSegmentPtr seg;
 		IndexIteratorPtr   iter;
@@ -2187,46 +2188,112 @@ class TableIndexIter : public IndexIterator {
 		llong              baseId;
 	};
 	valvec<OneSeg> m_segs;
-	bool lessThanImp(const Schema* schema, size_t x, size_t y) {
-			const auto& xkey = m_segs[x].data;
-			const auto& ykey = m_segs[y].data;
-			if (xkey.empty()) {
-				if (ykey.empty())
-					return x < y;
-				else
-					return true; // xkey < ykey
-			}
+	static
+	bool lessThanImp(const Schema* schema, const OneSeg* segs, size_t x, size_t y) {
+		const auto& xkey = segs[x].data;
+		const auto& ykey = segs[y].data;
+		if (xkey.empty()) {
 			if (ykey.empty())
-				return false; // xkey > ykey
-			int r = schema->compareData(xkey, ykey);
-			if (r) return r < 0;
-			else   return x < y;
+				return false; // equal
+			else
+				return true; // xkey < ykey
+		}
+		if (ykey.empty())
+			return false; // xkey > ykey
+		int r = schema->compareData(xkey, ykey);
+		if (r) return r < 0;
+		else   return x < y;
 	}
-	bool lessThan(const Schema* schema, size_t x, size_t y) {
-		if (m_forward)
-			return lessThanImp(schema, x, y);
-		else
-			return lessThanImp(schema, y, x);
-	}
-	class HeapKeyCompare {
-		TableIndexIter* owner;
+	template<bool Forward> class HeapKeyCompareMultiColumns {
 		const Schema* schema;
+		const OneSeg* segs;
 	public:
 		bool operator()(size_t x, size_t y) const {
 			// min heap's compare is 'greater'
-			return owner->lessThan(schema, y, x);
+			if (Forward)
+				return lessThanImp(schema, segs, y, x);
+			else
+				return lessThanImp(schema, segs, x, y);
 		}
-		HeapKeyCompare(TableIndexIter* o)
-			: owner(o)
-			, schema(&o->m_tab->m_schema->getIndexSchema(o->m_indexId)) {}
+		HeapKeyCompareMultiColumns(const Schema& schema1, const OneSeg* segs1)
+		: schema(&schema1), segs(segs1) {}
 	};
-	friend class HeapKeyCompare;
+	template<bool Forward> class HeapKeyCompareOneColumn {
+		const Schema::OneColumnComparator comp;
+		const OneSeg* segs;
+	public:
+		bool operator()(size_t x, size_t y) const {
+			// min heap's compare is 'greater'
+			const auto& xkey = segs[x].data;
+			const auto& ykey = segs[y].data;
+			if (Forward)
+				return comp(ykey, xkey) < 0;
+			else
+				return comp(xkey, ykey) < 0;
+		}
+		HeapKeyCompareOneColumn(const Schema& schema1, const OneSeg* segs1)
+		: comp(schema1.getOneColumnComparator()), segs(segs1) {}
+	};
 	valvec<byte> m_keyBuf;
 	ColumnVec    m_keyColvec;
 	terark::valvec<size_t> m_heap;
 	size_t m_oldsegArrayUpdateSeq;
 	const bool m_forward;
 	bool m_isHeapBuilt;
+
+	void makeHeap() {
+		size_t* beg = m_heap.begin();
+		size_t* end = m_heap.end();
+		const OneSeg* segs = m_segs.data();
+		if (m_ischema.columnNum() == 1) {
+			if (m_forward)
+				std::make_heap(beg, end, HeapKeyCompareOneColumn<1>(m_ischema, segs));
+			else
+				std::make_heap(beg, end, HeapKeyCompareOneColumn<0>(m_ischema, segs));
+		}
+		else {
+			if (m_forward)
+				std::make_heap(beg, end, HeapKeyCompareMultiColumns<1>(m_ischema, segs));
+			else
+				std::make_heap(beg, end, HeapKeyCompareMultiColumns<0>(m_ischema, segs));
+		}
+	}
+
+	void pushHeap() {
+		size_t* beg = m_heap.begin();
+		size_t* end = m_heap.end();
+		const OneSeg* segs = m_segs.data();
+		if (m_ischema.columnNum() == 1) {
+			if (m_forward)
+				std::push_heap(beg, end, HeapKeyCompareOneColumn<1>(m_ischema, segs));
+			else
+				std::push_heap(beg, end, HeapKeyCompareOneColumn<0>(m_ischema, segs));
+		}
+		else {
+			if (m_forward)
+				std::push_heap(beg, end, HeapKeyCompareMultiColumns<1>(m_ischema, segs));
+			else
+				std::push_heap(beg, end, HeapKeyCompareMultiColumns<0>(m_ischema, segs));
+		}
+	}
+
+	void popHeap() {
+		size_t* beg = m_heap.begin();
+		size_t* end = m_heap.end();
+		const OneSeg* segs = m_segs.data();
+		if (m_ischema.columnNum() == 1) {
+			if (m_forward)
+				std::pop_heap(beg, end, HeapKeyCompareOneColumn<1>(m_ischema, segs));
+			else
+				std::pop_heap(beg, end, HeapKeyCompareOneColumn<0>(m_ischema, segs));
+		}
+		else {
+			if (m_forward)
+				std::pop_heap(beg, end, HeapKeyCompareMultiColumns<1>(m_ischema, segs));
+			else
+				std::pop_heap(beg, end, HeapKeyCompareMultiColumns<0>(m_ischema, segs));
+		}
+	}
 
 	IndexIterator* createIter(const ReadableSegment& seg) {
 		auto index = seg.m_indices[m_indexId];
@@ -2266,6 +2333,7 @@ public:
 	  : m_tab(const_cast<DbTable*>(tab))
 	  , m_ctx(tab->createDbContext())
 	  , m_indexId(indexId)
+	  , m_ischema(tab->getIndexSchema(m_indexId))
 	  , m_forward(forward)
 	{
 		assert(tab->m_schema->getIndexSchema(indexId).m_isOrdered);
@@ -2307,7 +2375,7 @@ public:
 					cur.subId = cur.seg->getLogicId(cur.subId);
 				}
 			}
-			std::make_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
+			makeHeap();
 			m_isHeapBuilt = true;
 		}
 		while (!m_heap.empty()) {
@@ -2328,13 +2396,13 @@ public:
 	size_t incrementNoCheckDel(llong* subId) {
 		assert(!m_heap.empty());
 		size_t segIdx = m_heap[0];
-		std::pop_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
+		popHeap();
 		auto& cur = m_segs[segIdx];
 		*subId = cur.subId;
 		m_keyBuf.swap(cur.data); // should be assign, but swap is more efficient
 		if (cur.iter->increment(&cur.subId, &cur.data)) {
 			assert(m_heap.back() == segIdx);
-			std::push_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
+			pushHeap();
 			cur.subId = cur.seg->getLogicId(cur.subId);
 		}
 		else {
@@ -2359,7 +2427,7 @@ public:
 		return seekBound(key, id, retKey, false);
 	}
 	int seekBound(fstring key, llong* id, valvec<byte>* retKey, bool inclusive) {
-		const Schema& schema = m_tab->m_schema->getIndexSchema(m_indexId);
+		const Schema& schema = m_ischema;
 #if 0//!defined(NDEBUG)
 		fprintf(stderr, "DEBUG: TableIndexIter::%s: segs=%zd key=%s, keylen=%zd\n",
 				inclusive?"seekLowerBound":"seekUpperBound",
@@ -2424,7 +2492,7 @@ public:
 		}
 		m_isHeapBuilt = true;
 		if (m_heap.size()) {
-			std::make_heap(m_heap.begin(), m_heap.end(), HeapKeyCompare(this));
+			makeHeap();
 			while (!m_heap.empty()) {
 				llong subId;
 				size_t segIdx = incrementNoCheckDel(&subId);

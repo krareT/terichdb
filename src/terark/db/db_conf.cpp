@@ -1381,6 +1381,152 @@ std::string Schema::joinColumnNames(char delim) const {
 	return joined;
 }
 
+/// Order == +1 : Ascending
+/// Order == -1 : Descending
+template<class NumberType, int Order>
+static int OneColumn_compareNumber(fstring x, fstring y) {
+	BOOST_STATIC_ASSERT(Order == +1 || Order == -1);
+	assert(x.size() == sizeof(NumberType));
+	assert(y.size() == sizeof(NumberType));
+	NumberType xv = unaligned_load<NumberType>(x.p);
+	NumberType yv = unaligned_load<NumberType>(y.p);
+	if (xv < yv) return -Order;
+	if (xv > yv) return +Order;
+	return 0;
+}
+
+template<class NumberType>
+static
+Schema::OneColumnComparator oneColumnNumberComparator(bool ascending) {
+	if (ascending)
+		return &OneColumn_compareNumber<NumberType, +1>;
+	else
+		return &OneColumn_compareNumber<NumberType, -1>;
+}
+
+/// Order == +1 : Ascending
+/// Order == -1 : Descending
+template<int Order>
+static int OneColumn_compareTwoStrZero(fstring x, fstring y) {
+	BOOST_STATIC_ASSERT(Order == +1 || Order == -1);
+	intptr_t xn1 = strnlen((char*)x.p, x.n);
+	intptr_t yn1 = strnlen((char*)y.p, y.n);
+	int ret = memcmp(x.p, x.p, std::min(xn1,yn1));
+	if (ret) {
+		return Order == 1 ? ret : -ret;
+	} else if (xn1 != yn1) {
+		return xn1 < yn1 ? -Order : +Order;
+	}
+	intptr_t xn2 = 0, xnn = xn1;
+	intptr_t yn2 = 0, ynn = yn1;
+	if (xn1 + 1 < x.n) {
+		xn2 = strnlen((char*)x.p+xn1+1, x.n-xn1-1);
+		// 2nd '\0' is optional, if '\0' exists, it must at string end
+		if (xn1+1 + xn2+1 < x.n) {
+			THROW_STD(invalid_argument,
+				"'\\0' in StrZero is not at string end");
+		}
+		xnn += 1 + xn2;
+	}
+	if (yn1 + 1 < y.n) {
+		yn2 = strnlen((char*)y.p+yn1+1, y.n-yn1-1);
+		// 2nd '\0' is optional, if '\0' exists, it must at string end
+		if (yn1+1 + yn2+1 < y.n) {
+			THROW_STD(invalid_argument,
+				"'\\0' in StrZero is not at string end");
+		}
+		ynn += 1 + yn2;
+	}
+	ret = memcmp(x.p, y.p, std::min(xnn,ynn));
+	if (ret) {
+		return Order == 1 ? ret : -ret;
+	} else if (xnn != ynn) {
+		return xnn < ynn ? -Order : +Order;
+	}
+	return 0;
+}
+
+Schema::OneColumnComparator Schema::getOneColumnComparator(bool ascending) const {
+	assert(m_columnsMeta.end_i() == 1);
+	if (m_columnsMeta.end_i() != 1) {
+		THROW_STD(invalid_argument, "invalid colnum = %zd", m_columnsMeta.end_i());
+	}
+	const ColumnMeta& colmeta = m_columnsMeta.val(0);
+	switch (colmeta.type) {
+	default:
+		THROW_STD(runtime_error, "Invalid data row");
+	case ColumnType::Any:
+	//	THROW_STD(invalid_arugment, "ColumnType::Any can not be lex");
+		abort(); // not implemented yet
+		break;
+	case ColumnType::Uint08: return oneColumnNumberComparator<uint08_t>(ascending);
+	case ColumnType::Sint08: return oneColumnNumberComparator< int08_t>(ascending);
+	case ColumnType::Uint16: return oneColumnNumberComparator<uint16_t>(ascending);
+	case ColumnType::Sint16: return oneColumnNumberComparator< int16_t>(ascending);
+	case ColumnType::Uint32: return oneColumnNumberComparator<uint32_t>(ascending);
+	case ColumnType::Sint32: return oneColumnNumberComparator< int32_t>(ascending);
+	case ColumnType::Uint64: return oneColumnNumberComparator<uint64_t>(ascending);
+	case ColumnType::Sint64: return oneColumnNumberComparator< int64_t>(ascending);
+	case ColumnType::Uint128:
+		THROW_STD(invalid_argument, "Uint128 is not supported");
+	//	CompareByType(boost::multiprecision::uint128_t);
+	case ColumnType::Sint128:
+		THROW_STD(invalid_argument, "Sint128 is not supported");
+	//	CompareByType(boost::multiprecision::int128_t);
+	case ColumnType::Float32: return oneColumnNumberComparator<float>(ascending);
+	case ColumnType::Float64: return oneColumnNumberComparator<double>(ascending);
+	case ColumnType::Float128: return oneColumnNumberComparator<long double>(ascending);
+	case ColumnType::Uuid:    // 16 bytes(128 bits) binary
+		if (ascending)
+			return [](fstring x, fstring y) {
+				assert(x.size() == 16);
+				assert(y.size() == 16);
+				return memcmp(x.p, y.p, 16);
+			};
+		else
+			return [](fstring x, fstring y) {
+				assert(x.size() == 16);
+				assert(y.size() == 16);
+				return memcmp(y.p, x.p, 16);
+			};
+	case ColumnType::Fixed:   // Fixed length binary
+		if (ascending)
+			return [](fstring x, fstring y) {
+				// can not get fixed length value, omit fixed length check
+				assert(x.size() == y.size());
+				return memcmp(x.p, y.p, x.size());
+			};
+		else
+			return [](fstring x, fstring y) {
+				// can not get fixed length value, omit fixed length check
+				assert(x.size() == y.size());
+				return memcmp(y.p, x.p, x.size());
+			};
+	case ColumnType::StrZero: // Zero ended string
+	case ColumnType::Binary:  // Prefixed by length(var_uint) in bytes
+	case ColumnType::CarBin:  // Prefixed by uint32 length
+		if (ascending)
+			return [](fstring x, fstring y) {
+				return fstring_func::compare3()(x, y);
+			};
+		else
+			return [](fstring x, fstring y) {
+				return fstring_func::compare3()(y, x);
+			};
+	case ColumnType::VarSint:
+		THROW_STD(invalid_argument, "VarSint is not supported");
+	case ColumnType::VarUint:
+		THROW_STD(invalid_argument, "VarUint is not supported");
+	case ColumnType::TwoStrZero: // Zero ended string
+		if (ascending)
+			return &OneColumn_compareTwoStrZero<+1>;
+		else
+			return &OneColumn_compareTwoStrZero<-1>;
+	}
+	assert(0); // should not go here
+	return nullptr; // suppress compiler warnings
+}
+
 int Schema::compareData(fstring x, fstring y) const {
 	assert(size_t(-1) != m_fixedLen);
 	const byte *xcurr = x.udata(), *xlast = xcurr + x.size();

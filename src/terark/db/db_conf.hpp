@@ -221,6 +221,9 @@ namespace terark { namespace db {
 
 		int compareData(fstring x, fstring y) const;
 
+		typedef int (*OneColumnComparator)(fstring, fstring);
+		OneColumnComparator getOneColumnComparator(bool ascending = true) const;
+
 		// used by glibc.qsort_r or msvc.qsort_s
 		struct CompareByIndexContext {
 			const Schema* schema;
