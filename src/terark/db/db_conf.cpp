@@ -263,6 +263,7 @@ void Schema::parseRowAppend(fstring row, size_t start, ColumnVec* columns) const
 	for (size_t i = 0; i < colnum; ++i) {
 #ifndef NDEBUG
 		const fstring colname = m_columnsMeta.key(i);
+		(void)colname;
 #endif
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		size_t collen = 0;
