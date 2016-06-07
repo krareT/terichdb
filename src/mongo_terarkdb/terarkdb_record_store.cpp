@@ -395,8 +395,6 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
 													 bool enforceQuota) {
    log() << "mongo_terarkdb@panda insertRecord data";
 	DbTable* tab = m_table->m_tab.get();
-	CompositeTable* tab = m_table->m_tab.get();
->>>>>>> add descriptions
     auto& td = m_table->getMyThreadData();
     BSONObj bson(data);
 	invariant(bson.objsize() == len);
