@@ -90,7 +90,7 @@ static_assert(kCurrentRecordStoreVersion <= kMaximumRecordStoreVersion,
 
 class TerarkDbRecordStore::Cursor final : public SeekableRecordCursor {
 public:
-    Cursor(OperationContext* txn, const TerarkDbRecordStore& rs, bool forward = true)
+    Cursor(OperationContext* txn, const TerarkDbRecordStore& rs, bool forward)
         : _rs(rs),
           _txn(txn) {
 		ThreadSafeTable* tst = rs.m_table.get();
