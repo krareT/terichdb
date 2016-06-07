@@ -1417,6 +1417,7 @@ static int OneColumn_compareTwoStrZero(fstring x, fstring y) {
 	} else if (xn1 != yn1) {
 		return xn1 < yn1 ? -Order : +Order;
 	}
+	assert(xn1 == yn1);
 	intptr_t xn2 = 0, xnn = xn1;
 	intptr_t yn2 = 0, ynn = yn1;
 	if (xn1 + 1 < x.n) {
