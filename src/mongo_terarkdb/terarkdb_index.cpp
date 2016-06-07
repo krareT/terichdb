@@ -138,7 +138,7 @@ TerarkDbIndex::TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, cons
 	}
 	indexColumnNames.pop_back();
 	LOG(2) << "TerarkDbIndex::TerarkDbIndex(): indexColumnNames=" << indexColumnNames;
-	CompositeTable* tab = table->m_tab.get();
+	DbTable* tab = table->m_tab.get();
 	const size_t indexId = tab->getIndexId(indexColumnNames);
 	if (indexId == tab->getIndexNum()) {
 		// no such index
@@ -152,7 +152,7 @@ TerarkDbIndex::TerarkDbIndex(ThreadSafeTable* table, OperationContext* ctx, cons
 }
 
 TerarkDbIndex::~TerarkDbIndex() {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
     LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
 }
 
@@ -165,7 +165,7 @@ Status TerarkDbIndex::insert(OperationContext* txn,
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	if (tab->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
 		return Status::OK();
 	} else {
@@ -184,7 +184,7 @@ void TerarkDbIndex::unindex(OperationContext* txn,
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	tab->indexRemove(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx);
 }
 
@@ -211,7 +211,7 @@ Status TerarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, con
 	auto indexSchema = getIndexSchema();
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	auto& tmpIdvec = td.m_dbCtx->exactMatchRecIdvec;
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	tab->indexSearchExact(m_indexId, td.m_buf, &tmpIdvec, &*td.m_dbCtx);
 	if (tmpIdvec.empty()) {
 	    return Status::OK();
@@ -224,7 +224,7 @@ Status TerarkDbIndex::dupKeyCheck(OperationContext* txn, const BSONObj& key, con
 }
 
 bool TerarkDbIndex::isEmpty(OperationContext* txn) {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
     return tab->numDataRows() == 0;
 }
 
@@ -233,7 +233,7 @@ Status TerarkDbIndex::touch(OperationContext* txn) const {
 }
 
 long long TerarkDbIndex::getSpaceUsedBytes(OperationContext* txn) const {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
     return tab->indexStorageSize(m_indexId);
 }
 
@@ -246,7 +246,7 @@ bool
 TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id,
 							TableThreadData* td) {
 	encodeIndexKey(*getIndexSchema(), newKey, &td->m_buf);
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	return tab->indexInsert(m_indexId, td->m_buf, id.repr()-1, &*td->m_dbCtx);
 }
 

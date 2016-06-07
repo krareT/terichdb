@@ -15,7 +15,7 @@
 namespace terark { namespace db { namespace dfadb {
 
 
-DfaDbContext::DfaDbContext(const CompositeTable* tab) : DbContext(tab) {
+DfaDbContext::DfaDbContext(const DbTable* tab) : DbContext(tab) {
 }
 DfaDbContext::~DfaDbContext() {
 }

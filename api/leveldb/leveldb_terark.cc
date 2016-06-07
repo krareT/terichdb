@@ -289,13 +289,13 @@ DB::Open(const Options &options, const std::string &name, leveldb::DB** dbptr) {
 	catch (const std::exception& ex) {
 		fprintf(stderr, "ERROR: caught exception: %s for dbdir: %s\n"
 				, ex.what(), dbdir.string().c_str());
-		return Status::InvalidArgument("CompositeTable::open failed", ex.what());
+		return Status::InvalidArgument("DbTable::open failed", ex.what());
 	}
 }
 } // namespace leveldb
 
 DbImpl::DbImpl(const fs::path& dbdir) {
-	m_tab = terark::db::CompositeTable::open(dbdir);
+	m_tab = terark::db::DbTable::open(dbdir);
 }
 
 DbImpl::~DbImpl() {
@@ -328,7 +328,7 @@ DbImpl::Put(const WriteOptions& options, const Slice& key, const Slice& value) {
 	  return Status::OK();
   }
   catch (const std::exception& ex) {
-	  return Status::Corruption("CompositeTable::upsertRow failed", ex.what());
+	  return Status::Corruption("DbTable::upsertRow failed", ex.what());
   }
 }
 
@@ -621,7 +621,7 @@ terark::db::DbContext* DbImpl::GetDbContext() {
 std::atomic<size_t> g_iterLiveCnt;
 std::atomic<size_t> g_iterCreatedCnt;
 
-IteratorImpl::IteratorImpl(terark::db::CompositeTable *db) {
+IteratorImpl::IteratorImpl(terark::db::DbTable *db) {
 	m_tab = db;
 	m_ctx = db->createDbContext();
 	m_recId = -1;

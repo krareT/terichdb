@@ -9,25 +9,25 @@ namespace terark {
 
 namespace terark { namespace db {
 
-typedef boost::intrusive_ptr<class CompositeTable> CompositeTablePtr;
+typedef boost::intrusive_ptr<class DbTable> DbTablePtr;
 typedef boost::intrusive_ptr<class StoreIterator> StoreIteratorPtr;
 
 class TERARK_DB_DLL DbContextLink : public RefCounter {
-	friend class CompositeTable;
+	friend class DbTable;
 protected:
 	DbContextLink();
 	~DbContextLink();
 //	DbContextLink *m_prev, *m_next;
 };
 class TERARK_DB_DLL DbContext : public DbContextLink {
-	friend class CompositeTable;
+	friend class DbTable;
 public:
-	explicit DbContext(const CompositeTable* tab);
+	explicit DbContext(const DbTable* tab);
 	~DbContext();
 
-	void doSyncSegCtxNoLock(const CompositeTable* tab);
-	void trySyncSegCtxNoLock(const CompositeTable* tab);
-	void trySyncSegCtxSpeculativeLock(const CompositeTable* tab);
+	void doSyncSegCtxNoLock(const DbTable* tab);
+	void trySyncSegCtxNoLock(const DbTable* tab);
+	void trySyncSegCtxSpeculativeLock(const DbTable* tab);
 	class StoreIterator* getWrtStoreIterNoLock(size_t segIdx);
 	class IndexIterator* getIndexIterNoLock(size_t segIdx, size_t indexId);
 
@@ -96,11 +96,11 @@ public:
 		static void destory(SegCtx*& p, size_t indexNum);
 		static void reset(SegCtx* p, size_t indexNum, ReadableSegment* seg);
 	};
-	CompositeTable* m_tab;
+	DbTable* m_tab;
 	class WritableSegment* m_wrSegPtr;
 	std::unique_ptr<class DbTransaction> m_transaction;
 	valvec<SegCtx*> m_segCtx;
-	valvec<llong>   m_rowNumVec; // copy of CompositeTable::m_rowNumVec
+	valvec<llong>   m_rowNumVec; // copy of DbTable::m_rowNumVec
 	llong           m_mySnapshotVersion;
 	std::string  errMsg;
 	valvec<byte> buf1;

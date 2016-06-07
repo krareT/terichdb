@@ -148,10 +148,10 @@ protected:
 
 class TERARK_DB_DLL MockDbContext : public DbContext {
 public:
-	explicit MockDbContext(const CompositeTable* tab);
+	explicit MockDbContext(const DbTable* tab);
 	~MockDbContext();
 };
-class TERARK_DB_DLL MockDbTable : public CompositeTable {
+class TERARK_DB_DLL MockDbTable : public DbTable {
 public:
 	DbContext* createDbContextNoLock() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;

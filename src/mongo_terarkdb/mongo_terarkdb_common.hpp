@@ -29,8 +29,8 @@ namespace terark { namespace db {
 namespace mongo { namespace terarkdb {
 
 namespace fs = boost::filesystem;
-using terark::db::CompositeTable;
-using terark::db::CompositeTablePtr;
+using terark::db::DbTable;
+using terark::db::DbTablePtr;
 
 using terark::ulong;
 using terark::llong;
@@ -44,7 +44,7 @@ extern const std::string kTerarkDbEngineName;
 
 class TableThreadData : public terark::RefCounter {
 public:
-	explicit TableThreadData(CompositeTable* tab);
+	explicit TableThreadData(DbTable* tab);
     terark::db::DbContextPtr m_dbCtx;
     terark::valvec<unsigned char> m_buf;
     mongo::terarkdb::SchemaRecordCoder m_coder;
@@ -77,7 +77,7 @@ class ThreadSafeTable : public terark::RefCounter {
 public:
 	~ThreadSafeTable();
 	void destroy(); // workaround mongodb
-	CompositeTablePtr m_tab;
+	DbTablePtr m_tab;
 	explicit ThreadSafeTable(const fs::path& dbPath);
 	TableThreadData& getMyThreadData();
 

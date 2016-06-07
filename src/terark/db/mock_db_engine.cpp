@@ -1068,7 +1068,7 @@ MockWritableSegment::createIndex(const Schema& schema, PathRef) const {
 
 ///////////////////////////////////////////////////////////////////////////
 
-MockDbContext::MockDbContext(const CompositeTable* tab) : DbContext(tab) {
+MockDbContext::MockDbContext(const DbTable* tab) : DbContext(tab) {
 }
 MockDbContext::~MockDbContext() {
 }

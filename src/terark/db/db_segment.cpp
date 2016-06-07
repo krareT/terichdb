@@ -680,7 +680,7 @@ public:
 */
 
 void
-ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
+ReadonlySegment::convFrom(DbTable* tab, size_t segIdx)
 {
 	auto tmpDir = m_segDir + ".tmp";
 	fs::create_directories(tmpDir);
@@ -797,7 +797,7 @@ ReadonlySegment::convFrom(CompositeTable* tab, size_t segIdx)
 }
 
 void
-ReadonlySegment::completeAndReload(CompositeTable* tab, size_t segIdx,
+ReadonlySegment::completeAndReload(DbTable* tab, size_t segIdx,
 								   ReadableSegment* input) {
 	m_dataMemSize = 0;
 	m_dataInflateSize = 0;
@@ -984,7 +984,7 @@ fs::path renameToBackupFromDir(PathRef segDir) {
 }
 
 void
-ReadonlySegment::purgeDeletedRecords(CompositeTable* tab, size_t segIdx) {
+ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	DbContextPtr ctx(tab->createDbContext());
 	ReadonlySegmentPtr input;
 	{
@@ -995,7 +995,7 @@ ReadonlySegment::purgeDeletedRecords(CompositeTable* tab, size_t segIdx) {
 		input->m_updateList.reserve(1024);
 		input->m_bookUpdates = true;
 		lock.upgrade_to_writer();
-		tab->m_purgeStatus = CompositeTable::PurgeStatus::purging;
+		tab->m_purgeStatus = DbTable::PurgeStatus::purging;
 	}
 	fprintf(stderr, "INFO: purging %s\n", input->m_segDir.string().c_str());
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed

@@ -35,7 +35,7 @@ using namespace terark::db;
 
 void doTest(const char* tableDir, size_t maxRowNum) {
 	using namespace terark;
-	CompositeTablePtr tab = CompositeTable::open(tableDir);
+	DbTablePtr tab = DbTable::open(tableDir);
 	DbContextPtr ctx = tab->createDbContext();
 
 	valvec<llong> recIdvec;
@@ -259,7 +259,7 @@ int main(int argc, char* argv[]) {
 	size_t maxRowNum = (size_t)strtoull(argv[1], NULL, 10);
 //	doTest("MockDbTable", "db1", maxRowNum);
 	doTest("dfadb", maxRowNum);
-	CompositeTable::safeStopAndWaitForCompress();
+	DbTable::safeStopAndWaitForCompress();
     return 0;
 }
 

@@ -43,17 +43,17 @@ const size_t DEFAULT_maxSegNum = 4095;
 	} BOOST_SCOPE_EXIT_END
 #endif
 
-CompositeTable* CompositeTable::open(PathRef dbPath) {
+DbTable* DbTable::open(PathRef dbPath) {
 	fs::path jsonFile = dbPath / "dbmeta.json";
 	SchemaConfigPtr sconf = new SchemaConfig();
 	sconf->loadJsonFile(jsonFile.string());
-	std::unique_ptr<CompositeTable> tab(createTable(sconf->m_tableClass));
+	std::unique_ptr<DbTable> tab(createTable(sconf->m_tableClass));
 	tab->m_schema = sconf;
 	tab->doLoad(dbPath);
 	return tab.release();
 }
 
-CompositeTable::CompositeTable() {
+DbTable::DbTable() {
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
 	m_isMerging = false;
@@ -69,7 +69,7 @@ CompositeTable::CompositeTable() {
 //	m_ctxListHead = new DbContextLink();
 }
 
-CompositeTable::~CompositeTable() {
+DbTable::~DbTable() {
 	if (m_dir.empty() || m_segments.empty()) {
 		return;
 	}
@@ -106,7 +106,7 @@ CompositeTable::~CompositeTable() {
 
 // msvc std::function is not memmovable, use SafeCopy
 typedef
-hash_strmap < std::function<CompositeTable*()>
+hash_strmap < std::function<DbTable*()>
 			, fstring_func::hash_align
 			, fstring_func::equal_align
 			, ValueInline, SafeCopy
@@ -117,8 +117,8 @@ static TableFactoryType& s_getTableFactory() {
 	return instance;
 }
 
-CompositeTable::RegisterTableClass::RegisterTableClass
-(fstring tableClass, const std::function<CompositeTable*()>& f)
+DbTable::RegisterTableClass::RegisterTableClass
+(fstring tableClass, const std::function<DbTable*()>& f)
 {
 	auto ib = s_getTableFactory().insert_i(tableClass, f);
 	assert(ib.second);
@@ -128,7 +128,7 @@ CompositeTable::RegisterTableClass::RegisterTableClass
 	}
 }
 
-CompositeTable* CompositeTable::createTable(fstring tableClass) {
+DbTable* DbTable::createTable(fstring tableClass) {
 	auto& s_tableFactory = s_getTableFactory();
 	size_t idx = s_tableFactory.find_i(tableClass);
 	if (idx >= s_tableFactory.end_i()) {
@@ -136,7 +136,7 @@ CompositeTable* CompositeTable::createTable(fstring tableClass) {
 			tableClass.ilen(), tableClass.data());
 	}
 	const auto& factory = s_tableFactory.val(idx);
-	CompositeTable* table = factory();
+	DbTable* table = factory();
 	assert(table);
 	return table;
 }
@@ -154,7 +154,7 @@ static void tryReduceSymlink(PathRef segDir, PathRef mergeDir) {
 	}
 }
 
-void CompositeTable::removeStaleDir(PathRef root, size_t inUseMergeSeq) const {
+void DbTable::removeStaleDir(PathRef root, size_t inUseMergeSeq) const {
 	fs::path inUseMergeDir = getMergePath(root, inUseMergeSeq);
 	for (auto& x : fs::directory_iterator(inUseMergeDir)) {
 		PathRef segDir = x.path();
@@ -176,7 +176,7 @@ void CompositeTable::removeStaleDir(PathRef root, size_t inUseMergeSeq) const {
 	}
 }
 
-void CompositeTable::discoverMergeDir(PathRef dir) {
+void DbTable::discoverMergeDir(PathRef dir) {
 	long mergeSeq = -1;
 	for (auto& x : fs::directory_iterator(dir)) {
 		fs::path    mergeDirPath = x.path();
@@ -261,7 +261,7 @@ static SortableStrVec getWorkingSegDirList(PathRef mergeDir) {
 	return segDirList;
 }
 
-void CompositeTable::load(PathRef dir) {
+void DbTable::load(PathRef dir) {
 	if (!m_segments.empty()) {
 		THROW_STD(invalid_argument, "Invalid: m_segment.size=%ld is not empty",
 			long(m_segments.size()));
@@ -278,7 +278,7 @@ void CompositeTable::load(PathRef dir) {
 	doLoad(dir);
 }
 
-void CompositeTable::doLoad(PathRef dir) {
+void DbTable::doLoad(PathRef dir) {
 	assert(m_schema.get() != nullptr);
 	fs::path runLockFpath = dir / "run.lock";
 	if (fs::exists(runLockFpath)) {
@@ -354,7 +354,7 @@ void CompositeTable::doLoad(PathRef dir) {
 			this->putToCompressionQueue(i);
 		}
 	}
-	fprintf(stderr, "INFO: CompositeTable::load(%s): loaded %zd segs\n",
+	fprintf(stderr, "INFO: DbTable::load(%s): loaded %zd segs\n",
 		dir.string().c_str(), m_segments.size());
 	if (m_segments.size() == 0 || !m_segments.back()->getWritableStore()) {
 		// THROW_STD(invalid_argument, "no any segment found");
@@ -380,7 +380,7 @@ void CompositeTable::doLoad(PathRef dir) {
 	runLockFile.close();
 }
 
-size_t CompositeTable::findSegIdx(size_t segIdxBeg, ReadableSegment* seg) const {
+size_t DbTable::findSegIdx(size_t segIdxBeg, ReadableSegment* seg) const {
 	const ReadableSegmentPtr* segBase = m_segments.data();
 	const size_t segNum = m_segments.size();
 	for (size_t segIdx = segIdxBeg; segIdx < segNum; ++segIdx) {
@@ -390,7 +390,7 @@ size_t CompositeTable::findSegIdx(size_t segIdxBeg, ReadableSegment* seg) const 
 	return segNum;
 }
 
-size_t CompositeTable::getWritableSegNum() const {
+size_t DbTable::getWritableSegNum() const {
 	MyRwLock lock(m_rwMutex, false);
 	size_t wrNum = 0;
 	for (size_t i = 0; i < m_segments.size(); ++i) {
@@ -400,7 +400,7 @@ size_t CompositeTable::getWritableSegNum() const {
 	return wrNum;
 }
 
-size_t CompositeTable::getSegmentIndexOfRecordIdNoLock(llong recId) const {
+size_t DbTable::getSegmentIndexOfRecordIdNoLock(llong recId) const {
 	MyRwLock lock(m_rwMutex, false);
 	size_t segIdx = lower_bound_a(m_rowNumVec, recId);
 	return segIdx;
@@ -416,7 +416,7 @@ struct CompareBy_baseId {
 	bool operator()(llong x, llong y) const { return x < y; }
 };
 
-class CompositeTable::MyStoreIterBase : public StoreIterator {
+class DbTable::MyStoreIterBase : public StoreIterator {
 protected:
 	size_t m_segIdx;
 	size_t m_mergeSeqNum;
@@ -429,8 +429,8 @@ protected:
 	};
 	valvec<OneSeg> m_segs;
 
-	void init(const CompositeTable* tab, DbContext* ctx) {
-		this->m_store.reset(const_cast<CompositeTable*>(tab));
+	void init(const DbTable* tab, DbContext* ctx) {
+		this->m_store.reset(const_cast<DbTable*>(tab));
 		this->m_ctx.reset(ctx);
 	// MyStoreIterator creation is rarely used, lock it by m_rwMutex
 		MyRwLock lock(tab->m_rwMutex, false);
@@ -450,8 +450,8 @@ protected:
 	}
 
 	~MyStoreIterBase() {
-		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		assert(dynamic_cast<const DbTable*>(m_store.get()));
+		auto tab = static_cast<const DbTable*>(m_store.get());
 		{
 			MyRwLock lock(tab->m_rwMutex, true);
 			tab->m_tableScanningRefCount--;
@@ -459,7 +459,7 @@ protected:
 	}
 
 	bool syncTabSegs() {
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		auto tab = static_cast<const DbTable*>(m_store.get());
 	//	MyRwLock lock(tab->m_rwMutex, false);
 		if (m_mergeSeqNum == tab->m_mergeSeqNum &&
 			m_newWrSegNum == tab->m_newWrSegNum) {
@@ -494,7 +494,7 @@ protected:
 	}
 
 	std::pair<size_t, bool> seekExactImpl(llong id, valvec<byte>* val) {
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		auto tab = static_cast<const DbTable*>(m_store.get());
 		llong old_rowNum = 0;
 		do {
 			old_rowNum = tab->inlineGetRowNum();
@@ -522,18 +522,18 @@ protected:
 	virtual StoreIterator* createSegStoreIter(ReadableSegment*) = 0;
 };
 
-class CompositeTable::MyStoreIterForward : public MyStoreIterBase {
+class DbTable::MyStoreIterForward : public MyStoreIterBase {
 	StoreIterator* createSegStoreIter(ReadableSegment* seg) override {
 		return seg->createStoreIterForward(m_ctx.get());
 	}
 public:
-	MyStoreIterForward(const CompositeTable* tab, DbContext* ctx) {
+	MyStoreIterForward(const DbTable* tab, DbContext* ctx) {
 		init(tab, ctx);
 		m_segIdx = 0;
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
-		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		assert(dynamic_cast<const DbTable*>(m_store.get()));
+		auto tab = static_cast<const DbTable*>(m_store.get());
 		llong subId = -1;
 		MyRwLock lock(tab->m_rwMutex, false);
 		while (incrementNoCheckDel(&subId, val)) {
@@ -582,18 +582,18 @@ public:
 	}
 };
 
-class CompositeTable::MyStoreIterBackward : public MyStoreIterBase {
+class DbTable::MyStoreIterBackward : public MyStoreIterBase {
 	StoreIterator* createSegStoreIter(ReadableSegment* seg) override {
 		return seg->createStoreIterForward(m_ctx.get());
 	}
 public:
-	MyStoreIterBackward(const CompositeTable* tab, DbContext* ctx) {
+	MyStoreIterBackward(const DbTable* tab, DbContext* ctx) {
 		init(tab, ctx);
 		m_segIdx = m_segs.size() - 1;
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
-		assert(dynamic_cast<const CompositeTable*>(m_store.get()));
-		auto tab = static_cast<const CompositeTable*>(m_store.get());
+		assert(dynamic_cast<const DbTable*>(m_store.get()));
+		auto tab = static_cast<const DbTable*>(m_store.get());
 		llong subId = -1;
 		MyRwLock lock(tab->m_rwMutex, false);
 		while (incrementNoCheckDel(&subId, val)) {
@@ -609,7 +609,7 @@ public:
 		return false;
 	}
 	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
-	//	auto tab = static_cast<const CompositeTable*>(m_store.get());
+	//	auto tab = static_cast<const DbTable*>(m_store.get());
 		auto cur = &m_segs[m_segIdx-1];
 		if (terark_unlikely(!cur->iter))
 			 cur->iter = cur->seg->createStoreIterBackward(m_ctx.get());
@@ -651,7 +651,7 @@ const char* BatchWriter::szError() const {
 }
 
 // if ctx is NULL, will create a new DbContext for m_ctx
-BatchWriter::BatchWriter(CompositeTable* tab, DbContext* ctx)
+BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 {
 	if (!tab->m_wrSeg) {
 		THROW_STD(invalid_argument, "the writing segment is NULL: %s"
@@ -969,22 +969,22 @@ void BatchWriter::rollback() {
 	}
 }
 
-StoreIterator* CompositeTable::createStoreIterForward(DbContext* ctx) const {
+StoreIterator* DbTable::createStoreIterForward(DbContext* ctx) const {
 	assert(m_schema);
 	return new MyStoreIterForward(this, ctx);
 }
 
-StoreIterator* CompositeTable::createStoreIterBackward(DbContext* ctx) const {
+StoreIterator* DbTable::createStoreIterBackward(DbContext* ctx) const {
 	assert(m_schema);
 	return new MyStoreIterBackward(this, ctx);
 }
 
-DbContext* CompositeTable::createDbContext() const {
+DbContext* DbTable::createDbContext() const {
 	MyRwLock lock(m_rwMutex, false);
 	return this->createDbContextNoLock();
 }
 
-llong CompositeTable::totalStorageSize() const {
+llong DbTable::totalStorageSize() const {
 	MyRwLock lock(m_rwMutex, false);
 	llong size = m_wrSeg->dataStorageSize();
 	for (size_t i = 0; i < m_schema->getIndexNum(); ++i) {
@@ -996,12 +996,12 @@ llong CompositeTable::totalStorageSize() const {
 	return size;
 }
 
-llong CompositeTable::numDataRows() const {
+llong DbTable::numDataRows() const {
 //	return m_rowNumVec.back();
 	return m_rowNum;
 }
 
-llong CompositeTable::dataStorageSize() const {
+llong DbTable::dataStorageSize() const {
 	MyRwLock lock(m_rwMutex, false);
 	llong size = 0;
 	for (size_t i = 0; i < m_segments.size(); ++i) {
@@ -1010,7 +1010,7 @@ llong CompositeTable::dataStorageSize() const {
 	return size;
 }
 
-llong CompositeTable::dataInflateSize() const {
+llong DbTable::dataInflateSize() const {
 	MyRwLock lock(m_rwMutex, false);
 	llong size = 0;
 	for (size_t i = 0; i < m_segments.size(); ++i) {
@@ -1020,7 +1020,7 @@ llong CompositeTable::dataInflateSize() const {
 }
 
 void
-CompositeTable::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx)
+DbTable::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx)
 const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
 	assert(ctx->m_rowNumVec.size() == ctx->m_segCtx.size() + 1);
@@ -1034,7 +1034,7 @@ const {
 }
 
 bool
-CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
+DbTable::maybeCreateNewSegment(MyRwLock& lock) {
 	DebugCheckRowNumVecNoLock(this);
 	if (m_isMerging) {
 		return false;
@@ -1057,7 +1057,7 @@ CompositeTable::maybeCreateNewSegment(MyRwLock& lock) {
 	return false;
 }
 
-void CompositeTable::maybeCreateNewSegmentInWriteLock() {
+void DbTable::maybeCreateNewSegmentInWriteLock() {
 	DebugCheckRowNumVecNoLock(this);
 	if (m_isMerging) {
 		return;
@@ -1071,7 +1071,7 @@ void CompositeTable::maybeCreateNewSegmentInWriteLock() {
 }
 
 void
-CompositeTable::doCreateNewSegmentInLock() {
+DbTable::doCreateNewSegmentInLock() {
 	assert(!m_isMerging);
 	if (m_segments.size() == m_segments.capacity()) {
 		THROW_STD(invalid_argument,
@@ -1107,7 +1107,7 @@ CompositeTable::doCreateNewSegmentInLock() {
 }
 
 ReadonlySegment*
-CompositeTable::myCreateReadonlySegment(PathRef segDir) const {
+DbTable::myCreateReadonlySegment(PathRef segDir) const {
 	std::unique_ptr<ReadonlySegment> seg(createReadonlySegment(segDir));
 	seg->m_segDir = segDir;
 	seg->m_schema = this->m_schema;
@@ -1115,7 +1115,7 @@ CompositeTable::myCreateReadonlySegment(PathRef segDir) const {
 }
 
 WritableSegment*
-CompositeTable::myCreateWritableSegment(PathRef segDir) const {
+DbTable::myCreateWritableSegment(PathRef segDir) const {
 	fs::create_directories(segDir.c_str());
 	std::unique_ptr<WritableSegment> seg(createWritableSegment(segDir));
 	assert(seg);
@@ -1139,7 +1139,7 @@ CompositeTable::myCreateWritableSegment(PathRef segDir) const {
 	return seg.release();
 }
 
-bool CompositeTable::exists(llong id) const {
+bool DbTable::exists(llong id) const {
 	assert(id >= 0);
 	MyRwLock lock(m_rwMutex, false);
 	if (terark_unlikely(id >= llong(m_rowNumVec.back()))) {
@@ -1159,7 +1159,7 @@ bool CompositeTable::exists(llong id) const {
 }
 
 llong
-CompositeTable::insertRow(fstring row, DbContext* txn) {
+DbTable::insertRow(fstring row, DbContext* txn) {
 	if (txn->syncIndex) { // parseRow doesn't need lock
 		m_schema->m_rowSchema->parseRow(row, &txn->cols1);
 	}
@@ -1170,7 +1170,7 @@ CompositeTable::insertRow(fstring row, DbContext* txn) {
 }
 
 llong
-CompositeTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
+DbTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 	DebugCheckRowNumVecNoLock(this);
 	maybeCreateNewSegment(lock);
 	ctx->trySyncSegCtxNoLock(this);
@@ -1203,7 +1203,7 @@ CompositeTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 }
 
 llong
-CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
+DbTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 	TransactionGuard txn(ctx->m_transaction.get());
 	llong recId = insertRowDoInsertNoCommit(row, ctx);
 	if (recId >= 0) {
@@ -1223,7 +1223,7 @@ CompositeTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 }
 
 llong
-CompositeTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
+DbTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
 	DbTransaction* txn = ctx->m_transaction.get();
 	llong subId;
 	llong wrBaseId = m_rowNumVec.end()[-2];
@@ -1280,7 +1280,7 @@ CompositeTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
 }
 
 bool
-CompositeTable::insertSyncIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
+DbTable::insertSyncIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 	// first try insert unique index
 	const SchemaConfig& sconf = *m_schema;
 	size_t i = 0;
@@ -1316,7 +1316,7 @@ Fail:
 }
 
 // dup keys in unique index errors will be ignored
-llong CompositeTable::upsertRow(fstring row, DbContext* ctx) {
+llong DbTable::upsertRow(fstring row, DbContext* ctx) {
 	for (size_t retry = 0; retry < 2; ++retry) {
 		llong recId = doUpsertRow(row, ctx);
 		if (recId >= 0) {
@@ -1327,7 +1327,7 @@ llong CompositeTable::upsertRow(fstring row, DbContext* ctx) {
 }
 
 llong
-CompositeTable::doUpsertRow(fstring row, DbContext* ctx) {
+DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
 	if (sconf.m_uniqIndices.size() > 1) {
 		THROW_STD(invalid_argument
@@ -1451,7 +1451,7 @@ CompositeTable::doUpsertRow(fstring row, DbContext* ctx) {
 }
 
 void
-CompositeTable::upsertRowMultiUniqueIndices(fstring row, valvec<llong>* resRecIdvec, DbContext* ctx) {
+DbTable::upsertRowMultiUniqueIndices(fstring row, valvec<llong>* resRecIdvec, DbContext* ctx) {
 	THROW_STD(domain_error, "This method is not supported for now");
 	if (!ctx->syncIndex) {
 		THROW_STD(invalid_argument,
@@ -1460,7 +1460,7 @@ CompositeTable::upsertRowMultiUniqueIndices(fstring row, valvec<llong>* resRecId
 }
 
 llong
-CompositeTable::updateRow(llong id, fstring row, DbContext* ctx) {
+DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 	m_schema->m_rowSchema->parseRow(row, &ctx->cols1); // new row
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	MyRwLock lock(m_rwMutex, false);
@@ -1542,7 +1542,7 @@ CompositeTable::updateRow(llong id, fstring row, DbContext* ctx) {
 }
 
 bool
-CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
+DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 	// m_wrSeg will be check in unique index insert
 	const size_t endSeg = begSeg + numSeg;
 	assert(endSeg < m_segments.size()); // don't check m_wrSeg
@@ -1580,7 +1580,7 @@ CompositeTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) 
 }
 
 bool
-CompositeTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
+DbTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
 	TransactionGuard txn(ctx->m_transaction.get());
 	try {
@@ -1640,7 +1640,7 @@ Fail:
 }
 
 void
-CompositeTable::updateSyncMultIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
+DbTable::updateSyncMultIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
 	for (size_t i = 0; i < sconf.m_multIndices.size(); ++i) {
 		size_t indexId = sconf.m_multIndices[i];
@@ -1655,7 +1655,7 @@ CompositeTable::updateSyncMultIndex(llong subId, DbTransaction* txn, DbContext* 
 }
 
 bool
-CompositeTable::removeRow(llong id, DbContext* ctx) {
+DbTable::removeRow(llong id, DbContext* ctx) {
 	assert(ctx != nullptr);
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	const llong snapshotVersion = this->m_rowNum - 1;
@@ -1751,7 +1751,7 @@ CompositeTable::removeRow(llong id, DbContext* ctx) {
 
 ///! Can inplace update column in ReadonlySegment
 void
-CompositeTable::updateColumn(llong recordId, size_t columnId,
+DbTable::updateColumn(llong recordId, size_t columnId,
 							 fstring newColumnData, DbContext* ctx) {
 #include "update_column_impl.hpp"
 	if (newColumnData.size() != rowSchema.getColumnMeta(columnId).fixedLen) {
@@ -1770,7 +1770,7 @@ CompositeTable::updateColumn(llong recordId, size_t columnId,
 }
 
 void
-CompositeTable::updateColumn(llong recordId, fstring colname,
+DbTable::updateColumn(llong recordId, fstring colname,
 							 fstring newColumnData, DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
@@ -1795,7 +1795,7 @@ bool updateValueByOp(ReadableSegment* seg, llong subId, byte& byteRef, const OP&
 }
 
 void
-CompositeTable::updateColumnInteger(llong recordId, size_t columnId,
+DbTable::updateColumnInteger(llong recordId, size_t columnId,
 									const std::function<bool(llong&val)>& op,
 									DbContext* ctx) {
 #include "update_column_impl.hpp"
@@ -1820,7 +1820,7 @@ CompositeTable::updateColumnInteger(llong recordId, size_t columnId,
 }
 
 void
-CompositeTable::updateColumnInteger(llong recordId, fstring colname,
+DbTable::updateColumnInteger(llong recordId, fstring colname,
 									const std::function<bool(llong&val)>& op,
 									DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
@@ -1832,7 +1832,7 @@ CompositeTable::updateColumnInteger(llong recordId, fstring colname,
 }
 
 void
-CompositeTable::updateColumnDouble(llong recordId, size_t columnId,
+DbTable::updateColumnDouble(llong recordId, size_t columnId,
 								   const std::function<bool(double&val)>& op,
 								   DbContext* ctx) {
 #include "update_column_impl.hpp"
@@ -1857,7 +1857,7 @@ CompositeTable::updateColumnDouble(llong recordId, size_t columnId,
 }
 
 void
-CompositeTable::updateColumnDouble(llong recordId, fstring colname,
+DbTable::updateColumnDouble(llong recordId, fstring colname,
 								   const std::function<bool(double&val)>& op,
 								   DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
@@ -1869,7 +1869,7 @@ CompositeTable::updateColumnDouble(llong recordId, fstring colname,
 }
 
 void
-CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
+DbTable::incrementColumnValue(llong recordId, size_t columnId,
 									 llong incVal, DbContext* ctx) {
 #include "update_column_impl.hpp"
 	SpinRwLock segLock(seg->m_segMutex);
@@ -1896,7 +1896,7 @@ CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 }
 
 void
-CompositeTable::incrementColumnValue(llong recordId, fstring colname,
+DbTable::incrementColumnValue(llong recordId, fstring colname,
 									 llong incVal, DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
@@ -1907,7 +1907,7 @@ CompositeTable::incrementColumnValue(llong recordId, fstring colname,
 }
 
 void
-CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
+DbTable::incrementColumnValue(llong recordId, size_t columnId,
 									 double incVal, DbContext* ctx) {
 #include "update_column_impl.hpp"
 	SpinRwLock segLock(seg->m_segMutex);
@@ -1934,7 +1934,7 @@ CompositeTable::incrementColumnValue(llong recordId, size_t columnId,
 }
 
 void
-CompositeTable::incrementColumnValue(llong recordId, fstring colname,
+DbTable::incrementColumnValue(llong recordId, fstring colname,
 									 double incVal, DbContext* ctx) {
 	size_t columnId = m_schema->m_rowSchema->getColumnId(colname);
 	if (columnId >= m_schema->columnNum()) {
@@ -1945,14 +1945,14 @@ CompositeTable::incrementColumnValue(llong recordId, fstring colname,
 }
 
 bool
-CompositeTable::indexKeyExists(size_t indexId, fstring key, DbContext* ctx)
+DbTable::indexKeyExists(size_t indexId, fstring key, DbContext* ctx)
 const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
 	return indexKeyExistsNoLock(indexId, key, ctx);
 }
 
 bool
-CompositeTable::indexKeyExistsNoLock(size_t indexId, fstring key, DbContext* ctx)
+DbTable::indexKeyExistsNoLock(size_t indexId, fstring key, DbContext* ctx)
 const {
 	ctx->exactMatchRecIdvec.erase_all();
 	size_t segNum = ctx->m_segCtx.size();
@@ -1967,7 +1967,7 @@ const {
 }
 
 void
-CompositeTable::indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext* ctx)
+DbTable::indexSearchExact(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
 	indexSearchExactNoLock(indexId, key, recIdvec, ctx);
@@ -1975,7 +1975,7 @@ const {
 
 /// returned recIdvec is sorted by recId ascending
 void
-CompositeTable::indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext* ctx)
+DbTable::indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
 	recIdvec->erase_all();
 	const bool isUnique = m_schema->getIndexSchema(indexId).m_isUnique;
@@ -2037,14 +2037,14 @@ const {
 // implemented in DfaDbTable
 ///@params recIdvec result of matched record id list
 bool
-CompositeTable::indexMatchRegex(size_t indexId, BaseDFA* regexDFA,
+DbTable::indexMatchRegex(size_t indexId, BaseDFA* regexDFA,
 								valvec<llong>* recIdvec, DbContext*)
 const {
 	THROW_STD(invalid_argument, "Methed is not implemented");
 }
 
 bool
-CompositeTable::indexMatchRegex(size_t indexId,
+DbTable::indexMatchRegex(size_t indexId,
 								fstring regexStr, fstring regexOpt,
 								valvec<llong>* recIdvec, DbContext*)
 const {
@@ -2052,7 +2052,7 @@ const {
 }
 
 bool
-CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
+DbTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 							DbContext* txn)
 {
 	assert(txn != nullptr);
@@ -2081,7 +2081,7 @@ CompositeTable::indexInsert(size_t indexId, fstring indexKey, llong id,
 }
 
 bool
-CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
+DbTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 							DbContext* txn)
 {
 	assert(txn != nullptr);
@@ -2109,7 +2109,7 @@ CompositeTable::indexRemove(size_t indexId, fstring indexKey, llong id,
 }
 
 bool
-CompositeTable::indexUpdate(size_t indexId, fstring indexKey,
+DbTable::indexUpdate(size_t indexId, fstring indexKey,
 							 llong oldId, llong newId,
 							 DbContext* txn)
 {
@@ -2161,7 +2161,7 @@ CompositeTable::indexUpdate(size_t indexId, fstring indexKey,
 	}
 }
 
-llong CompositeTable::indexStorageSize(size_t indexId) const {
+llong DbTable::indexStorageSize(size_t indexId) const {
 	if (indexId >= m_schema->getIndexNum()) {
 		THROW_STD(invalid_argument,
 			"Invalid indexId=%lld, indexNum=%lld",
@@ -2176,7 +2176,7 @@ llong CompositeTable::indexStorageSize(size_t indexId) const {
 }
 
 class TableIndexIter : public IndexIterator {
-	const CompositeTablePtr m_tab;
+	const DbTablePtr m_tab;
 	const DbContextPtr m_ctx;
 	const size_t m_indexId;
 	struct OneSeg {
@@ -2262,8 +2262,8 @@ class TableIndexIter : public IndexIterator {
 	}
 
 public:
-	TableIndexIter(const CompositeTable* tab, size_t indexId, bool forward)
-	  : m_tab(const_cast<CompositeTable*>(tab))
+	TableIndexIter(const DbTable* tab, size_t indexId, bool forward)
+	  : m_tab(const_cast<DbTable*>(tab))
 	  , m_ctx(tab->createDbContext())
 	  , m_indexId(indexId)
 	  , m_forward(forward)
@@ -2462,13 +2462,13 @@ public:
 	}
 };
 
-IndexIteratorPtr CompositeTable::createIndexIterForward(size_t indexId) const {
+IndexIteratorPtr DbTable::createIndexIterForward(size_t indexId) const {
 	assert(indexId < m_schema->getIndexNum());
 	assert(m_schema->getIndexSchema(indexId).m_isOrdered);
 	return new TableIndexIter(this, indexId, true);
 }
 
-IndexIteratorPtr CompositeTable::createIndexIterForward(fstring indexCols) const {
+IndexIteratorPtr DbTable::createIndexIterForward(fstring indexCols) const {
 	size_t indexId = m_schema->getIndexId(indexCols);
 	if (m_schema->getIndexNum() == indexId) {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
@@ -2476,13 +2476,13 @@ IndexIteratorPtr CompositeTable::createIndexIterForward(fstring indexCols) const
 	return createIndexIterForward(indexId);
 }
 
-IndexIteratorPtr CompositeTable::createIndexIterBackward(size_t indexId) const {
+IndexIteratorPtr DbTable::createIndexIterBackward(size_t indexId) const {
 	assert(indexId < m_schema->getIndexNum());
 	assert(m_schema->getIndexSchema(indexId).m_isOrdered);
 	return new TableIndexIter(this, indexId, false);
 }
 
-IndexIteratorPtr CompositeTable::createIndexIterBackward(fstring indexCols) const {
+IndexIteratorPtr DbTable::createIndexIterBackward(fstring indexCols) const {
 	size_t indexId = m_schema->getIndexId(indexCols);
 	if (m_schema->getIndexNum() == indexId) {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
@@ -2507,13 +2507,13 @@ doGetProjectColumns(const hash_strmap<T>& colnames, const Schema& rowSchema) {
 	return colIdVec;
 }
 valvec<size_t>
-CompositeTable::getProjectColumns(const hash_strmap<>& colnames) const {
+DbTable::getProjectColumns(const hash_strmap<>& colnames) const {
 	assert(colnames.delcnt() == 0);
 	return doGetProjectColumns(colnames, *m_schema->m_rowSchema);
 }
 
 void
-CompositeTable::selectColumns(llong id, const valvec<size_t>& cols,
+DbTable::selectColumns(llong id, const valvec<size_t>& cols,
 							  valvec<byte>* colsData, DbContext* ctx)
 const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
@@ -2521,7 +2521,7 @@ const {
 }
 
 void
-CompositeTable::selectColumnsNoLock(llong id, const valvec<size_t>& cols,
+DbTable::selectColumnsNoLock(llong id, const valvec<size_t>& cols,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
 //	DebugCheckRowNumVecNoLock(this);
@@ -2536,7 +2536,7 @@ const {
 }
 
 void
-CompositeTable::selectColumns(llong id, const size_t* colsId, size_t colsNum,
+DbTable::selectColumns(llong id, const size_t* colsId, size_t colsNum,
 							  valvec<byte>* colsData, DbContext* ctx)
 const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
@@ -2544,7 +2544,7 @@ const {
 }
 
 void
-CompositeTable::selectColumnsNoLock(llong id, const size_t* colsId, size_t colsNum,
+DbTable::selectColumnsNoLock(llong id, const size_t* colsId, size_t colsNum,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
 //	DebugCheckRowNumVecNoLock(this);
@@ -2559,7 +2559,7 @@ const {
 }
 
 void
-CompositeTable::selectOneColumn(llong id, size_t columnId,
+DbTable::selectOneColumn(llong id, size_t columnId,
 								valvec<byte>* colsData, DbContext* ctx)
 const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
@@ -2567,7 +2567,7 @@ const {
 }
 
 void
-CompositeTable::selectOneColumnNoLock(llong id, size_t columnId,
+DbTable::selectOneColumnNoLock(llong id, size_t columnId,
 									  valvec<byte>* colsData, DbContext* ctx)
 const {
 //	DebugCheckRowNumVecNoLock(this);
@@ -2581,25 +2581,25 @@ const {
 	seg->selectOneColumn(id - baseId, columnId, colsData, ctx);
 }
 
-void CompositeTable::selectColgroups(llong recId, const valvec<size_t>& cgIdvec,
+void DbTable::selectColgroups(llong recId, const valvec<size_t>& cgIdvec,
 						valvec<valvec<byte> >* cgDataVec, DbContext* ctx) const {
 	cgDataVec->resize(cgIdvec.size());
 	ctx->trySyncSegCtxSpeculativeLock(this);
 	selectColgroupsNoLock(recId, cgIdvec.data(), cgIdvec.size(), cgDataVec->data(), ctx);
 }
-void CompositeTable::selectColgroupsNoLock(llong recId, const valvec<size_t>& cgIdvec,
+void DbTable::selectColgroupsNoLock(llong recId, const valvec<size_t>& cgIdvec,
 						valvec<valvec<byte> >* cgDataVec, DbContext* ctx) const {
 	cgDataVec->resize(cgIdvec.size());
 	selectColgroupsNoLock(recId, cgIdvec.data(), cgIdvec.size(), cgDataVec->data(), ctx);
 }
 
-void CompositeTable::selectColgroups(llong recId,
+void DbTable::selectColgroups(llong recId,
 						const size_t* cgIdvec, size_t cgIdvecSize,
 						valvec<byte>* cgDataVec, DbContext* ctx) const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
 	selectColgroupsNoLock(recId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
 }
-void CompositeTable::selectColgroupsNoLock(llong recId,
+void DbTable::selectColgroupsNoLock(llong recId,
 						const size_t* cgIdvec, size_t cgIdvecSize,
 						valvec<byte>* cgDataVec, DbContext* ctx) const {
 //	DebugCheckRowNumVecNoLock(this);
@@ -2615,36 +2615,36 @@ void CompositeTable::selectColgroupsNoLock(llong recId,
 	seg->selectColgroups(subId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
 }
 
-void CompositeTable::selectOneColgroup(llong recId, size_t cgId,
+void DbTable::selectOneColgroup(llong recId, size_t cgId,
 						valvec<byte>* cgData, DbContext* ctx) const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
 	selectColgroupsNoLock(recId, &cgId, 1, cgData, ctx);
 }
 
-void CompositeTable::selectOneColgroupNoLock(llong recId, size_t cgId,
+void DbTable::selectOneColgroupNoLock(llong recId, size_t cgId,
 						valvec<byte>* cgData, DbContext* ctx) const {
 	selectColgroupsNoLock(recId, &cgId, 1, cgData, ctx);
 }
 
 #if 0
 StoreIteratorPtr
-CompositeTable::createProjectIterForward(const valvec<size_t>& cols, DbContext* ctx)
+DbTable::createProjectIterForward(const valvec<size_t>& cols, DbContext* ctx)
 const {
 	return createProjectIterForward(cols.data(), cols.size(), ctx);
 }
 StoreIteratorPtr
-CompositeTable::createProjectIterBackward(const valvec<size_t>& cols, DbContext* ctx)
+DbTable::createProjectIterBackward(const valvec<size_t>& cols, DbContext* ctx)
 const {
 	return createProjectIterBackward(cols.data(), cols.size(), ctx);
 }
 
 StoreIteratorPtr
-CompositeTable::createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
+DbTable::createProjectIterForward(const size_t* colsId, size_t colsNum, DbContext*)
 const {
 }
 
 StoreIteratorPtr
-CompositeTable::createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
+DbTable::createProjectIterBackward(const size_t* colsId, size_t colsNum, DbContext*)
 const {
 }
 #endif
@@ -2727,7 +2727,7 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 
 } // namespace
 
-class CompositeTable::MergeParam : public valvec<SegEntry> {
+class DbTable::MergeParam : public valvec<SegEntry> {
 public:
 	bool   m_forcePurgeAndMerge = false;
 	size_t m_tabSegNum = 0;
@@ -2736,7 +2736,7 @@ public:
 	rank_select_se m_oldpurgeBits; // join from all input segs
 	rank_select_se m_newpurgeBits;
 
-	bool canMerge(CompositeTable* tab) {
+	bool canMerge(DbTable* tab) {
 		// most failed checks should fails here...
 		if (tab->m_isMerging)
 			return false;
@@ -2837,7 +2837,7 @@ public:
 };
 
 
-void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
+void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 	size_t newSumDelcnt = 0;
 	for (const auto& e : *this) {
 		const ReadonlySegment* seg = e.seg;
@@ -2888,7 +2888,7 @@ void CompositeTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 }
 
 ReadableIndex*
-CompositeTable::MergeParam::
+DbTable::MergeParam::
 mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	valvec<byte> rec;
 	SortableStrVec strVec;
@@ -3033,7 +3033,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	return index;
 }
 
-bool CompositeTable::MergeParam::needsPurgeBits() const {
+bool DbTable::MergeParam::needsPurgeBits() const {
 	for (auto& e : *this) {
 		if (!e.newIsPurged.empty())
 			return true;
@@ -3042,7 +3042,7 @@ bool CompositeTable::MergeParam::needsPurgeBits() const {
 }
 
 void
-CompositeTable::MergeParam::
+DbTable::MergeParam::
 mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	FixedLenStorePtr dstStore = new FixedLenStore(dseg->m_segDir, schema);
@@ -3107,7 +3107,7 @@ public:
 #endif
 
 void
-CompositeTable::MergeParam::
+DbTable::MergeParam::
 mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	valvec<ReadableStorePtr> parts;
@@ -3130,7 +3130,7 @@ mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 }
 
 void
-CompositeTable::MergeParam::
+DbTable::MergeParam::
 mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	assert(dseg->m_isDel.size() == m_newSegRows);
 	assert(m_oldpurgeBits.size() == m_newSegRows);
@@ -3235,7 +3235,7 @@ moveStoreFiles(PathRef srcDir, PathRef destDir,
 // If segments to be merged have purged records, these physical records id
 // must be mapped to logical records id, thus purge bitmap is required for
 // the merged result segment
-void CompositeTable::merge(MergeParam& toMerge) {
+void DbTable::merge(MergeParam& toMerge) {
 	fs::path destMergeDir = getMergePath(m_dir, m_mergeSeqNum+1);
 	if (fs::exists(destMergeDir)) {
 		THROW_STD(logic_error, "dir: '%s' should not existed"
@@ -3568,7 +3568,7 @@ catch (const std::exception& ex) {
 #endif
 }
 
-void CompositeTable::checkRowNumVecNoLock() const {
+void DbTable::checkRowNumVecNoLock() const {
 #if !defined(NDEBUG)
 	assert(m_segments.size() >= 1);
 	for(size_t i = 0; i < m_segments.size()-1; ++i) {
@@ -3591,7 +3591,7 @@ void CompositeTable::checkRowNumVecNoLock() const {
 #endif
 }
 
-void CompositeTable::clear() {
+void DbTable::clear() {
 	MyRwLock lock(m_rwMutex, true);
 	for (size_t i = 0; i < m_segments.size(); ++i) {
 		m_segments[i]->deleteSegment();
@@ -3601,7 +3601,7 @@ void CompositeTable::clear() {
 	m_rowNumVec.clear();
 }
 
-void CompositeTable::flush() {
+void DbTable::flush() {
 	if (this->m_tobeDrop) {
 		return;
 	}
@@ -3639,7 +3639,7 @@ static void waitForBackgroundTasks(MyRwMutex& m_rwMutex, size_t& m_bgTaskNum) {
 	}
 }
 
-void CompositeTable::compact() {
+void DbTable::compact() {
 	profiling pf;
 	llong t0 = pf.now();
 	llong t1 = t0;
@@ -3692,7 +3692,7 @@ void CompositeTable::compact() {
 	}
 }
 
-void CompositeTable::syncFinishWriting() {
+void DbTable::syncFinishWriting() {
 	m_wrSeg = nullptr; // can't write anymore
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
 	{
@@ -3710,12 +3710,12 @@ void CompositeTable::syncFinishWriting() {
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
 }
 
-void CompositeTable::asyncPurgeDelete() {
+void DbTable::asyncPurgeDelete() {
 	MyRwLock lock(m_rwMutex, true);
 	asyncPurgeDeleteInLock();
 }
 
-void CompositeTable::dropTable() {
+void DbTable::dropTable() {
 	assert(!m_dir.empty());
 	for (auto& seg : m_segments) {
 		seg->deleteSegment();
@@ -3724,12 +3724,12 @@ void CompositeTable::dropTable() {
 	m_tobeDrop = true;
 }
 
-std::string CompositeTable::toJsonStr(fstring row) const {
+std::string DbTable::toJsonStr(fstring row) const {
 	return m_schema->m_rowSchema->toJsonStr(row);
 }
 
 boost::filesystem::path
-CompositeTable::getMergePath(PathRef dir, size_t mergeSeq)
+DbTable::getMergePath(PathRef dir, size_t mergeSeq)
 const {
 	auto res = dir;
 	char szBuf[32];
@@ -3739,13 +3739,13 @@ const {
 }
 
 boost::filesystem::path
-CompositeTable::getSegPath(const char* type, size_t segIdx)
+DbTable::getSegPath(const char* type, size_t segIdx)
 const {
 	return getSegPath2(m_dir, m_mergeSeqNum, type, segIdx);
 }
 
 boost::filesystem::path
-CompositeTable::getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx)
+DbTable::getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx)
 const {
 	auto res = dir;
 	char szBuf[32];
@@ -3757,7 +3757,7 @@ const {
 	return res;
 }
 
-void CompositeTable::save(PathRef dir) const {
+void DbTable::save(PathRef dir) const {
 	if (dir == m_dir) {
 		fprintf(stderr, "WARN: save self(%s), skipped\n", dir.string().c_str());
 		return;
@@ -3796,7 +3796,7 @@ void CompositeTable::save(PathRef dir) const {
 	m_schema->saveJsonFile(jsonFile.string());
 }
 
-void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
+void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
 	BOOST_SCOPE_EXIT(&m_rwMutex, &m_bgTaskNum){
 		MyRwLock lock(m_rwMutex, true);
 		m_bgTaskNum--;
@@ -3844,7 +3844,7 @@ void CompositeTable::convWritableSegmentToReadonly(size_t segIdx) {
   }
 }
 
-void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
+void DbTable::freezeFlushWritableSegment(size_t segIdx) {
 	ReadableSegmentPtr seg;
 	{
 		MyRwLock lock(m_rwMutex, false);
@@ -3860,7 +3860,7 @@ void CompositeTable::freezeFlushWritableSegment(size_t segIdx) {
 	fprintf(stderr, "freezeFlushWritableSegment: %s done!\n", seg->m_segDir.string().c_str());
 }
 
-void CompositeTable::runPurgeDelete() {
+void DbTable::runPurgeDelete() {
 	BOOST_SCOPE_EXIT(&m_rwMutex, &m_purgeStatus, &m_bgTaskNum) {
 		MyRwLock lock(m_rwMutex, true);
 		m_purgeStatus = PurgeStatus::none;
@@ -3956,7 +3956,7 @@ public:
 	}
 	~CompressionThreadsList() {
 		if (!this->empty())
-			CompositeTable::safeStopAndWaitForFlush();
+			DbTable::safeStopAndWaitForFlush();
 	}
 	void join() {
 		for (auto& th : *this) {
@@ -3973,11 +3973,11 @@ tbb::tbb_thread g_flushThread(&FlushThreadFunc);
 CompressionThreadsList g_compressThreads;
 
 class SegWrToRdConvTask : public MyTask {
-	CompositeTablePtr m_tab;
+	DbTablePtr m_tab;
 	size_t m_segIdx;
 
 public:
-	SegWrToRdConvTask(CompositeTablePtr tab, size_t segIdx)
+	SegWrToRdConvTask(DbTablePtr tab, size_t segIdx)
 		: m_tab(tab), m_segIdx(segIdx) {}
 
 	void execute() override {
@@ -3986,19 +3986,19 @@ public:
 };
 
 class PurgeDeleteTask : public MyTask {
-	CompositeTablePtr m_tab;
+	DbTablePtr m_tab;
 public:
 	void execute() override {
 		m_tab->runPurgeDelete();
 	}
-	PurgeDeleteTask(CompositeTablePtr tab) : m_tab(tab) {}
+	PurgeDeleteTask(DbTablePtr tab) : m_tab(tab) {}
 };
 
 class WrSegFreezeFlushTask : public MyTask {
-	CompositeTablePtr m_tab;
+	DbTablePtr m_tab;
 	size_t m_segIdx;
 public:
-	WrSegFreezeFlushTask(CompositeTablePtr tab, size_t segIdx)
+	WrSegFreezeFlushTask(DbTablePtr tab, size_t segIdx)
 		: m_tab(tab), m_segIdx(segIdx) {}
 
 	void execute() override {
@@ -4010,7 +4010,7 @@ public:
 } // namespace
 using namespace anonymousForDebugMSVC;
 
-void CompositeTable::putToFlushQueue(size_t segIdx) {
+void DbTable::putToFlushQueue(size_t segIdx) {
 	assert(!g_stopPutToFlushQueue);
 	if (g_stopPutToFlushQueue) {
 		return;
@@ -4022,7 +4022,7 @@ void CompositeTable::putToFlushQueue(size_t segIdx) {
 	m_bgTaskNum++;
 }
 
-void CompositeTable::putToCompressionQueue(size_t segIdx) {
+void DbTable::putToCompressionQueue(size_t segIdx) {
 	assert(segIdx < m_segments.size());
 	assert(m_segments[segIdx]->m_isDel.size() > 0);
 	assert(m_segments[segIdx]->getWritableStore() != nullptr);
@@ -4034,7 +4034,7 @@ void CompositeTable::putToCompressionQueue(size_t segIdx) {
 }
 
 inline
-bool CompositeTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
+bool DbTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
 	assert(!g_stopPutToFlushQueue);
 	if (g_stopPutToFlushQueue) {
 		return false;
@@ -4047,7 +4047,7 @@ bool CompositeTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
 }
 
 inline
-bool CompositeTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
+bool DbTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
 	if (checkPurgeDeleteNoLock(seg)) {
 		asyncPurgeDeleteInLock();
 		return true;
@@ -4055,7 +4055,7 @@ bool CompositeTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
 	return false;
 }
 
-void CompositeTable::asyncPurgeDeleteInLock() {
+void DbTable::asyncPurgeDeleteInLock() {
 	if (PurgeStatus::purging == m_purgeStatus) {
 		// do nothing
 		assert(!m_isMerging);
@@ -4073,7 +4073,7 @@ void CompositeTable::asyncPurgeDeleteInLock() {
 	}
 }
 
-void CompositeTable::inLockPutPurgeDeleteTaskToQueue() {
+void DbTable::inLockPutPurgeDeleteTaskToQueue() {
 	assert(!g_stopPutToFlushQueue);
 	if (g_stopPutToFlushQueue) {
 		return;
@@ -4084,7 +4084,7 @@ void CompositeTable::inLockPutPurgeDeleteTaskToQueue() {
 }
 
 // flush is the most urgent
-void CompositeTable::safeStopAndWaitForFlush() {
+void DbTable::safeStopAndWaitForFlush() {
 	g_stopPutToFlushQueue = true;
 	g_stopCompress = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
@@ -4095,7 +4095,7 @@ void CompositeTable::safeStopAndWaitForFlush() {
 	assert(g_compressQueue.empty());
 }
 
-void CompositeTable::safeStopAndWaitForCompress() {
+void DbTable::safeStopAndWaitForCompress() {
 	g_stopPutToFlushQueue = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
 	g_flushThread.join();
@@ -4105,7 +4105,7 @@ void CompositeTable::safeStopAndWaitForCompress() {
 }
 
 /*
-void CompositeTable::registerDbContext(DbContext* ctx) const {
+void DbTable::registerDbContext(DbContext* ctx) const {
 	assert(m_ctxListHead != ctx);
 	MyRwLock lock(m_rwMutex);
 	ctx->m_prev = m_ctxListHead;
@@ -4114,7 +4114,7 @@ void CompositeTable::registerDbContext(DbContext* ctx) const {
 	m_ctxListHead->m_next = ctx;
 }
 
-void CompositeTable::unregisterDbContext(DbContext* ctx) const {
+void DbTable::unregisterDbContext(DbContext* ctx) const {
 	assert(m_ctxListHead != ctx);
 	MyRwLock lock(m_rwMutex);
 	ctx->m_prev->m_next = ctx->m_next;

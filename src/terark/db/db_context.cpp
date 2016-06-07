@@ -63,8 +63,8 @@ DbContextLink::~DbContextLink() {
 static std::atomic<size_t> g_dbCtxLiveCnt;
 static std::atomic<size_t> g_dbCtxCreatedCnt;
 
-DbContext::DbContext(const CompositeTable* tab)
-  : m_tab(const_cast<CompositeTable*>(tab))
+DbContext::DbContext(const DbTable* tab)
+  : m_tab(const_cast<DbTable*>(tab))
 {
 // must calling the constructor in lock tab->m_rwMutex
 	size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
@@ -111,7 +111,7 @@ DbContext::~DbContext() {
 	g_dbCtxLiveCnt--;
 }
 
-void DbContext::doSyncSegCtxNoLock(const CompositeTable* tab) {
+void DbContext::doSyncSegCtxNoLock(const DbTable* tab) {
 	assert(tab == m_tab);
 	assert(this->segArrayUpdateSeq < tab->getSegArrayUpdateSeq());
 	if (!m_isUserDefineSnapshot) {

@@ -14,11 +14,11 @@ namespace terark { namespace db { namespace dfadb {
 
 class TERARK_DB_DLL DfaDbContext : public DbContext {
 public:
-	explicit DfaDbContext(const CompositeTable* tab);
+	explicit DfaDbContext(const DbTable* tab);
 	~DfaDbContext();
 	std::string m_nltRecBuf;
 };
-class TERARK_DB_DLL DfaDbTable : public CompositeTable {
+class TERARK_DB_DLL DfaDbTable : public DbTable {
 public:
 	DbContext* createDbContextNoLock() const override;
 	ReadonlySegment* createReadonlySegment(PathRef dir) const override;

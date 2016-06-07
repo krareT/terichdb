@@ -94,7 +94,7 @@ public:
         : _rs(rs),
           _txn(txn) {
 		ThreadSafeTable* tst = rs.m_table.get();
-		CompositeTable* tab = tst->m_tab.get();
+		DbTable* tab = tst->m_tab.get();
     	m_ttd = tst->allocTableThreadData();
     	if (forward)
     		_cursor = tab->createStoreIterForward(m_ttd->m_dbCtx.get());
@@ -117,7 +117,7 @@ public:
 		else {
 			assert(!m_ttd->m_buf.empty());
 		}
-		CompositeTable* tab = _rs.m_table->m_tab.get();
+		DbTable* tab = _rs.m_table->m_tab.get();
         SharedBuffer sbuf = m_ttd->m_coder.decode(&tab->rowSchema(), m_ttd->m_buf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
@@ -135,7 +135,7 @@ public:
             return {};
         }
 		assert(!m_ttd->m_buf.empty());
-		CompositeTable* tab = _rs.m_table->m_tab.get();
+		DbTable* tab = _rs.m_table->m_tab.get();
         SharedBuffer sbuf = m_ttd->m_coder.decode(&tab->rowSchema(), m_ttd->m_buf);
         _lastReturnedId = id;
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
@@ -291,7 +291,7 @@ TerarkDbRecordStore::TerarkDbRecordStore(OperationContext* ctx,
 
 TerarkDbRecordStore::~TerarkDbRecordStore() {
     _shuttingDown = true;
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	tab->flush();
     LOG(1) << BOOST_CURRENT_FUNCTION << ": namespace: " << ns() << ", dir: " << tab->getDir().string();
 }
@@ -333,7 +333,7 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 	if (id.isNull())
 		return false;
     llong recIdx = id.repr() - 1;
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
     auto& td = m_table->getMyThreadData();
     tab->getValue(recIdx, &td.m_buf, &*td.m_dbCtx);
     SharedBuffer bson = td.m_coder.decode(&tab->rowSchema(), td.m_buf);
@@ -352,7 +352,7 @@ void TerarkDbRecordStore::deleteRecord(OperationContext* txn, const RecordId& id
 Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
 										std::vector<Record>* records,
 										bool enforceQuota) {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
     auto& td = m_table->getMyThreadData();
     for (Record& rec : *records) {
     	BSONObj bson(rec.data.data());
@@ -366,7 +366,7 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
 													 const char* data,
 													 int len,
 													 bool enforceQuota) {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
     auto& td = m_table->getMyThreadData();
     BSONObj bson(data);
 	invariant(bson.objsize() == len);
@@ -393,7 +393,7 @@ TerarkDbRecordStore::updateRecord(OperationContext* txn,
 								int len,
 								bool enforceQuota,
 								UpdateNotifier* notifier) {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	terark::db::IncrementGuard_size_t incrGuard(tab->m_inprogressWritingCount);
 	llong recId = id.repr() - 1;
 	{
@@ -446,7 +446,7 @@ TerarkDbRecordStore::getManyCursors(OperationContext* txn) const {
 }
 
 Status TerarkDbRecordStore::truncate(OperationContext* txn) {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	tab->clear();
     return Status::OK();
 }
@@ -455,7 +455,7 @@ Status TerarkDbRecordStore::compact(OperationContext* txn,
 								  RecordStoreCompactAdaptor* adaptor,
 								  const CompactOptions* options,
 								  CompactStats* stats) {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
 	tab->compact(); // will wait for compact complete
     return Status::OK();
 }
@@ -466,7 +466,7 @@ Status TerarkDbRecordStore::validate(OperationContext* txn,
                                    ValidateAdaptor* adaptor,
                                    ValidateResults* results,
                                    BSONObjBuilder* output) {
-	CompositeTable* tab = m_table->m_tab.get();
+	DbTable* tab = m_table->m_tab.get();
     output->appendNumber("nrecords", tab->numDataRows());
     return Status::OK();
 }

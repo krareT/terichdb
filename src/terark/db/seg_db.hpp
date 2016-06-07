@@ -23,14 +23,14 @@
 namespace terark { namespace db {
 
 class DataBase : public RefCounter {
-	hash_strmap<CompositeTablePtr> m_tables;
+	hash_strmap<DbTablePtr> m_tables;
 	std::string m_dbDir;
 
 public:
 	void openDb(fstring dbDir);
 
-	CompositeTablePtr createTable(fstring tableName, fstring jsonSchema);
-	CompositeTablePtr openTable(fstring tableName);
+	DbTablePtr createTable(fstring tableName, fstring jsonSchema);
+	DbTablePtr openTable(fstring tableName);
 
 	void dropTable(fstring tableName);
 };

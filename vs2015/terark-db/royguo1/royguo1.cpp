@@ -10,7 +10,7 @@ int main(int argc, char* argv[]){
 
   // open table
   static const char* dbtable = "db";
-  terark::db::CompositeTablePtr tab = terark::db::CompositeTable::open(dbtable);
+  terark::db::DbTablePtr tab = terark::db::DbTable::open(dbtable);
 
   // write data (1000 records)
   terark::NativeDataOutput<terark::AutoGrownMemIO> rowBuilder;
@@ -56,7 +56,7 @@ int main(int argc, char* argv[]){
 
   if (indexId >= tab->getIndexNum()) {
     fprintf(stderr, "ERROR: index 'id' does not exist\n");
-    terark::db::CompositeTable::safeStopAndWaitForCompress();
+    terark::db::DbTable::safeStopAndWaitForCompress();
     return 0;
   }
 
@@ -112,6 +112,6 @@ int main(int argc, char* argv[]){
   }
 
   // close table
-  terark::db::CompositeTable::safeStopAndWaitForCompress();
+  terark::db::DbTable::safeStopAndWaitForCompress();
   return 0;
 }

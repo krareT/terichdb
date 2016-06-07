@@ -50,7 +50,7 @@
 #undef min
 #undef max
 
-using terark::db::CompositeTablePtr;
+using terark::db::DbTablePtr;
 using terark::db::DbContextPtr;
 using terark::gold_hash_map;
 
@@ -104,7 +104,7 @@ class DbImpl;
 /* Context for operations (including snapshots, write batches, transactions) */
 class OperationContext {
 public:
-  OperationContext(terark::db::CompositeTable* tab, terark::db::DbContext* ctx)
+  OperationContext(terark::db::DbTable* tab, terark::db::DbContext* ctx)
    : m_batchWriter(tab, ctx) {}
 
   ~OperationContext() {
@@ -179,7 +179,7 @@ class ColumnFamilyHandleImpl : public ColumnFamilyHandle {
 
 class IteratorImpl : public Iterator {
 public:
-  IteratorImpl(terark::db::CompositeTable *db);
+  IteratorImpl(terark::db::DbTable *db);
   virtual ~IteratorImpl();
 
   // An iterator is either positioned at a key/value pair, or
@@ -210,7 +210,7 @@ public:
 
 private:
   void iterIncrement();
-  terark::db::CompositeTable*  m_tab;
+  terark::db::DbTable*  m_tab;
   terark::db::DbContextPtr     m_ctx;
   terark::db::IndexIteratorPtr m_iter;
   long long m_recId;
@@ -359,7 +359,7 @@ public:
 
 //WT_CONNECTION *conn_;
 //ThreadLocal<OperationContext> *context_;
-  terark::db::CompositeTablePtr m_tab;
+  terark::db::DbTablePtr m_tab;
 private:
 #if 0
   mutable terark::db::MyRwMutex m_ctxMapRwMutex;

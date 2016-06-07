@@ -14,7 +14,7 @@ public:
 //	WT_CURSOR*         wtStoreReplace; // reuse default cursor
 	valvec<WT_CURSOR*> wtIndexCursor;
 
-	WtContext(const CompositeTable* tab);
+	WtContext(const DbTable* tab);
 	~WtContext();
 
 	WT_CURSOR* getStoreCursor(fstring uri);

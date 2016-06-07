@@ -4,7 +4,7 @@ namespace terark { namespace db { namespace wt {
 
 namespace fs = boost::filesystem;
 /*
-WtContext::WtContext(const CompositeTable* tab) : DbContext(tab) {
+WtContext::WtContext(const DbTable* tab) : DbContext(tab) {
 	wtSession = NULL;
 	wtStoreCursor = NULL;
 	wtStoreAppend = NULL;

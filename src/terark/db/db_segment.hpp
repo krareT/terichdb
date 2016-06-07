@@ -130,8 +130,8 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	void convFrom(class CompositeTable*, size_t segIdx);
-	void purgeDeletedRecords(class CompositeTable*, size_t segIdx);
+	void convFrom(class DbTable*, size_t segIdx);
+	void purgeDeletedRecords(class DbTable*, size_t segIdx);
 
 	void getValueByLogicId(size_t id, valvec<byte>* val, DbContext*) const;
 	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
@@ -169,7 +169,7 @@ protected:
 							  const bm_uint_t* isDel, const febitvec* isPurged)
 			const;
 
-	void completeAndReload(class CompositeTable*, size_t segIdx,
+	void completeAndReload(class DbTable*, size_t segIdx,
 						   class ReadableSegment* input);
 	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,
 								const ReadableSegment* input);
@@ -185,7 +185,7 @@ protected:
 	void savePurgeBits(PathRef segDir) const;
 
 protected:
-	friend class CompositeTable;
+	friend class DbTable;
 	friend class TableIndexIter;
 	class MyStoreIterForward;  friend class MyStoreIterForward;
 	class MyStoreIterBackward; friend class MyStoreIterBackward;

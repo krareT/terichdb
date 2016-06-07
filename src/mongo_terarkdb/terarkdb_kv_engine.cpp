@@ -88,13 +88,13 @@ struct FuckFuck___ {
 	}
 } fuckfuckfuck____;
 
-TableThreadData::TableThreadData(CompositeTable* tab) {
+TableThreadData::TableThreadData(DbTable* tab) {
 	m_dbCtx.reset(tab->createDbContext());
 	m_dbCtx->syncIndex = false;
 }
 
 ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
-	m_tab = CompositeTable::open(dbPath);
+	m_tab = DbTable::open(dbPath);
 	m_indexForwardIterCache.resize(m_tab->getIndexNum());
 	m_indexBackwardIterCache.resize(m_tab->getIndexNum());
 }
@@ -178,7 +178,7 @@ void ThreadSafeTable::destroy() {
 TableThreadData& ThreadSafeTable::getMyThreadData() {
 	TableThreadDataPtr& ttd = m_ttd.local();
 	if (terark_unlikely(!ttd)) {
-		CompositeTable* tab = m_tab.get();
+		DbTable* tab = m_tab.get();
 		ttd = new TableThreadData(tab);
 	}
 	return *ttd;
@@ -238,7 +238,7 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
     log() << "terarkdb_open : " << path;
     for (auto& tabDir : fs::directory_iterator(m_pathTerark / "tables")) {
     //	std::string strTabDir = tabDir.path().string();
-    	// CompositeTablePtr tab = CompositeTable::open(strTabDir);
+    	// DbTablePtr tab = DbTable::open(strTabDir);
     //	std::string tabIdent = tabDir.path().filename().string();
     //	auto ib = m_tables.insert_i(tabIdent, nullptr);
     //	invariant(ib.second);
@@ -251,7 +251,7 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 			_sizeStorer.fillCache();
         }
     }
-//	CompositeTable::setCompressionThreadsNum(4);
+//	DbTable::setCompressionThreadsNum(4);
 }
 
 TerarkDbKVEngine::~TerarkDbKVEngine() {
@@ -270,13 +270,13 @@ void TerarkDbKVEngine::cleanShutdown() {
 		ThreadSafeTable* tab = m_tables.val(i).get();
 		log() << "table: " << key.str() << ", dir: " << tab->m_tab->getDir().string()
 			<< ", ThreadSafeTable.refcnt = " << tab->get_refcount()
-			<< ", CompositeTable.refcnt = " << tab->m_tab->get_refcount();
+			<< ", DbTable.refcnt = " << tab->m_tab->get_refcount();
 
 		// brain damaged mongodb leaks objects, so destroy it manually
 		tab->destroy();
 	}
     m_tables.clear();
-	CompositeTable::safeStopAndWaitForFlush();
+	DbTable::safeStopAndWaitForFlush();
     log() << "TerarkDbKVEngine shutting down successed!";
 //	std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
@@ -329,7 +329,7 @@ TerarkDbKVEngine::repairIdent(OperationContext* opCtx, StringData ident) {
 
 int TerarkDbKVEngine::flushAllFiles(bool sync) {
     LOG(1) << "TerarkDbKVEngine::flushAllFiles";
-	terark::valvec<CompositeTablePtr>
+	terark::valvec<DbTablePtr>
 		tabCopy(m_tables.end_i()+2, terark::valvec_reserve());
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);

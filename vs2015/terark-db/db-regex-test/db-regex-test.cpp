@@ -28,7 +28,7 @@ struct TestRow {
 
 void doTest(terark::fstring tableClass, PathRef tableDir, const char* textKeyFile, const char* queryKeyFile) {
 	using namespace terark;
-	CompositeTablePtr tab = CompositeTable::createTable(tableClass);
+	DbTablePtr tab = DbTable::createTable(tableClass);
 	tab->load(tableDir);
 	DbContextPtr ctx(tab->createDbContext());
 	LineBuf		 line;
@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 	doTest("DfaDbTable", "dfadb", argv[1], argv[2]);
-	CompositeTable::safeStopAndWaitForCompress();
+	DbTable::safeStopAndWaitForCompress();
     return 0;
 }
 

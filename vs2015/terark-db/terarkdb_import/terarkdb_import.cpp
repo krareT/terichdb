@@ -36,7 +36,7 @@ GetoptDone:
 		return 1;
 	}
 	const char* dbdir = argv[optind + 0];
-	terark::db::CompositeTablePtr tab = terark::db::CompositeTable::open(dbdir);
+	terark::db::DbTablePtr tab = terark::db::DbTable::open(dbdir);
 	terark::db::DbContextPtr ctx = tab->createDbContext();
 	ctx->syncIndex = false;
 	terark::LineBuf line;
@@ -87,7 +87,7 @@ GetoptDone:
 	}
 	printf("waiting for compact thread complete...\n");
 	tab->syncFinishWriting();
-	terark::db::CompositeTable::safeStopAndWaitForCompress();
+	terark::db::DbTable::safeStopAndWaitForCompress();
 	printf("done!\n");
     return 0;
 }
