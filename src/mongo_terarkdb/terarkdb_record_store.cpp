@@ -102,6 +102,11 @@ public:
     		_cursor = tab->createStoreIterBackward(m_ttd->m_dbCtx.get());
     }
 
+	~Cursor() {
+		ThreadSafeTable* tst = _rs.m_table.get();
+		tst->releaseTableThreadData(m_ttd);
+	}
+
     boost::optional<Record> next() final {
         if (_eof)
             return {};
