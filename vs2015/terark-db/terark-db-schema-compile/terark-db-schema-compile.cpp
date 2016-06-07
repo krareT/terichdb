@@ -136,6 +136,21 @@ void compileOneSchema(const Schema& schema, const char* className) {
 		}
 	}
 	printf("    )\n");
+	printf(
+R"EOS(
+    %s& decode(terark::fstring row) {
+      terark::NativeDataInput<terark::MemIO> dio(row.range());
+      dio >> *this;
+      return *this;
+    }
+    terark::fstring
+    encode(terark::NativeDataOutput<terark::AutoGrownMemIO>& dio) const {
+      dio.rewind();
+      dio << *this;
+      return dio.written();
+    }
+)EOS", className
+	);
 	printf("  }; // %s\n\n", className);
 }
 

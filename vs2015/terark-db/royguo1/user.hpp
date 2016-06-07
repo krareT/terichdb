@@ -27,6 +27,18 @@ namespace test_ns {
       &terark::db::Schema::StrZero(description)
       &update_time
     )
+
+    User& decode(terark::fstring row) {
+      terark::NativeDataInput<terark::MemIO> dio(row.range());
+      dio >> *this;
+      return *this;
+    }
+    terark::fstring
+    encode(terark::NativeDataOutput<terark::AutoGrownMemIO>& dio) const {
+      dio.rewind();
+      dio << *this;
+      return dio.written();
+    }
   }; // User
 
   struct User_Colgroup_city_street {
@@ -37,6 +49,18 @@ namespace test_ns {
       &terark::db::Schema::StrZero(city)
       &terark::db::Schema::StrZero(street)
     )
+
+    User_Colgroup_city_street& decode(terark::fstring row) {
+      terark::NativeDataInput<terark::MemIO> dio(row.range());
+      dio >> *this;
+      return *this;
+    }
+    terark::fstring
+    encode(terark::NativeDataOutput<terark::AutoGrownMemIO>& dio) const {
+      dio.rewind();
+      dio << *this;
+      return dio.written();
+    }
   }; // User_Colgroup_city_street
 
   typedef User_Colgroup_city_street User_Index_city_street;
@@ -49,6 +73,18 @@ namespace test_ns {
       &terark::db::Schema::StrZero(name)
       &terark::db::Schema::StrZero(description)
     )
+
+    User_Colgroup_name_and_description& decode(terark::fstring row) {
+      terark::NativeDataInput<terark::MemIO> dio(row.range());
+      dio >> *this;
+      return *this;
+    }
+    terark::fstring
+    encode(terark::NativeDataOutput<terark::AutoGrownMemIO>& dio) const {
+      dio.rewind();
+      dio << *this;
+      return dio.written();
+    }
   }; // User_Colgroup_name_and_description
 
   struct User_Colgroup__RestAll {
@@ -59,6 +95,18 @@ namespace test_ns {
       &age
       &terark::db::Schema::StrZero(zipcode)
     )
+
+    User_Colgroup__RestAll& decode(terark::fstring row) {
+      terark::NativeDataInput<terark::MemIO> dio(row.range());
+      dio >> *this;
+      return *this;
+    }
+    terark::fstring
+    encode(terark::NativeDataOutput<terark::AutoGrownMemIO>& dio) const {
+      dio.rewind();
+      dio << *this;
+      return dio.written();
+    }
   }; // User_Colgroup__RestAll
 
 } // namespace test_ns

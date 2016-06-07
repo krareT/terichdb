@@ -27,9 +27,7 @@ int main(int argc, char* argv[]){
     u.age = (i + 10);
     u.update_time = 1463472964753 + i;
     // insert row
-    rowBuilder.rewind();
-    rowBuilder << u;
-    if (ctx->insertRow(rowBuilder.written()) < 0) {
+    if (ctx->insertRow(u.encode(rowBuilder)) < 0) {
       printf("Insert failed: %s\n", ctx->errMsg.c_str());
     }
   }
@@ -87,17 +85,22 @@ int main(int argc, char* argv[]){
 	  // update:
 	  ctx->getValue(recId, &rowBuf); // get old value
 
-	  // deserialize
-	  terark::NativeDataInput<terark::MemIO>(rowBuf.range()) >> u;
+// old style deserialize:
+//    terark::NativeDataInput<terark::MemIO>(rowBuf.range()) >> u;
+
+	  u.decode(rowBuf); // <<< new style deserialize
 
 	  // update columns
 	  u.name += " - Add updated suffix ...";
 	  u.description += " - add some description ...";
 
-	  rowBuilder.rewind(); // rewind and
-	  rowBuilder << u;     // serialize
+// old style  serialize and update:
+//	  rowBuilder.rewind(); // rewind and
+//	  rowBuilder << u;     // serialize
+//	  ctx->upsertRow(rowBuilder.written());
 
-	  ctx->upsertRow(rowBuilder.written());
+// new style serialize and update:
+	  ctx->upsertRow(u.encode(rowBuilder));
     }
   }
 
