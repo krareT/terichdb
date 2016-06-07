@@ -138,6 +138,19 @@ public:
 		m_end = (byte*)range.second;
 	}
 
+	MemIO(const std::pair<const byte*, const byte*>& range) {
+		m_pos = (byte*)range.first;
+		m_end = (byte*)range.second;
+	}
+	MemIO(const std::pair<const char*, const char*>& range) {
+		m_pos = (byte*)range.first;
+		m_end = (byte*)range.second;
+	}
+	MemIO(const std::pair<const signed char*, const signed char*>& range) {
+		m_pos = (byte*)range.first;
+		m_end = (byte*)range.second;
+	}
+
 	void set(void* buf, size_t size) {
 		m_pos = (byte*)buf;
 		m_end = (byte*)buf + size;

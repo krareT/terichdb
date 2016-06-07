@@ -251,8 +251,7 @@ public:
         if (&y == this)
             return *this;
 		assert(!is_object_overlap(this, &y));
-        clear();
-		construct(y.p, y.n);
+		assign(y.p, y.n);
         return *this;
     }
 
