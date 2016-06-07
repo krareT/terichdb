@@ -1,0 +1,22 @@
+{
+	"CheckMongoType" : true,
+        "RowSchema": {
+                "columns" : {
+                        "_id" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "field1" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field0" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field7" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field6" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field9" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field8" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field3" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field2" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field5" : {"type" :   "CarBin" , "mongoType": "bindata" },
+                        "field4" : {"type" :   "CarBin" , "mongoType": "bindata" },
+			"$$"	 : {"type" :   "CarBin" }
+		}
+	},
+	"TableIndex" : [
+		{ "fields": "_id", "ordered" : true, "unique": true}
+	]
+}	 

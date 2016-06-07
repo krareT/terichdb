@@ -1,0 +1,20 @@
+{
+	"CheckMongoType" : true,
+        "RowSchema": {
+                "columns" : {
+                        "_id" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "product/productId" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "review/userId" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "review/profileName" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "review/helpfulness" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "review/score" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "review/time" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "review/summary" 	 : {"type" :   "strzero", "mongoType": "string" },
+                        "review/text" 	 : {"type" :   "strzero", "mongoType": "string" },
+			"$$"	 : {"type" :   "CarBin" }
+		}
+	},
+	"TableIndex" : [
+		{ "fields": "_id", "ordered" : true, "unique": true}
+	]
+}	 
