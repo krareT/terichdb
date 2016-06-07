@@ -2425,6 +2425,19 @@ static int getMongoTypeChecked(const ColumnMeta& colmeta, fstring mongoTypeName)
 		, mongoTypeName.ilen(), mongoTypeName.data());
 }
 
+// define as macro, to report correct lineno and function name
+#define CheckInvalidChars(somename, nameType) \
+do { \
+  const char* invalidChars = "\\/{}[]()<>?|~`£¡#%^&*'\"=:; \t\r\n"; \
+  for (byte c : somename) { \
+    if (strchr(invalidChars, c)) { \
+      THROW_STD(invalid_argument, "invalid char(%c) = 0x%02X in %s: %s", \
+        c, c, nameType, somename.c_str()); \
+    } \
+  } \
+} while (0)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 void SchemaConfig::loadJsonString(fstring jstr) {
 	using terark::json;
 	const json meta = json::parse(jstr.p
@@ -2448,6 +2461,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			fprintf(stderr, "TODO: nested column: %s is not supported now, save it to $$\n", name.c_str());
 			continue;
 		}
+		CheckInvalidChars(name, "column name");
 		ColumnMeta colmeta(Schema::parseColumnType(type));
 		if (ColumnType::Fixed == colmeta.type) {
 			long fixlen = col["length"];
@@ -2519,6 +2533,7 @@ if (colgroupsIter != meta.end()) {
 				, "explicit colgroup name '%s' is dup with a column name"
 				, cgname.c_str());
 		}
+		CheckInvalidChars(cgname, "column group name");
 		SchemaPtr schema(new Schema());
 		auto fieldsIter = colgrp.find("fields");
 		if (colgrp.end() == fieldsIter) {
@@ -2616,6 +2631,7 @@ if (colgroupsIter != meta.end()) {
 		if (index.end() != nameIter) {
 			std::string nameStr = nameIter.value();
 			indexSchema->m_name = std::move(nameStr);
+			CheckInvalidChars(nameStr, "index name");
 		} else {
 			indexSchema->m_name = boost::join(fields, ",");
 		}
