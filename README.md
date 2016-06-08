@@ -7,7 +7,7 @@ TerarkDB is:
 - Data is highly compressed and decompressed is not required before read.
 - Use FSA and succinct technologies, totally different from B+ and LSM(Which is widely used in other data stores).
 - Native support for regex expression query.
-- [Benchmark](http://terark.com/zh/blog/detail/2)
+- [Benchmark](http://terark.com/blog/detail/2)
 
 ## 2.Features
 - High Compression Ratio
@@ -48,7 +48,7 @@ TerarkDB is:
 1. TerarkDB is open source but our core data structures and algorithms(`dfadb`) are not yet.
 2. `dfadb` is supported by a library named `fsa_all_*` in our released packages.
 3. Developers who want to build their own TerarkDB, should place the `fsa_all-*` library into their library search path(e.g. `/usr/local/lib`).
-4. Self compiled TerarkDB can only uses limited APIs, and need to set `"TableClass" : "MockDbTable"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/zh/docs/4)).
+4. Self compiled TerarkDB can only uses limited APIs, and need to set `"TableClass" : "MockDbTable"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/docs/4)).
 
 ## 4. Notes
 - UNIX `fork()` should not be called in the applications using TerarkDB, this would cause undefined behaviors.
