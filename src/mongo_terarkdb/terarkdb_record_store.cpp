@@ -134,15 +134,12 @@ public:
 
     boost::optional<Record> seekExact(const RecordId& id) final {
         _skipNextAdvance = false;
+		DbTable& tab = *_rs.m_table->m_tab;
         llong recIdx = id.repr() - 1;
-        if (!_cursor->seekExact(recIdx, &m_ttd->m_buf)) {
-            _eof = true;
-            return {};
-        }
+		auto& ttd = *m_ttd;
+		ttd.m_dbCtx->getValue(recIdx, &ttd.m_buf);
 		assert(!m_ttd->m_buf.empty());
-		DbTable* tab = _rs.m_table->m_tab.get();
-        SharedBuffer sbuf = m_ttd->m_coder.decode(&tab->rowSchema(), m_ttd->m_buf);
-        _lastReturnedId = id;
+        SharedBuffer sbuf = ttd.m_coder.decode(&tab.rowSchema(), ttd.m_buf);
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
         return {{id, {sbuf, len}}};
     }

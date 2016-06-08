@@ -346,6 +346,21 @@ public:
 			return {};
     }
 
+    boost::optional<IndexKeyEntry>
+	seekExact(const BSONObj& bsonKey, RequestedInfo parts) override {
+        TRACE_CURSOR << "seekExact(): key=" << bsonKey.jsonString();
+		auto& ttd = _idx.m_table->getMyThreadData();
+		auto& ctx = *ttd.m_dbCtx;
+		auto  indexSchema = _idx.getIndexSchema();
+		encodeIndexKey(*indexSchema, bsonKey, &ttd.m_buf);
+		ctx.indexSearchExact(_idx.m_indexId, ttd.m_buf, &ctx.exactMatchRecIdvec);
+		if (!ctx.exactMatchRecIdvec.empty()) {
+			llong recIdx = ctx.exactMatchRecIdvec[0];
+			return {{bsonKey, RecordId(recIdx+1)}};
+		}
+		return {};
+	}
+
     void save() override {
         TRACE_CURSOR << "save()";
         try {
