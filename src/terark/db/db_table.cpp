@@ -502,10 +502,20 @@ protected:
 			if (upp < m_segs.size()) {
 				llong subId = id - m_segs[upp-1].baseId;
 				auto cur = &m_segs[upp-1];
-				MyRwLock lock(tab->m_rwMutex, false);
-				if (!cur->seg->m_isDel[subId]) {
-					resetOneSegIter(cur);
-					return std::make_pair(upp, cur->iter->seekExact(subId, val));
+				auto seg = cur->seg.get();
+				const size_t ProtectNum = 100;
+				if (seg->m_isFreezed || seg->m_isDel.unused() >= ProtectNum) {
+					if (!seg->m_isDel[subId]) {
+						resetOneSegIter(cur);
+						return std::make_pair(upp, cur->iter->seekExact(subId, val));
+					}
+				}
+				else {
+					SpinRwLock lock(seg->m_segMutex, false);
+					if (!seg->m_isDel[subId]) {
+						resetOneSegIter(cur);
+						return std::make_pair(upp, cur->iter->seekExact(subId, val));
+					}
 				}
 			}
 		} while (old_rowNum < tab->inlineGetRowNum());
