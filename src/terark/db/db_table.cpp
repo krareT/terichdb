@@ -3972,6 +3972,7 @@ public:
 	virtual void execute() = 0;
 };
 typedef boost::intrusive_ptr<MyTask> MyTaskPtr;
+std::mutex g_mutexForStop;
 terark::util::concurrent_queue<std::deque<MyTaskPtr> > g_flushQueue;
 terark::util::concurrent_queue<std::deque<MyTaskPtr> > g_compressQueue;
 
@@ -4153,6 +4154,10 @@ void DbTable::inLockPutPurgeDeleteTaskToQueue() {
 
 // flush is the most urgent
 void DbTable::safeStopAndWaitForFlush() {
+	std::unique_lock<std::mutex> lock(g_mutexForStop);
+	if (g_stopPutToFlushQueue) {
+		return;
+	}
 	g_stopPutToFlushQueue = true;
 	g_stopCompress = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
@@ -4164,6 +4169,10 @@ void DbTable::safeStopAndWaitForFlush() {
 }
 
 void DbTable::safeStopAndWaitForCompress() {
+	std::unique_lock<std::mutex> lock(g_mutexForStop);
+	if (g_stopPutToFlushQueue) {
+		return;
+	}
 	g_stopPutToFlushQueue = true;
 	g_flushQueue.push_back(nullptr); // notify and stop flag
 	g_flushThread.join();

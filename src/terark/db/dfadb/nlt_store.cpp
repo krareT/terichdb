@@ -146,7 +146,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 			else
 				builder->addSample(rec);
 		}
-	};	
+	};
 	if (NULL == isPurged || isPurged->size() == 0) {
 		llong recId;
 		size_t sampled = 0;
