@@ -47,7 +47,7 @@ namespace test_ns {
 
     DATA_IO_LOAD_SAVE(User_Colgroup_city_street,
       &terark::db::Schema::StrZero(city)
-      &terark::db::Schema::StrZero(street)
+      &terark::RestAll(street)
     )
 
     User_Colgroup_city_street& decode(terark::fstring row) {
@@ -71,7 +71,7 @@ namespace test_ns {
 
     DATA_IO_LOAD_SAVE(User_Colgroup_name_and_description,
       &terark::db::Schema::StrZero(name)
-      &terark::db::Schema::StrZero(description)
+      &terark::RestAll(description)
     )
 
     User_Colgroup_name_and_description& decode(terark::fstring row) {
@@ -93,7 +93,7 @@ namespace test_ns {
 
     DATA_IO_LOAD_SAVE(User_Colgroup__RestAll,
       &age
-      &terark::db::Schema::StrZero(zipcode)
+      &terark::RestAll(zipcode)
     )
 
     User_Colgroup__RestAll& decode(terark::fstring row) {

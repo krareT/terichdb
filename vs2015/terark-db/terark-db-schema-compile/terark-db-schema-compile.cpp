@@ -119,12 +119,16 @@ void compileOneSchema(const Schema& schema, const char* className) {
 		case ColumnType::Fixed:
 		case ColumnType::VarSint:
 		case ColumnType::VarUint:
-		case ColumnType::TwoStrZero:
 			printf("      &%s\n", colname.p);
 			break;
 		case ColumnType::StrZero:
-			printf("      &terark::db::Schema::StrZero(%s)\n", colname.p);
+			if (i < colnum-1) {
+				printf("      &terark::db::Schema::StrZero(%s)\n", colname.p);
+			} else {
+				printf("      &terark::RestAll(%s)\n", colname.p);
+			}
 			break;
+		case ColumnType::TwoStrZero:
 		case ColumnType::Binary:
 		case ColumnType::CarBin:
 			if (i < colnum-1) {
