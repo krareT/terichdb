@@ -50,7 +50,10 @@ TerarkDB is:
 3. Developers who want to build their own TerarkDB, should place the `fsa_all-*` library into their library search path(e.g. `/usr/local/lib`).
 4. Self compiled TerarkDB can only uses limited APIs, and need to set `"TableClass" : "MockDbTable"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/zh/docs/1_3)).
 
-## 4.License
+## 4. Notes
+- UNIX `fork()` should not be called in the applications using TerarkDB, this would cause undefined behaviors.
+
+## 5.License
 TerarkDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
 
 For commercial purposes, please  [contact us](http://www.terark.com).
