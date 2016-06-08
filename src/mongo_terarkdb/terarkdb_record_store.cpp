@@ -138,7 +138,7 @@ public:
         llong recIdx = id.repr() - 1;
 		auto& ttd = *m_ttd;
 		ttd.m_dbCtx->getValue(recIdx, &ttd.m_buf);
-		assert(!m_ttd->m_buf.empty());
+		assert(!ttd.m_buf.empty());
         SharedBuffer sbuf = ttd.m_coder.decode(&tab.rowSchema(), ttd.m_buf);
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
         return {{id, {sbuf, len}}};
