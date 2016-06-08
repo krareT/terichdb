@@ -1920,7 +1920,7 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 const llong  DEFAULT_compressingWorkMemSize = 2LL * 1024 * 1024 * 1024;
 const llong  DEFAULT_maxWritingSegmentSize  = 3LL * 1024 * 1024 * 1024;
 const size_t DEFAULT_minMergeSegNum         = TERARK_IF_DEBUG(2, 5);
-const double DEFAULT_purgeDeleteThreshold   = 0.20;
+const double DEFAULT_purgeDeleteThreshold   = 0.10;
 
 SchemaConfig::SchemaConfig() {
 	m_compressingWorkMemSize = DEFAULT_compressingWorkMemSize;
