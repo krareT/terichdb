@@ -48,7 +48,7 @@ TerarkDB is:
 1. TerarkDB is open source but our core data structures and algorithms(`dfadb`) are not yet.
 2. `dfadb` is supported by a library named `fsa_all_*` in our released packages.
 3. Developers who want to build their own TerarkDB, should place the `fsa_all-*` library into their library search path(e.g. `/usr/local/lib`).
-4. Self compiled TerarkDB can only uses limited APIs, and need to set `"TableClass" : "MockDbTable"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/zh/docs/1_3)).
+4. Self compiled TerarkDB can only uses limited APIs, and need to set `"TableClass" : "MockDbTable"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/zh/docs/4)).
 
 ## 4. Notes
 - UNIX `fork()` should not be called in the applications using TerarkDB, this would cause undefined behaviors.
