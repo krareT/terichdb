@@ -133,7 +133,6 @@ public:
     }
 
     boost::optional<Record> seekExact(const RecordId& id) final {
-        _skipNextAdvance = false;
 		DbTable& tab = *_rs.m_table->m_tab;
         llong recIdx = id.repr() - 1;
 		auto& ttd = *m_ttd;
