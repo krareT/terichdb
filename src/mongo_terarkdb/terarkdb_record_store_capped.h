@@ -1,7 +1,8 @@
-// terarkdb_record_store.h
-
 /**
- *    Copyright (C) 2014 MongoDB Inc.
+ *    Copyright (C) 2016 Terark Inc.
+ *    This file is heavily modified based on MongoDB WiredTiger StorageEngine
+ *    Created on: 2015-12-01
+ *    Author    : leipeng, rockeet@gmail.com
  *
  *    This program is free software: you can redistribute it and/or  modify
  *    it under the terms of the GNU Affero General Public License, version 3,

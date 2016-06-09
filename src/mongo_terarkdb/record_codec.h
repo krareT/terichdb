@@ -1,8 +1,6 @@
 /*
- * record_codec.h
- *
- *  Created on: Aug 27, 2015
- *      Author: leipeng
+ *  Created on: 2015-08-27
+ *      Author: leipeng, rockeet@gmail.com
  */
 
 #ifndef SRC_RECORD_CODEC_H_

@@ -1,3 +1,7 @@
+/*
+ *  Created on: 2015-08-27
+ *      Author: leipeng
+ */
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 #ifdef _MSC_VER
 #pragma warning(disable: 4800) // bool conversion

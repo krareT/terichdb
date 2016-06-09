@@ -1,7 +1,8 @@
-// terarkdb_record_store.cpp
-
 /**
- *    Copyright (C) 2014 MongoDB Inc.
+ *    Copyright (C) 2016 Terark Inc.
+ *    This file is heavily modified based on MongoDB WiredTiger StorageEngine
+ *    Created on: 2015-12-01
+ *    Author    : leipeng, rockeet@gmail.com
  *
  *    This program is free software: you can redistribute it and/or  modify
  *    it under the terms of the GNU Affero General Public License, version 3,
@@ -216,62 +217,6 @@ StatusWith<std::string> parseOptionsField(const BSONObj options) {
     return StatusWith<std::string>(ss.str());
 }
 
-// static
-StatusWith<std::string> TerarkDbRecordStore::generateCreateString(
-								StringData ns,
-								const CollectionOptions& options,
-								StringData extraStrings) {
-    // Separate out a prefix and suffix in the default string. User configuration will
-    // override values in the prefix, but not values in the suffix.
-    str::stream ss;
-    ss << "type=file,";
-    // Setting this larger than 10m can hurt latencies and throughput degradation if this
-    // is the oplog.  See SERVER-16247
-    ss << "memory_page_max=10m,";
-    // Choose a higher split percent, since most usage is append only. Allow some space
-    // for workloads where updates increase the size of documents.
-    ss << "split_pct=90,";
-    ss << "leaf_value_max=64MB,";
-    ss << "checksum=on,";
-    if (terarkDbGlobalOptions.useCollectionPrefixCompression) {
-        ss << "prefix_compression,";
-    }
-
-    ss << "block_compressor=" << terarkDbGlobalOptions.collectionBlockCompressor << ",";
-
-    ss << TerarkDbCustomizationHooks::get(getGlobalServiceContext())->getOpenConfig(ns);
-
-    ss << extraStrings << ",";
-
-    StatusWith<std::string> customOptions =
-        parseOptionsField(options.storageEngine.getObjectField(kTerarkDbEngineName));
-    if (!customOptions.isOK())
-        return customOptions;
-
-    ss << customOptions.getValue();
-
-    if (NamespaceString::oplog(ns)) {
-        // force file for oplog
-        ss << "type=file,";
-        // Tune down to 10m.  See SERVER-16247
-        ss << "memory_page_max=10m,";
-    }
-
-    // WARNING: No user-specified config can appear below this line. These options are required
-    // for correct behavior of the server.
-
-    ss << "key_format=q,value_format=u";
-
-    // Record store metadata
-    ss << ",app_metadata=(formatVersion=" << kCurrentRecordStoreVersion;
-    if (NamespaceString::oplog(ns)) {
-        ss << ",oplogKeyExtractionVersion=1";
-    }
-    ss << ")";
-
-    return StatusWith<std::string>(ss);
-}
-
 TerarkDbRecordStore::TerarkDbRecordStore(OperationContext* ctx,
 									 StringData ns,
 									 StringData ident,
@@ -282,12 +227,6 @@ TerarkDbRecordStore::TerarkDbRecordStore(OperationContext* ctx,
 		  _ident(ident.toString()),
 		  _shuttingDown(false)
 {
-/*    Status versionStatus = TerarkDbUtil::checkApplicationMetadataFormatVersion(
-        ctx, uri, kMinimumRecordStoreVersion, kMaximumRecordStoreVersion);
-    if (!versionStatus.isOK()) {
-        fassertFailedWithStatusNoTrace(28548, versionStatus);
-    }
-*/
 }
 
 TerarkDbRecordStore::~TerarkDbRecordStore() {
@@ -480,13 +419,6 @@ void TerarkDbRecordStore::appendCustomStats(OperationContext* txn,
 
 Status TerarkDbRecordStore::touch(OperationContext* txn, BSONObjBuilder* output) const {
     return Status::OK();
-#if 0
-    if (true/*_isEphemeral*/) {
-        // Everything is already in memory.
-        return Status::OK();
-    }
-    return Status(ErrorCodes::CommandNotSupported, "this storage engine does not support touch");
-#endif
 }
 
 void TerarkDbRecordStore::updateStatsAfterRepair(OperationContext* txn,

@@ -1,7 +1,8 @@
-// terarkdb_kv_engine.cpp
-
 /**
- *    Copyright (C) 2014 MongoDB Inc.
+ *    Copyright (C) 2016 Terark Inc.
+ *    This file is heavily modified based on MongoDB WiredTiger StorageEngine
+ *    Created on: 2015-12-01
+ *    Author    : leipeng, rockeet@gmail.com
  *
  *    This program is free software: you can redistribute it and/or  modify
  *    it under the terms of the GNU Affero General Public License, version 3,
@@ -59,7 +60,6 @@
 #include "terarkdb_record_store.h"
 #include "terarkdb_record_store_capped.h"
 #include "terarkdb_recovery_unit.h"
-//#include "terarkdb_session_cache.h"
 #include "terarkdb_size_storer.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/util/log.h"
@@ -69,7 +69,6 @@
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
-//#include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/kv/kv_catalog.h"
 #include <terark/io/FileStream.hpp>
 
@@ -81,12 +80,6 @@ namespace mongo { namespace terarkdb {
 
 using std::set;
 using std::string;
-
-struct FuckFuck___ {
-	~FuckFuck___() {
-		fprintf(stderr, "Exiting process: %s\n", BOOST_CURRENT_FUNCTION);
-	}
-} fuckfuckfuck____;
 
 TableThreadData::TableThreadData(DbTable* tab) {
 	m_dbCtx.reset(tab->createDbContext());
@@ -385,16 +378,6 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 		// use TerarkDbRecordStoreCapped when we need hook some virtual functions
 		return m_wtEngine->createRecordStore(opCtx, ns, ident, options);
     }
-/*
-	StatusWith<std::string> result =
-        TerarkDbRecordStore::generateCreateString(ns, options, _rsOptions);
-    if (!result.isOK()) {
-        return result.getStatus();
-    }
-    std::string config = result.getValue();
-
-    LOG(2) << "TerarkDbKVEngine::createRecordStore: ns:" << ns << ", config: " << config;
-*/
     LOG(2) << "TerarkDbKVEngine::createRecordStore: ns:" << ns << ", ident: " << ident
 		<< "\noptions.storageEngine: " << options.storageEngine.jsonString(Strict, true)
 		<< "\noptions.indexOptionDefaults: " << options.indexOptionDefaults.jsonString(Strict, true)

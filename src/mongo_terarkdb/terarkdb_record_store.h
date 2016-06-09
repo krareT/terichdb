@@ -1,7 +1,8 @@
-// terarkdb_record_store.h
-
 /**
- *    Copyright (C) 2014 MongoDB Inc.
+ *    Copyright (C) 2016 Terark Inc.
+ *    This file is heavily modified based on MongoDB WiredTiger StorageEngine
+ *    Created on: 2015-12-01
+ *    Author    : leipeng, rockeet@gmail.com
  *
  *    This program is free software: you can redistribute it and/or  modify
  *    it under the terms of the GNU Affero General Public License, version 3,
@@ -49,21 +50,6 @@ namespace mongo { namespace terarkdb {
 
 class TerarkDbRecordStore : public RecordStore {
 public:
-    /**
-     * Creates a configuration string suitable for 'config' parameter in TerarkDb_SESSION::create().
-     * Configuration string is constructed from:
-     *     built-in defaults
-     *     storageEngine.terarkDb.configString in 'options'
-     *     'extraStrings'
-     * Performs simple validation on the supplied parameters.
-     * Returns error status if validation fails.
-     * Note that even if this function returns an OK status, TerarkDb_SESSION:create() may still
-     * fail with the constructed configuration string.
-     */
-    static StatusWith<std::string> generateCreateString(StringData ns,
-                                                        const CollectionOptions& options,
-                                                        StringData extraStrings);
-
     TerarkDbRecordStore(OperationContext* txn,
 					  StringData ns,
 					  StringData ident,

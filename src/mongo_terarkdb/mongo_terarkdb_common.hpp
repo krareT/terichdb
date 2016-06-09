@@ -1,7 +1,5 @@
 /*
- * terarkdb_as_wiredtiger.hpp
- *
- *  Created on: 2015Äê12ÔÂ1ÈÕ
+ *  Created on: 2015-12-01
  *      Author: leipeng
  */
 
