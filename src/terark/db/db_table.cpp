@@ -419,8 +419,7 @@ struct CompareBy_baseId {
 class DbTable::MyStoreIterBase : public StoreIterator {
 protected:
 	size_t m_segIdx;
-	size_t m_mergeSeqNum;
-	size_t m_newWrSegNum;
+	size_t m_segArrayUpdateSeq;
 	DbContextPtr m_ctx;
 	struct OneSeg {
 		ReadableSegmentPtr seg;
@@ -434,8 +433,7 @@ protected:
 		this->m_ctx.reset(ctx);
 	// MyStoreIterator creation is rarely used, lock it by m_rwMutex
 		MyRwLock lock(tab->m_rwMutex, false);
-		m_mergeSeqNum = tab->m_mergeSeqNum;
-		m_newWrSegNum = tab->m_newWrSegNum;
+		m_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 		m_segs.resize(tab->m_segments.size() + 1);
 		for (size_t i = 0; i < m_segs.size()-1; ++i) {
 			ReadableSegment* seg = tab->m_segments[i].get();
@@ -443,7 +441,7 @@ protected:
 		//	m_segs[i].iter = createSegStoreIter(seg);
 			m_segs[i].baseId = tab->m_rowNumVec[i];
 		}
-		m_segs.back().baseId = tab->m_rowNumVec.back();
+		m_segs.back().baseId = tab->m_rowNum;
 		lock.upgrade_to_writer();
 		tab->m_tableScanningRefCount++;
 		assert(tab->m_segments.size() > 0);
@@ -461,15 +459,14 @@ protected:
 	bool syncTabSegs() {
 		auto tab = static_cast<const DbTable*>(m_store.get());
 	//	MyRwLock lock(tab->m_rwMutex, false);
-		if (m_mergeSeqNum == tab->m_mergeSeqNum &&
-			m_newWrSegNum == tab->m_newWrSegNum) {
+		if (m_segArrayUpdateSeq == tab->m_segArrayUpdateSeq) {
 			// there is no new segments
 			llong oldmaxId = m_segs.back().baseId;
-			if (tab->m_rowNumVec.back() == oldmaxId)
+			if (tab->m_rowNum == oldmaxId)
 				return false; // no new records
 			// records may be 'pop_back'
-			m_segs.back().baseId = tab->m_rowNumVec.back();
-			return tab->m_rowNumVec.back() > oldmaxId;
+			m_segs.back().baseId = tab->m_rowNum;
+			return tab->m_rowNum > oldmaxId;
 		}
 		m_segs.resize(tab->m_segments.size() + 1);
 		for (size_t i = 0; i < m_segs.size() - 1; ++i) {
@@ -477,9 +474,8 @@ protected:
 			m_segs[i].baseId = tab->m_rowNumVec[i];
 			m_segs[i].iter = nullptr;
 		}
-		m_segs.back().baseId = tab->m_rowNumVec.back();
-		m_mergeSeqNum = tab->m_mergeSeqNum;
-		m_newWrSegNum = tab->m_newWrSegNum;
+		m_segs.back().baseId = tab->m_rowNum;
+		m_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 		return true;
 	}
 
