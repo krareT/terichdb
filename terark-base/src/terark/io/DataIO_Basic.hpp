@@ -57,7 +57,7 @@ namespace terark {
 typedef boost::mpl::true_  IsDump_true;
 typedef boost::mpl::false_ IsDump_false;
 
-#if defined(CXX_RETURN_TYPE_DEDUCTION) && CXX_RETURN_TYPE_DEDUCTION >= 201304
+#if defined(CXX_DECLTYPE)
   template<class DataIO, class T>
   IsDump_false Deduce_DataIO_is_dump(DataIO*, T*) { return IsDump_false(); }
   template<class DataIO, class T>
@@ -93,27 +93,23 @@ typedef boost::mpl::false_ IsDump_false;
 
 
 #if !defined(TERARK_DATA_IO_DISABLE_OPTIMIZE_DUMPABLE) && \
-  defined(CXX_RETURN_TYPE_DEDUCTION) && CXX_RETURN_TYPE_DEDUCTION >= 201304
+  defined(CXX_DECLTYPE)
 
-  // [dio Members] must be inside a member function of [Class],
-  // so [typeof] or [decltype] is not suffice,
-  // it needs [auto] return type (c++14 feature)
+  // using of [dio Members] must see members of [Class],
+  // auto MemberFunc(..)->decltype(..) is suffice, this is a c++11 feature,
+  // declare the function, does not need to define it, since it is just
+  // used for type deduction
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS(Class, Members) \
       template<class DataIO> \
-      auto _M_Deduce_DataIO_is_realdump(DataIO*) { \
-        return terark::DataIO_is_realdump<DataIO,Class,0,true>((Class*)NULL)Members;\
-      }
-//	#define HERE_FOR_GCC_FRIEND_AUTO_WORK_AROUND auto
-	#define HERE_FOR_GCC_FRIEND_AUTO_WORK_AROUND(Derived) \
-	  decltype(((Derived*)NULL)->_M_Deduce_DataIO_is_realdump \
-				((DataIO*)NULL).is_dumpable())
+      auto _M_Deduce_DataIO_is_realdump(DataIO*) -> \
+        decltype(terark::DataIO_is_realdump<DataIO,Class,0,true>(this)Members);
+
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class) \
       template<class DataIO> \
-      Friend HERE_FOR_GCC_FRIEND_AUTO_WORK_AROUND(Derived)	  \
-	  Deduce_DataIO_is_dump(DataIO*, Class*) { \
-        return ((Derived*)NULL)->_M_Deduce_DataIO_is_realdump \
-				((DataIO*)NULL).is_dumpable(); \
-	  }
+      Friend auto \
+	  Deduce_DataIO_is_dump(DataIO* dio, Class* self) -> decltype( \
+        static_cast<Derived*>(self)-> \
+          _M_Deduce_DataIO_is_realdump(dio).is_dumpable());
 #else
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS(Class, Members)
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class)

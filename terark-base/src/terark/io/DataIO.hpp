@@ -201,11 +201,11 @@ DataIO_IsDump_TypeTrue2(PortableNoVarInt, var_int64_t)
 		out.ensureWrite(&x, sizeof(Class));				\
 	}													\
 	Friend												\
-	terark::												\
+	terark::											\
 	ByteSwap_false Deduce_DataIO_need_bswap(Class*);	\
 	template<class DataIO>                              \
 	Friend												\
-	terark::												\
+	terark::											\
 	IsDump_true Deduce_DataIO_is_dump(DataIO*, Class*);
 
 #else
