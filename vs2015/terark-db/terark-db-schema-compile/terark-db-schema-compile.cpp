@@ -2,6 +2,8 @@
 //
 
 #include "stdafx.h"
+
+#define TERARK_DB_SCHEMA_COMPILER
 #include <terark/db/db_conf.cpp>
 
 using namespace std;
@@ -67,7 +69,16 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			printf("    terark::db::Schema::Fixed<16> %s;\n", colname.p);
 			break;
 		case ColumnType::Fixed:
-			printf("    terark::db::Schema::Fixed<%d> %s;\n", int(colmeta.fixedLen), colname.p);
+			if (colmeta.ioType.empty()) {
+				printf("    terark::db::Schema::Fixed<%d> %s;\n", int(colmeta.fixedLen), colname.p);
+			}
+			else {
+				const char* ioType = colmeta.ioType.c_str();
+				const char* dio = "terark::NativeDataInput<terark::MemIO>";
+				printf("    %s %s;\n", ioType, colname.p);
+				printf("    BOOST_STATIC_ASSERT(sizeof(%s) == %d);\n", ioType, int(colmeta.fixedLen));
+				printf("    BOOST_STATIC_ASSERT((terark::DataIO_is_dump<%s, %s >::value));\n", dio, ioType);
+			}
 			break;
 		case ColumnType::VarSint:
 			printf("    terark::var_int64_t %s;\n", colname.p);
@@ -82,10 +93,22 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			printf("    terark::db::Schema::TwoStrZero %s;\n", colname.p);
 			break;
 		case ColumnType::Binary:
-			printf("    std::string %s;\n", colname.p);
+			if (colmeta.ioType.empty()) {
+				printf("    std::string %s;\n", colname.p);
+			}
+			else {
+				const char* ioType = colmeta.ioType.c_str();
+				printf("    %s %s;\n", ioType, colname.p);
+			}
 			break;
 		case ColumnType::CarBin:
-			printf("    terark::db::Schema::CarBin %s;\n", colname.p);
+			if (colmeta.ioType.empty()) {
+				printf("    terark::db::Schema::CarBin %s;\n", colname.p);
+			}
+			else {
+				const char* ioType = colmeta.ioType.c_str();
+				printf("    %s %s;\n", ioType, colname.p);
+			}
 			break;
 		}
 	}
@@ -130,11 +153,22 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			break;
 		case ColumnType::TwoStrZero:
 		case ColumnType::Binary:
-		case ColumnType::CarBin:
+		Case_Binary:
 			if (i < colnum-1) {
 				printf("      &%s\n", colname.p);
 			} else {
 				printf("      &terark::RestAll(%s)\n", colname.p);
+			}
+			break;
+		case ColumnType::CarBin:
+			if (colmeta.ioType.empty()) {
+				goto Case_Binary;
+			}
+			if (i < colnum-1) {
+				// read carbin size and check carbin size with real size
+				printf("      &terark::db::Schema::CarBinPack(%s)\n", colname.p);
+			} else {
+				printf("      &%s\n", colname.p);
 			}
 			break;
 		}

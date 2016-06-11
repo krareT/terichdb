@@ -7,6 +7,17 @@
        "email" : { "type" : "strzero" },
        "city" : { "type" : "strzero" },
        "street" : { "type" : "strzero" },
+       "addr" : {
+         "type": "carbin",
+         "ioType": "Address",
+         "comment": "a copy for demo <<ioType>>"
+       },
+       "geopoint": {
+         "type" : "fixed",
+         "length": 16,
+         "ioType": "std::pair<double, double>",
+         "comment": "another field for demo <<ioType>>"
+       },
        "zipcode" : { "type" : "strzero" },
        "description" : { "type" : "strzero" },
        "update_time" : { "type" : "int32" }

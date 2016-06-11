@@ -6,6 +6,7 @@
 #include <terark/bitmap.hpp>
 #include <terark/pass_by_value.hpp>
 #include <terark/util/refcount.hpp>
+#include <terark/io/DataIO_Exception.hpp>
 #include <boost/intrusive_ptr.hpp>
 #include <boost/type_traits/is_arithmetic.hpp>
 #include <boost/version.hpp>
@@ -58,6 +59,9 @@ namespace terark { namespace db {
 		CarBin,  // Cardinal Binary, prefixed by uint32 length
 	};
 
+	class TERARK_DB_DLL Schema;
+	typedef boost::intrusive_ptr<Schema> SchemaPtr;
+
 	struct TERARK_DB_DLL ColumnMeta {
 		uint32_t fixedLen;
 		uint32_t fixedOffset;
@@ -68,6 +72,10 @@ namespace terark { namespace db {
 		ColumnType type;
 		unsigned char mongoType; // user column type, such as mongodb type
 	//	ColumnMeta();
+#if defined(TERARK_DB_SCHEMA_COMPILER)
+//		SchemaPtr ioType;
+		std::string ioType;
+#endif
 		bool isInteger() const;
 		bool isNumber() const;
 		bool isString() const;
@@ -307,10 +315,15 @@ namespace terark { namespace db {
 			StrZeroLoader(Str& s) : str(&s) {}
 			template<class DataIO>
 			friend void DataIO_loadObject(DataIO& dio, StrZeroLoader& x) {
-				unsigned char c;
-				do { dio >> c;
-					 x.str->push_back(c);
-				} while (0 != c);
+				x.str->resize(0);
+				for (;;) {
+					unsigned char c;
+					dio >> c;
+					if (c)
+						x.str->push_back(c);
+					else
+						break;
+				}
 			}
 		};
 		template<class Str>
@@ -371,6 +384,45 @@ namespace terark { namespace db {
 		public:
 			using std::pair<std::string, std::string>::pair;
 		};
+
+		template<class T> class CarBinPackReader {
+			T* p;
+			template<class DataIO>
+			friend void DataIO_loadObject(DataIO& dio, CarBinPackReader& x) {
+				uint32_t checksize;
+				dio >> checksize;
+				const byte* oldpos = dio.current();
+				dio >> *x.p;
+				const byte* newpos = dio.current();
+				if (newpos - oldpos != ptrdiff_t(checksize)) {
+					TERARK_THROW(DataFormatException
+						, "realsize = %zd, checksize = %zd"
+						, newpos - oldpos, size_t(checksize));
+				}
+			}
+		public:
+			CarBinPackReader(T& x) : p(&x) {}
+		};
+		template<class T> class CarBinPackWriter {
+			const T* p;
+			template<class DataIO>
+			friend void DataIO_saveObject(DataIO& dio, const CarBinPackWriter& x) {
+				size_t oldpos = dio.tell();
+				dio << uint32_t(0); // reserved for later update
+				dio << *x.p;
+				size_t newpos = dio.tell();
+				dio.seek(oldpos);
+				dio << uint32_t(newpos - oldpos - 4); // update the size
+				dio.seek(newpos);
+			}
+		public:
+			CarBinPackWriter(const T& x) : p(&x) {}
+		};
+
+		template<class T>
+		static CarBinPackReader<T> CarBinPack(T& x) { return x; }
+		template<class T>
+		static CarBinPackWriter<T> CarBinPack(const T& x) { return x; }
 
 		template<class NumberType>
 		static inline

@@ -12,6 +12,10 @@ namespace test_ns {
     std::string email;
     std::string city;
     std::string street;
+    Address addr;
+    std::pair<double, double> geopoint;
+    BOOST_STATIC_ASSERT(sizeof(std::pair<double, double>) == 16);
+    BOOST_STATIC_ASSERT((terark::DataIO_is_dump<terark::NativeDataInput<terark::MemIO>, std::pair<double, double> >::value));
     std::string zipcode;
     std::string description;
     std::int32_t update_time;
@@ -23,6 +27,8 @@ namespace test_ns {
       &terark::db::Schema::StrZero(email)
       &terark::db::Schema::StrZero(city)
       &terark::db::Schema::StrZero(street)
+      &terark::db::Schema::CarBinPack(addr)
+      &geopoint
       &terark::db::Schema::StrZero(zipcode)
       &terark::db::Schema::StrZero(description)
       &update_time
@@ -89,10 +95,16 @@ namespace test_ns {
 
   struct User_Colgroup__RestAll {
     unsigned char age;
+    Address addr;
+    std::pair<double, double> geopoint;
+    BOOST_STATIC_ASSERT(sizeof(std::pair<double, double>) == 16);
+    BOOST_STATIC_ASSERT((terark::DataIO_is_dump<terark::NativeDataInput<terark::MemIO>, std::pair<double, double> >::value));
     std::string zipcode;
 
     DATA_IO_LOAD_SAVE(User_Colgroup__RestAll,
       &age
+      &terark::db::Schema::CarBinPack(addr)
+      &geopoint
       &terark::RestAll(zipcode)
     )
 

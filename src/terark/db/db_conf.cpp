@@ -2482,6 +2482,17 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 		if (checkMysqlType) {
 			std::string mysqlTypeName = getJsonValue(col, "mysqlType", std::string());
 		}
+#if defined(TERARK_DB_SCHEMA_COMPILER)
+		colmeta.ioType = getJsonValue(col, "ioType", std::string());
+		if (!colmeta.ioType.empty()) {
+			if (colmeta.type == ColumnType::CarBin || colmeta.type == ColumnType::Fixed)
+			{}
+			else {
+				THROW_STD(invalid_argument,
+					"ioType must defined on CarBin or Fixed column");
+			}
+		}
+#endif
 		auto colstoreIter = col.find("colstore");
 		if (col.end() != colstoreIter) {
 			// this colstore has the only-one 'name' field

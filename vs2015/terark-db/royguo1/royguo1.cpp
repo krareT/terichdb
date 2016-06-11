@@ -1,6 +1,13 @@
 #include <iostream>
 #include <terark/lcast.hpp>
+#include <terark/io/DataIO.hpp>
 
+struct Address {
+	// demo for CarBinPack
+	std::string city; // varintlen + content
+	std::string street; // varintlen + content
+	DATA_IO_LOAD_SAVE(Address, &city&street)
+};
 #include "user.hpp"
 
 // g++-4.9 -std=c++1y 3.write_read_delete.cpp -lterark-db-r -lboost_system -lterark-fsa_all-r -lboost_filesystem -Iinclude
@@ -26,6 +33,11 @@ int main(int argc, char* argv[]){
     u.description.assign(szBuf, snprintf(szBuf, sizeof(szBuf), "Description-%d", i));
     u.age = (i + 10);
     u.update_time = 1463472964753 + i;
+	u.email = "leipeng@terark.com";
+	u.city = "beijing";
+	u.street = "chaoyang road";
+	u.addr.city = u.city;
+	u.addr.street = u.street;
     // insert row
     if (ctx->insertRow(u.encode(rowBuilder)) < 0) {
       printf("Insert failed: %s\n", ctx->errMsg.c_str());
