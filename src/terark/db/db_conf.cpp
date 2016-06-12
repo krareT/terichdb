@@ -2483,13 +2483,13 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 			std::string mysqlTypeName = getJsonValue(col, "mysqlType", std::string());
 		}
 #if defined(TERARK_DB_SCHEMA_COMPILER)
-		colmeta.ioType = getJsonValue(col, "ioType", std::string());
-		if (!colmeta.ioType.empty()) {
+		colmeta.realtype = getJsonValue(col, "realtype", std::string());
+		if (!colmeta.realtype.empty()) {
 			if (colmeta.type == ColumnType::CarBin || colmeta.type == ColumnType::Fixed)
 			{}
 			else {
 				THROW_STD(invalid_argument,
-					"ioType must defined on CarBin or Fixed column");
+					"realtype must defined on CarBin or Fixed columns");
 			}
 		}
 #endif

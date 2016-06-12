@@ -69,11 +69,11 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			printf("    terark::db::Schema::Fixed<16> %s;\n", colname.p);
 			break;
 		case ColumnType::Fixed:
-			if (colmeta.ioType.empty()) {
+			if (colmeta.realtype.empty()) {
 				printf("    terark::db::Schema::Fixed<%d> %s;\n", int(colmeta.fixedLen), colname.p);
 			}
 			else {
-				const char* ioType = colmeta.ioType.c_str();
+				const char* realtype = colmeta.realtype.c_str();
 				const int fixlen = int(colmeta.fixedLen);
 				printf(R"EOS(
     %s %s;
@@ -84,7 +84,7 @@ void compileOneSchema(const Schema& schema, const char* className) {
     BOOST_STATIC_ASSERT(sizeof(%s) == %d);
     BOOST_STATIC_ASSERT((terark::DataIO_is_dump<terark::NativeDataInput<terark::MemIO>, %s >::value));
 
-)EOS", ioType, colname.p, ioType, fixlen, ioType);
+)EOS", realtype, colname.p, realtype, fixlen, realtype);
 			}
 			break;
 		case ColumnType::VarSint:
@@ -100,21 +100,21 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			printf("    terark::db::Schema::TwoStrZero %s;\n", colname.p);
 			break;
 		case ColumnType::Binary:
-			if (colmeta.ioType.empty()) {
+			if (colmeta.realtype.empty()) {
 				printf("    std::string %s;\n", colname.p);
 			}
 			else {
-				const char* ioType = colmeta.ioType.c_str();
-				printf("    %s %s;\n", ioType, colname.p);
+				const char* realtype = colmeta.realtype.c_str();
+				printf("    %s %s;\n", realtype, colname.p);
 			}
 			break;
 		case ColumnType::CarBin:
-			if (colmeta.ioType.empty()) {
+			if (colmeta.realtype.empty()) {
 				printf("    terark::db::Schema::CarBin %s;\n", colname.p);
 			}
 			else {
-				const char* ioType = colmeta.ioType.c_str();
-				printf("    %s %s;\n", ioType, colname.p);
+				const char* realtype = colmeta.realtype.c_str();
+				printf("    %s %s;\n", realtype, colname.p);
 			}
 			break;
 		}
@@ -168,7 +168,7 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			}
 			break;
 		case ColumnType::CarBin:
-			if (colmeta.ioType.empty()) {
+			if (colmeta.realtype.empty()) {
 				goto Case_Binary;
 			}
 			if (i < colnum-1) {

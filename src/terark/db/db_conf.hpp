@@ -73,8 +73,8 @@ namespace terark { namespace db {
 		unsigned char mongoType; // user column type, such as mongodb type
 	//	ColumnMeta();
 #if defined(TERARK_DB_SCHEMA_COMPILER)
-//		SchemaPtr ioType;
-		std::string ioType;
+//		SchemaPtr realtype;
+		std::string realtype;
 #endif
 		bool isInteger() const;
 		bool isNumber() const;
