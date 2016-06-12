@@ -6,6 +6,10 @@
 #define TERARK_DB_SCHEMA_COMPILER
 #include <terark/db/db_conf.cpp>
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <getopt.c>
+#endif
+
 using namespace std;
 using namespace terark;
 using namespace terark::db;
@@ -199,14 +203,32 @@ R"EOS(
 	printf("  }; // %s\n\n", className);
 }
 
+int usage(const char* prog) {
+	fprintf(stderr, "usage: %s [ options ] terark-db-schema-file namespace table-name\n", prog);
+	return 1;
+}
+
 int main(int argc, char* argv[]) {
-	if (argc < 4) {
-		fprintf(stderr, "usage: %s terark-db-schema-file namespace table-name\n", argv[0]);
-		return 1;
+	std::vector<const char*> includes;
+	for (;;) {
+		int opt = getopt(argc, argv, "i:");
+		switch (opt) {
+		case -1:
+			goto GetoptDone;
+		case '?':
+			return 1;
+		case 'i':
+			includes.push_back(optarg);
+			break;
+		}
 	}
-	const char* jsonFilePath = argv[1];
-	const char* ns = argv[2];
-	const char* tabName = argv[3];
+GetoptDone:
+	if (argc - optind < 3) {
+		return usage(argv[0]);
+	}
+	const char* jsonFilePath = argv[optind + 0];
+	const char* ns = argv[optind + 1];
+	const char* tabName = argv[optind + 2];
 	SchemaConfig sconf;
 	try {
 		sconf.loadJsonFile(jsonFilePath);
@@ -222,6 +244,10 @@ int main(int argc, char* argv[]) {
 #include <terark/io/RangeStream.hpp>
 
 )EOS");
+	for (const char* inc : includes) {
+		printf("#include \"%s\"\n", inc);
+	}
+	printf("\n");
 	printf("namespace %s {\n", ns);
 	compileOneSchema(*sconf.m_rowSchema, tabName);
 	for (size_t i = 0; i < sconf.m_colgroupSchemaSet->indexNum(); ++i) {
