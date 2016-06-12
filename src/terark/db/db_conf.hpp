@@ -74,7 +74,8 @@ namespace terark { namespace db {
 	//	ColumnMeta();
 #if defined(TERARK_DB_SCHEMA_COMPILER)
 //		SchemaPtr realtype;
-		std::string realtype;
+		std::string realtype; // g++ string is not memmovable
+		~ColumnMeta();
 #endif
 		bool isInteger() const;
 		bool isNumber() const;
@@ -241,7 +242,16 @@ namespace terark { namespace db {
 		static int QsortCompareFixedLen(const void* x, const void* y, const void* ctx);
 		static int QsortCompareByIndex(const void* x, const void* y, const void* ctx);
 
+#if defined(TERARK_DB_SCHEMA_COMPILER)
+		hash_strmap<ColumnMeta
+			, fstring_func::IF_SP_ALIGN(hash_align, hash)
+			, fstring_func::IF_SP_ALIGN(equal_align, equal)
+			, ValueInline
+			, SafeCopy // g++ string is not memmovable
+		> m_columnsMeta;
+#else
 		hash_strmap<ColumnMeta> m_columnsMeta;
+#endif
 		std::string m_name;
 		std::string m_nltDelims;
 
@@ -389,7 +399,7 @@ namespace terark { namespace db {
 			T* p;
 			template<class DataIO>
 			friend void DataIO_loadObject(DataIO& dio, CarBinPackReader& x) {
-				uint32_t checksize;
+				uint32_t checksize = 0;
 				dio >> checksize;
 				const byte* oldpos = dio.current();
 				dio >> *x.p;

@@ -74,6 +74,12 @@ ColumnMeta::ColumnMeta(ColumnType t) {
 	}
 }
 
+#if defined(TERARK_DB_SCHEMA_COMPILER)
+ColumnMeta::~ColumnMeta() {
+	realtype.clear();
+}
+#endif
+
 bool ColumnMeta::isInteger() const {
 	switch (type) {
 	default:
