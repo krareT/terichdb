@@ -13,9 +13,15 @@ namespace test_ns {
     std::string city;
     std::string street;
     Address addr;
+
     std::pair<double, double> geopoint;
+ // dumpable type does not require sizeof(T)==fixlen, it only requires that
+ // dump_size(T)==fixlen, but check for dump_size(T)==fixlen is cumbersome
+ // and requires big changes for terark.dataio
+ // so we static assert sizeof(T)==fixlen here:
     BOOST_STATIC_ASSERT(sizeof(std::pair<double, double>) == 16);
     BOOST_STATIC_ASSERT((terark::DataIO_is_dump<terark::NativeDataInput<terark::MemIO>, std::pair<double, double> >::value));
+
     std::string zipcode;
     std::string description;
     std::int32_t update_time;
@@ -96,9 +102,15 @@ namespace test_ns {
   struct User_Colgroup__RestAll {
     unsigned char age;
     Address addr;
+
     std::pair<double, double> geopoint;
+ // dumpable type does not require sizeof(T)==fixlen, it only requires that
+ // dump_size(T)==fixlen, but check for dump_size(T)==fixlen is cumbersome
+ // and requires big changes for terark.dataio
+ // so we static assert sizeof(T)==fixlen here:
     BOOST_STATIC_ASSERT(sizeof(std::pair<double, double>) == 16);
     BOOST_STATIC_ASSERT((terark::DataIO_is_dump<terark::NativeDataInput<terark::MemIO>, std::pair<double, double> >::value));
+
     std::string zipcode;
 
     DATA_IO_LOAD_SAVE(User_Colgroup__RestAll,

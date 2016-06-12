@@ -74,10 +74,17 @@ void compileOneSchema(const Schema& schema, const char* className) {
 			}
 			else {
 				const char* ioType = colmeta.ioType.c_str();
-				const char* dio = "terark::NativeDataInput<terark::MemIO>";
-				printf("    %s %s;\n", ioType, colname.p);
-				printf("    BOOST_STATIC_ASSERT(sizeof(%s) == %d);\n", ioType, int(colmeta.fixedLen));
-				printf("    BOOST_STATIC_ASSERT((terark::DataIO_is_dump<%s, %s >::value));\n", dio, ioType);
+				const int fixlen = int(colmeta.fixedLen);
+				printf(R"EOS(
+    %s %s;
+ // dumpable type does not require sizeof(T)==fixlen, it only requires that
+ // dump_size(T)==fixlen, but check for dump_size(T)==fixlen is cumbersome
+ // and requires big changes for terark.dataio
+ // so we static assert sizeof(T)==fixlen here:
+    BOOST_STATIC_ASSERT(sizeof(%s) == %d);
+    BOOST_STATIC_ASSERT((terark::DataIO_is_dump<terark::NativeDataInput<terark::MemIO>, %s >::value));
+
+)EOS", ioType, colname.p, ioType, fixlen, ioType);
 			}
 			break;
 		case ColumnType::VarSint:
