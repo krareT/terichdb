@@ -9,14 +9,14 @@
        "street" : { "type" : "strzero" },
        "addr" : {
          "type": "carbin",
-         "ioType": "Address",
-         "comment": "a copy for demo <<ioType>>"
+         "realtype": "Address",
+         "comment": "a copy for demo <<realtype>>"
        },
        "geopoint": {
          "type" : "fixed",
          "length": 16,
-         "ioType": "std::pair<double, double>",
-         "comment": "another field for demo <<ioType>>"
+         "realtype": "std::pair<double, double>",
+         "comment": "another field for demo <<realtype>>"
        },
        "zipcode" : { "type" : "strzero" },
        "description" : { "type" : "strzero" },

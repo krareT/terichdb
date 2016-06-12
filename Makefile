@@ -283,6 +283,7 @@ ifeq (${PKG_WITH_DBG},1)
 	cp    ${TerarkDB_d} ${TarBall}/lib
 	ln -s lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-d${DLL_SUFFIX}
 endif
+	rm -rf vs2015/terark-db/terark-db-schema-compile/{rls,dbg,build}
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
 	cp    ${TerarkDB_r} ${TarBall}/lib
