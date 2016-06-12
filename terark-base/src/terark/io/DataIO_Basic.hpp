@@ -104,12 +104,17 @@ typedef boost::mpl::false_ IsDump_false;
       auto _M_Deduce_DataIO_is_realdump(DataIO*) -> \
         decltype(terark::DataIO_is_realdump<DataIO,Class,0,true>(this)Members);
 
+template<class DataIO, class Derived, class Class>
+auto
+Workaround_IncompleteType(DataIO* dio, Class* self) ->
+decltype(static_cast<Derived*>(self)->
+		_M_Deduce_DataIO_is_realdump(dio).is_dumpable());
+
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class) \
       template<class DataIO> \
       Friend auto \
-	  Deduce_DataIO_is_dump(DataIO* dio, Class* self) -> decltype( \
-        static_cast<Derived*>(self)-> \
-          _M_Deduce_DataIO_is_realdump(dio).is_dumpable());
+	  Deduce_DataIO_is_dump(DataIO* dio, Class* self) -> \
+      decltype(terark::Workaround_IncompleteType(dio, self));
 #else
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS(Class, Members)
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class)

@@ -115,7 +115,8 @@ namespace terark {
 		}
 	};
 
-	template<class T> RestAllTpl<T> RestAll(T& t) { return t; }
+	template<class T> RestAllTpl<const T> RestAll(const T& t) { return t; }
+	template<class T> pass_by_value<RestAllTpl<T> > RestAll(T& t) { return RestAllTpl<T>(t); }
 
 } // namespace terark
 

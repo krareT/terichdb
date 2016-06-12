@@ -88,10 +88,13 @@ struct valvec_reserve {
 ///   1. use realloc to enlarge/shrink memory, this has avoid memcpy when
 ///      realloc is implemented by mremap for large chunk of memory;
 ///      mainstream realloc are implemented in this way
-///   2. valvec also avoid calling copy-cons when enlarge the valvec
+///   2. valvec also avoid calling copy-cons/move-cons when enlarge the valvec
 ///@Note
-///  1. T must be memmove-able, std::list,map,set... are not memmove-able
-///  2. std::vector, string, ... are memmove-able, they could be the T
+///  1. T must be memmove-able, std::list,map,set... are not memmove-able,
+///     some std::string with short string optimization is not memmove-able,
+///     a such known std::string is g++-5.3's implementation
+///  2. std::vector, ... are memmove-able, they could be the T, I'm not 100% sure,
+///     since the g++-5.3's std::string has trapped me once
 template<class T>
 class valvec {
 protected:

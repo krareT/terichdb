@@ -174,7 +174,7 @@ public:
 	template<class ByteArray>
 	void readAll(ByteArray& ba) {
 		BOOST_STATIC_ASSERT(sizeof(ba[0]) == 1);
-		size_t len = m_end - m_pos;
+		ptrdiff_t len = m_end - m_pos;
 		ba.resize(len);
 		if (len) {
 			// must be a continuous memory block
