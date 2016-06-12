@@ -334,61 +334,61 @@ typedef DbTablePtr CompositeTablePtr; // for compatible
 
 inline
 StoreIteratorPtr DbContext::createTableIterForward() {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	return m_tab->createStoreIterForward(this);
 }
 inline
 StoreIteratorPtr DbContext::createTableIterBackward() {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	return m_tab->createStoreIterBackward(this);
 }
 
 inline
 void DbContext::getValueAppend(llong id, valvec<byte>* val) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	m_tab->getValueAppend(id, val, this);
 }
 inline
 void DbContext::getValue(llong id, valvec<byte>* val) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	m_tab->getValue(id, val, this);
 }
 
 inline
 llong DbContext::insertRow(fstring row) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	return m_tab->insertRow(row, this);
 }
 inline
 llong DbContext::upsertRow(fstring row) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	return m_tab->upsertRow(row, this);
 }
 inline
 llong DbContext::updateRow(llong id, fstring row) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	return m_tab->updateRow(id, row, this);
 }
 inline
 void  DbContext::removeRow(llong id) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	m_tab->removeRow(id, this);
 }
 
 inline
 void DbContext::indexInsert(size_t indexId, fstring indexKey, llong id) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	m_tab->indexInsert(indexId, indexKey, id, this);
 }
 inline
 void DbContext::indexRemove(size_t indexId, fstring indexKey, llong id) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	m_tab->indexRemove(indexId, indexKey, id, this);
 }
 inline
 void
 DbContext::indexUpdate(size_t indexId, fstring indexKey, llong oldId, llong newId) {
-	assert(this != nullptr);
+//	assert(this != nullptr);
 	m_tab->indexUpdate(indexId, indexKey, oldId, newId, this);
 }
 inline void

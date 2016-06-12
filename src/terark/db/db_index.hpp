@@ -105,16 +105,16 @@ public:
 
 	IndexIterator* createIndexIterForward(DbContext*) const override;
 	IndexIterator* createIndexIterBackward(DbContext*) const override;
-	class ReadableStore* getReadableStore();
+	class ReadableStore* getReadableStore() override;
 
 	llong dataStorageSize() const override;
 	llong dataInflateSize() const override;
 	llong numDataRows() const override;
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-	void deleteFiles();
+	void deleteFiles() override;
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
-	ReadableIndex* getReadableIndex();
+	ReadableIndex* getReadableIndex() override;
 
 	void load(PathRef) override;
 	void save(PathRef) const override;
