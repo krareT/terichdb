@@ -4,6 +4,9 @@
 #include <terark/io/MemStream.hpp>
 #include <terark/io/RangeStream.hpp>
 
+#include "db_conf.hpp"
+#include "stdio.h"
+
 namespace test_ns {
   struct User {
     std::uint32_t id;

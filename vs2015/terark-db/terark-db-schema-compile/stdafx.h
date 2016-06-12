@@ -10,6 +10,6 @@
 #include <stdio.h>
 #include <fstream>
 #include <iostream>
-
+#include <getopt.h>
 
 // TODO: reference additional headers your program requires here
