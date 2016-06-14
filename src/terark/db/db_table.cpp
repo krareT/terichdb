@@ -659,6 +659,8 @@ const char* BatchWriter::szError() const {
 // if ctx is NULL, will create a new DbContext for m_ctx
 BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 {
+	assert(nullptr != tab);
+	assert(nullptr == ctx || ctx->m_tab == tab);
 	if (!tab->m_wrSeg) {
 		THROW_STD(invalid_argument, "the writing segment is NULL: %s"
 			, tab->m_dir.string().c_str());

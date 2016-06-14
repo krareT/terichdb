@@ -268,6 +268,7 @@ public:
 #endif
 	}
 	bool indexInsert(size_t indexId, fstring key, llong recId) override {
+		assert(started == m_status);
 		assert(indexId < m_indices.size());
 		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
@@ -298,6 +299,7 @@ public:
 		return true;
 	}
 	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) override {
+		assert(started == m_status);
 		assert(indexId < m_indices.size());
 		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
@@ -350,6 +352,7 @@ public:
 		cur->reset(cur);
 	}
 	void indexRemove(size_t indexId, fstring key, llong recId) override {
+		assert(started == m_status);
 		assert(indexId < m_indices.size());
 		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
@@ -368,6 +371,7 @@ public:
 		m_sizeDiff -= sizeof(llong) + key.size();
 	}
 	void indexUpsert(size_t indexId, fstring key, llong recId) override {
+		assert(started == m_status);
 		assert(indexId < m_indices.size());
 		WtItem item;
 		WT_SESSION* ses = m_session.ses;
@@ -384,6 +388,7 @@ public:
 		m_sizeDiff += sizeof(llong) + key.size();
 	}
 	void storeRemove(llong recId) override {
+		assert(started == m_status);
 		WT_SESSION* ses = m_session.ses;
 		WT_CURSOR* cur = m_store;
 		cur->set_key(cur, recId + 1); // recno = recId + 1
@@ -400,6 +405,7 @@ public:
 	//	m_sizeDiff += sizeof(llong) + key.size();
 	}
 	void storeUpsert(llong recId, fstring row) override {
+		assert(started == m_status);
 		WtItem item;
 		if (m_sconf.m_updatableColgroups.empty()) {
 			item.data = row.data();
@@ -441,6 +447,7 @@ public:
 //		std::string js1 = m_sconf.m_wrtSchema->toJsonStr(m_wrtBuf);
 	}
 	void storeGetRow(llong recId, valvec<byte>* row) override {
+		assert(started == m_status);
 		WT_SESSION* ses = m_session.ses;
 		WT_CURSOR* cur = m_store;
 		WtItem item;

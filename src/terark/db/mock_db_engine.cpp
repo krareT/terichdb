@@ -949,29 +949,35 @@ public:
 	}
 	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec)
 	override {
+		assert(started == m_status);
 		auto index = m_seg->m_indices[indexId].get();
 		index->searchExact(key, recIdvec, m_ctx.get());
 	}
 	void indexRemove(size_t indexId, fstring key, llong recId) override {
+		assert(started == m_status);
 		auto index = m_seg->m_indices[indexId].get();
 		auto wrIndex = index->getWritableIndex();
 		wrIndex->remove(key, recId, m_ctx.get());
 	}
 	bool indexInsert(size_t indexId, fstring key, llong recId) override {
+		assert(started == m_status);
 		auto index = m_seg->m_indices[indexId].get();
 		auto wrIndex = index->getWritableIndex();
 		return wrIndex->insert(key, recId, m_ctx.get());
 	}
 	void indexUpsert(size_t indexId, fstring key, llong recId) override {
+		assert(started == m_status);
 		auto index = m_seg->m_indices[indexId].get();
 		auto wrIndex = index->getWritableIndex();
 		wrIndex->insert(key, recId, m_ctx.get());
 	}
 	void storeRemove(llong recId) override {
+		assert(started == m_status);
 		auto wrtStore = m_seg->m_wrtStore->getWritableStore();
 		wrtStore->remove(recId, m_ctx.get());
 	}
 	void storeUpsert(llong recId, fstring row) override {
+		assert(started == m_status);
 		auto wrtStore = m_seg->m_wrtStore->getWritableStore();
 		if (m_sconf.m_updatableColgroups.empty()) {
 			wrtStore->update(recId, row, m_ctx.get());
@@ -993,6 +999,7 @@ public:
 		}
 	}
 	void storeGetRow(llong recId, valvec<byte>* row) override {
+		assert(started == m_status);
 		auto seg = m_seg;		
 		if (m_sconf.m_updatableColgroups.empty()) {
 			seg->m_wrtStore->getValue(recId, row, m_ctx.get());
