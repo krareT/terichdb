@@ -946,7 +946,7 @@ bool BatchWriter::commit() {
 	if (myDelcnt > 0) {
 		MyRwLock lock(tab->m_rwMutex, true);
 		const size_t segNum = tab->m_segments.size();
-		for(size_t i = 0; i < segNum-1; ) {
+		for(size_t i = 0; i < segNum-1; ++i) {
 			auto seg = tab->m_segments[i].get();
 			if (seg->getReadonlySegment()) {
 				if (tab->checkPurgeDeleteNoLock(seg)) {
