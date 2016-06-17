@@ -2421,7 +2421,7 @@ static int getMongoTypeChecked(const ColumnMeta& colmeta, fstring mongoTypeName)
 			return MongoBson::MongoType; \
 		} \
 		THROW_STD(invalid_argument, \
-			"mongoType " #MongoType " must map to terark type StrZero"); \
+			"mongoType \"%s\" must map to terark type StrZero", #MongoType); \
 	}
 	MongoTypeAsTerarkStrZero(String);
 	MongoTypeAsTerarkStrZero(DBRef);
