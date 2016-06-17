@@ -1031,7 +1031,8 @@ void
 DbTable::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx)
 const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
-	assert(ctx->m_rowNumVec.size() == ctx->m_segCtx.size() + 1);
+// this assert is very unlikely but still possibly failed
+//	assert(ctx->m_rowNumVec.size() == ctx->m_segCtx.size() + 1);
 	auto rowNumPtr = ctx->m_rowNumVec.data();
 	size_t upp = upper_bound_0(rowNumPtr, ctx->m_rowNumVec.size(), id);
 	assert(upp < ctx->m_rowNumVec.size());
@@ -3621,7 +3622,6 @@ try{
 		}
 		if (PurgeStatus::pending == m_purgeStatus) {
 			inLockPutPurgeDeleteTaskToQueue();
-			m_purgeStatus = PurgeStatus::inqueue;
 		}
 #endif
 	}
@@ -3883,6 +3883,7 @@ void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
 	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
 	newSeg->convFrom(this, segIdx);
 	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
+#if 0
 	fs::path wrSegPath = getSegPath("wr", segIdx);
 	try {
 	  if (fs::is_symlink(wrSegPath)) {
@@ -3909,6 +3910,7 @@ void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
 			, "WARN: convWritableSegmentToReadonly: ex.what = %s\n"
 			, ex.what());
 	}
+#endif
 	if (this->m_isMerging || m_bgTaskNum > 1) {
 		return;
 	}
@@ -3942,6 +3944,14 @@ void DbTable::runPurgeDelete() {
 		m_purgeStatus = PurgeStatus::none;
 		m_bgTaskNum--;
 	} BOOST_SCOPE_EXIT_END;
+	{
+		MyRwLock lock(m_rwMutex, true);
+		if (PurgeStatus::inqueue != m_purgeStatus) {
+			fprintf(stderr, "ERROR: m_purgeStatus = %d, expect inqueue\n", unsigned(m_purgeStatus));
+			return;
+		}
+		m_purgeStatus = PurgeStatus::purging;
+	}
 	for (;;) {
 		double threshold = std::max(m_schema->m_purgeDeleteThreshold, 0.001);
 		size_t segIdx = size_t(-1);
@@ -4137,13 +4147,16 @@ void DbTable::asyncPurgeDeleteInLock() {
 		// do nothing
 		assert(!m_isMerging);
 	}
+	else if (PurgeStatus::inqueue == m_purgeStatus) {
+		// do nothing
+		assert(!m_isMerging);
+	}
 	else if (m_isMerging) {
 		m_purgeStatus = PurgeStatus::pending;
 	}
 	else if (PurgeStatus::pending == m_purgeStatus ||
 			 PurgeStatus::none    == m_purgeStatus) {
 		inLockPutPurgeDeleteTaskToQueue();
-		m_purgeStatus = PurgeStatus::inqueue;
 	}
 	else {
 		// do nothing
@@ -4155,8 +4168,8 @@ void DbTable::inLockPutPurgeDeleteTaskToQueue() {
 	if (g_stopPutToFlushQueue) {
 		return;
 	}
+	m_purgeStatus = PurgeStatus::inqueue;
 	g_compressQueue.push_back(new PurgeDeleteTask(this));
-	m_purgeStatus = PurgeStatus::purging;
 	m_bgTaskNum++;
 }
 

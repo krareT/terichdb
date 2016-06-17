@@ -302,7 +302,7 @@ llong ReadonlySegment::totalStorageSize() const {
 void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn) const {
 	assert(txn != nullptr);
 	llong rows = m_isDel.size();
-	if (id < 0 || id >= rows) {
+	if (terark_unlikely(id < 0 || id >= rows)) {
 		THROW_STD(out_of_range, "invalid id=%lld, rows=%lld", id, rows);
 	}
 	getValueByLogicId(id, val, txn);
@@ -970,7 +970,10 @@ fs::path renameToBackupFromDir(PathRef segDir) {
 		backupDir = segDir + szBuf;
 		if (!fs::exists(backupDir))
 			break;
-		fprintf(stderr, "ERROR: existed %s\n", backupDir.string().c_str());
+		// if a ReadonlySegmentPtr is living somewhere, the backup dir
+		// would not have been deleted, this is a rare but valid case
+		fprintf(stderr, "WARN: rare but valid: existed %s\n"
+			, backupDir.string().c_str());
 	}
 	try { fs::rename(segDir, backupDir); }
 	catch (const std::exception& ex) {
@@ -981,6 +984,14 @@ fs::path renameToBackupFromDir(PathRef segDir) {
 		abort();
 	}
 	return backupDir;
+}
+
+template<class BrainDeadThreadId>
+std::string
+ThreadIdToString(BrainDeadThreadId id) {
+	std::ostringstream oss;
+	oss << id;
+	return oss.str();
 }
 
 void
@@ -994,10 +1005,11 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		assert(!input->m_bookUpdates);
 		input->m_updateList.reserve(1024);
 		input->m_bookUpdates = true;
-		lock.upgrade_to_writer();
-		tab->m_purgeStatus = DbTable::PurgeStatus::purging;
 	}
-	fprintf(stderr, "INFO: purging %s\n", input->m_segDir.string().c_str());
+	std::string strThreadId = ThreadIdToString(tbb::this_tbb_thread::get_id());
+	fprintf(stderr, "INFO: thread-%s: purging %s\n"
+		, strThreadId.c_str()
+		, input->m_segDir.string().c_str());
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	m_indices.resize(m_schema->getIndexNum());
@@ -1025,7 +1037,8 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		fs::rename(backupDir, m_segDir);
 		std::string strDir = m_segDir.string();
 		fprintf(stderr
-			, "ERROR: rename(%s.tmp, %s), ex.what = %s\n"
+			, "ERROR: thread-%s: rename(%s.tmp, %s), ex.what = %s\n"
+			, strThreadId.c_str()
 			, strDir.c_str(), strDir.c_str(), ex.what());
 		abort();
 	}
