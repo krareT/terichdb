@@ -382,7 +382,6 @@ void WriteBatchHandler::Delete(const Slice& key) {
 // Note: consider setting options.sync = true.
 Status
 DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
-//	return Status::NotSupported("Batch write is not supported");
   Status status = Status::OK();
   std::unique_ptr<OperationContext> context(GetContext());
   WriteBatchHandler handler(this, context.get());
