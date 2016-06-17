@@ -38,6 +38,12 @@ void DbContext::SegCtx::destory(SegCtx*& rp, size_t indexNum) {
 	}
 	RefcntPtr_release(p->wrtStoreIter);
 	assert(NULL != p->seg);
+#if 0
+	if (p->seg->get_refcount() == 1) {
+		fprintf(stderr, "INFO: last refcnt, DbContext::SegCtx::destory(%s)\n"
+			, p->seg->m_segDir.string().c_str());
+	}
+#endif
 	p->seg->release();
 	::free(p);
 	rp = NULL;
