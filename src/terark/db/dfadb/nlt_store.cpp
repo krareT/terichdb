@@ -179,7 +179,12 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 			if (!terark_bit_test(isPurgedptr, logicId)) {
 				if (!terark_bit_test(isDel, logicId)) {
 					bool hasData = iter.seekExact(physicId, &rec);
-					TERARK_RT_assert(hasData, std::logic_error);
+					if (!hasData) {
+						fprintf(stderr
+							, "ERROR: %s:%d: logicId = %zd, physicId = %lld, rows = %zd\n"
+							, __FILE__, __LINE__, logicId, physicId, logicNum);
+						abort(); // there are some bugs
+					}
 				//	if (hasData && rec.empty()) {
 				//		hasData = false;
 				//	}
@@ -199,8 +204,14 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		physicId = 0;
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
 			if (!terark_bit_test(isPurgedptr, logicId)) {
-				bool hasData = iter.increment(&physicId, &rec);
-				TERARK_RT_assert(hasData, std::logic_error);
+				llong physicId2 = -1;
+				bool hasData = iter.increment(&physicId2, &rec);
+				if (!hasData || physicId != physicId2) {
+					fprintf(stderr
+						, "ERROR: %s:%d: logicId = %zd, physicId = %lld, rows = %zd\n"
+						, __FILE__, __LINE__, logicId, physicId, logicNum);
+					abort(); // there are some bugs
+				}
 				if (!terark_bit_test(isDel, logicId)) {
 					builder->addRecord(rec);
 				}
