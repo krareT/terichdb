@@ -267,7 +267,10 @@ public:
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto owner = static_cast<const MultiPartStore*>(m_store.get());
-		if (id < 0 || id >= owner->m_rowNumVec.back()) {
+		llong rows = owner->m_rowNumVec.back();
+		if (terark_unlikely(id < 0 || id >= rows)) {
+			fprintf(stderr, "ERROR: %s, %s:%d: id = %lld, rows = %lld\n"
+				, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, id, rows);
 			return false;
 		}
 		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
@@ -318,7 +321,10 @@ public:
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto owner = static_cast<const MultiPartStore*>(m_store.get());
-		if (id < 0 || id >= owner->m_rowNumVec.back()) {
+		llong rows = owner->m_rowNumVec.back();
+		if (terark_unlikely(id < 0 || id >= rows)) {
+			fprintf(stderr, "ERROR: %s, %s:%d: id = %lld, rows = %lld\n"
+				, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, id, rows);
 			return false;
 		}
 		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
