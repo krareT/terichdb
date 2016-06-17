@@ -4,7 +4,8 @@
 #include <terark/util/fstrvec.hpp>
 #include <set>
 #include <tbb/mutex.h>
-#include <wiredtiger.h>
+#include <tbb/enumerable_thread_specific.h>
+#include "wt_db_context.hpp"
 
 namespace terark { namespace db { namespace wt {
 
@@ -16,6 +17,13 @@ class TERARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore
 	mutable WT_SESSION*  m_wtSession;
 	mutable WT_CURSOR*   m_wtCursor;
 	mutable WT_CURSOR*   m_wtAppend;
+	struct SessionCursor : public boost::noncopyable {
+		WtCursor insert;
+		WtCursor append;
+		~SessionCursor();
+	};
+	WT_CONNECTION* m_conn; // not owned
+//	tbb::enumerable_thread_specific<SessionCursor> m_cursor;
 	llong m_lastSyncedDataSize;
 	llong m_dataSize;
 

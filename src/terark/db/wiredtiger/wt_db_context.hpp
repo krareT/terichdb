@@ -5,6 +5,33 @@
 
 namespace terark { namespace db { namespace wt {
 
+struct WtCursor {
+	WT_CURSOR* cursor;
+	WtCursor() : cursor(NULL) {}
+	~WtCursor();
+	void close();
+#if !defined(NDEBUG)
+	WtCursor(const WtCursor& y) : cursor(NULL) { assert(NULL == y.cursor); }
+	WtCursor& operator=(const WtCursor& y) { assert(NULL == y.cursor); }
+#endif
+	operator WT_CURSOR*() const { return cursor; }
+	WT_CURSOR* operator->() const { return cursor; }
+	void reset() const;
+};
+
+struct WtSession {
+	WT_SESSION* ses; // WT_SESSION is not thread safe
+	WtSession() : ses(NULL) {}
+	~WtSession();
+	void close();
+#if !defined(NDEBUG)
+	WtSession(const WtSession& y) : ses(NULL) { assert(NULL == y.ses); }
+	WtSession& operator=(const WtSession& y) { assert(NULL == y.ses); }
+#endif
+	operator WT_SESSION*() const { return ses; }
+	WT_SESSION* operator->() const { return ses; }
+};
+
 /*
 class TERARK_DB_DLL WtContext : public DbContext {
 public:

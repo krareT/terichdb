@@ -3,6 +3,56 @@
 namespace terark { namespace db { namespace wt {
 
 namespace fs = boost::filesystem;
+
+WtCursor::~WtCursor() {
+	this->close();
+}
+
+void WtCursor::close() {
+	if (NULL == cursor) {
+		return;
+	}
+	WT_SESSION* ses = cursor->session;
+	const char* uri = cursor->uri;
+	int err = cursor->close(cursor);
+	if (err) {
+		const char* szErr = ses->strerror(ses, err);
+		fprintf(stderr, "ERROR: WT_CURSOR.close(%s, flags=0x%X) fail: %s\n"
+			, uri, szErr, cursor->flags);
+	}
+	cursor = NULL;
+}
+
+void WtCursor::reset() const {
+	assert(NULL != cursor);
+	int err = cursor->reset(cursor);
+	if (err) {
+		WT_SESSION* ses = cursor->session;
+		const char* uri = cursor->uri;
+		const char* szErr = ses->strerror(ses, err);
+		fprintf(stderr, "ERROR: WT_CURSOR.reset(%s, flags=0x%X) fail: %s\n"
+			, uri, szErr, cursor->flags);
+	}
+}
+
+WtSession::~WtSession() {
+	this->close();
+}
+
+void WtSession::close() {
+	if (NULL == ses) {
+		return;
+	}
+	WT_CONNECTION* conn = ses->connection;
+	const char* home = conn->get_home(conn);
+	int err = ses->close(ses, NULL);
+	if (err) {
+		const char* szErr = wiredtiger_strerror(err);
+		fprintf(stderr, "ERROR: WT_SESSION.close(%s) fail: %s\n", home, szErr);
+	}
+	ses = NULL;
+}
+
 /*
 WtContext::WtContext(const DbTable* tab) : DbContext(tab) {
 	wtSession = NULL;

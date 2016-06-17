@@ -3,6 +3,7 @@
 #include <terark/io/FileStream.hpp>
 #include <terark/io/StreamBuffer.hpp>
 #include <terark/io/DataIO.hpp>
+#include <terark/num_to_str.hpp>
 #include <terark/util/sortable_strvec.hpp>
 #include <boost/filesystem.hpp>
 
@@ -13,6 +14,39 @@ namespace fs = boost::filesystem;
 extern const char g_dataStoreUri[] = "table:__BlobStore__";
 std::atomic<size_t> g_wtStoreIterLiveCnt;
 std::atomic<size_t> g_wtStoreIterCreatedCnt;
+
+//////////////////////////////////////////////////////////////////
+WtWritableStore::SessionCursor::~SessionCursor() {
+	WT_SESSION* ses = NULL;
+	if (insert) {
+		ses = insert->session;
+		insert.close();
+	}
+	if (append) {
+		if (ses) {
+			assert(ses == append->session);
+			if (ses != append->session) {
+				fprintf(stderr
+					, "ERROR: %s:%d: append->session != insert->session\n"
+					, __FILE__, __LINE__);
+			}
+		} else {
+			ses = append->session;
+		}
+		append.close();
+	}
+	if (NULL == ses) {
+		return;
+	}
+	int err = ses->close(ses, NULL);
+	if (err) {
+		WT_CONNECTION* conn = ses->connection;
+		const char*    home = conn->get_home(conn);
+		const char*   szErr = ses->strerror(ses, err);
+		fprintf(stderr, "ERROR: WT_SESSION.close(%s) failed: %s\n", home, szErr);
+	}
+}
+
 //////////////////////////////////////////////////////////////////
 class WtWritableStoreIterBase : public StoreIterator {
 	WT_CURSOR* m_cursor;
@@ -135,6 +169,7 @@ WtWritableStore::WtWritableStore(WT_CONNECTION* conn) {
 			, conn->get_home(conn), wiredtiger_strerror(err)
 			);
 	}
+	m_conn = conn; // not owned
 	m_wtSession = session;
 	m_wtCursor = NULL;
 	m_wtAppend = NULL;

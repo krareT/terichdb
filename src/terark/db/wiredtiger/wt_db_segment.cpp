@@ -129,35 +129,13 @@ void WtWritableSegment::save(PathRef path) const {
 
 extern const char g_dataStoreUri[];
 
-struct WtCursor {
-	WT_CURSOR* cursor;
-	WtCursor() : cursor(NULL) {}
-	~WtCursor() {
-		if (cursor)
-			cursor->close(cursor);
-	}
-#if !defined(NDEBUG)
-	WtCursor(const WtCursor& y) : cursor(NULL) { assert(NULL == y.cursor); }
-	WtCursor& operator=(const WtCursor& y) { assert(NULL == y.cursor); }
-#endif
-	operator WT_CURSOR*() const { return cursor; }
-};
 struct WtCursor2 {
 	WtCursor insert;
 	WtCursor overwrite;
-};
-struct WtSession {
-	WT_SESSION* ses; // WT_SESSION is not thread safe
-	WtSession() : ses(NULL) {}
-	~WtSession() {
-		if (ses)
-			ses->close(ses, NULL);
+	void reset() const {
+		insert.reset();
+		overwrite.reset();
 	}
-#if !defined(NDEBUG)
-	WtSession(const WtSession& y) : ses(NULL) { assert(NULL == y.ses); }
-	WtSession& operator=(const WtSession& y) { assert(NULL == y.ses); }
-#endif
-	operator WT_SESSION*() const { return ses; }
 };
 
 static std::atomic<size_t> g_wtDbTxnLiveCnt;
@@ -222,6 +200,14 @@ public:
 			, g_wtDbTxnLiveCnt.load(), g_wtDbTxnCreatedCnt.load());
 	#endif
 	}
+
+	void resetCursors() {
+		for (size_t i = 0; i < m_indices.size(); ++i) {
+			m_indices[i].reset();
+		}
+		m_store.reset();
+	}
+
 #define TERARK_WT_USE_TXN 1
 	void do_startTransaction() override {
 #if TERARK_WT_USE_TXN
@@ -242,6 +228,7 @@ public:
 		m_sizeDiff = 0;
 	}
 	bool do_commit() override {
+		resetCursors();
 #if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		int err = ses->commit_transaction(ses, NULL);
@@ -257,6 +244,7 @@ public:
 	}
 	const std::string& strError() const override { return m_strError; }
 	void do_rollback() override {
+		resetCursors();
 #if TERARK_WT_USE_TXN
 		WT_SESSION* ses = m_session.ses;
 		int err = ses->rollback_transaction(ses, NULL);
