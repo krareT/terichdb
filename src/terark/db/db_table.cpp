@@ -2545,7 +2545,7 @@ public:
 			}
 		}
 		else {
-		#if !defined(NDEBUG)
+		#if !defined(NDEBUG) && 0
 			fprintf(stderr, "DEBUG: heap is empty: key=%s\n"
 				, schema.toJsonStr(key).c_str());
 		#endif
@@ -2937,6 +2937,9 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		const ReadonlySegment* seg = e.seg;
 		newSumDelcnt += seg->m_delcnt;
 	}
+	fprintf(stderr
+		, "INFO: m_forcePurgeAndMerge = %d, newSumDelcnt = %zd, m_newSegRows = %zd, purgeThreshold = %f\n"
+		, m_forcePurgeAndMerge, newSumDelcnt, m_newSegRows, purgeThreshold);
 	if (m_forcePurgeAndMerge || newSumDelcnt >= m_newSegRows * purgeThreshold) {
 		// all colgroups need purge
 		assert(m_oldpurgeBits.empty());
@@ -2948,6 +2951,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 				m_oldpurgeBits.grow(segRows, false);
 			}
 			else {
+				assert(seg->m_isPurged.size() == segRows);
 				m_oldpurgeBits.append(seg->m_isPurged);
 			}
 			seg->m_bookUpdates = true;

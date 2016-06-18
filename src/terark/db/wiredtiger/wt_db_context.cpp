@@ -18,7 +18,7 @@ void WtCursor::close() {
 	if (err) {
 		const char* szErr = ses->strerror(ses, err);
 		fprintf(stderr, "ERROR: WT_CURSOR.close(%s, flags=0x%X) fail: %s\n"
-			, uri, szErr, cursor->flags);
+			, uri, cursor->flags, szErr);
 	}
 	cursor = NULL;
 }
@@ -31,7 +31,7 @@ void WtCursor::reset() const {
 		const char* uri = cursor->uri;
 		const char* szErr = ses->strerror(ses, err);
 		fprintf(stderr, "ERROR: WT_CURSOR.reset(%s, flags=0x%X) fail: %s\n"
-			, uri, szErr, cursor->flags);
+			, uri, cursor->flags, szErr);
 	}
 }
 
