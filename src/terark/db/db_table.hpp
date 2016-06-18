@@ -273,7 +273,8 @@ protected:
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
-	boost::filesystem::path getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx) const;
+	static
+	boost::filesystem::path getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx);
 	void removeStaleDir(PathRef dir, size_t inUseMergeSeq) const;
 	void discoverMergeDir(PathRef dir);
 

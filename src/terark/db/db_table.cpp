@@ -144,7 +144,22 @@ DbTable* DbTable::createTable(fstring tableClass) {
 static void tryReduceSymlink(PathRef segDir, PathRef mergeDir) {
 	if (fs::is_symlink(segDir)) {
 		std::string strDir = segDir.string();
-		fs::path target = fs::canonical(fs::read_symlink(segDir), mergeDir);
+		fs::path target = fs::read_symlink(segDir);
+		std::string dirName = segDir.filename().string();
+		if (fstring(dirName).startsWith("wr-")) {
+			long segIdx = strtol(dirName.c_str()+3, NULL, 10);
+			char rddir[32];
+			sprintf(rddir, "rd-%04ld", segIdx);
+			fs::path rddirPath = mergeDir / rddir;
+			if (fs::exists(rddirPath)) {
+				fprintf(stderr, "INFO: remove symlink: %s .. ", strDir.c_str());
+				fflush(stderr);
+				fs::remove(segDir);
+				fprintf(stderr, "done\n");
+				return;
+			}
+		}
+		target = fs::canonical(target, mergeDir);
 		fprintf(stderr
 			, "WARN: writable segment: %s is symbol link to: %s, reduce it\n"
 			, strDir.c_str(), target.string().c_str());
@@ -3820,9 +3835,10 @@ const {
 	return getSegPath2(m_dir, m_mergeSeqNum, type, segIdx);
 }
 
+// static
 boost::filesystem::path
 DbTable::getSegPath2(PathRef dir, size_t mergeSeq, const char* type, size_t segIdx)
-const {
+{
 	auto res = dir;
 	char szBuf[32];
 	int len = snprintf(szBuf, sizeof(szBuf), "g-%04ld", long(mergeSeq));
@@ -3944,6 +3960,7 @@ void DbTable::runPurgeDelete() {
 		m_purgeStatus = PurgeStatus::none;
 		m_bgTaskNum--;
 	} BOOST_SCOPE_EXIT_END;
+//	return; // skip purge delete, to test purge in merge
 	{
 		MyRwLock lock(m_rwMutex, true);
 		if (PurgeStatus::inqueue != m_purgeStatus) {
