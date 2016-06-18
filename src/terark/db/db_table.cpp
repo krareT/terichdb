@@ -2828,94 +2828,9 @@ public:
 	rank_select_se m_oldpurgeBits; // join from all input segs
 	rank_select_se m_newpurgeBits;
 
-	bool canMerge(DbTable* tab) {
-		// most failed checks should fails here...
-		if (tab->m_isMerging)
-			return false;
-		if (PurgeStatus::none != tab->m_purgeStatus)
-			return false;
+	std::string joinPathList() const;
 
-		// memory alloc should be out of lock scope
-		this->reserve(tab->m_segments.size() + 1);
-		{
-			MyRwLock lock(tab->m_rwMutex, false);
-			for (size_t i = 0; i < tab->m_segments.size(); ++i) {
-				auto seg = tab->m_segments[i].get();
-				if (seg->getWritableStore())
-					break; // writable seg must be at top side
-				else
-					this->push_back({seg->getReadonlySegment(), i});
-			}
-			if (this->size() <= 1)
-				return false;
-			if (this->size() + 1 < tab->m_segments.size())
-				return false;
-			if (tab->m_isMerging)
-				return false;
-			if (PurgeStatus::none != tab->m_purgeStatus)
-				return false;
-			if (!lock.upgrade_to_writer()) {
-				if (tab->m_isMerging) // check again
-					return false;
-				if (PurgeStatus::none != tab->m_purgeStatus)
-					return false;
-			}
-			tab->m_isMerging = true;
-			// if tab->m_isMerging is false, tab can create new segments
-			// then this->m_tabSegNum would be staled, this->m_tabSegNum is
-			// used for violation check
-			this->m_tabSegNum = tab->m_segments.size();
-			DebugCheckRowNumVecNoLock(tab);
-		}
-		size_t sumSegRows = 0;
-		for (size_t i = 0; i < this->size(); ++i) {
-			sumSegRows += this->p[i].seg->m_isDel.size();
-		}
-		size_t avgSegRows = sumSegRows / this->size();
-		size_t maxSegRows = avgSegRows * 7/4;
-		if (m_forcePurgeAndMerge) {
-			maxSegRows = avgSegRows * 3;
-		}
-
-		// find max range in which every seg rows < maxSegRows
-		size_t rngBeg = 0, rngLen = 0;
-		for(size_t j = 0; j < this->size(); ) {
-			size_t k = j;
-			for (; k < this->size(); ++k) {
-				if (this->p[k].seg->m_isDel.size() > maxSegRows)
-					break;
-			}
-			if (k - j > rngLen) {
-				rngBeg = j;
-				rngLen = k - j;
-			}
-			j = k + 1;
-		}
-		for (size_t j = 0; j < rngLen; ++j) {
-			this->p[j] = this->p[rngBeg + j];
-		}
-		this->trim(rngLen);
-		if (rngLen < tab->m_schema->m_minMergeSegNum) {
-			tab->m_isMerging = false;
-			return false;
-		}
-		m_newSegRows = 0;
-		for (size_t j = 0; j < rngLen; ++j) {
-			m_newSegRows += this->p[j].seg->m_isDel.size();
-		}
-		return true;
-	}
-
-	std::string joinPathList() const {
-		std::string str;
-		for (auto& x : *this) {
-			str += "\t";
-			str += x.seg->m_segDir.string();
-			str += "\n";
-		}
-		return str;
-	}
-
+	bool canMerge(DbTable* tab);
 	void syncPurgeBits(double purgeThreshold);
 
 	ReadableIndex*
@@ -2928,6 +2843,93 @@ public:
 	void mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId);
 };
 
+std::string DbTable::MergeParam::joinPathList() const {
+	std::string str;
+	for (auto& x : *this) {
+		str += "\t";
+		str += x.seg->m_segDir.string();
+		str += "\n";
+	}
+	return str;
+}
+
+bool DbTable::MergeParam::canMerge(DbTable* tab) {
+	// most failed checks should fails here...
+	if (tab->m_isMerging)
+		return false;
+	if (PurgeStatus::none != tab->m_purgeStatus)
+		return false;
+
+	// memory alloc should be out of lock scope
+	this->reserve(tab->m_segments.size() + 1);
+	{
+		MyRwLock lock(tab->m_rwMutex, false);
+		for (size_t i = 0; i < tab->m_segments.size(); ++i) {
+			auto seg = tab->m_segments[i].get();
+			if (seg->getWritableStore())
+				break; // writable seg must be at top side
+			else
+				this->push_back({seg->getReadonlySegment(), i});
+		}
+		if (this->size() <= 1)
+			return false;
+		if (this->size() + 1 < tab->m_segments.size())
+			return false;
+		if (tab->m_isMerging)
+			return false;
+		if (PurgeStatus::none != tab->m_purgeStatus)
+			return false;
+		if (!lock.upgrade_to_writer()) {
+			if (tab->m_isMerging) // check again
+				return false;
+			if (PurgeStatus::none != tab->m_purgeStatus)
+				return false;
+		}
+		tab->m_isMerging = true;
+		// if tab->m_isMerging is false, tab can create new segments
+		// then this->m_tabSegNum would be staled, this->m_tabSegNum is
+		// used for violation check
+		this->m_tabSegNum = tab->m_segments.size();
+		DebugCheckRowNumVecNoLock(tab);
+	}
+	size_t sumSegRows = 0;
+	for (size_t i = 0; i < this->size(); ++i) {
+		sumSegRows += this->p[i].seg->m_isDel.size();
+	}
+	size_t avgSegRows = sumSegRows / this->size();
+	size_t maxSegRows = avgSegRows * 7/4;
+	if (m_forcePurgeAndMerge) {
+		maxSegRows = avgSegRows * 3;
+	}
+
+	// find max range in which every seg rows < maxSegRows
+	size_t rngBeg = 0, rngLen = 0;
+	for(size_t j = 0; j < this->size(); ) {
+		size_t k = j;
+		for (; k < this->size(); ++k) {
+			if (this->p[k].seg->m_isDel.size() > maxSegRows)
+				break;
+		}
+		if (k - j > rngLen) {
+			rngBeg = j;
+			rngLen = k - j;
+		}
+		j = k + 1;
+	}
+	for (size_t j = 0; j < rngLen; ++j) {
+		this->p[j] = this->p[rngBeg + j];
+	}
+	this->trim(rngLen);
+	if (rngLen < tab->m_schema->m_minMergeSegNum) {
+		tab->m_isMerging = false;
+		return false;
+	}
+	m_newSegRows = 0;
+	for (size_t j = 0; j < rngLen; ++j) {
+		m_newSegRows += this->p[j].seg->m_isDel.size();
+	}
+	return true;
+}
 
 void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 	size_t newSumDelcnt = 0;
