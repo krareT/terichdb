@@ -173,6 +173,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		llong  newPhysicId = 0;
 		llong  physicId = 0;
 		size_t logicNum = isPurged->size();
+		size_t physicNum = iter.getStore()->numDataRows();
 		size_t sampled = 0;
 		const bm_uint_t* isPurgedptr = isPurged->bldata();
 		for (size_t logicId = 0; logicId < logicNum; ++logicId) {
@@ -181,8 +182,9 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 					bool hasData = iter.seekExact(physicId, &rec);
 					if (!hasData) {
 						fprintf(stderr
-							, "ERROR: %s:%d: logicId = %zd, physicId = %lld, rows = %zd\n"
-							, __FILE__, __LINE__, logicId, physicId, logicNum);
+							, "ERROR: %s:%d: logicId = %zd, physicId = %lld, logicNum = %zd, physicNum = %zd\n"
+							, __FILE__, __LINE__, logicId, physicId, logicNum, physicNum);
+						fflush(stderr);
 						abort(); // there are some bugs
 					}
 				//	if (hasData && rec.empty()) {
@@ -197,6 +199,11 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				physicId++;
 			}
 		}
+		if (size_t(physicId) != physicNum) {
+			fprintf(stderr
+				, "ERROR: %s:%d: physicId != physicNum: physicId = %lld, physicNum = %zd, logicNum = %zd\n"
+				, __FILE__, __LINE__, physicId, physicNum, logicNum);
+		}
 		emptyCheckProtect(sampled);
 		lock.lock(); // start lock
 		builder->prepare(newPhysicId, fpath.string());
@@ -208,8 +215,9 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				bool hasData = iter.increment(&physicId2, &rec);
 				if (!hasData || physicId != physicId2) {
 					fprintf(stderr
-						, "ERROR: %s:%d: logicId = %zd, physicId = %lld, rows = %zd\n"
-						, __FILE__, __LINE__, logicId, physicId, logicNum);
+						, "ERROR: %s:%d: hasData = %d, logicId = %zd, physicId = %lld, physicId2 = %lld, physicNum = %zd, logicNum = %zd\n"
+						, __FILE__, __LINE__, hasData, logicId, physicId, physicId2, physicNum, logicNum);
+					fflush(stderr);
 					abort(); // there are some bugs
 				}
 				if (!terark_bit_test(isDel, logicId)) {
@@ -217,6 +225,11 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				}
 				physicId++;
 			}
+		}
+		if (size_t(physicId) != physicNum) {
+			fprintf(stderr
+				, "ERROR: %s:%d: physicId != physicNum: physicId = %lld, physicNum = %zd, logicNum = %zd\n"
+				, __FILE__, __LINE__, physicId, physicNum, logicNum);
 		}
 	}
 	zds->completeBuild(*builder);

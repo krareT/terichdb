@@ -24,6 +24,8 @@
 
 //#define SegDir_c_str(seg) seg->m_segDir.string().c_str()
 
+//#define SLOW_DEBUG_CHECK
+
 namespace terark { namespace db {
 
 namespace fs = boost::filesystem;
@@ -2996,7 +2998,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	if (schema.m_enableLinearScan) {
 		seqStore.reset(new SeqReadAppendonlyStore(dseg->m_segDir, schema));
 	}
-#if !defined(NDEBUG)
+#if defined(SLOW_DEBUG_CHECK)
 	hash_strmap<valvec<size_t> > key2id;
 	size_t baseLogicId = 0;
 #endif
@@ -3020,14 +3022,14 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 						if (seqStore)
 							seqStore->append(rec, ctx);
 					}
-#if !defined(NDEBUG)
+#if defined(SLOW_DEBUG_CHECK)
 					key2id[rec].push_back(baseLogicId + logicId);
 #endif
 				}
 				physicId++;
 			}
 		}
-#if !defined(NDEBUG)
+#if defined(SLOW_DEBUG_CHECK)
 		assert(!oldpurgeBits || seg->m_isPurged.max_rank0() == physicId);
 		baseLogicId += logicRows;
 #endif
@@ -3036,7 +3038,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 		return new EmptyIndexStore();
 	}
 	ReadableIndex* index = dseg->buildIndex(schema, strVec);
-#if !defined(NDEBUG)
+#if defined(SLOW_DEBUG_CHECK)
 	valvec<byte> rec2;
 	valvec<llong> recIdvec;
 	valvec<size_t> baseIdvec;
@@ -3611,7 +3613,7 @@ try{
 		m_mergeSeqNum++;
 		m_segArrayUpdateSeq++;
 		m_isMerging = false;
-#if !defined(NDEBUG)
+#if defined(SLOW_DEBUG_CHECK)
 		valvec<byte> r1, r2;
 		size_t baseLogicId = 0;
 		for(size_t i = 0; i < toMerge.size(); ++i) {

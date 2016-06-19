@@ -100,10 +100,10 @@ DbContext::DbContext(const DbTable* tab)
 					 std::logic_error);
 	g_dbCtxLiveCnt++;
 	g_dbCtxCreatedCnt++;
-#if !defined(NDEBUG)
-	fprintf(stderr, "DEBUG: DbContext live count = %zd, created = %zd\n"
-		, g_dbCtxLiveCnt.load(), g_dbCtxCreatedCnt.load());
-#endif
+	if (getenv("TerarkDB_TrackBuggyObjectLife")) {
+		fprintf(stderr, "DEBUG: DbContext live count = %zd, created = %zd\n"
+			, g_dbCtxLiveCnt.load(), g_dbCtxCreatedCnt.load());
+	}
 }
 
 DbContext::~DbContext() {

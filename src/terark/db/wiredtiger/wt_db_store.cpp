@@ -72,10 +72,10 @@ public:
 		m_cursor = cursor;
 		g_wtStoreIterLiveCnt++;
 		g_wtStoreIterCreatedCnt++;
-	#if !defined(NDEBUG)
-		fprintf(stderr, "DEBUG: WtWritableStoreIter live count = %zd, created = %zd\n"
-			, g_wtStoreIterLiveCnt.load(), g_wtStoreIterCreatedCnt.load());
-	#endif
+		if (getenv("TerarkDB_TrackBuggyObjectLife")) {
+			fprintf(stderr, "DEBUG: WtWritableStoreIter live count = %zd, created = %zd\n"
+				, g_wtStoreIterLiveCnt.load(), g_wtStoreIterCreatedCnt.load());
+		}
 	}
 	~WtWritableStoreIterBase() {
 		WT_SESSION* session = m_cursor->session;

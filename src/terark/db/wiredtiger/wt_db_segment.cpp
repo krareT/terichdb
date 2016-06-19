@@ -195,10 +195,10 @@ public:
 		assert(nullptr != m_store);
 		g_wtDbTxnLiveCnt++;
 		g_wtDbTxnCreatedCnt++;
-	#if !defined(NDEBUG)
-		fprintf(stderr, "DEBUG: WtDbTransaction live count = %zd, created = %zd\n"
-			, g_wtDbTxnLiveCnt.load(), g_wtDbTxnCreatedCnt.load());
-	#endif
+		if (getenv("TerarkDB_TrackBuggyObjectLife")) {
+			fprintf(stderr, "DEBUG: WtDbTransaction live count = %zd, created = %zd\n"
+				, g_wtDbTxnLiveCnt.load(), g_wtDbTxnCreatedCnt.load());
+		}
 	}
 
 	void resetCursors() {

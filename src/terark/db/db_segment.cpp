@@ -33,6 +33,8 @@
 
 #include <boost/scope_exit.hpp>
 
+//#define SLOW_DEBUG_CHECK
+
 namespace terark { namespace db {
 
 namespace fs = boost::filesystem;
@@ -896,7 +898,7 @@ ReadonlySegment::completeAndReload(DbTable* tab, size_t segIdx,
 	lock.upgrade_to_writer();
 	syncNewDeletionMark(); // writer locked
 	m_delcnt = input->m_delcnt;
-#if !defined(NDEBUG)
+#if defined(SLOW_DEBUG_CHECK)
 	{
 		size_t computed_delcnt1 = this->m_isDel.popcnt();
 		size_t computed_delcnt2 = input->m_isDel.popcnt();

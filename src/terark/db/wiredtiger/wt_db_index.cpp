@@ -40,10 +40,10 @@ protected:
 		}
 		g_wtIndexIterLiveCnt++;
 		g_wtIndexIterCreatedCnt++;
-	#if !defined(NDEBUG)
-		fprintf(stderr, "DEBUG: WtWritableStoreIter live count = %zd, created = %zd\n"
-			, g_wtIndexIterLiveCnt.load(), g_wtIndexIterCreatedCnt.load());
-	#endif
+		if (getenv("TerarkDB_TrackBuggyObjectLife")) {
+			fprintf(stderr, "DEBUG: WtWritableIndexIter live count = %zd, created = %zd\n"
+				, g_wtIndexIterLiveCnt.load(), g_wtIndexIterCreatedCnt.load());
+		}
 	}
 	~MyIndexIterBase() {
 		WT_SESSION* session = m_iter->session;
