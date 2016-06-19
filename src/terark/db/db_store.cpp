@@ -112,11 +112,13 @@ namespace {
 			return false;
 		}
 		bool seekExact(llong id, valvec<byte>* val) override {
-			if (id < m_rows) {
+			if (terark_likely(id >= 0 && id < m_rows)) {
 				m_store->getValue(id, val, m_ctx.get());
 				m_id = id + 1;
 				return true;
 			}
+			fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
+				, BOOST_CURRENT_FUNCTION, id, m_rows);
 			return false;
 		}
 		void reset() {
@@ -143,12 +145,14 @@ namespace {
 			}
 			return false;
 		}
-		bool seekExact(llong  id, valvec<byte>* val) override {
-			if (id > 0) {
-				m_store->getValue(id-1, val, m_ctx.get());
-				m_id = id - 1;
+		bool seekExact(llong id, valvec<byte>* val) override {
+			if (terark_likely(id >= 0 && id < m_rows)) {
+				m_store->getValue(id, val, m_ctx.get());
+				m_id = id; // is not (id-1)
 				return true;
 			}
+			fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
+				, BOOST_CURRENT_FUNCTION, id, m_rows);
 			return false;
 		}
 		void reset() {

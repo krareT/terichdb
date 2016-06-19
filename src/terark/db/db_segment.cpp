@@ -495,9 +495,10 @@ public:
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
-		while (size_t(m_id) < owner->m_isDel.size() && owner->m_isDel[m_id])
+		size_t rows = owner->m_isDel.size();
+		while (size_t(m_id) < rows && owner->m_isDel[m_id])
 			m_id++;
-		if (size_t(m_id) < owner->m_isDel.size()) {
+		if (terark_likely(size_t(m_id) < rows)) {
 			*id = m_id++;
 			owner->getValueByLogicId(*id, val, m_ctx.get());
 			return true;
@@ -505,9 +506,17 @@ public:
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		m_id = id;
-		llong id2 = -1;
-		return increment(&id2, val);
+		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		llong rows = owner->m_isDel.size();
+		if (terark_likely(id >= 0 || id < rows)) {
+			// do not check m_isDel, always success!
+			owner->getValueByLogicId(id, val, m_ctx.get());
+			m_id = id + 1;
+			return true;
+		}
+		fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
+			, BOOST_CURRENT_FUNCTION, id, rows);
+		return false;
 	}
 	void reset() override {
 		m_id = 0;
@@ -526,7 +535,7 @@ public:
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
 		while (m_id > 0 && owner->m_isDel[m_id-1])
 			 --m_id;
-		if (m_id > 0) {
+		if (terark_likely(m_id > 0)) {
 			*id = --m_id;
 			owner->getValueByLogicId(*id, val, m_ctx.get());
 			return true;
@@ -534,9 +543,17 @@ public:
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		m_id = id;
-		llong id2 = -1;
-		return increment(&id2, val);
+		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		llong rows = owner->m_isDel.size();
+		if (terark_likely(id >= 0 || id < rows)) {
+			// do not check m_isDel, always success!
+			owner->getValueByLogicId(id, val, m_ctx.get());
+			m_id = id; // is not (id-1)
+			return true;
+		}
+		fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
+			, BOOST_CURRENT_FUNCTION, id, rows);
+		return false;
 	}
 	void reset() override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
@@ -1995,76 +2012,11 @@ const {
 	// should similar to ReadonlySegment::getValueAppend(...)
 }
 
-class SmartWritableSegment::MyStoreIterForward : public StoreIterator {
-	size_t m_id;
-	DbContextPtr m_ctx;
-public:
-	MyStoreIterForward(const SmartWritableSegment* owner, DbContext* ctx) {
-		m_store.reset(const_cast<SmartWritableSegment*>(owner));
-		m_id = 0;
-		m_ctx.reset(ctx);
-	}
-	bool increment(llong* id, valvec<byte>* val) override {
-		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
-		if (m_id < owner->m_isDel.size()) {
-			*id = m_id;
-			owner->getValue(m_id, val, m_ctx.get());
-			m_id++;
-			return true;
-		}
-		return false;
-	}
-	bool seekExact(llong id, valvec<byte>* val) override {
-		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
-		m_id = id;
-		if (owner->m_isDel[id]) {
-			return false;
-		}
-		owner->getValue(id, val, m_ctx.get());
-		return true;
-	}
-	void reset() override {
-		m_id = 0;
-	}
-};
-class SmartWritableSegment::MyStoreIterBackward : public StoreIterator {
-	size_t m_id;
-	DbContextPtr m_ctx;
-public:
-	MyStoreIterBackward(const SmartWritableSegment* owner, DbContext* ctx) {
-		m_store.reset(const_cast<SmartWritableSegment*>(owner));
-		m_id = owner->m_isDel.size();
-		m_ctx.reset(ctx);
-	}
-	bool increment(llong* id, valvec<byte>* val) override {
-		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
-		if (m_id > 0) {
-			*id = --m_id;
-			owner->getValue(m_id, val, &*m_ctx);
-			return true;
-		}
-		return false;
-	}
-	bool seekExact(llong id, valvec<byte>* val) override {
-		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
-		m_id = id;
-		if (owner->m_isDel[id]) {
-			return false;
-		}
-		owner->getValue(id, val, m_ctx.get());
-		return true;
-	}
-	void reset() override {
-		auto owner = static_cast<const SmartWritableSegment*>(m_store.get());
-		m_id = owner->m_isDel.size();
-	}
-};
-
 StoreIterator* SmartWritableSegment::createStoreIterForward(DbContext* ctx) const {
-	return new MyStoreIterForward(this, ctx);
+	return nullptr;
 }
 StoreIterator* SmartWritableSegment::createStoreIterBackward(DbContext* ctx) const {
-	return new MyStoreIterBackward(this, ctx);
+	return nullptr;
 }
 
 void SmartWritableSegment::saveRecordStore(PathRef dir) const {
