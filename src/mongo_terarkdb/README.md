@@ -13,3 +13,10 @@ ln -sf ~/terark-db/src/mongo_terarkdb ~/mongo/src/mongo/db/modules/
 cd ~/mongo;
 scons CPPPATH=/path/to/terark-db/package/include LIBPATH=/path/to/terark-db/package/lib
 ```
+
+## Data Migration
+
+1. Add content of [terark-mongo.js](../../tools/mongo/shell/terark-mongo.js) to ~/mongorc.js, which defined fuction `terarkCreateColl(dbname, collname, schemaFile)`.
+1. Using [Terark modified variety](https://github.com/Terark/variety) to deduce the schema of existing mongoDB colletions.
+1. Using [mongodump/mongorestore](https://github.com/mongodb/mongo-tools) to copy data from existing mongoDB to mongoTerarkDB.
+   * You can insert data to mongoTerarkDB by any other approaches
