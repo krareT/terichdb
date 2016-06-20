@@ -405,6 +405,7 @@ public:
     void reattachToOperationContext(OperationContext* txn) final {
         _txn = txn;
         // _cursor recreated in restore() to avoid risk of WT_ROLLBACK issues.
+		_cursor = _idx.m_table->allocIndexIter(_idx.m_indexId, _forward);
     }
 
 protected:

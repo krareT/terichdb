@@ -181,7 +181,7 @@ public:
 
     void detachFromOperationContext() final {
         _txn = nullptr;
-        _cursor = nullptr;
+    //  _cursor = nullptr; // do not set to nullptr
     }
 
     void reattachToOperationContext(OperationContext* txn) final {
