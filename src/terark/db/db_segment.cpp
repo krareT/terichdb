@@ -1136,9 +1136,8 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 		return store;
 	}
 	if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
-		double sRatio = schema.m_dictZipSampleRatio;
 		double avgLen = 1.0 * colgroup.dataInflateSize() / colgroup.numDataRows();
-		if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
+		if (schema.m_dictZipSampleRatio > FLT_EPSILON || avgLen > 100) {
 			StoreIteratorPtr iter = colgroup.ensureStoreIterForward(ctx);
 			return buildDictZipStore(schema, tmpSegDir, *iter, isDel, &input->m_isPurged);
 		}

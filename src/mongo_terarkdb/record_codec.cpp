@@ -72,6 +72,9 @@ void TerarkStrZeroToBsonBinData(MyBsonBuilder& bb, const char*& pos, const char*
 		if (len >= end-pos) {
 			THROW_STD(invalid_argument, "zero byte not found in StrZero of some non-last field");
 		}
+		if (0 == len) {
+			THROW_STD(invalid_argument, "strlen(pos) = 0, must > 0");
+		}
 		bb << int(len-1);
 		bb << subType;
 		bb.ensureWrite(pos+1, len-1);
