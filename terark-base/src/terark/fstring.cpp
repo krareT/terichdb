@@ -174,5 +174,21 @@ void basic_fstring<uint16_t>::trim() {
 template struct basic_fstring<char>;
 template struct basic_fstring<uint16_t>;
 
+bool getEnvBool(const char* envName, bool Default) {
+	if (const char* env = getenv(envName)) {
+		if (atoi(env))
+			return true;
+	}
+	return Default;
+}
+
+long getEnvLong(const char* envName, long Default) {
+	if (const char* env = getenv(envName)) {
+		int base = 0; // env can be oct, dec, hex
+		if (strtol(env, NULL, base))
+			return true;
+	}
+	return Default;
+}
 
 } // namespace terark

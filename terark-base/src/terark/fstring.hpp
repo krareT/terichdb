@@ -549,6 +549,9 @@ struct fstring_func {
 TERARK_DLL_EXPORT extern unsigned char gtab_ascii_tolower[256];
 TERARK_DLL_EXPORT extern unsigned char gtab_ascii_tolower[256];
 
+TERARK_DLL_EXPORT bool getEnvBool(const char* envName, bool Default = false);
+TERARK_DLL_EXPORT long getEnvLong(const char* envName, long Default = false);
+
 } // namespace terark
 
 #endif // __terark_fstring_hpp__
