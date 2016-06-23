@@ -353,6 +353,9 @@ StoreIterator* MultiPartStore::createStoreIterBackward(DbContext* ctx) const {
 }
 
 void MultiPartStore::load(PathRef path) {
+	fprintf(stderr
+		, "FATAL: %s:%d: %s: This function should not be called\n"
+		, __FILE__, __LINE__, BOOST_CURRENT_FUNCTION);
 	abort();
 }
 

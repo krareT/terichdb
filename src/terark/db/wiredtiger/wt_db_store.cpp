@@ -72,7 +72,7 @@ public:
 		m_cursor = cursor;
 		g_wtStoreIterLiveCnt++;
 		g_wtStoreIterCreatedCnt++;
-		if (getenv("TerarkDB_TrackBuggyObjectLife")) {
+		if (getEnvBool("TerarkDB_TrackBuggyObjectLife")) {
 			fprintf(stderr, "DEBUG: WtWritableStoreIter live count = %zd, created = %zd\n"
 				, g_wtStoreIterLiveCnt.load(), g_wtStoreIterCreatedCnt.load());
 		}

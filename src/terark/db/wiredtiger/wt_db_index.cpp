@@ -40,7 +40,7 @@ protected:
 		}
 		g_wtIndexIterLiveCnt++;
 		g_wtIndexIterCreatedCnt++;
-		if (getenv("TerarkDB_TrackBuggyObjectLife")) {
+		if (getEnvBool("TerarkDB_TrackBuggyObjectLife")) {
 			fprintf(stderr, "DEBUG: WtWritableIndexIter live count = %zd, created = %zd\n"
 				, g_wtIndexIterLiveCnt.load(), g_wtIndexIterCreatedCnt.load());
 		}

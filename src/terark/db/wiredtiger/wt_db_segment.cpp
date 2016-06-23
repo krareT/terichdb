@@ -195,7 +195,7 @@ public:
 		assert(nullptr != m_store);
 		g_wtDbTxnLiveCnt++;
 		g_wtDbTxnCreatedCnt++;
-		if (getenv("TerarkDB_TrackBuggyObjectLife")) {
+		if (getEnvBool("TerarkDB_TrackBuggyObjectLife")) {
 			fprintf(stderr, "DEBUG: WtDbTransaction live count = %zd, created = %zd\n"
 				, g_wtDbTxnLiveCnt.load(), g_wtDbTxnCreatedCnt.load());
 		}
