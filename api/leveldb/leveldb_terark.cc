@@ -595,24 +595,12 @@ OperationContext* DbImpl::GetContext(const ReadOptions &options) {
 }
 
 terark::db::DbContext* DbImpl::GetDbContext() {
-#if 0
-  terark::db::MyRwLock lock(m_ctxMapRwMutex, false);
-  std::thread::id tid = std::this_thread::get_id();
-  size_t idx = m_ctxMap.find_i(tid);
-  if (idx < m_ctxMap.end_i()) {
-	  return m_ctxMap.val(idx).get();
-  }
-  lock.upgrade_to_writer();
-  idx = m_ctxMap.insert_i(tid).first;
-  auto& refctx = m_ctxMap.val(idx);
-#else
   DbContextPtr& refctx = m_ctx.local();
-#endif
   if (!refctx) {
-	  refctx.reset(m_tab->createDbContext());
-#if !defined(NDEBUG)
+	refctx.reset(m_tab->createDbContext());
+    if (terark::getEnvBool("TerarkDB_TrackBuggyObjectLife")) {
 	  fprintf(stderr, "DEBUG: thread DbContext object number = %zd\n", m_ctx.size());
-#endif
+    }
   }
   return refctx.get();
 }
@@ -628,12 +616,12 @@ IteratorImpl::IteratorImpl(terark::db::DbTable *db) {
 	m_direction = Direction::forward;
 	g_iterLiveCnt++;
 	g_iterCreatedCnt++;
-#if !defined(NDEBUG)
-  fprintf(stderr
-    , "DEBUG: teark-db-leveldb-api: dbdir=%s : %s : Iterator live count = %zd, created = %zd\n"
-    , db->getDir().string().c_str(), BOOST_CURRENT_FUNCTION
-    , g_iterLiveCnt.load(), g_iterCreatedCnt.load());
-#endif
+    if (terark::getEnvBool("TerarkDB_TrackBuggyObjectLife")) {
+	  fprintf(stderr
+		, "DEBUG: teark-db-leveldb-api: dbdir=%s : %s : Iterator live count = %zd, created = %zd\n"
+		, db->getDir().string().c_str(), BOOST_CURRENT_FUNCTION
+		, g_iterLiveCnt.load(), g_iterCreatedCnt.load());
+	}
 }
 
 IteratorImpl::~IteratorImpl() {
@@ -654,7 +642,6 @@ void IteratorImpl::iterIncrement() {
 		}
 	}
 }
-
 
 // Position at the first key in the source.  The iterator is Valid()
 // after this call iff the source is not empty.

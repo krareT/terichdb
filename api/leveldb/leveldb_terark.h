@@ -357,16 +357,9 @@ public:
 
   terark::db::DbContext* GetDbContext();
 
-//WT_CONNECTION *conn_;
-//ThreadLocal<OperationContext> *context_;
   terark::db::DbTablePtr m_tab;
 private:
-#if 0
-  mutable terark::db::MyRwMutex m_ctxMapRwMutex;
-  mutable gold_hash_map<std::thread::id, DbContextPtr> m_ctxMap;
-#else
   tbb::enumerable_thread_specific<DbContextPtr> m_ctx;
-#endif
 
 #ifdef HAVE_ROCKSDB
   std::vector<ColumnFamilyHandle*> columns_;
