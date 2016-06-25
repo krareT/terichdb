@@ -2436,7 +2436,7 @@ static int getMongoTypeChecked(const ColumnMeta& colmeta, fstring mongoTypeName)
 // define as macro, to report correct lineno and function name
 #define CheckInvalidChars(somename, nameType) \
 do { \
-  const char* invalidChars = "\\/{}[]()<>?|~`£¡#%^&*'\"=:; \t\r\n"; \
+  const char* invalidChars = "\\/{}[]()<>?|~`!#%^&*'\"=:; \t\r\n"; \
   for (byte c : somename) { \
     if (strchr(invalidChars, c)) { \
       THROW_STD(invalid_argument, "invalid char(%c) = 0x%02X in %s: %s", \
