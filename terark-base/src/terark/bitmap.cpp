@@ -56,13 +56,13 @@ febitvec& febitvec::operator=(const febitvec& y) {
 }
 
 #if defined(HSM_HAS_MOVE)
-febitvec::febitvec(febitvec&& y) {
+febitvec::febitvec(febitvec&& y) noexcept {
 	m_words = y.m_words;
 	m_size = y.m_size;
 	m_capacity = y.m_capacity;
 	y.risk_release_ownership();
 }
-febitvec& febitvec::operator=(febitvec&& y) {
+febitvec& febitvec::operator=(febitvec&& y) noexcept {
 	if (m_words)
 		::free(m_words);
 	m_words = y.m_words;

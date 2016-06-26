@@ -26,6 +26,10 @@ public:
 	rank_select(size_t n, valvec_reserve);
 	rank_select(const rank_select&);
 	rank_select& operator=(const rank_select&);
+#if defined(HSM_HAS_MOVE)
+	rank_select(rank_select&& y) noexcept;
+	rank_select& operator=(rank_select&& y) noexcept;
+#endif
 	~rank_select();
 	void clear();
 	void risk_release_ownership();
@@ -69,6 +73,10 @@ public:
 	rank_select_se(size_t n, valvec_reserve);
 	rank_select_se(const rank_select_se&);
 	rank_select_se& operator=(const rank_select_se&);
+#if defined(HSM_HAS_MOVE)
+	rank_select_se(rank_select_se&& y) noexcept;
+	rank_select_se& operator=(rank_select_se&& y) noexcept;
+#endif
 	~rank_select_se();
 	void clear();
 	void risk_release_ownership();
@@ -156,6 +164,12 @@ public:
 	rank_select_il(size_t bits, bool val, bool padding);
 	rank_select_il(size_t bits, valvec_no_init);
 	rank_select_il(size_t bits, valvec_reserve);
+	rank_select_il(const rank_select_il& y);
+	rank_select_il& operator=(const rank_select_il& y);
+#if defined(HSM_HAS_MOVE)
+	rank_select_il(rank_select_il&& y) noexcept;
+	rank_select_il& operator=(rank_select_il&& y) noexcept;
+#endif
 	~rank_select_il();
 
 	void clear();

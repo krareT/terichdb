@@ -264,8 +264,8 @@ public:
 	febitvec(const febitvec&); // copy-cons
 	febitvec& operator=(const febitvec&); // assign
 #if defined(HSM_HAS_MOVE)
-	febitvec(febitvec&&); // move-cons
-	febitvec& operator=(febitvec&&); // move-assign
+	febitvec(febitvec&&) noexcept; // move-cons
+	febitvec& operator=(febitvec&&) noexcept; // move-assign
 #endif
 
 	febitvec(const febitvec& y, size_t beg, size_t len);

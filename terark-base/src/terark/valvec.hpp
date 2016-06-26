@@ -259,7 +259,7 @@ public:
     }
 
 #ifdef HSM_HAS_MOVE
-    valvec(valvec&& y) {
+    valvec(valvec&& y) noexcept {
         assert(this != &y);
 		assert(!is_object_overlap(this, &y));
 		p = y.p;
@@ -270,7 +270,7 @@ public:
 		y.c = 0;
 	}
 
-	valvec& operator=(valvec&& y) {
+	valvec& operator=(valvec&& y) noexcept {
         assert(this != &y);
         if (&y == this)
             return *this;
