@@ -49,6 +49,7 @@
 #include <valgrind/valgrind.h>
 #endif
 #include "mongo/base/error_codes.h"
+#include "mongo/db/bson/dotted_path_support.h"
 #include "mongo/db/catalog/collection_catalog_entry.h"
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
@@ -77,6 +78,8 @@
 #endif
 
 namespace mongo { namespace terarkdb {
+
+namespace dps = ::mongo::dotted_path_support;
 
 using std::set;
 using std::string;
@@ -197,7 +200,7 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 							   bool repair)
     : _path(path),
       _durable(durable),
-      _sizeStorerSyncTracker(100000, 60 * 1000)
+      _sizeStorerSyncTracker(getGlobalServiceContext()->getFastClockSource(), 100000, Milliseconds(60 * 1000))
 {
 	m_fuckKVCatalog = nullptr;
     boost::filesystem::path basePath = path;
@@ -219,6 +222,7 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 	m_wtEngine.reset(new WiredTigerKVEngine(
 				kWiredTigerEngineName,
 				m_pathWt.string(),
+				getGlobalServiceContext()->getFastClockSource(),
 				extraOpenOptions,
 				cacheSizeGB,
 				durable,
@@ -471,7 +475,9 @@ TerarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
 
         if (!collOptions.indexOptionDefaults["storageEngine"].eoo()) {
             BSONObj storageEngineOptions = collOptions.indexOptionDefaults["storageEngine"].Obj();
-            collIndexOptions = storageEngineOptions.getFieldDotted(kTerarkDbEngineName).toString();
+            collIndexOptions = 
+                dps::extractElementAtPath(storageEngineOptions, kTerarkDbEngineName + ".configString")
+                    .valuestrsafe();
         }
     }
 	const string tableNS = desc->getCollection()->ns().toString();
@@ -535,6 +541,7 @@ TerarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
 
 Status TerarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
     LOG(1) << "TerarkDb dropIdent(): ident=" << ident << "\n";
+#if 0
 	LOG(1) << "TerarkDb dropIdent(): opCtx->getNS()=" << opCtx->getNS();
 	bool isTerarkDb = false;
 	const string tableIdent = m_fuckKVCatalog->getCollectionIdent(opCtx->getNS());
@@ -561,6 +568,26 @@ Status TerarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
 		return Status::OK();
 	}
 	return m_wtEngine->dropIdent(opCtx, ident);
+#else
+	// The fucking mongodb deleted opCtx->getNS()
+	std::lock_guard<std::mutex> lock(m_mutex);
+	size_t i = m_tables.find_i(ident);
+	if (i < m_tables.end_i()) {
+		ThreadSafeTablePtr& tabPtr = m_tables.val(i);
+		tabPtr->m_tab->dropTable();
+		m_tables.erase_i(i);
+	}
+	else {
+		Status s = m_wtEngine->dropIdent(opCtx, ident);
+		if (!s.isOK()) {
+			std::ostringstream oss;
+			oss << "TerarkDB don't know wheater '" << ident << "' is an index or a collection, ";
+			oss << "if it is, TerarkDB don't support deleting an index, if it is not, please fuck mongodb";
+			return Status(ErrorCodes::IllegalOperation, oss.str());
+		}
+	}
+	return Status::OK();
+#endif
 }
 
 bool TerarkDbKVEngine::supportsDocLocking() const {

@@ -42,7 +42,6 @@
 #include "mongo/db/storage/record_store.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/util/concurrency/synchronization.h"
 #include "mongo/util/fail_point_service.h"
 #include "terarkdb_size_storer.h"
 
@@ -69,65 +68,61 @@ public:
     // name of the RecordStore implementation
     virtual const char* name() const override;
 
-    virtual long long dataSize(OperationContext* txn) const;
+    virtual long long dataSize(OperationContext* txn) const override;
 
-    virtual long long numRecords(OperationContext* txn) const;
+    virtual long long numRecords(OperationContext* txn) const override;
 
-    virtual bool isCapped() const;
+    virtual bool isCapped() const override;
 
     virtual int64_t storageSize(OperationContext* txn,
-                                BSONObjBuilder* extraInfo = NULL,
-                                int infoLevel = 0) const;
+                                BSONObjBuilder* extraInfo,
+                                int infoLevel) const override;
 
     // CRUD related
 
-    virtual RecordData dataFor(OperationContext* txn, const RecordId& id) const;
+    virtual RecordData dataFor(OperationContext* txn, const RecordId& id) const override;
 
-    virtual bool findRecord(OperationContext* txn, const RecordId& id, RecordData* out) const;
+    virtual bool findRecord(OperationContext* txn, const RecordId& id, RecordData* out) const override;
 
-    virtual void deleteRecord(OperationContext* txn, const RecordId& id);
+    virtual void deleteRecord(OperationContext* txn, const RecordId& id) override;
 
     virtual Status insertRecords(OperationContext* txn,
                                  std::vector<Record>* records,
-                                 bool enforceQuota);
+                                 bool enforceQuota) override;
 
     virtual StatusWith<RecordId> insertRecord(OperationContext* txn,
                                               const char* data,
                                               int len,
-                                              bool enforceQuota);
-
-    virtual StatusWith<RecordId> insertRecord(OperationContext* txn,
-                                              const DocWriter* doc,
-                                              bool enforceQuota);
+                                              bool enforceQuota) override;
 
     virtual Status updateRecord(OperationContext* txn,
                                               const RecordId& oldLocation,
                                               const char* data,
                                               int len,
                                               bool enforceQuota,
-                                              UpdateNotifier* notifier);
+                                              UpdateNotifier* notifier) override;
 
-    virtual bool updateWithDamagesSupported() const;
+    virtual bool updateWithDamagesSupported() const override;
 
     StatusWith<RecordData>
 	updateWithDamages(OperationContext* txn,
                       const RecordId& id,
                       const RecordData& oldRec,
                       const char* damageSource,
-                      const mutablebson::DamageVector& damages);
+                      const mutablebson::DamageVector& damages) override;
 
     std::unique_ptr<SeekableRecordCursor>
-	getCursor(OperationContext* txn, bool forward) const final;
+	getCursor(OperationContext* txn, bool forward) const override final;
 
-    std::unique_ptr<RecordCursor> getRandomCursor(OperationContext*) const final;
+    std::unique_ptr<RecordCursor> getRandomCursor(OperationContext*) const override final;
 
     std::vector<std::unique_ptr<RecordCursor>>
-	getManyCursors(OperationContext* txn) const final;
+	getManyCursors(OperationContext* txn) const override final;
 
     virtual Status truncate(OperationContext* txn);
 
-    virtual bool compactSupported() const;
-    virtual bool compactsInPlace() const;
+    virtual bool compactSupported() const override;
+    virtual bool compactsInPlace() const override;
 
     virtual Status compact(OperationContext* txn,
                            RecordStoreCompactAdaptor* adaptor,
@@ -135,19 +130,18 @@ public:
                            CompactStats* stats);
 
     virtual Status validate(OperationContext* txn,
-                            bool full,
-                            bool scanData,
+                            ValidateCmdLevel level,
                             ValidateAdaptor* adaptor,
                             ValidateResults* results,
-                            BSONObjBuilder* output);
+                            BSONObjBuilder* output) override;
 
     virtual void appendCustomStats(OperationContext* txn,
                                    BSONObjBuilder* result,
-                                   double scale) const;
+                                   double scale) const override;
 
-    virtual Status touch(OperationContext* txn, BSONObjBuilder* output) const;
+    virtual Status touch(OperationContext* txn, BSONObjBuilder* output) const override;
 
-    virtual void temp_cappedTruncateAfter(OperationContext* txn, RecordId end, bool inclusive);
+    virtual void temp_cappedTruncateAfter(OperationContext* txn, RecordId end, bool inclusive) override;
 
     boost::optional<RecordId> oplogStartHack(OperationContext* txn,
                                              const RecordId& startingPosition) const override;

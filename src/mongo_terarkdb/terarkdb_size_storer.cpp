@@ -31,11 +31,9 @@
  */
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
-#define NOMINMAX
+
 #include "terarkdb_size_storer.h"
-
 #include <terark/db/db_table.hpp>
-
 #include <mongo/bson/bsonobj.h>
 #include <mongo/bson/bsonobjbuilder.h>
 #include <mongo/db/service_context.h>

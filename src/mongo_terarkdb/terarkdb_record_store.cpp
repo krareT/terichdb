@@ -37,12 +37,7 @@
 #pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
 #endif
 
-#include "mongo/platform/basic.h"
-
 #include "terarkdb_record_store.h"
-
-#include "mongo_terarkdb_common.hpp"
-
 #include "mongo/base/checked_cast.h"
 #include "mongo/bson/util/builder.h"
 #include "mongo/db/concurrency/locker.h"
@@ -315,15 +310,53 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
 	return {RecordId(recIdx + 1)};
 }
 
-StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
-													 const DocWriter* doc,
-													 bool enforceQuota) {
-    const int len = doc->documentSize();
+Status
+TerarkDbRecordStore::insertRecordsWithDocWriter(OperationContext* txn,
+                                            const DocWriter* const* docs,
+                                            size_t nDocs,
+                                            RecordId* idsOut) {
+	DbTable* tab = m_table->m_tab.get();
+    auto& td = m_table->getMyThreadData();
+    std::unique_ptr<Record[]> records(new Record[nDocs]);
 
-    std::unique_ptr<char[]> buf(new char[len]);
-    doc->writeDocument(buf.get());
+    // First get all the sizes so we can allocate a single buffer for all documents. Eventually it
+    // would be nice if we could either hand off the buffers to WT without copying or write them
+    // in-place as we do with MMAPv1, but for now this is the best we can do.
+    size_t totalSize = 0;
+    for (size_t i = 0; i < nDocs; i++) {
+        const size_t docSize = docs[i]->documentSize();
+        records[i].data = RecordData(nullptr, docSize);  // We fill in the real ptr in next loop.
+        totalSize += docSize;
+    }
 
-    return insertRecord(txn, buf.get(), len, enforceQuota);
+    std::unique_ptr<char[]> buffer(new char[totalSize]);
+    char* pos = buffer.get();
+    for (size_t i = 0; i < nDocs; i++) {
+        docs[i]->writeDocument(pos);
+        const size_t size = records[i].data.size();
+        records[i].data = RecordData(pos, size);
+        pos += size;
+    }
+    invariant(pos == (buffer.get() + totalSize));
+	terark::db::BatchWriter batch(tab, td.m_dbCtx.get());
+    for (size_t i = 0; i < nDocs; i++) {
+        docs[i]->writeDocument(pos);
+        BSONObj bson = records[i].data.releaseToBson();
+		td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+		llong recIdx = batch.upsertRow(td.m_buf);
+		records[i].id = RecordId(recIdx + 1);
+    }
+	if (!batch.commit()) {
+		return Status(ErrorCodes::OperationFailed, "TerarkDbRecordStore::insertRecordsWithDocWriter: terark::db::BatchWriter::commit failed");
+	}
+
+    if (idsOut) {
+        for (size_t i = 0; i < nDocs; i++) {
+            idsOut[i] = records[i].id;
+        }
+    }
+
+    return Status::OK();
 }
 
 Status
@@ -401,8 +434,7 @@ Status TerarkDbRecordStore::compact(OperationContext* txn,
 }
 
 Status TerarkDbRecordStore::validate(OperationContext* txn,
-                                   bool full,
-                                   bool scanData,
+								   ValidateCmdLevel level,
                                    ValidateAdaptor* adaptor,
                                    ValidateResults* results,
                                    BSONObjBuilder* output) {

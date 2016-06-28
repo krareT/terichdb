@@ -69,7 +69,7 @@ void TerarkStrZeroToBsonBinData(MyBsonBuilder& bb, const char*& pos, const char*
 	}
 	else {
 		size_t len = strlen(pos);
-		if (len >= end-pos) {
+		if (ptrdiff_t(len) >= end-pos) {
 			THROW_STD(invalid_argument, "zero byte not found in StrZero of some non-last field");
 		}
 		if (0 == len) {
@@ -1156,8 +1156,14 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	LOG(1) << "SchemaRecordCoder::decode: data=" << schema->toJsonStr(fstring(data, size));
 	MyBsonBuilder bb;
 	const char* pos = data;
+#if 0
 	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2 * size);
 	bb.skip(sizeof(SharedBuffer::Holder));
+#else
+// The fucking brain dead mongo::SharedBuffer::Holder become private and
+// mongo::SharedBuffer::takeOwnership was removed
+	bb.resize(4 + 2 * size);
+#endif
 	bb.skip(4); // object size
 	size_t colnum = schema->m_columnsMeta.end_i();
 	// last is $$ field, the schema-less fields
@@ -1363,12 +1369,21 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 		invariant(pos == end);
 	}
 	bb << char(EOO); // End of object
+
+#if 0
 	bb.shrink_to_fit();
 	int bsonSize = int(bb.tell() - sizeof(SharedBuffer::Holder));
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
 			.write<LittleEndian<int>>(bsonSize);
 
 	return SharedBuffer::takeOwnership((char*)bb.release());
+#else
+	int bsonSize = int(bb.tell());
+	DataView((char*)bb.buf()).write<LittleEndian<int>>(bsonSize);
+	SharedBuffer sb = SharedBuffer::allocate(bsonSize);
+	memcpy(sb.get(), bb.begin(), bsonSize);
+	return sb;
+#endif
 }
 
 SharedBuffer
@@ -1551,8 +1566,12 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 //	LOG(2)	<< "decodeIndexKey: size=" << size << ", data=" << indexSchema.toJsonStr(data, size);
 	MyBsonBuilder bb;
 	const char* pos = data;
+#if 0
 	bb.resize(sizeof(SharedBuffer::Holder) + 4 + 2*size);
 	bb.skip(sizeof(SharedBuffer::Holder));
+#else
+	bb.resize(4 + 2*size);
+#endif
 	bb.skip(4); // object size loc
 	const size_t colnum = indexSchema.m_columnsMeta.end_i();
 	const char* end = data + size;
@@ -1702,12 +1721,20 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 	}
 	invariant(pos == end);
 	bb << char(EOO); // end of object
+
+#if 0
 	bb.shrink_to_fit();
 	int bsonSize = int(bb.tell() - sizeof(SharedBuffer::Holder));
 	DataView((char*)bb.buf() + sizeof(SharedBuffer::Holder))
 			.write<LittleEndian<int>>(bsonSize);
-
 	return SharedBuffer::takeOwnership((char*)bb.release());
+#else
+	int bsonSize = int(bb.tell());
+	DataView((char*)bb.buf()).write<LittleEndian<int>>(bsonSize);
+	SharedBuffer sb = SharedBuffer::allocate(bsonSize);
+	memcpy(sb.get(), bb.begin(), bsonSize);
+	return sb;
+#endif
 }
 
 } } // namespace mongo::terarkdb

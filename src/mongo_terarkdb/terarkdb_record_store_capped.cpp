@@ -37,8 +37,6 @@
 #pragma warning(disable: 4267) // '=': conversion from 'size_t' to 'int', possible loss of data
 #endif
 
-#include "mongo/platform/basic.h"
-
 #include "terarkdb_record_store_capped.h"
 
 #include "mongo_terarkdb_common.hpp"
@@ -187,13 +185,6 @@ StatusWith<RecordId> TerarkDbRecordStoreCapped::insertRecord(OperationContext* t
 	return m_wiredtigerCappedStore->insertRecord(txn, data, len, enforceQuota);
 }
 
-StatusWith<RecordId>
-TerarkDbRecordStoreCapped::insertRecord(OperationContext* txn,
-									  const DocWriter* doc,
-									  bool enforceQuota) {
-	return m_wiredtigerCappedStore->insertRecord(txn, doc, enforceQuota);
-}
-
 Status
 TerarkDbRecordStoreCapped::updateRecord(OperationContext* txn,
 									  const RecordId& id,
@@ -254,13 +245,12 @@ Status TerarkDbRecordStoreCapped::compact(OperationContext* txn,
 }
 
 Status TerarkDbRecordStoreCapped::validate(OperationContext* txn,
-										 bool full,
-										 bool scanData,
+										 ValidateCmdLevel level,
 										 ValidateAdaptor* adaptor,
 										 ValidateResults* results,
 										 BSONObjBuilder* output) {
 	return m_wiredtigerCappedStore->
-		validate(txn, full, scanData, adaptor, results, output);
+		validate(txn, level, adaptor, results, output);
 }
 
 void TerarkDbRecordStoreCapped::appendCustomStats(OperationContext* txn,

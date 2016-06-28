@@ -31,8 +31,6 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
-#include "mongo/platform/basic.h"
-
 #include "terarkdb_index.h"
 
 #include <set>
@@ -190,7 +188,6 @@ void TerarkDbIndex::unindex(OperationContext* txn,
 }
 
 void TerarkDbIndex::fullValidate(OperationContext* txn,
-							   bool full,
 							   long long* numKeysOut,
 							   ValidateResults* output) const {
 	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, Not supported now";

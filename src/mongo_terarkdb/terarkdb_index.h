@@ -52,15 +52,14 @@ public:
     virtual Status insert(OperationContext* txn,
                           const BSONObj& key,
                           const RecordId& id,
-                          bool dupsAllowed);
+                          bool dupsAllowed) override;
 
     virtual void unindex(OperationContext* txn,
                          const BSONObj& key,
                          const RecordId& id,
-                         bool dupsAllowed);
+                         bool dupsAllowed) override;
 
     virtual void fullValidate(OperationContext* txn,
-                              bool full,
                               long long* numKeysOut,
                               ValidateResults* output) const override;
     virtual bool appendCustomStats(OperationContext* txn,
@@ -69,13 +68,13 @@ public:
     virtual Status dupKeyCheck(OperationContext* txn,
 							   const BSONObj& key, const RecordId& id);
 
-    virtual bool isEmpty(OperationContext* txn);
+    virtual bool isEmpty(OperationContext* txn) override;
 
-    virtual Status touch(OperationContext* txn) const;
+    virtual Status touch(OperationContext* txn) const override;
 
-    virtual long long getSpaceUsedBytes(OperationContext* txn) const;
+    virtual long long getSpaceUsedBytes(OperationContext* txn) const override;
 
-    virtual Status initAsEmpty(OperationContext* txn);
+    virtual Status initAsEmpty(OperationContext* txn) override;
 
     const std::string& uri() const {
         return _uri;

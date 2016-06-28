@@ -65,59 +65,59 @@ public:
     void setRecordStoreExtraOptions(const std::string& options);
     void setSortedDataInterfaceExtraOptions(const std::string& options);
 
-    virtual bool supportsDocLocking() const;
+    virtual bool supportsDocLocking() const override;
 
-    virtual bool supportsDirectoryPerDB() const;
+    virtual bool supportsDirectoryPerDB() const override;
 
-    virtual bool isDurable() const {
+    virtual bool isDurable() const override {
         return _durable;
     }
 
     virtual bool isEphemeral() const override { return false; }
 
-    virtual RecoveryUnit* newRecoveryUnit();
+    virtual RecoveryUnit* newRecoveryUnit() override;
 
     virtual Status createRecordStore(OperationContext* opCtx,
                                      StringData ns,
                                      StringData ident,
-                                     const CollectionOptions& options);
+                                     const CollectionOptions& options) override;
 
     virtual RecordStore* getRecordStore(OperationContext* opCtx,
                                         StringData ns,
                                         StringData ident,
-                                        const CollectionOptions& options);
+                                        const CollectionOptions& options) override;
 
     virtual Status createSortedDataInterface(OperationContext* opCtx,
                                              StringData ident,
-                                             const IndexDescriptor* desc);
+                                             const IndexDescriptor* desc) override;
 
     virtual SortedDataInterface* getSortedDataInterface(OperationContext* opCtx,
                                                         StringData ident,
-                                                        const IndexDescriptor* desc);
+                                                        const IndexDescriptor* desc) override;
 
-    virtual Status dropIdent(OperationContext* opCtx, StringData ident);
+    virtual Status dropIdent(OperationContext* opCtx, StringData ident) override;
 
     virtual Status okToRename(OperationContext* opCtx,
                               StringData fromNS,
                               StringData toNS,
                               StringData ident,
-                              const RecordStore* originalRecordStore) const;
+                              const RecordStore* originalRecordStore) const override;
 
-    virtual int flushAllFiles(bool sync);
+    virtual int flushAllFiles(bool sync) override;
 
-    virtual Status beginBackup(OperationContext* txn);
+    virtual Status beginBackup(OperationContext* txn) override;
 
-    virtual void endBackup(OperationContext* txn);
+    virtual void endBackup(OperationContext* txn) override;
 
-    virtual int64_t getIdentSize(OperationContext* opCtx, StringData ident);
+    virtual int64_t getIdentSize(OperationContext* opCtx, StringData ident) override;
 
-    virtual Status repairIdent(OperationContext* opCtx, StringData ident);
+    virtual Status repairIdent(OperationContext* opCtx, StringData ident) override;
 
-    virtual bool hasIdent(OperationContext* opCtx, StringData ident) const;
+    virtual bool hasIdent(OperationContext* opCtx, StringData ident) const override;
 
-    std::vector<std::string> getAllIdents(OperationContext* opCtx) const;
+    std::vector<std::string> getAllIdents(OperationContext* opCtx) const override;
 
-    virtual void cleanShutdown();
+    virtual void cleanShutdown() override;
 
     virtual void setJournalListener(JournalListener* jl) override;
 
