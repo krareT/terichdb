@@ -14,6 +14,13 @@ cd ~/mongo;
 scons CPPPATH=/path/to/terark-db/package/include LIBPATH=/path/to/terark-db/package/lib
 ```
 
+## Run mongodb with TerarkDB storage engine
+```shell
+cd ~/mongo;
+mkdir tdb
+./mongod --dbpath tdb --storageEngine TerarkSegDB
+```
+
 ## Data Migration
 
 1. Add content of [terark-mongo.js](../../tools/mongo/shell/terark-mongo.js) to ~/mongorc.js, which defined fuction `terarkCreateColl(dbname, collname, schemaFile)`.
