@@ -143,7 +143,7 @@ void terarkEncodeBsonElemVal(const BSONElement& elem, valvec<char>& encoded) {
 			StringBuilder ss;
 			ss << "terarkEncodeIndexKey(): BSONElement: bad elem.type " << (int)elem.type();
 			std::string msg = ss.str();
-			massert(10320, msg.c_str(), false);
+			massert(314159265, msg.c_str(), false);
 		}
 	}
 }
@@ -866,7 +866,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 				ss << BOOST_CURRENT_FUNCTION
 				   << ": BSONElement: bad elem.type " << (int)elem.type();
 				std::string msg = ss.str();
-				massert(10320, msg.c_str(), false);
+				massert(314159266, msg.c_str(), false);
 			}
 		}
 		m_stored.set1(j);
@@ -1072,7 +1072,7 @@ static void terarkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const c
 			StringBuilder ss;
 			ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)type;
 			std::string msg = ss.str();
-			massert(10320, msg.c_str(), false);
+			massert(314159267, msg.c_str(), false);
 		}
 	}
 }
@@ -1349,7 +1349,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 				   << colname.c_str()
 				   << "') = bad subkey.type " << (int)colmeta.mongoType;
 				std::string msg = ss.str();
-				massert(10320, msg.c_str(), false);
+				massert(314159268, msg.c_str(), false);
 			}
 		}
 	}
@@ -1544,7 +1544,7 @@ void encodeIndexKey(const Schema& indexSchema,
 				ss << BOOST_CURRENT_FUNCTION
 				   << ": BSONElement: bad elem.type " << (int)elem.type();
 				std::string msg = ss.str();
-				massert(10320, msg.c_str(), false);
+				massert(314159269, msg.c_str(), false);
 			}
 		}
 	}
@@ -1715,7 +1715,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 				StringBuilder ss;
 				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.mongoType;
 				std::string msg = ss.str();
-				massert(10320, msg.c_str(), false);
+				massert(314159270, msg.c_str(), false);
 			}
 		}
 	}
