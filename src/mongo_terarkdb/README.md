@@ -11,7 +11,7 @@ ln -sf ~/terark-db/src/mongo_terarkdb ~/mongo/src/mongo/db/modules/
 
 # compile mongo
 cd ~/mongo;
-scons CPPPATH=/path/to/terark-db/package/include LIBPATH=/path/to/terark-db/package/lib
+scons --disable-warnings-as-errors CPPPATH=/path/to/terark-db/package/include LIBPATH=/path/to/terark-db/package/lib
 ```
 
 ## Run mongodb with TerarkDB storage engine
