@@ -96,9 +96,10 @@ ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
 }
 
 ThreadSafeTable::~ThreadSafeTable() {
-	log() << BOOST_CURRENT_FUNCTION << ": tabDir: " << m_tab->getDir().string() << m_tab->get_refcount();
+	log() << BOOST_CURRENT_FUNCTION << ": tabDir: " << m_tab->getDir().string()
+		<< ", refcnt = " << m_tab->get_refcount();
+	destroy();
 }
-
 
 TableThreadDataPtr ThreadSafeTable::allocTableThreadData() {
 	TableThreadDataPtr ret;
@@ -168,6 +169,8 @@ void ThreadSafeTable::destroy() {
 	m_indexBackwardIterCache.clear();
 	m_cursorCache.clear();
 	m_ttd.clear();
+	log() << BOOST_CURRENT_FUNCTION << ": m_tab->refcnt = " << m_tab->get_refcount()
+		<< ", m_ttd.size = " << m_ttd.size();
 	m_tab = nullptr;
 }
 
@@ -397,24 +400,63 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 		// return Status(ErrorCodes::CommandNotSupported,
 		//	"dynamic create RecordStore is not supported, schema is required");
 		BSONElement dbmetaElem = options.storageEngine[kTerarkDbEngineName];
+		std::string dbmetaData;
 		if (!dbmetaElem) {
-			// damn! mongodb does not allowing createRecordStore fails
-			// but we still must fail
-			std::ostringstream oss;
-			oss << "TerarkDbKVEngine::createRecordStore: TerarkSegDB does not support dynamic creating collections, "
-				   "must calling terarkCreateColl(...) in mongo shell client before inserting data into collection: ns = "
-				<< ns.toString() << ", " << "ident = " << ident.toString() << "";
-			return Status(ErrorCodes::CommandNotSupported, oss.str());
+			if (terark::getEnvBool("MongoTerarkDB_EnableDynamicCollection")) {
+				dbmetaData =
+R"({
+  "This is a dynamically created collection": true,
+  "CheckMongoType": true,
+  "RowSchema": {
+    "columns": {
+      "_id": { "type": "fixed", "length": 12 },
+      "$$" : { "type": "carbin" }
+    }
+  },
+  "TableIndex": [
+    { "fields": "_id", "unique": true }
+  ]
+})";
+			}
+			else {
+				// damn! mongodb does not allowing createRecordStore fails
+				// but we still must fail
+				std::ostringstream oss;
+				oss << "TerarkDbKVEngine::createRecordStore: TerarkSegDB does not support dynamic creating collections, "
+					   "must calling terarkCreateColl(...) in mongo shell client before inserting data into collection: ns = "
+					<< ns.toString() << ", " << "ident = " << ident.toString() << "";
+				return Status(ErrorCodes::CommandNotSupported, oss.str());
+			}
+		}
+		else {
+			bool includeFieldName = false;
+			bool pretty = true;
+			dbmetaData = dbmetaElem.jsonString(Strict, includeFieldName, pretty);
 		}
 		fs::create_directories(tabDir);
-		bool includeFieldName = false;
-		bool pretty = true;
 		std::string dbmetaFile = (tabDir / "dbmeta.json").string();
-		std::string dbmetaData = dbmetaElem.jsonString(Strict, includeFieldName, pretty);
 		terark::FileStream fp(dbmetaFile.c_str(), "w");
 		fp.ensureWrite(dbmetaData.c_str(), dbmetaData.size());
 	}
 	return Status::OK();
+}
+
+ThreadSafeTable*
+TerarkDbKVEngine::openTable(StringData ns, StringData ident) {
+	auto tabDir = m_pathTerarkTables / nsToTableDir(ns);
+	if (!fs::exists(tabDir)) {
+		return NULL;
+	}
+	std::lock_guard<std::mutex> lock(m_mutex);
+	size_t fidx = m_tables.find_i(ident);
+	ThreadSafeTable* tab = NULL;
+	if (fidx < m_tables.end_i()) {
+		tab = m_tables.val(fidx).get();
+	} else {
+		tab = new ThreadSafeTable(tabDir);
+		m_tables.insert_i(ident, tab);
+	}
+	return tab;
 }
 
 RecordStore*
@@ -435,18 +477,9 @@ TerarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 		return m_wtEngine->getRecordStore(opCtx, ns, ident, options);
     }
 
-	auto tabDir = m_pathTerarkTables / nsToTableDir(ns);
-	if (!fs::exists(tabDir)) {
+	ThreadSafeTable* tab = openTable(ns, ident);
+	if (NULL == tab) {
 		return NULL;
-	}
-	std::lock_guard<std::mutex> lock(m_mutex);
-	size_t fidx = m_tables.find_i(ident);
-	ThreadSafeTable* tab = NULL;
-	if (fidx < m_tables.end_i()) {
-		tab = m_tables.val(fidx).get();
-	} else {
-		tab = new ThreadSafeTable(tabDir);
-		m_tables.insert_i(ident, tab);
 	}
     return new TerarkDbRecordStore(opCtx, ns, ident, tab, NULL);
 }
@@ -488,16 +521,23 @@ TerarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
 	if (tableIdent == "_mdb_catalog") {
 		return m_wtEngine->createSortedDataInterface(opCtx, ident, desc);
 	}
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
-		size_t i = m_indices.find_i(tableIdent);
-		if (i < m_indices.end_i()) {
+	ThreadSafeTable* tst = openTable(tableNS, tableIdent);
+	if (tst) {
+		const BSONObj& kp = desc->keyPattern();
+		std::string strkp;
+		BSONForEach(elem, kp) {
+			strkp.append(elem.fieldName());
+			strkp.append(",");
+		}
+		strkp.pop_back();
+		DbTable* tab = tst->m_tab.get();
+		size_t indexId = tab->getIndexId(strkp);
+		LOG(2) << "TerarkDbKVEngine::createSortedDataInterface: "
+			<< "strkp = (" << strkp << "), kp = " << kp.toString()
+			<< ", indexId = " << indexId << ", indexNum = " << tab->getIndexNum();
+		if (indexId < tab->getIndexNum()) {
 			return Status::OK();
 		}
-	}
-	const fs::path tabDir = m_pathTerarkTables / nsToTableDir(tableNS);
-	if (fs::exists(tabDir)) {
-		return Status::OK();
 	}
 	return Status(ErrorCodes::CommandNotSupported,
 					"dynamic creating index is not supported");
@@ -575,6 +615,7 @@ Status TerarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
 	if (i < m_tables.end_i()) {
 		ThreadSafeTablePtr& tabPtr = m_tables.val(i);
 		tabPtr->m_tab->dropTable();
+		LOG(1) << "tab->refcnt = " << tabPtr->m_tab->get_refcount();
 		m_tables.erase_i(i);
 	}
 	else {

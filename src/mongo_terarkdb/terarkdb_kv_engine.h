@@ -168,6 +168,8 @@ private:
     mutable Date_t _previousCheckedDropsQueued;
 
 	std::unique_ptr<TableMap> _backupSession;
+
+	ThreadSafeTable* openTable(StringData ns, StringData ident);
 };
 } }  // namespace mongo::terark
 

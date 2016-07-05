@@ -165,6 +165,7 @@ Status TerarkDbIndex::insert(OperationContext* txn,
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
 	DbTable* tab = m_table->m_tab.get();
+    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
 	if (tab->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
 		return Status::OK();
 	} else {
@@ -184,13 +185,17 @@ void TerarkDbIndex::unindex(OperationContext* txn,
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
 	DbTable* tab = m_table->m_tab.get();
+    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
 	tab->indexRemove(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx);
 }
 
 void TerarkDbIndex::fullValidate(OperationContext* txn,
 							   long long* numKeysOut,
 							   ValidateResults* output) const {
-	LOG(2) << BOOST_CURRENT_FUNCTION << ": is in TODO list, Not supported now";
+	LOG(2) << BOOST_CURRENT_FUNCTION << ": just get the [numKeysOut]";
+	if (numKeysOut) {
+		*numKeysOut = m_table->m_tab->existingRows();
+	}
 }
 
 bool TerarkDbIndex::appendCustomStats(OperationContext* txn,

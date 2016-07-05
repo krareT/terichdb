@@ -244,7 +244,9 @@ long long TerarkDbRecordStore::dataSize(OperationContext* txn) const {
 }
 
 long long TerarkDbRecordStore::numRecords(OperationContext* txn) const {
-    return m_table->m_tab->numDataRows();
+	auto tab = m_table->m_tab.get();
+    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
+    return tab->existingRows();
 }
 
 bool TerarkDbRecordStore::isCapped() const {
@@ -281,7 +283,9 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 
 void TerarkDbRecordStore::deleteRecord(OperationContext* txn, const RecordId& id) {
     auto& td = m_table->getMyThreadData();
-    m_table->m_tab->removeRow(id.repr()-1, &*td.m_dbCtx);
+	auto tab = m_table->m_tab.get();
+    bool ok = tab->removeRow(id.repr()-1, &*td.m_dbCtx);
+    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string() << ": return = " << ok;
 }
 
 Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
