@@ -401,8 +401,10 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 		//	"dynamic create RecordStore is not supported, schema is required");
 		BSONElement dbmetaElem = options.storageEngine[kTerarkDbEngineName];
 		std::string dbmetaData;
-		if (!dbmetaElem) {
-			if (terark::getEnvBool("MongoTerarkDB_EnableDynamicCollection")) {
+		if (!dbmetaElem || !dbmetaElem.Obj().getField("RowSchema")) {
+			if (terark::getEnvBool("MongoTerarkDB_DynamicCreateCollection")) {
+				LOG(1) << "TerarkDbKVEngine::createRecordStore: ns:" << ns
+					<< ", tabDir=" << tabDir.string() << ", DynamicCreateCollection";
 				dbmetaData =
 R"({
   "This is a dynamically created collection": true,
@@ -447,6 +449,11 @@ TerarkDbKVEngine::openTable(StringData ns, StringData ident) {
 	if (!fs::exists(tabDir)) {
 		return NULL;
 	}
+	if (!fs::exists(tabDir / "dbmeta.json")) {
+		LOG(1) << "TerarkDbKVEngine::openTable(ns=" << ns << ", ident=" << ident
+			<< "): tabDir = " << tabDir.string() << ", dbmeta.json not existed";
+		return NULL;
+	}
 	std::lock_guard<std::mutex> lock(m_mutex);
 	size_t fidx = m_tables.find_i(ident);
 	ThreadSafeTable* tab = NULL;
@@ -482,6 +489,16 @@ TerarkDbKVEngine::getRecordStore(OperationContext* opCtx,
 		return NULL;
 	}
     return new TerarkDbRecordStore(opCtx, ns, ident, tab, NULL);
+}
+
+static std::string getIndexKeyPattern(const BSONObj& kp) {
+	std::string strkp;
+	BSONForEach(elem, kp) {
+		strkp.append(elem.fieldName());
+		strkp.append(",");
+	}
+	strkp.pop_back();
+	return strkp;
 }
 
 Status
@@ -523,20 +540,18 @@ TerarkDbKVEngine::createSortedDataInterface(OperationContext* opCtx,
 	}
 	ThreadSafeTable* tst = openTable(tableNS, tableIdent);
 	if (tst) {
-		const BSONObj& kp = desc->keyPattern();
-		std::string strkp;
-		BSONForEach(elem, kp) {
-			strkp.append(elem.fieldName());
-			strkp.append(",");
-		}
-		strkp.pop_back();
+		std::string strkp = getIndexKeyPattern(desc->keyPattern());
 		DbTable* tab = tst->m_tab.get();
 		size_t indexId = tab->getIndexId(strkp);
 		LOG(2) << "TerarkDbKVEngine::createSortedDataInterface: "
-			<< "strkp = (" << strkp << "), kp = " << kp.toString()
+			<< "strkp = (" << strkp << "), kp = " << desc->keyPattern().toString()
 			<< ", indexId = " << indexId << ", indexNum = " << tab->getIndexNum();
 		if (indexId < tab->getIndexNum()) {
 			return Status::OK();
+		}
+		if (terark::getEnvBool("MongoTerarkDB_DynamicCreateIndex")) {
+			// forward dynamic index to wiredtiger
+			return m_wtEngine->createSortedDataInterface(opCtx, ident, desc);
 		}
 	}
 	return Status(ErrorCodes::CommandNotSupported,
@@ -562,21 +577,24 @@ TerarkDbKVEngine::getSortedDataInterface(OperationContext* opCtx,
 	if (tableIdent == "_mdb_catalog") {
 		return m_wtEngine->getSortedDataInterface(opCtx, ident, desc);
 	}
-	auto tabDir = m_pathTerarkTables / nsToTableDir(tableNS);
-	std::lock_guard<std::mutex> lock(m_mutex);
-
-	ThreadSafeTable* tab = NULL;
-	size_t fidx = m_tables.find_i(tableIdent);
-	if (fidx < m_tables.end_i()) {
-		tab = m_tables.val(fidx).get();
-	} else {
-		tab = new ThreadSafeTable(tabDir);
-		m_tables.insert_i(tableIdent, tab);
+	ThreadSafeTable* tst = openTable(tableNS, tableIdent);
+	if (!tst) {
+		return NULL;
 	}
-    if (desc->unique())
-        return new TerarkDbIndexUnique(tab, opCtx, desc);
-    else
-    	return new TerarkDbIndexStandard(tab, opCtx, desc);
+	std::string strkp = getIndexKeyPattern(desc->keyPattern());
+	DbTable* tab = tst->m_tab.get();
+	size_t indexId = tab->getIndexId(strkp);
+	if (indexId < tab->getIndexNum()) {
+		if (desc->unique())
+			return new TerarkDbIndexUnique(tst, opCtx, desc);
+		else
+    		return new TerarkDbIndexStandard(tst, opCtx, desc);
+	}
+	if (terark::getEnvBool("MongoTerarkDB_DynamicCreateIndex")) {
+		// forward dynamic index to wiredtiger
+		return m_wtEngine->getSortedDataInterface(opCtx, ident, desc);
+	}
+	return NULL;
 }
 
 Status TerarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {

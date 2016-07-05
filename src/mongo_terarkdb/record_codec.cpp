@@ -1153,7 +1153,7 @@ static void terarkEncodeNull(MyBsonBuilder& bb, ColumnType coltype) {
 SharedBuffer
 SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	assert(nullptr != schema);
-	LOG(1) << "SchemaRecordCoder::decode: data=" << schema->toJsonStr(fstring(data, size));
+	LOG(2) << "SchemaRecordCoder::decode: data=" << schema->toJsonStr(fstring(data, size));
 	MyBsonBuilder bb;
 	const char* pos = data;
 #if 0

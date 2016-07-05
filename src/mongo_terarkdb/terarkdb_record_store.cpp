@@ -122,13 +122,15 @@ public:
         SharedBuffer sbuf = m_ttd->m_coder.decode(&tab->rowSchema(), m_ttd->m_buf);
         _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
-        _lastReturnedId = id;
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
-		LOG(2) << "RecordBson: " << BSONObj(sbuf.get()).toString();
+		LOG(1) << "RecordBson(" << id << "): " << BSONObj(sbuf.get()).toString() << ", _lastReturnedId = " << _lastReturnedId;
+        _lastReturnedId = id;
 		return {{id, {sbuf, len}}};
     }
 
     boost::optional<Record> seekExact(const RecordId& id) final {
+		LOG(1) << "TerarkDbRecordStore::Cursor::seekExact(): _skipNextAdvance = " << _skipNextAdvance
+			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
 		DbTable& tab = *_rs.m_table->m_tab;
         llong recIdx = id.repr() - 1;
 		auto& ttd = *m_ttd;
@@ -140,6 +142,8 @@ public:
     }
 
     void save() final {
+		LOG(1) << "TerarkDbRecordStore::Cursor::save(): _skipNextAdvance = " << _skipNextAdvance
+			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         try {
         	_cursor->reset();
         } catch (const WriteConflictException&) {
@@ -149,11 +153,15 @@ public:
     }
 
     void saveUnpositioned() final {
+		LOG(1) << "TerarkDbRecordStore::Cursor::saveUnpositioned(): _skipNextAdvance = " << _skipNextAdvance
+			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         save();
         _eof = true;
     }
 
     bool restore() override final {
+		LOG(1) << "TerarkDbRecordStore::Cursor::restore(): _skipNextAdvance = " << _skipNextAdvance
+			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         _skipNextAdvance = false;
 
         // If we've hit EOF, then this iterator is done and need not be restored.
@@ -175,11 +183,16 @@ public:
     }
 
     void detachFromOperationContext() final {
+		LOG(1) << "TerarkDbRecordStore::Cursor::detachFromOperationContext(): _skipNextAdvance = " << _skipNextAdvance
+			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         _txn = nullptr;
     //  _cursor = nullptr; // do not set to nullptr
+	//	_cursor->reset();
     }
 
     void reattachToOperationContext(OperationContext* txn) final {
+		LOG(1) << "TerarkDbRecordStore::Cursor::detachFromOperationContext(): _skipNextAdvance = " << _skipNextAdvance
+			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         _txn = txn;
     }
 
