@@ -72,11 +72,17 @@ DbTable::DbTable() {
 }
 
 DbTable::~DbTable() {
-	if (m_dir.empty() || m_segments.empty()) {
+	m_wrSeg = nullptr;
+//	fprintf(stderr, "INFO: DbTable::~DbTable(): m_dir = %s\n", m_dir.string().c_str());
+//	fprintf(stderr, "INFO: DbTable::~DbTable(): m_segments.size = %zd\n", m_segments.size());
+	if (m_dir.empty()) {
 		return;
 	}
+	fprintf(stderr, "INFO: DbTable::~DbTable(): m_tobeDrop = %d\n", m_tobeDrop);
 	if (m_tobeDrop) {
 		// should delete m_dir?
+		m_segments.clear();
+		fprintf(stderr, "INFO: DbTable::~DbTable(): remove(%s)\n", m_dir.string().c_str());
 		try {
 			fs::remove_all(m_dir);
 		}
@@ -1007,6 +1013,18 @@ StoreIterator* DbTable::createStoreIterBackward(DbContext* ctx) const {
 DbContext* DbTable::createDbContext() const {
 	MyRwLock lock(m_rwMutex, false);
 	return this->createDbContextNoLock();
+}
+
+llong DbTable::existingRows(DbContext* ctx) const {
+	MyRwLock lock(m_rwMutex, false);
+	llong delcnt = 0;
+	for (size_t i = 0; i < m_segments.size(); ++i) {
+		auto seg = m_segments[i].get();
+		delcnt += seg->m_delcnt;
+	}
+	fprintf(stderr, "INFO: m_rowNum = %lld, delcnt = %lld\n", m_rowNum, delcnt);
+	llong r = m_rowNum - delcnt;
+	return r;
 }
 
 llong DbTable::totalStorageSize() const {
@@ -3820,6 +3838,7 @@ void DbTable::dropTable() {
 		seg->deleteSegment();
 	}
 	m_segments.erase_all();
+	m_wrSeg = nullptr;
 	m_tobeDrop = true;
 }
 

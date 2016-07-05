@@ -92,6 +92,8 @@ public:
 	DbContext* createDbContext() const;
 	virtual DbContext* createDbContextNoLock() const = 0;
 
+	llong existingRows(DbContext* = NULL) const;
+
 	llong inlineGetRowNum() const { return m_rowNum; }
 	llong totalStorageSize() const;
 	llong numDataRows() const override;
