@@ -17,6 +17,12 @@ scons --disable-warnings-as-errors CPPPATH=/path/to/terark-db/package/include LI
 ## Run mongodb with TerarkDB storage engine
 ```shell
 cd ~/mongo;
+# MongoTerarkDB needs create collection with schema before inserting data,
+# when running mongodb testcases, it has no chance to create such collections,
+# set these two env var as 1, MongoTerarkDB will dynamicaly create a collection
+# with _id being ObjectID type(fixed length field which length=12), and all other fields
+# export MongoTerarkDB_DynamicCreateCollection=1
+# export MongoTerarkDB_DynamicCreateIndex=1
 mkdir tdb
 ./mongod --dbpath tdb --storageEngine TerarkSegDB
 ```
