@@ -406,18 +406,19 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 				LOG(1) << "TerarkDbKVEngine::createRecordStore: ns:" << ns
 					<< ", tabDir=" << tabDir.string() << ", DynamicCreateCollection";
 				dbmetaData =
+//      "_id": { "type": "fixed", "length": 12 },
+//  "TableIndex": [
+//    { "fields": "_id", "unique": true }
+//  ]
 R"({
   "This is a dynamically created collection": true,
   "CheckMongoType": true,
   "RowSchema": {
     "columns": {
-      "_id": { "type": "fixed", "length": 12 },
       "$$" : { "type": "carbin" }
     }
   },
-  "TableIndex": [
-    { "fields": "_id", "unique": true }
-  ]
+  "LastField": "for stupid json comma"
 })";
 			}
 			else {

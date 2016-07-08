@@ -28,6 +28,8 @@ static const unsigned char GenericBinarySubType = 0;
 using namespace terark;
 using terark::db::ColumnType;
 
+constexpr int MongoAny = 25;
+
 typedef LittleEndianDataOutput<AutoGrownMemIO> MyBsonBuilder;
 
 static void terarkEncodeBsonArray(const BSONObj& arr, valvec<char>& encoded);
@@ -1585,7 +1587,9 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 		const auto& colmeta = indexSchema.m_columnsMeta.val(i);
 		bb.writeByte(colmeta.mongoType);
 		bb.ensureWrite(colname.data(), colname.size()+1); // include '\0'
-		switch ((signed char)colmeta.mongoType) {
+		signed char mongoType = colmeta.mongoType;
+		for (;;) { // will break after switch-case
+		switch (mongoType) {
 		case EOO:
 			invariant(!"terarkDecodeBsonElemVal: encountered EOO");
 			break;
@@ -1715,14 +1719,22 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 				pos += len3;
 			}
 			break;
+		case MongoAny:
+			mongoType = *pos++;
+			if (MongoAny == mongoType) {
+				throw std::invalid_argument("real mongoType must not be MongoAny(enum=25)");
+			}
+			continue; // RecursiveMongoAny;
 		default:
 			{
 				StringBuilder ss;
-				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)colmeta.mongoType;
+				ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)mongoType;
 				std::string msg = ss.str();
 			//	damnbrain(314159270, msg.c_str(), false);
 				throw std::invalid_argument(msg);
 			}
+		}
+		break; // break for(;;)
 		}
 	}
 	invariant(pos == end);

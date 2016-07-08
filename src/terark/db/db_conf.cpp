@@ -2256,6 +2256,7 @@ enum BSONType {
     NumberDecimal = 19,
     /** max type that is not MaxKey */
 //    JSTypeMax = Decimal128::enabled ? 19 : 18,
+    MongoAny = 25,
     /** larger than all other types */
 //    MaxKey = 127
 };
@@ -2413,6 +2414,13 @@ static int getMongoTypeChecked(const ColumnMeta& colmeta, fstring mongoTypeName)
 		}
 		THROW_STD(invalid_argument,
 			"mongoType regex must map to terark type TwoStrZero");
+	}
+	if (string_equal_nocase(mongoTypeName, "any")) {
+		if (ColumnType::Binary == terarkType || ColumnType::CarBin == terarkType ) {
+			return MongoBson::MongoAny;
+		}
+		THROW_STD(invalid_argument,
+			"mongoType MongoAny must map to terark type Binary or CarBin");
 	}
 
 #define MongoTypeAsTerarkStrZero(MongoType) \
@@ -2626,13 +2634,15 @@ if (colgroupsIter != meta.end()) {
 		m_snapshotSchema->compile();
 	}
 
-	const json& tableIndex = meta["TableIndex"];
-	if (!tableIndex.is_array()) {
+	auto tableIndex = meta.find("TableIndex");
+	if (tableIndex != meta.end() && !tableIndex.value().is_array()) {
 		THROW_STD(invalid_argument, "json TableIndex must be an array");
 	}
 	m_indexSchemaSet.reset(new SchemaSet());
 //	bool hasPrimaryIndex = false;
-	for (const auto& index : tableIndex) {
+
+if (tableIndex != meta.end())
+	for (const auto& index : tableIndex.value()) {
 		SchemaPtr indexSchema(new Schema());
 		auto fieldsIter = index.find("fields");
 		if (index.end() == fieldsIter) {
