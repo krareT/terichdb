@@ -242,36 +242,45 @@ void DbTable::discoverMergeDir(PathRef dir) {
 	}
 }
 
+static bool isBackupSegDir(fstring segDirName) {
+	const char* end = segDirName.end();
+	const char* dot = std::find(segDirName.begin(), end, '.');
+	return fstring(dot, end).startsWith(".backup-");
+}
+
 static SortableStrVec getWorkingSegDirList(PathRef mergeDir) {
 	SortableStrVec segDirList;
 	for (auto& x : fs::directory_iterator(mergeDir)) {
 		std::string segDir = x.path().string();
 		std::string fname = x.path().filename().string();
+		fs::path    stem = x.path().stem();
+		fs::path    rightDir = mergeDir / stem;
 		fstring fstr = fname;
-		if (fstr.endsWith(".backup-0")) {
+		if (isBackupSegDir(fstr)) {
 			fprintf(stderr, "WARN: Found backup segment: %s\n", segDir.c_str());
+			if (fs::exists(rightDir)) {
+				if (fs::last_write_time(segDir) <= fs::last_write_time(rightDir)) {
+					fprintf(stderr, "WARN: Remove backup segment: %s\n", segDir.c_str());
+					fs::remove_all(segDir);
+				}
+				else {
+					fprintf(stderr, "WARN: Remove outdated segment: %s\n", rightDir.string().c_str());
+					fs::remove_all(rightDir);
+					goto RenameBackupToRightDir;
+				}
+			}
+			else {
+			  RenameBackupToRightDir:
+				fprintf(stderr, "WARN: rename(%s, %s)\n", segDir.c_str(), rightDir.string().c_str());
+				fs::rename(segDir, rightDir);
+				segDirList.push_back(stem.string());
+			}
 			continue;
 		}
 		if (fstr.endsWith(".tmp")) {
-			fname.resize(fname.size() - 4);
-			fstr = fname;
-			fs::path rightDir = mergeDir / fname;
-			fs::path backup = rightDir + ".backup-0";
-			if (fs::exists(backup)) {
-				fprintf(stderr, "WARN: Remove backup segment: %s\n", segDir.c_str());
-				if (fs::exists(rightDir)) {
-					THROW_STD(invalid_argument
-						, "ERROR: please check segment: %s\n"
-						, rightDir.string().c_str());
-				}
-				fs::rename(x.path(), rightDir);
-				fs::remove_all(backup);
-			}
-			else {
-				fprintf(stderr, "WARN: Temporary segment: %s, remove it\n", segDir.c_str());
-				fs::remove_all(segDir);
-				continue;
-			}
+			fprintf(stderr, "WARN: Remove temp dir: %s\n", segDir.c_str());
+			fs::remove_all(segDir);
+			continue;
 		}
 		if (fstr.startsWith("wr-") || fstr.startsWith("rd-")) {
 			segDirList.push_back(fname);
