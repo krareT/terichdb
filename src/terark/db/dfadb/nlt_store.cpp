@@ -152,7 +152,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		size_t sampled = 0;
 		while (iter.increment(&recId, &rec)) {
 			if (NULL == isDel || !terark_bit_test(isDel, recId)) {
-				if (rand() < RAND_MAX * sampleRatio ) {
+				if (!rec.empty() && rand() < RAND_MAX * sampleRatio) {
 					builder->addSample(rec);
 					sampled++;
 				}
@@ -190,7 +190,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				//	if (hasData && rec.empty()) {
 				//		hasData = false;
 				//	}
-					if (rand() < RAND_MAX * sampleRatio) {
+					if (!rec.empty() && rand() < RAND_MAX * sampleRatio) {
 						builder->addSample(rec);
 						sampled++;
 					}
