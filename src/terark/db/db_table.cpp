@@ -433,9 +433,8 @@ size_t DbTable::getWritableSegNum() const {
 }
 
 size_t DbTable::getSegmentIndexOfRecordIdNoLock(llong recId) const {
-	MyRwLock lock(m_rwMutex, false);
-	size_t segIdx = lower_bound_a(m_rowNumVec, recId);
-	return segIdx;
+	size_t segIdx = upper_bound_a(m_rowNumVec, recId);
+	return segIdx-1;
 }
 
 struct CompareBy_baseId {

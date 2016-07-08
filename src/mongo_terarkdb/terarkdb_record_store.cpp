@@ -156,7 +156,8 @@ public:
 		LOG(1) << "TerarkDbRecordStore::Cursor::saveUnpositioned(): _skipNextAdvance = " << _skipNextAdvance
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         save();
-        _eof = true;
+		_lastReturnedId = RecordId();
+    //  _eof = true;
     }
 
     bool restore() override final {
@@ -385,6 +386,7 @@ TerarkDbRecordStore::updateRecord(OperationContext* txn,
 								UpdateNotifier* notifier) {
 	DbTable* tab = m_table->m_tab.get();
 	terark::db::IncrementGuard_size_t incrGuard(tab->m_inprogressWritingCount);
+	invariant(id.repr() != 0);
 	llong recId = id.repr() - 1;
 	{
 		terark::db::MyRwLock lock(tab->m_rwMutex, false);
