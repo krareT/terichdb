@@ -15,6 +15,7 @@
 
 #include <terark/stdtypes.hpp>
 #include <terark/util/refcount.hpp>
+#include <terark/fstring.hpp>
 #include "IOException.hpp"
 #include "IStream.hpp"
 
@@ -41,12 +42,12 @@ protected:
 public:
 	typedef boost::mpl::true_ is_seekable;
 
-	static bool copyFile(const char* srcPath, const char* dstPath);
-	static void ThrowOpenFileException(const char* fpath, const char* mode);
+	static bool copyFile(fstring srcPath, fstring dstPath);
+	static void ThrowOpenFileException(fstring fpath, fstring mode);
 
 public:
-	FileStream(const char* fpath, const char* mode);
-	FileStream(int fd, const char* mode);
+	FileStream(fstring fpath, fstring mode);
+	FileStream(int fd, fstring mode);
 //	explicit FileStream(FILE* fp = 0) throw() : m_fp(fp) {}
 	FileStream() throw() : m_fp(0) {} // 不是我打开的文件，请显式 attach/detach
 	~FileStream();
@@ -54,12 +55,12 @@ public:
 	bool isOpen() const throw() { return 0 != m_fp; }
 	operator FILE*() const throw() { return m_fp; }
 
-	void open(const char* fpath, const char* mode);
+	void open(fstring fpath, fstring mode);
 
 	//! no throw
-	bool xopen(const char* fpath, const char* mode) throw();
+	bool xopen(fstring fpath, fstring mode) throw();
 
-	void dopen(int fd, const char* mode) throw();
+	void dopen(int fd, fstring mode) throw();
 
 	void close() throw();
 
@@ -83,6 +84,7 @@ public:
 	size_t read(void* buf, size_t size) throw();
 	size_t write(const void* buf, size_t size) throw();
 	void flush();
+	void puts(fstring text);
 
 	void rewind();
 	void seek(stream_offset_t offset, int origin);
@@ -238,6 +240,11 @@ inline void FileStream::writeByte(byte b)
 }
 
 #endif // __GLIBC__
+
+inline void FileStream::puts(fstring text) {
+	assert(m_fp);
+	ensureWrite(text.data(), text.size());
+}
 
 } // namespace terark
 

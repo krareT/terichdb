@@ -24,13 +24,13 @@
 
 namespace terark {
 
-FileStream::FileStream(const char* fpath, const char* mode)
+FileStream::FileStream(fstring fpath, fstring mode)
 {
 	m_fp = NULL;
    	open(fpath, mode);
 }
 
-FileStream::FileStream(int fd, const char* mode)
+FileStream::FileStream(int fd, fstring mode)
 {
 	dopen(fd, mode);
 }
@@ -40,37 +40,37 @@ FileStream::~FileStream() {
 	   	::fclose(m_fp);
 }
 
-void FileStream::ThrowOpenFileException(const char* fpath, const char* mode)
+void FileStream::ThrowOpenFileException(fstring fpath, fstring mode)
 {
 	std::string errMsg = strerror(errno);
 	string_appender<> oss;
 	oss << "mode=" << mode << ", errMsg: " << errMsg;
-	throw OpenFileException(fpath, oss.str().c_str());
+	throw OpenFileException(fpath.c_str(), oss.c_str());
 }
 
 // only can call on unopened FileStream
-void FileStream::open(const char* fpath, const char* mode)
+void FileStream::open(fstring fpath, fstring mode)
 {
 	assert(NULL == m_fp);
-	m_fp = fopen(fpath, mode);
+	m_fp = fopen(fpath.c_str(), mode.c_str());
 	if (NULL == m_fp)
 		ThrowOpenFileException(fpath, mode);
 }
 
-bool FileStream::xopen(const char* fpath, const char* mode) throw()
+bool FileStream::xopen(fstring fpath, fstring mode) throw()
 {
 	assert(NULL == m_fp);
-	m_fp = fopen(fpath, mode);
+	m_fp = fopen(fpath.c_str(), mode.c_str());
 	return NULL != m_fp;
 }
 
-void FileStream::dopen(int fd, const char* mode) throw()
+void FileStream::dopen(int fd, fstring mode) throw()
 {
 	assert(NULL == m_fp);
 #ifdef _MSC_VER
-	m_fp = ::_fdopen(fd, mode);
+	m_fp = ::_fdopen(fd, mode.c_str());
 #else
-	m_fp = ::fdopen(fd, mode);
+	m_fp = ::fdopen(fd, mode.c_str());
 #endif
 	if (NULL == m_fp)
 	{
@@ -452,7 +452,7 @@ void FileStream::write_string(const std::string& str)
  * only for writing, no corresponding read method.
  * compitible with `write_string(const std::string& str)`.
  */
-void FileStream::write_string(const char* str, size_t len)
+void FileStream::write_string(fstring str, size_t len)
 {
 	write_var_uint32(len);
 	ensureWrite(str, len);
@@ -496,7 +496,7 @@ NonOwnerFileStream::~NonOwnerFileStream() {
 }
 
 //////////////////////////////////////////////////////////////////////
-bool FileStream::copyFile(const char* srcPath, const char* dstPath)
+bool FileStream::copyFile(fstring srcPath, fstring dstPath)
 {
 	FileStream fsrc(srcPath, "rb");
 	FileStream fdst(dstPath, "wb+");

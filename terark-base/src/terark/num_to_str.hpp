@@ -5,6 +5,7 @@
 #include <string.h> // for strlen
 
 #include "config.hpp"
+#include "fstring.hpp"
 
 namespace terark {
 
@@ -26,7 +27,7 @@ template<class String = std::string>
 struct string_appender : public String {
 	const String& str() const { return *this; }
 
-	string_appender& operator<<(const String& x) { this->append(x.data(), x.size()); return *this; }
+	string_appender& operator<<(const fstring x) { this->append(x.data(), x.size()); return *this; }
 	string_appender& operator<<(const char*   x) { this->append(x, strlen(x)); return *this; }
 	string_appender& operator<<(const char    x) { this->push_back(x); return *this; }
 	string_appender& operator<<(const bool    x) { this->push_back(x ? '1' : '0'); return *this; }

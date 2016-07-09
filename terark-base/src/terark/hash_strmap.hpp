@@ -325,8 +325,8 @@ private:
 	}
 
 	void relink_impl(bool bFillHash) {
-		assert(0 == nDeleted);
-        assert(0 == freepool);
+	//	assert(0 == nDeleted);
+    //  assert(0 == freepool);
 		LinkTp* pb = bucket;
 		Node*   pn = pNodes;
 		size_t  nb = nBucket;
@@ -336,14 +336,24 @@ private:
 		std::fill_n(pb, nb, (LinkTp)tail);
 
 		if (intptr_t(pHash) == hash_cache_disabled) {
+		  if (0 == nDeleted)
 			for (size_t j = 0, n = nNodes; j < n; ++j) {
 				size_t ib = size_t(hash(key(j)) % nb);
 				pn[j].link = pb[ib];
 				pb[ib] = LinkTp(j);
 			}
+		  else
+			for (size_t j = 0, n = nNodes; j < n; ++j) {
+				if (delmark != pn[j].link) {
+					size_t ib = size_t(hash(key(j)) % nb);
+					pn[j].link = pb[ib];
+					pb[ib] = LinkTp(j);
+				}
+			}
 		}
 		else if (bFillHash) {
 			HashTp* ph = pHash;
+		  if (0 == nDeleted)
 			for (size_t j = 0, n = nNodes; j < n; ++j) {
                 HashTp hh = hash(key(j));
 				size_t ib = size_t(hh % nb);
@@ -351,13 +361,32 @@ private:
                 ph[j] = hh;
 				pb[ib] = LinkTp(j);
 			}
+		  else
+			for (size_t j = 0, n = nNodes; j < n; ++j) {
+				if (delmark != pn[j].link) {
+					HashTp hh = hash(key(j));
+					size_t ib = size_t(hh % nb);
+					pn[j].link = pb[ib];
+					ph[j] = hh;
+					pb[ib] = LinkTp(j);
+				}
+			}
 		}
         else {
 			const HashTp* ph = pHash;
+		  if (0 == nDeleted)
 			for (size_t j = 0, n = nNodes; j < n; ++j) {
 				size_t ib = size_t(ph[j] % nb);
 				pn[j].link = pb[ib];
 				pb[ib] = LinkTp(j);
+			}
+		  else
+			for (size_t j = 0, n = nNodes; j < n; ++j) {
+				if (delmark != pn[j].link) {
+					size_t ib = size_t(ph[j] % nb);
+					pn[j].link = pb[ib];
+					pb[ib] = LinkTp(j);
+				}
 			}
         }
 	}
