@@ -83,6 +83,7 @@ namespace dps = ::mongo::dotted_path_support;
 
 using std::set;
 using std::string;
+using terark::FileStream;
 
 TableThreadData::TableThreadData(DbTable* tab) {
 	m_dbCtx.reset(tab->createDbContext());
@@ -183,15 +184,21 @@ TableThreadData& ThreadSafeTable::getMyThreadData() {
 	return *ttd;
 }
 
-boost::filesystem::path  nsToTableDir(StringData ns) {
-	auto dotPos = std::find(ns.begin(), ns.end(), '.');
+boost::filesystem::path
+TerarkDbKVEngine::getTableDir(StringData ns, StringData ident) const {
 	boost::filesystem::path dir;
-	if (ns.end() == dotPos) {
-		dir = ns.toString();
+	if (m_identAsDir) {
+		dir = ident.toString();
 	}
 	else {
-		dir  = string(ns.begin(), dotPos);
-		dir /= string(dotPos + 1, ns.end());
+		auto dotPos = std::find(ns.begin(), ns.end(), '.');
+		if (ns.end() == dotPos) {
+			dir = ns.toString();
+		}
+		else {
+			dir  = string(ns.begin(), dotPos);
+			dir /= string(dotPos + 1, ns.end());
+		}
 	}
 	return dir;
 }
@@ -210,7 +217,7 @@ TerarkDbKVEngine::TerarkDbKVEngine(const std::string& path,
 	m_pathTerark = basePath / "terark";
 	m_pathWt = basePath / "wt";
 	m_pathTerarkTables = m_pathTerark / "tables";
-
+	m_identAsDir = true;
 	try {
 		boost::filesystem::create_directories(m_pathWt);
 	}
@@ -297,8 +304,17 @@ TerarkDbKVEngine::okToRename(OperationContext* opCtx,
 		return m_wtEngine->
 			okToRename(opCtx, fromNS, toNS, ident, originalRecordStore);
 	}
-	fs::rename(m_pathTerarkTables / nsToTableDir(fromNS),
-			   m_pathTerarkTables / nsToTableDir(toNS));
+	if (m_identAsDir) {
+		// do nothing...
+		auto tabDir = m_pathTerarkTables / ident.toString() / "myname.txt";
+		FileStream(tabDir.string(), "w").puts(toNS);
+	}
+	else {
+	//	fs::rename(m_pathTerarkTables / getTableDir(fromNS),
+	//			   m_pathTerarkTables / getTableDir(toNS));
+		return Status(ErrorCodes::CommandNotSupported,
+			"rename is not supported when using [namespace/collection-name] as dir");
+	}
     return Status::OK();
 }
 
@@ -389,7 +405,7 @@ TerarkDbKVEngine::createRecordStore(OperationContext* opCtx,
 		<< "\noptions.storageEngine: " << options.storageEngine.jsonString(Strict, true)
 		<< "\noptions.indexOptionDefaults: " << options.indexOptionDefaults.jsonString(Strict, true)
 		;
-	auto tabDir = m_pathTerarkTables / nsToTableDir(ns);
+	auto tabDir = m_pathTerarkTables / getTableDir(ns, ident);
     LOG(2)	<< "TerarkDbKVEngine::createRecordStore: ns:" << ns
 			<< ", tabDir=" << tabDir.string();
 	if (fs::exists(tabDir)) {
@@ -437,16 +453,15 @@ R"({
 			dbmetaData = dbmetaElem.jsonString(Strict, includeFieldName, pretty);
 		}
 		fs::create_directories(tabDir);
-		std::string dbmetaFile = (tabDir / "dbmeta.json").string();
-		terark::FileStream fp(dbmetaFile.c_str(), "w");
-		fp.ensureWrite(dbmetaData.c_str(), dbmetaData.size());
+		FileStream((tabDir/"dbmeta.json").string(), "w").puts(dbmetaData);
+		FileStream((tabDir/"myname.txt" ).string(), "w").puts(ns);
 	}
 	return Status::OK();
 }
 
 ThreadSafeTable*
 TerarkDbKVEngine::openTable(StringData ns, StringData ident) {
-	auto tabDir = m_pathTerarkTables / nsToTableDir(ns);
+	auto tabDir = m_pathTerarkTables / getTableDir(ns, ident);
 	if (!fs::exists(tabDir)) {
 		return NULL;
 	}
@@ -623,7 +638,7 @@ Status TerarkDbKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
 	}
 	if (isTerarkDb) {
 	//	table->dropTable() will remove directory
-	//	fs::remove_all(m_pathTerarkTables / opCtx->getNS());
+	//	fs::remove_all(m_pathTerarkTables / getTableDir(opCtx->getNS(), ident));
 		return Status::OK();
 	}
 	return m_wtEngine->dropIdent(opCtx, ident);
@@ -655,7 +670,7 @@ bool TerarkDbKVEngine::supportsDocLocking() const {
 }
 
 bool TerarkDbKVEngine::supportsDirectoryPerDB() const {
-    return true;
+    return !m_identAsDir;
 }
 
 bool TerarkDbKVEngine::hasIdent(OperationContext* opCtx, StringData ident) const {

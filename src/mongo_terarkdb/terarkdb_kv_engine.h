@@ -154,6 +154,7 @@ private:
     IndexMap m_indices;
 	mutable std::mutex m_mutex;
 
+	bool m_identAsDir;
     bool _durable;
 
     std::string _rsOptions;
@@ -170,6 +171,7 @@ private:
 	std::unique_ptr<TableMap> _backupSession;
 
 	ThreadSafeTable* openTable(StringData ns, StringData ident);
+	boost::filesystem::path getTableDir(StringData ns, StringData ident) const;
 };
 } }  // namespace mongo::terark
 

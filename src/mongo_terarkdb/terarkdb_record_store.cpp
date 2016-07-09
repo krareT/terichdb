@@ -61,6 +61,7 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
+#include <boost/none.hpp>
 
 //#define RS_ITERATOR_TRACE(x) log() << "TerarkDbRS::Iterator " << x
 #define RS_ITERATOR_TRACE(x)
@@ -88,7 +89,7 @@ class TerarkDbRecordStore::Cursor final : public SeekableRecordCursor {
 public:
     Cursor(OperationContext* txn, const TerarkDbRecordStore& rs, bool forward)
         : _rs(rs),
-          _txn(txn) {
+          _txn(txn), _forward(forward) {
 		ThreadSafeTable* tst = rs.m_table.get();
 		DbTable* tab = tst->m_tab.get();
     	m_ttd = tst->allocTableThreadData();
@@ -120,30 +121,65 @@ public:
 		}
 		DbTable* tab = _rs.m_table->m_tab.get();
         SharedBuffer sbuf = m_ttd->m_coder.decode(&tab->rowSchema(), m_ttd->m_buf);
-        _skipNextAdvance = false;
         const RecordId id(recIdx + 1);
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
-		LOG(1) << "RecordBson(" << id << "): " << BSONObj(sbuf.get()).toString() << ", _lastReturnedId = " << _lastReturnedId;
+		LOG(1) << "TerarkDbRecordStore::Cursor::next(): _skipNextAdvance = " << _skipNextAdvance
+			   << ", RecordBson(" << id << "): "
+			   << BSONObj(sbuf.get()).toString() << ", _lastReturnedId = " << _lastReturnedId;
+        _skipNextAdvance = false;
+        if (_forward && _lastReturnedId >= id) {
+            LOG(1) << "TerarkDbRecordStore::Cursor::next -- c->next_key ( " << id
+                   << ") was not greater than _lastReturnedId (" << _lastReturnedId
+                   << ") which is a bug.";
+            // Force a retry of the operation from our last known position by acting as-if
+            // we received a WT_ROLLBACK error.
+            throw WriteConflictException();
+        }
         _lastReturnedId = id;
 		return {{id, {sbuf, len}}};
     }
 
+    /**
+     * Seeks to a Record with the provided id.
+     *
+     * If an exact match can't be found, boost::none will be returned and the resulting position
+     * of the cursor is unspecified.
+     */
+	// if successed, the cursor should point to the next record
     boost::optional<Record> seekExact(const RecordId& id) final {
 		LOG(1) << "TerarkDbRecordStore::Cursor::seekExact(): _skipNextAdvance = " << _skipNextAdvance
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
+        _skipNextAdvance = false;
 		DbTable& tab = *_rs.m_table->m_tab;
         llong recIdx = id.repr() - 1;
+		assert(recIdx >= 0);
+		if (recIdx < 0) {
+			return boost::none;
+		}
+		if (recIdx >= tab.numDataRows()) {
+			_eof = true;
+			return boost::none;
+		}
 		auto& ttd = *m_ttd;
-		ttd.m_dbCtx->getValue(recIdx, &ttd.m_buf);
+	//	ttd.m_dbCtx->getValue(recIdx, &ttd.m_buf);
+		if (!_cursor->seekExact(recIdx, &ttd.m_buf)) {
+			return boost::none;
+		}
 		assert(!ttd.m_buf.empty());
         SharedBuffer sbuf = ttd.m_coder.decode(&tab.rowSchema(), ttd.m_buf);
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
+        _lastReturnedId = id;
+        _eof = false;
         return {{id, {sbuf, len}}};
     }
 
     void save() final {
 		LOG(1) << "TerarkDbRecordStore::Cursor::save(): _skipNextAdvance = " << _skipNextAdvance
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
+		do_save();
+	}
+
+	void do_save() {
         try {
         	_cursor->reset();
         } catch (const WriteConflictException&) {
@@ -155,9 +191,8 @@ public:
     void saveUnpositioned() final {
 		LOG(1) << "TerarkDbRecordStore::Cursor::saveUnpositioned(): _skipNextAdvance = " << _skipNextAdvance
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
-        save();
+        do_save();
 		_lastReturnedId = RecordId();
-    //  _eof = true;
     }
 
     bool restore() override final {
@@ -177,10 +212,7 @@ public:
             _eof = true;
             return false;
         }
-
-    	_skipNextAdvance = true;
-
-        return true;  // Landed right where we left off.
+        return true;
     }
 
     void detachFromOperationContext() final {
@@ -202,6 +234,7 @@ private:
     OperationContext* _txn;
     bool _skipNextAdvance = false;
     bool _eof = false;
+	const bool _forward;
 	TableThreadDataPtr m_ttd;
     terark::db::StoreIteratorPtr _cursor;
     RecordId _lastReturnedId;  // If null, need to seek to first/last record.
