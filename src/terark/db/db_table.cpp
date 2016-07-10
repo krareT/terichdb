@@ -4046,8 +4046,13 @@ void DbTable::runPurgeDelete() {
 		if (size_t(-1) == segIdx) {
 			break;
 		}
-		ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
-		dest->purgeDeletedRecords(this, segIdx);
+		try {
+			ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
+			dest->purgeDeletedRecords(this, segIdx);
+		}
+		catch (const std::exception&) {
+			break; // would try in merge()
+		}
 	}
 }
 

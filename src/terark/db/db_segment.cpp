@@ -1035,15 +1035,22 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	m_colgroups.resize(m_schema->getColgroupNum());
 	auto tmpSegDir = m_segDir + ".tmp";
 	fs::create_directories(tmpSegDir);
-	for (size_t i = 0; i < m_indices.size(); ++i) {
-		m_indices[i] = purgeIndex(i, input.get(), ctx.get());
-		m_colgroups[i] = m_indices[i]->getReadableStore();
+	try {
+		for (size_t i = 0; i < m_indices.size(); ++i) {
+			m_indices[i] = purgeIndex(i, input.get(), ctx.get());
+			m_colgroups[i] = m_indices[i]->getReadableStore();
+		}
+		for (size_t i = m_indices.size(); i < m_colgroups.size(); ++i) {
+			m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), tmpSegDir);
+		}
+		completeAndReload(tab, segIdx, &*input);
+		assert(input->m_segDir == this->m_segDir);
 	}
-	for (size_t i = m_indices.size(); i < m_colgroups.size(); ++i) {
-		m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), tmpSegDir);
+	catch (const std::exception& ex) {
+		fs::remove_all(tmpSegDir);
+		THROW_STD(logic_error, "generate new segment %s failed: %s"
+			, tmpSegDir.string().c_str(), ex.what());
 	}
-	completeAndReload(tab, segIdx, &*input);
-	assert(input->m_segDir == this->m_segDir);
 	fs::path backupDir = renameToBackupFromDir(input->m_segDir);
 	{
 		fs::path backupDirCopy = backupDir;
@@ -1059,7 +1066,10 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 			, "ERROR: thread-%s: rename(%s.tmp, %s), ex.what = %s\n"
 			, strThreadId.c_str()
 			, strDir.c_str(), strDir.c_str(), ex.what());
-		abort();
+		// abort();
+		THROW_STD(logic_error, "thread-%s: rename(%s.tmp, %s), ex.what = %s"
+			, strThreadId.c_str()
+			, strDir.c_str(), strDir.c_str(), ex.what());
 	}
 }
 
