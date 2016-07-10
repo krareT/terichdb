@@ -167,13 +167,31 @@ static void tryReduceSymlink(PathRef segDir, PathRef mergeDir) {
 				return;
 			}
 		}
-		target = fs::canonical(target, mergeDir);
-		fprintf(stderr
-			, "WARN: writable segment: %s is symbol link to: %s, reduce it\n"
-			, strDir.c_str(), target.string().c_str());
-		fs::remove(segDir);
-		if (fs::exists(target))
-			fs::rename(target, segDir);
+		bool segDirRemoved = false;
+		try {
+			target = fs::canonical(target, mergeDir);
+			fprintf(stderr
+				, "WARN: writable segment: %s is symbol link to: %s, reduce it\n"
+				, strDir.c_str(), target.string().c_str());
+			fs::remove(segDir);
+			segDirRemoved = true;
+			if (fs::exists(target))
+				fs::rename(target, segDir);
+		}
+		catch (const std::exception& ex) {
+			fprintf(stderr, "ERROR: tryReduceSymlink: exception = %s\n", ex.what());
+			if (segDirRemoved) {
+				return;
+			}
+			try {
+				fs::remove(segDir);
+			}
+			catch (const std::exception& ex2) {
+				fprintf(stderr
+					, "ERROR: remove symbol link segment: %s --> %s failed: %s\n"
+					, strDir.c_str(), target.string().c_str(), ex2.what());
+			}
+		}
 	}
 }
 
