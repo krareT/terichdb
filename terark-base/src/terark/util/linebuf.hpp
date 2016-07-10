@@ -71,7 +71,7 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 		char *col = p, *end = p + n;
 		while (col <= end && F->size()+1 < max_fields) {
 			char* next = col;
-			while (next < end && memchr(delims, *next, dlen) == NULL) ++next;
+			while (next < end && memchr(delims.data(), *next, dlen) == NULL) ++next;
 			F->push_back(typename Vec::value_type(col, next));
 			*next = 0;
 			col = next + 1;
