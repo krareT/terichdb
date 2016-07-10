@@ -2097,9 +2097,7 @@ bool SchemaConfig::isInplaceUpdatableColumn(fstring colname) const {
 }
 
 void SchemaConfig::loadJsonFile(fstring fname) {
-	LineBuf alljson;
-	alljson.read_all(fname.c_str());
-	loadJsonString(alljson);
+	loadJsonString(LineBuf().read_all(fname));
 }
 
 template<class Json, class Value>
