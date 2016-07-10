@@ -2639,7 +2639,7 @@ if (colgroupsIter != meta.end()) {
 	m_indexSchemaSet.reset(new SchemaSet());
 //	bool hasPrimaryIndex = false;
 
-if (tableIndex != meta.end())
+if (tableIndex != meta.end()) {
 	for (const auto& index : tableIndex.value()) {
 		SchemaPtr indexSchema(new Schema());
 		auto fieldsIter = index.find("fields");
@@ -2692,6 +2692,8 @@ if (tableIndex != meta.end())
 		}
 */
 	}
+}
+
 /*
 	// now primary index concept is not required
 	// uncomment related code when primary index become required
