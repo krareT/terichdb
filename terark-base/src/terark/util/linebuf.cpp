@@ -119,7 +119,7 @@ bool LineBuf::read_binary_tuple(int32_t* offsets, size_t arity, FILE* f) {
 	return true; // len can be 0
 }
 
-void LineBuf::read_all(FILE* fp) {
+LineBuf& LineBuf::read_all(FILE* fp) {
 	int fd = fileno(fp);
 	struct stat st;
 	if (::fstat(fd, &st) < 0) {
@@ -136,15 +136,18 @@ void LineBuf::read_all(FILE* fp) {
 	capacity = st.st_size + 1;
 	n = fread(p, 1, st.st_size, fp);
 	p[n] = '\0';
+	return *this;
 }
 
-void LineBuf::read_all(const char* fname) {
-	Auto_fclose f(fopen(fname, "r"));
+LineBuf& LineBuf::read_all(fstring fname) {
+	Auto_fclose f(fopen(fname.c_str(), "r"));
 	if (!f) {
 		THROW_STD(invalid_argument,
-			"ERROR: fopen(%s, r) = %s", fname, strerror(errno));
+			"ERROR: fopen(%.*s, r) = %s",
+			fname.ilen(), fname.data(), strerror(errno));
 	}
 	read_all(f);
+	return *this;
 }
 
 } // namespace terark

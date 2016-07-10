@@ -125,7 +125,7 @@ struct basic_fstring {
 	ptrdiff_t   n;
 
 	basic_fstring() : p(NULL), n(0) {}
-	basic_fstring(const std_string& x) : p(x.data()), n(x.size()) {}
+	basic_fstring(const std_string& x) : p(x.c_str()), n(x.size()) {}
 #ifdef NDEBUG // let compiler compute strlen(string literal) at compilation time
 	basic_fstring(const Char* x) : p(x), n(terark_fstrlen(x)) {}
 #else

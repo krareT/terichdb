@@ -6,8 +6,9 @@
 #include <stdio.h>
 #include <string.h> // strchr
 #include <boost/noncopyable.hpp>
-#include "../config.hpp"
-#include "../stdtypes.hpp"
+#include <terark/config.hpp>
+#include <terark/stdtypes.hpp>
+#include <terark/fstring.hpp>
 
 namespace terark {
 
@@ -36,11 +37,12 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 	///@}
 
 	operator char*() const { return p; }
+	operator fstring() const { return fstring(p, n); }
 
 	/// split into fields
 	template<class Vec>
-	size_t split(const char* delims, Vec* F, size_t max_fields = ~size_t(0)) {
-		size_t dlen = strlen(delims);
+	size_t split(fstring delims, Vec* F, size_t max_fields = ~size_t(0)) {
+		size_t dlen = delims.size();
 		if (0 == dlen) // empty delims redirect to blank delim
 			return split(' ', F);
 		if (1 == dlen)
@@ -48,7 +50,7 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 		F->resize(0);
 		char *col = p, *end = p + n;
 		while (col <= end && F->size()+1 < max_fields) {
-			char* next = (char*)memmem(col, end-col, delims, dlen);
+			char* next = (char*)memmem(col, end-col, delims.data(), dlen);
 			if (NULL == next) next = end;
 			F->push_back(typename Vec::value_type(col, next));
 			*next = 0;
@@ -59,8 +61,8 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 		return F->size();
 	}
 	template<class Vec>
-	size_t split_by_any(const char* delims, Vec* F, size_t max_fields = ~size_t(0)) {
-		size_t dlen = strlen(delims);
+	size_t split_by_any(fstring delims, Vec* F, size_t max_fields = ~size_t(0)) {
+		size_t dlen = delims.size();
 		if (0 == dlen) // empty delims redirect to blank delim
 			return split(' ', F);
 		if (1 == dlen)
@@ -113,8 +115,8 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 	///  on return, offsets[arity] saves tuple data length
 	bool read_binary_tuple(int32_t* offsets, size_t arity, FILE* f);
 
-	void read_all(FILE*);
-	void read_all(const char* fname);
+	LineBuf& read_all(FILE*);
+	LineBuf& read_all(fstring fname);
 };
 
 } // namespace terark

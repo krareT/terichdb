@@ -58,9 +58,9 @@ public:
 	void open(fstring fpath, fstring mode);
 
 	//! no throw
-	bool xopen(fstring fpath, fstring mode) throw();
+	bool xopen(fstring fpath, fstring mode);
 
-	void dopen(int fd, fstring mode) throw();
+	void dopen(int fd, fstring mode);
 
 	void close() throw();
 

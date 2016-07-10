@@ -52,21 +52,30 @@ void FileStream::ThrowOpenFileException(fstring fpath, fstring mode)
 void FileStream::open(fstring fpath, fstring mode)
 {
 	assert(NULL == m_fp);
+	if (m_fp) {
+		throw std::invalid_argument("FileStream::open: file is already opened");
+	}
 	m_fp = fopen(fpath.c_str(), mode.c_str());
 	if (NULL == m_fp)
 		ThrowOpenFileException(fpath, mode);
 }
 
-bool FileStream::xopen(fstring fpath, fstring mode) throw()
+bool FileStream::xopen(fstring fpath, fstring mode)
 {
 	assert(NULL == m_fp);
+	if (m_fp) {
+		throw std::invalid_argument("FileStream::xopen: file is already opened");
+	}
 	m_fp = fopen(fpath.c_str(), mode.c_str());
 	return NULL != m_fp;
 }
 
-void FileStream::dopen(int fd, fstring mode) throw()
+void FileStream::dopen(int fd, fstring mode)
 {
 	assert(NULL == m_fp);
+	if (m_fp) {
+		throw std::invalid_argument("FileStream::dopen: file is already opened");
+	}
 #ifdef _MSC_VER
 	m_fp = ::_fdopen(fd, mode.c_str());
 #else
