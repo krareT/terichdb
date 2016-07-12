@@ -577,13 +577,13 @@ DbImpl::CompactRange(const Slice* begin, const Slice* end)
 // returns once suspended.
 void DbImpl::SuspendCompactions()
 {
-  /* Not supported */
+  fprintf(stderr, "ERROR: Not supported and ignored: %s\n", BOOST_CURRENT_FUNCTION);
 }
 
 // Resumes a suspended background compaction thread.
 void DbImpl::ResumeCompactions()
 {
-  /* Not supported */
+  fprintf(stderr, "ERROR: Not supported and ignored: %s\n", BOOST_CURRENT_FUNCTION);
 }
 
 OperationContext* DbImpl::GetContext() {
