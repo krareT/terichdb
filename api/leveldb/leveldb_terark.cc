@@ -356,15 +356,16 @@ DbImpl::Delete(const WriteOptions& options, const Slice& key)
 
 void
 WriteBatchHandler::Put(const Slice& key, const Slice& value) {
-//	THROW_STD(invalid_argument, "Not supported");
 	auto opctx = context_;
 	terark::db::DbContext* ctx = opctx->m_batchWriter.getCtx();
 	encodeKeyVal(ctx->userBuf, key, value);
 	opctx->m_batchWriter.upsertRow(ctx->userBuf);
 }
 
+static const long g_logBatchRemoveNotFound =
+	terark::getEnvLong("TerarkLevelDB_logBatchRemoveNotFound", 0);
+
 void WriteBatchHandler::Delete(const Slice& key) {
-//	THROW_STD(invalid_argument, "Not supported");
 	auto opctx = context_;
 	terark::db::DbContext* ctx = opctx->m_batchWriter.getCtx();
 	ctx->indexSearchExact(0, key, &ctx->exactMatchRecIdvec);
@@ -373,7 +374,9 @@ void WriteBatchHandler::Delete(const Slice& key) {
 		opctx->m_batchWriter.removeRow(recId);
 	}
 	else {
-		fprintf(stderr, "ERROR: Delete(key = %s), NotFound\n", escape(key).c_str());
+		opctx->m_removeNotFound++;
+		if (g_logBatchRemoveNotFound >= 2)
+		  fprintf(stderr, "ERROR: Delete(key = %s), NotFound\n", escape(key).c_str());
 	}
 }
 
@@ -396,9 +399,15 @@ DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   }
 #endif
   if (context->m_batchWriter.commit()) {
+    if (g_logBatchRemoveNotFound >= 1 && context->m_removeNotFound) {
+      fprintf(stderr, "ERROR: DB BatchWrite success, but removeNotFound = %zd", context->m_removeNotFound);
+	}
 	return status;
   }
   else {
+    if (g_logBatchRemoveNotFound >= 1 && context->m_removeNotFound) {
+     fprintf(stderr, "ERROR: DB BatchWrite failed, and removeNotFound = %zd", context->m_removeNotFound);
+	}
 	return Status::InvalidArgument("Commit BatchWriter failed", context->m_batchWriter.strError());
   }
 }

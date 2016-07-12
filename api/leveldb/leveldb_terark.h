@@ -105,7 +105,7 @@ class DbImpl;
 class OperationContext {
 public:
   OperationContext(terark::db::DbTable* tab, terark::db::DbContext* ctx)
-   : m_batchWriter(tab, ctx) {}
+   : m_batchWriter(tab, ctx), m_removeNotFound(0) {}
 
   ~OperationContext() {
 #ifdef WANT_SHUTDOWN_RACES
@@ -133,6 +133,7 @@ public:
   WT_SESSION *GetSession() { return session_; }
 */
   terark::db::BatchWriter m_batchWriter;
+  size_t m_removeNotFound;
 //  terark::valvec<unsigned char> m_rowBuf;
 //  terark::valvec<long long> m_exactRecIdvec;
 private:
