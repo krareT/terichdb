@@ -152,6 +152,8 @@ public:
 	void save(PathRef segDir) const override;
 
 protected:
+	virtual ReadableIndex* openIndex(const Schema&, PathRef path) const override = 0;
+
 	virtual ReadableIndex*
 			buildIndex(const Schema&, SortableStrVec& indexData)
 			const = 0;
