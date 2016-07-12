@@ -208,10 +208,16 @@ public:
             return true;
 
         llong recIdx = _lastReturnedId.repr() - 1;
-        if (!_cursor->seekExact(recIdx, &m_ttd->m_buf)) {
+		llong recIdx2 = _cursor->seekLowerBound(recIdx, &m_ttd->m_buf);
+        if (recIdx2 < 0) {
             _eof = true;
             return false;
         }
+		invariant(!m_ttd->m_buf.empty());
+		if (recIdx2 != recIdx) {
+			_lastReturnedId = RecordId(recIdx2 + 1);
+			_skipNextAdvance = true;
+		}
         return true;
     }
 

@@ -16,6 +16,17 @@ void Permanentable::load(PathRef) {
 StoreIterator::~StoreIterator() {
 }
 
+llong StoreIterator::seekLowerBound(llong id, valvec<byte>* val) {
+	if (seekExact(id, val)) {
+		return id;
+	}
+	llong id2 = id;
+	if (increment(&id2, val)) {
+		return id2;
+	}
+	return -1;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 typedef hash_strmap< std::function<ReadableStore*(const Schema& schema)>
 					, fstring_func::hash_align

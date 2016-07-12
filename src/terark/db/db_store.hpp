@@ -44,6 +44,7 @@ public:
 	virtual ~StoreIterator();
 	virtual bool increment(llong* id, valvec<byte>* val) = 0;
 	virtual bool seekExact(llong  id, valvec<byte>* val) = 0;
+	virtual llong seekLowerBound(llong  id, valvec<byte>* val);
 	virtual void reset() = 0;
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
