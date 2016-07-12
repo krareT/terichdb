@@ -152,10 +152,6 @@ public:
 	void save(PathRef segDir) const override;
 
 protected:
-	// Index can use different implementation for different
-	// index schema and index content features
-	virtual ReadableIndex* openIndex(const Schema&, PathRef path) const = 0;
-
 	virtual ReadableIndex*
 			buildIndex(const Schema&, SortableStrVec& indexData)
 			const = 0;

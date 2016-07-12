@@ -132,7 +132,7 @@ namespace {
 				, BOOST_CURRENT_FUNCTION, id, m_rows);
 			return false;
 		}
-		void reset() {
+		void reset() override {
 			m_rows = m_store->numDataRows();
 			m_id = 0;
 		}
@@ -166,7 +166,7 @@ namespace {
 				, BOOST_CURRENT_FUNCTION, id, m_rows);
 			return false;
 		}
-		void reset() {
+		void reset() override {
 			m_rows = m_store->numDataRows();
 			m_id = m_rows;
 		}
