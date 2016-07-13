@@ -114,7 +114,18 @@ void terarkEncodeBsonElemVal(const BSONElement& elem, valvec<char>& encoded) {
 	case Code:
 	case mongo::String:
 	//	log() << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
-		encoded.append(value + 4, elem.valuestrsize());
+		{
+			size_t declstrlen = elem.valuestrsize();
+			size_t realstrlen = strnlen(value + 4, declstrlen) + 1;
+			if (realstrlen == declstrlen) {
+				encoded.append(value + 4, realstrlen);
+			}
+			else {
+				THROW_STD(invalid_argument
+					, "mongoType = %d, declstrlen = %zd, realstrlen = %zd"
+					, elem.type(), realstrlen, declstrlen);
+			}
+		}
 		break;
 	case DBRef:
 		encoded.append(value + 4, elem.valuestrsize() + OID::kOIDSize);
@@ -135,8 +146,7 @@ void terarkEncodeBsonElemVal(const BSONElement& elem, valvec<char>& encoded) {
 		{
 			const char* p = value;
 			size_t len1 = strlen(p); // regex len
-			p += len1 + 1;
-			size_t len2 = strlen(p);
+			size_t len2 = strlen(p + len1 + 1);
 			encoded.append(p, len1 + 1 + len2 + 1);
 		}
 		break;
@@ -703,6 +713,7 @@ void encodeMaxValueField(const ColumnMeta& colmeta, valvec<char>* encoded) {
 void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 							   const BSONObj& obj, valvec<char>* encoded) {
 	assert(nullptr != schema);
+	LOG(3)	<< "SchemaRecordCoder::encode: bson = " << obj.toString();
 	encoded->resize(0);
 	parseToFields(obj, &m_fields);
 	m_stored.resize_fill(m_fields.end_i(), false);
@@ -857,8 +868,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			{
 				const char* p = value;
 				size_t len1 = strlen(p); // regex len
-				p += len1 + 1;
-				size_t len2 = strlen(p);
+				size_t len2 = strlen(p + len1 + 1);
 				encoded->append(p, len1 + 1 + len2 + 1);
 			}
 			assert(colmeta.type == terark::db::ColumnType::TwoStrZero);
@@ -1067,6 +1077,8 @@ static void terarkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const c
 			size_t len1 = strlen(pos); // regex len
 			size_t len2 = strlen(pos + len1 + 1);
 			size_t len3 = len1 + len2 + 2;
+		//	LOG(3) << "terarkDecodeBsonElemVal(): RegEx(len3=" << len3 << "): s1(len=" << len1 << ") = " << pos
+		//		<< ", s2(len2=" << len2 << ") = " << pos + len1 + 1;
 			bb.ensureWrite(pos, len3);
 			pos += len3;
 		}
@@ -1076,6 +1088,7 @@ static void terarkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const c
 			StringBuilder ss;
 			ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)type;
 			std::string msg = ss.str();
+			assert(false);
 		//	damnbrain(314159267, msg.c_str(), false);
 			throw std::invalid_argument(msg);
 		}
@@ -1414,7 +1427,7 @@ SchemaRecordCoder::decode(const Schema* schema, terark::fstring encoded) {
 void encodeIndexKey(const Schema& indexSchema,
 					const BSONObj& bson,
 					terark::valvec<char>* encoded) {
-//	LOG(2) << "encodeIndexKey: bson=" << bson.toString();
+	LOG(3) << "encodeIndexKey: bson=" << bson.toString();
 	encoded->erase_all();
 	using terark::db::ColumnType;
 	BSONObj::iterator iter = bson.begin();
@@ -1570,7 +1583,7 @@ void encodeIndexKey(const Schema& indexSchema,
 
 SharedBuffer
 decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
-//	LOG(2)	<< "decodeIndexKey: size=" << size << ", data=" << indexSchema.toJsonStr(data, size);
+	LOG(3)	<< "decodeIndexKey: size=" << size << ", data=" << indexSchema.toJsonStr(data, size);
 	MyBsonBuilder bb;
 	const char* pos = data;
 #if 0

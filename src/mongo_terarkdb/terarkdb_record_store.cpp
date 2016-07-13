@@ -114,6 +114,15 @@ public:
                 _eof = true;
                 return {};
             }
+			if (_forward && _lastReturnedId.repr() >= recIdx+1) {
+				LOG(1) << "TerarkDbRecordStore::Cursor::next -- c->next_key ( " << RecordId(recIdx+1)
+					   << ") was not greater than _lastReturnedId (" << _lastReturnedId
+					   << ") which is a bug.";
+				// Force a retry of the operation from our last known position by acting as-if
+				// we received a WT_ROLLBACK error.
+				assert(!m_ttd->m_buf.empty());
+				throw WriteConflictException();
+			}
 			assert(!m_ttd->m_buf.empty());
         }
 		else {
@@ -127,14 +136,6 @@ public:
 			   << ", RecordBson(" << id << "): "
 			   << BSONObj(sbuf.get()).toString() << ", _lastReturnedId = " << _lastReturnedId;
         _skipNextAdvance = false;
-        if (_forward && _lastReturnedId >= id) {
-            LOG(1) << "TerarkDbRecordStore::Cursor::next -- c->next_key ( " << id
-                   << ") was not greater than _lastReturnedId (" << _lastReturnedId
-                   << ") which is a bug.";
-            // Force a retry of the operation from our last known position by acting as-if
-            // we received a WT_ROLLBACK error.
-            throw WriteConflictException();
-        }
         _lastReturnedId = id;
 		return {{id, {sbuf, len}}};
     }
