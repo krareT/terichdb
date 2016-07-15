@@ -808,7 +808,7 @@ void SchemaRecordCoder::encode(const Schema* schema, const Schema* exclude,
 			}
 			break;
 		case DBRef:
-			assert(0); // deprecated, should not in data
+		//	assert(0); // deprecated, should not in data
 			encoded->append(value + 4, elem.valuestrsize() + OID::kOIDSize);
 			break;
 		case mongo::Array:
@@ -1046,7 +1046,7 @@ static void terarkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const c
 		{
 			size_t len = strlen(pos);
 			bb << int(len + 1);
-			bb.ensureWrite(pos + 4, len + 1 + OID::kOIDSize);
+			bb.ensureWrite(pos, len + 1 + OID::kOIDSize);
 			pos += len + 1 + OID::kOIDSize;
 		}
 		break;
@@ -1294,7 +1294,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 			{
 				size_t len = strlen(pos);
 				bb << int(len + 1);
-				bb.ensureWrite(pos + 4, len + 1 + OID::kOIDSize);
+				bb.ensureWrite(pos, len + 1 + OID::kOIDSize);
 				pos += len + 1 + OID::kOIDSize;
 			}
 			break;
@@ -1681,7 +1681,7 @@ decodeIndexKey(const Schema& indexSchema, const char* data, size_t size) {
 			{
 				size_t len = strlen(pos);
 				bb << int(len + 1);
-				bb.ensureWrite(pos + 4, len + 1 + OID::kOIDSize);
+				bb.ensureWrite(pos, len + 1 + OID::kOIDSize);
 				pos += len + 1 + OID::kOIDSize;
 			}
 			break;
