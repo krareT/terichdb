@@ -1198,6 +1198,279 @@ binary_search_0(RanIt a, size_t n, const Key& key, Comp comp) {
 	return binary_search_n<RanIt, Key, Comp>(a, 0, n, key, comp);
 }
 
+/////////////////////////////////////////////////////////////////////////////
+template<class RanIt, class Key, class KeyExtractor>
+size_t
+lower_bound_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx) {
+	size_t i = low, j = upp;
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		if (keyEx(a[mid]) < key)
+			i = mid + 1;
+		else
+			j = mid;
+	}
+	return i;
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+size_t
+lower_bound_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx, Comp comp) {
+	size_t i = low, j = upp;
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		if (comp(keyEx(a[mid]), key))
+			i = mid + 1;
+		else
+			j = mid;
+	}
+	return i;
+}
+
+template<class RanIt, class Key, class KeyExtractor>
+size_t
+upper_bound_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx) {
+	size_t i = low, j = upp;
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		if (key < keyEx(a[mid]))
+			j = mid;
+		else
+			i = mid + 1;
+	}
+	return i;
+}
+
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+size_t
+upper_bound_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx, Comp comp) {
+	size_t i = low, j = upp;
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		if (comp(key, keyEx(a[mid])))
+			j = mid;
+		else
+			i = mid + 1;
+	}
+	return i;
+}
+
+template<class RanIt, class Key, class KeyExtractor>
+std::pair<size_t, size_t>
+equal_range_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx) {
+	size_t i = low, j = upp;
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		if (keyEx(a[mid]) < key)
+			i = mid + 1;
+		else if (key < keyEx(a[mid]))
+			j = mid;
+		else
+			return std::pair<size_t, size_t>(
+				lower_bound_ex_n<RanIt, Key, KeyExtractor>(a, i, mid, key, keyEx),
+				upper_bound_ex_n<RanIt, Key, KeyExtractor>(a, mid+1, upp, key, keyEx));
+	}
+	return std::pair<size_t, size_t>(i, i);
+}
+
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+std::pair<size_t, size_t>
+equal_range_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx, Comp comp) {
+	size_t i = low, j = upp;
+	while (i < j) {
+		size_t mid = (i + j) / 2;
+		if (comp(keyEx(a[mid]), key))
+			i = mid + 1;
+		else if (comp(key, keyEx(a[mid])))
+			j = mid;
+		else
+			return std::pair<size_t, size_t>(
+				lower_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a, i, mid, key, keyEx, comp),
+				upper_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a, mid+1, j, key, keyEx, comp));
+	}
+	return std::pair<size_t, size_t>(i, i);
+}
+
+template<class RanIt, class Key, class KeyExtractor>
+bool
+binary_search_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx) {
+	size_t f = lower_bound_ex_n<RanIt, Key, KeyExtractor>(a, low, upp, key, keyEx);
+	return f < upp && !(key < keyEx(a[f]));
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+bool
+binary_search_ex_n(RanIt a, size_t low, size_t upp, const Key& key, KeyExtractor keyEx, Comp comp) {
+	size_t f = lower_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a, low, upp, key, keyEx, comp);
+	return f < upp && !comp(key, keyEx(a[f]));
+}
+
+template<class RanIt, class Key, class KeyExtractor>
+size_t
+lower_bound_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx) {
+	return lower_bound_ex_n<RanIt, Key, KeyExtractor>(a, 0, n, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+size_t
+lower_bound_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp comp) {
+	return lower_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a, 0, n, key, keyEx, comp);
+}
+template<class Container, class Key, class KeyExtractor>
+size_t
+lower_bound_ex_a(const Container& a, KeyExtractor keyEx, const Key& key) {
+	typedef typename Container::const_iterator RanIt;
+	return lower_bound_ex_n<RanIt, Key, KeyExtractor>(a.begin(), 0, a.size(), key, keyEx);
+}
+template<class Container, class Key, class KeyExtractor, class Comp>
+size_t
+lower_bound_ex_a(const Container& a, const Key& key, KeyExtractor keyEx, Comp comp) {
+	typedef typename Container::const_iterator RanIt;
+	return lower_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a.begin(), 0, a.size(), key, keyEx, comp);
+}
+template<class RanIt, class Key, class KeyExtractor>
+RanIt
+lower_bound_ex(RanIt a, size_t n, const Key& key, KeyExtractor keyEx) {
+	return a + lower_bound_ex_n<RanIt, Key, KeyExtractor>(a, 0, n, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor>
+RanIt
+lower_bound_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx) {
+	assert(!(end < beg));
+	return beg + lower_bound_ex_n<RanIt, Key, KeyExtractor>(beg, 0, end - beg, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+RanIt
+lower_bound_ex(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp comp) {
+	return a + lower_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a, 0, n, key, keyEx, comp);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+RanIt
+lower_bound_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx, Comp comp) {
+	assert(!(end < beg));
+	return beg + lower_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(beg, 0, end - beg, key, keyEx, comp);
+}
+
+template<class RanIt, class Key, class KeyExtractor>
+size_t
+upper_bound_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx) {
+	return upper_bound_ex_n<RanIt, Key, KeyExtractor>(a, 0, n, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+size_t
+upper_bound_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp comp) {
+	return upper_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a, 0, n, key, keyEx, comp);
+}
+template<class Container, class Key, class KeyExtractor>
+size_t
+upper_bound_ex_a(const Container& a, const Key& key, KeyExtractor keyEx) {
+	typedef typename Container::const_iterator RanIt;
+	return upper_bound_ex_n<RanIt, Key, KeyExtractor>(a.begin(), 0, a.size(), key, keyEx);
+}
+template<class Container, class Key, class KeyExtractor, class Comp>
+size_t
+upper_bound_ex_a(const Container& a, const Key& key, KeyExtractor keyEx, Comp comp) {
+	typedef typename Container::const_iterator RanIt;
+	return upper_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a.begin(), 0, a.size(), key, keyEx, comp);
+}
+template<class RanIt, class Key, class KeyExtractor>
+RanIt
+upper_bound_ex(RanIt a, size_t n, const Key& key, KeyExtractor keyEx) {
+	return a + upper_bound_ex_n<RanIt, Key, KeyExtractor>(a, 0, n, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor>
+RanIt
+upper_bound_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx) {
+	assert(!(end < beg));
+	return beg + upper_bound_ex_n<RanIt, Key, KeyExtractor>(beg, 0, end - beg, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+RanIt
+upper_bound_ex(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp comp) {
+	return a + upper_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(a, 0, n, key, keyEx, comp);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+RanIt
+upper_bound_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx, Comp comp) {
+	assert(!(end < beg));
+	return beg + upper_bound_ex_n<RanIt, Key, KeyExtractor, Comp>(beg, 0, end - beg, key, keyEx, comp);
+}
+
+template<class RanIt, class Key, class KeyExtractor>
+std::pair<size_t, size_t>
+equal_range_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx) {
+	return equal_range_ex_n<RanIt, Key, KeyExtractor>(a, 0, n, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+std::pair<size_t, size_t>
+equal_range_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp comp) {
+	return equal_range_ex_n<RanIt, Key, KeyExtractor, Comp>(a, 0, n, key, keyEx, comp);
+}
+template<class Container, class Key, class KeyExtractor>
+std::pair<size_t, size_t>
+equal_range_ex_a(const Container& a, const Key& key, KeyExtractor keyEx) {
+	typedef typename Container::const_iterator RanIt;
+	return equal_range_ex_n<RanIt, Key, KeyExtractor>(a.begin(), 0, a.size(), key, keyEx);
+}
+template<class Container, class Key, class KeyExtractor, class Comp>
+std::pair<size_t, size_t>
+equal_range_ex_a(const Container& a, const Key& key, KeyExtractor keyEx, Comp comp) {
+	typedef typename Container::const_iterator RanIt;
+	return equal_range_ex_n<RanIt, Key, KeyExtractor, Comp>(a.begin(), 0, a.size(), key, keyEx, comp);
+}
+template<class RanIt, class Key, class KeyExtractor>
+std::pair<RanIt, RanIt>
+equal_range_ex(RanIt a, size_t n, const Key& key, KeyExtractor keyEx) {
+	std::pair<size_t, size_t>
+	r = equal_range_ex_n<RanIt, Key, KeyExtractor>(a, 0, n, key, keyEx);
+	return std::pair<RanIt, RanIt>(a + r.first, a + r.second);
+}
+template<class RanIt, class Key, class KeyExtractor>
+std::pair<RanIt, RanIt>
+equal_range_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx) {
+	assert(!(end < beg));
+	std::pair<size_t, size_t>
+	r = equal_range_ex_n<RanIt, Key, KeyExtractor>(beg, 0, end - beg, key, keyEx);
+	return std::pair<RanIt, RanIt>(beg + r.first, beg + r.second);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+std::pair<RanIt, RanIt>
+equal_range_ex(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp comp) {
+	std::pair<size_t, size_t>
+	r = equal_range_ex_n<RanIt, Key, KeyExtractor, Comp>(a, 0, n, key, keyEx, comp);
+	return std::pair<RanIt, RanIt>(a + r.first, a + r.second);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+std::pair<RanIt, RanIt>
+equal_range_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx, Comp comp) {
+	assert(!(end < beg));
+	std::pair<size_t, size_t>
+	r = equal_range_ex_n<RanIt, Key, KeyExtractor, Comp>(beg, 0, end - beg, key, keyEx, comp);
+	return std::pair<RanIt, RanIt>(beg + r.first, beg + r.second);
+}
+
+template<class RanIt, class Key, class KeyExtractor>
+bool
+binary_search_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx) {
+	return binary_search_ex_n<RanIt, Key, KeyExtractor>(a, 0, n, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+bool
+binary_search_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp comp) {
+	return binary_search_ex_n<RanIt, Key, KeyExtractor, Comp>(a, 0, n, key, keyEx, comp);
+}
+template<class RanIt, class Key, class KeyExtractor>
+bool
+binary_search_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx) {
+	assert(!(end < beg));
+	return binary_search_ex_n<RanIt, Key, KeyExtractor>(beg, 0, end - beg, key, keyEx);
+}
+template<class RanIt, class Key, class KeyExtractor, class Comp>
+bool
+binary_search_ex(RanIt beg, RanIt end, const Key& key, KeyExtractor keyEx, Comp comp) {
+	assert(!(end < beg));
+	return binary_search_ex_n<RanIt, Key, KeyExtractor, Comp>(beg, 0, end - beg, key, keyEx, comp);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 template<class RanIt>
 void sort_0(RanIt a, size_t n) {
 	sort_n<RanIt>(a, 0, n);
