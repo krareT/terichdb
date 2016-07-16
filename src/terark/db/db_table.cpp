@@ -508,7 +508,9 @@ protected:
 		valvec<OneSeg> tmp(tab->m_segments.size());
 		OneSeg* segA = m_segs.data();
 		size_t  segN = m_segs.size();
-		sort_0(segA, segN, [](OneSeg&x, OneSeg&y){return x.seg < y.seg;});
+		sort_0(segA, segN, [](const OneSeg&x, const OneSeg&y){
+			return x.seg < y.seg;
+		});
 		MyRwLock lock(tab->m_rwMutex, false);
 		tmp.resize(tab->m_segments.size());
 		for (size_t i = 0; i < tmp.size(); ++i) {
