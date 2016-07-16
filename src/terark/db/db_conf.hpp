@@ -230,6 +230,15 @@ namespace terark { namespace db {
 
 		int compareData(fstring x, fstring y) const;
 
+		struct F_compareData_less {
+			const Schema* schema;
+			bool operator()(fstring x, fstring y) const {
+				return schema->compareData(x, y) < 0;
+			}
+			F_compareData_less(const Schema* schema1) : schema(schema1) {}
+		};
+		F_compareData_less compareData_less() const { return this; }
+
 		typedef int (*OneColumnComparator)(fstring, fstring);
 		OneColumnComparator getOneColumnComparator(bool ascending = true) const;
 

@@ -128,31 +128,21 @@ void MockReadonlyStore::load(PathRef fpath) {
 	dio.ensureRead(m_rows.strpool.data(), m_rows.strpool.used_mem_size());
 }
 
-struct FixedLenKeyCompare {
-	bool operator()(size_t x, fstring y) const {
-		fstring xs(strpool + fixedLen * x, fixedLen);
-		return schema->compareData(xs, y) < 0;
-	}
-	bool operator()(fstring x, size_t y) const {
-		return (*this)(y, x);
+struct FixedLenKeyExtractor {
+	fstring operator()(size_t x) const {
+		return fstring(strpool + fixedLen * x, fixedLen);
 	}
 	size_t fixedLen;
-	const char  * strpool;
-	const Schema* schema;
+	const char* strpool;
 };
 
-struct VarLenKeyCompare {
-	bool operator()(size_t x, fstring y) const {
+struct VarLenKeyExtractor {
+	fstring operator()(size_t x) const {
 		size_t xoff0 = offsets[x], xoff1 = offsets[x+1];
-		fstring xs(strpool + xoff0, xoff1 - xoff0);
-		return schema->compareData(xs, y) < 0;
-	}
-	bool operator()(fstring x, size_t y) const {
-		return (*this)(y, x);
+		return fstring(strpool + xoff0, xoff1 - xoff0);
 	}
 	const char    * strpool;
 	const uint32_t* offsets;
-	const Schema  * schema;
 };
 
 class MockReadonlyIndexIterator : public IndexIterator {
@@ -230,29 +220,28 @@ int MockReadonlyIndex::forwardLowerBound(fstring key, size_t* pLower) const {
 	const uint32_t* index = m_ids.data();
 	const size_t rows = m_ids.size();
 	const size_t fixlen = m_fixedLen;
+	const auto   cmp = m_schema->compareData_less();
 	if (fixlen) {
 		assert(m_keys.size() == 0);
 		assert(key.size() == fixlen);
-		FixedLenKeyCompare cmp;
-		cmp.fixedLen = fixlen;
-		cmp.strpool = m_keys.strpool.data();
-		cmp.schema = m_schema;
-		size_t lo = terark::lower_bound_0(index, rows, key, cmp);
+		FixedLenKeyExtractor keyEx;
+		keyEx.fixedLen = fixlen;
+		keyEx.strpool = m_keys.strpool.data();
+		size_t lo = lower_bound_ex_0(index, rows, key, keyEx, cmp);
 		*pLower = lo;
 		if (lo < rows) {
 			size_t jj = m_ids[lo];
-			if (key == fstring(cmp.strpool + fixlen*jj, fixlen))
+			if (key == fstring(keyEx.strpool + fixlen*jj, fixlen))
 				return 0;
 			else
 				return 1;
 		}
 	}
 	else {
-		VarLenKeyCompare cmp;
-		cmp.offsets = m_keys.offsets.data();
-		cmp.strpool = m_keys.strpool.data();
-		cmp.schema = m_schema;
-		size_t lo = terark::lower_bound_0(index, rows, key, cmp);
+		VarLenKeyExtractor keyEx;
+		keyEx.offsets = m_keys.offsets.data();
+		keyEx.strpool = m_keys.strpool.data();
+		size_t lo = lower_bound_ex_0(index, rows, key, keyEx, cmp);
 		*pLower = lo;
 		if (lo < rows) {
 			size_t jj = m_ids[lo];
