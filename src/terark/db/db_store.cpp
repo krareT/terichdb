@@ -123,9 +123,10 @@ namespace {
 			return false;
 		}
 		bool seekExact(llong id, valvec<byte>* val) override {
-			if (terark_likely(id >= 0 && id < m_rows)) {
+			assert(id >= 0);
+			m_id = id + 1;
+			if (terark_likely(id < m_rows)) {
 				m_store->getValue(id, val, m_ctx.get());
-				m_id = id + 1;
 				return true;
 			}
 			fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
@@ -157,11 +158,13 @@ namespace {
 			return false;
 		}
 		bool seekExact(llong id, valvec<byte>* val) override {
-			if (terark_likely(id >= 0 && id < m_rows)) {
+			assert(id >= 0);
+			if (terark_likely(id < m_rows)) {
+				m_id = id;
 				m_store->getValue(id, val, m_ctx.get());
-				m_id = id; // is not (id-1)
 				return true;
 			}
+			m_id = m_rows;
 			fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
 				, BOOST_CURRENT_FUNCTION, id, m_rows);
 			return false;
@@ -282,19 +285,25 @@ public:
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto owner = static_cast<const MultiPartStore*>(m_store.get());
-		llong rows = owner->m_rowNumVec.back();
-		if (terark_unlikely(id < 0 || id >= rows)) {
+		const auto& vec = owner->m_rowNumVec;
+		assert(vec.size() >= 2);
+		assert(id >= 0);
+		llong rows = vec.back();
+		if (terark_unlikely(id < 0)) {
 			fprintf(stderr, "ERROR: %s, %s:%d: id = %lld, rows = %lld\n"
 				, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, id, rows);
 			return false;
 		}
-		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
-		llong  baseId = owner->m_rowNumVec[upp-1];
+		size_t upp = upper_bound_0(vec.data(), vec.size()-1, id);
+		llong  baseId = vec[upp-1];
 		llong  subId = id - baseId;
-		owner->m_parts[upp-1]->getValue(subId, val, m_ctx.get());
 		m_id = id+1;
 		m_partIdx = upp-1;
-		return true;
+		if (id < rows) {
+			owner->m_parts[upp-1]->getValue(subId, val, m_ctx.get());
+			return true;
+		}
+		return false;
 	}
 	void reset() override {
 		m_partIdx = 0;
@@ -336,19 +345,26 @@ public:
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto owner = static_cast<const MultiPartStore*>(m_store.get());
-		llong rows = owner->m_rowNumVec.back();
-		if (terark_unlikely(id < 0 || id >= rows)) {
+		const auto& vec = owner->m_rowNumVec;
+		assert(vec.size() >= 2);
+		assert(id >= 0);
+		llong rows = vec.back();
+		if (terark_unlikely(id < 0)) {
 			fprintf(stderr, "ERROR: %s, %s:%d: id = %lld, rows = %lld\n"
 				, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, id, rows);
 			return false;
 		}
-		size_t upp = upper_bound_a(owner->m_rowNumVec, id);
-		llong  baseId = owner->m_rowNumVec[upp-1];
+		size_t upp = upper_bound_0(vec.data(), vec.size()-1, id);
+		llong  baseId = vec[upp-1];
 		llong  subId = id - baseId;
-		owner->m_parts[upp-1]->getValue(subId, val, m_ctx.get());
 		m_partIdx = upp;
-		m_id = id;
-		return true;
+		if (id < rows) {
+			m_id = id;
+			owner->m_parts[upp-1]->getValue(subId, val, m_ctx.get());
+			return true;
+		}
+		m_id = rows;
+		return false;
 	}
 	void reset() override {
 		auto owner = static_cast<const MultiPartStore*>(m_store.get());

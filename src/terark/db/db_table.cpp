@@ -455,16 +455,6 @@ size_t DbTable::getSegmentIndexOfRecordIdNoLock(llong recId) const {
 	return segIdx-1;
 }
 
-struct CompareBy_baseId {
-	template<class T>
-	typename boost::enable_if_c<(sizeof(((T*)0)->baseId) >= 4), bool>::type
-	operator()(const T& x, llong y) const { return x.baseId < y; }
-	template<class T>
-	typename boost::enable_if_c<(sizeof(((T*)0)->baseId) >= 4), bool>::type
-	operator()(llong x, const T& y) const { return x < y.baseId; }
-	bool operator()(llong x, llong y) const { return x < y; }
-};
-
 class DbTable::MyStoreIterBase : public StoreIterator {
 protected:
 	size_t m_segIdx;
@@ -473,9 +463,9 @@ protected:
 	struct OneSeg {
 		ReadableSegmentPtr seg;
 		StoreIteratorPtr   iter;
-		llong  baseId;
 	};
 	valvec<OneSeg> m_segs;
+	valvec<llong>  m_rowNumVec;
 
 	void init(const DbTable* tab, DbContext* ctx) {
 		this->m_store.reset(const_cast<DbTable*>(tab));
@@ -483,14 +473,13 @@ protected:
 	// MyStoreIterator creation is rarely used, lock it by m_rwMutex
 		MyRwLock lock(tab->m_rwMutex, false);
 		m_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
-		m_segs.resize(tab->m_segments.size() + 1);
-		for (size_t i = 0; i < m_segs.size()-1; ++i) {
+		m_segs.resize_fill(tab->m_segments.size());
+		for (size_t i = 0; i < m_segs.size(); ++i) {
 			ReadableSegment* seg = tab->m_segments[i].get();
 			m_segs[i].seg = seg;
-		//	m_segs[i].iter = createSegStoreIter(seg);
-			m_segs[i].baseId = tab->m_rowNumVec[i];
 		}
-		m_segs.back().baseId = tab->m_rowNum;
+		m_rowNumVec = tab->m_rowNumVec;
+		assert(m_rowNumVec.size() == m_segs.size()+1);
 		lock.upgrade_to_writer();
 		tab->m_tableScanningRefCount++;
 		assert(tab->m_segments.size() > 0);
@@ -507,24 +496,33 @@ protected:
 
 	bool syncTabSegs() {
 		auto tab = static_cast<const DbTable*>(m_store.get());
-	//	MyRwLock lock(tab->m_rwMutex, false);
 		if (m_segArrayUpdateSeq == tab->m_segArrayUpdateSeq) {
 			// there is no new segments
-			llong oldmaxId = m_segs.back().baseId;
+			llong oldmaxId = m_rowNumVec.back();
 			if (tab->m_rowNum == oldmaxId)
 				return false; // no new records
 			// records may be 'pop_back'
-			m_segs.back().baseId = tab->m_rowNum;
+			m_rowNumVec.back() = tab->m_rowNum;
 			return tab->m_rowNum > oldmaxId;
 		}
-		m_segs.resize(tab->m_segments.size() + 1);
-		for (size_t i = 0; i < m_segs.size() - 1; ++i) {
-			m_segs[i].seg = tab->m_segments[i];
-			m_segs[i].baseId = tab->m_rowNumVec[i];
-			m_segs[i].iter = nullptr;
+		valvec<OneSeg> tmp(tab->m_segments.size());
+		OneSeg* segA = m_segs.data();
+		size_t  segN = m_segs.size();
+		sort_0(segA, segN, [](OneSeg&x, OneSeg&y){return x.seg < y.seg;});
+		MyRwLock lock(tab->m_rwMutex, false);
+		tmp.resize(tab->m_segments.size());
+		for (size_t i = 0; i < tmp.size(); ++i) {
+			auto seg = tab->m_segments[i].get();
+			tmp[i].seg = seg;
+			size_t lo = lower_bound_ex_0(segA, segN, seg, [](const OneSeg& x){return x.seg.get();});
+			if (lo < segN && segA[lo].seg.get() == seg) {
+				tmp[i].iter = std::move(segA[lo].iter);
+			}
 		}
-		m_segs.back().baseId = tab->m_rowNum;
+		m_segs.swap(tmp);
+		m_rowNumVec = tab->m_rowNumVec;
 		m_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
+		assert(m_rowNumVec.size() == m_segs.size()+1);
 		return true;
 	}
 
@@ -534,37 +532,57 @@ protected:
 			if (m_segs[i].iter)
 				m_segs[i].iter->reset();
 		}
-		m_segs.ende(1).baseId = m_segs.ende(2).baseId +
-								m_segs.ende(2).seg->numDataRows();
+		syncTabSegs();
 	}
 
-	std::pair<size_t, bool> seekExactImpl(llong id, valvec<byte>* val) {
+	bool increment(llong* id, valvec<byte>* val) override {
+		assert(dynamic_cast<const DbTable*>(m_store.get()));
+		llong subId = -1;
+		while (incrementNoCheckDel(&subId, val)) {
+			const auto& cur = m_segs[m_segIdx-1];
+			assert(subId >= 0);
+			assert(subId < cur.seg->numDataRows());
+			llong baseId = m_rowNumVec[m_segIdx-1];
+			if (!cur.seg->m_isDel[subId]) {
+				*id = baseId + subId;
+				assert(*id < m_rowNumVec[m_segIdx]);
+				return true;
+			}
+		}
+		return false;
+	}
+	virtual bool incrementNoCheckDel(llong* subId, valvec<byte>* val) = 0;
+
+	bool seekExact(llong id, valvec<byte>* val) override {
 		auto tab = static_cast<const DbTable*>(m_store.get());
-		llong old_rowNum = 0;
 		do {
-			old_rowNum = tab->inlineGetRowNum();
-			size_t upp = upper_bound_a(m_segs, id, CompareBy_baseId());
-			if (upp < m_segs.size()) {
-				llong subId = id - m_segs[upp-1].baseId;
-				auto cur = &m_segs[upp-1];
-				auto seg = cur->seg.get();
-				const size_t ProtectNum = 100;
-				if (seg->m_isFreezed || seg->m_isDel.unused() >= ProtectNum) {
-					if (!seg->m_isDel[subId]) {
-						resetOneSegIter(cur);
-						return std::make_pair(upp, cur->iter->seekExact(subId, val));
-					}
-				}
-				else {
-					SpinRwLock lock(seg->m_segMutex, false);
-					if (!seg->m_isDel[subId]) {
-						resetOneSegIter(cur);
-						return std::make_pair(upp, cur->iter->seekExact(subId, val));
-					}
+			syncTabSegs();
+			size_t upp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size()-1, id);
+			llong subId = id - m_rowNumVec[upp-1];
+			auto cur = &m_segs[upp-1];
+			auto seg = cur->seg.get();
+			m_segIdx = upp;
+			if (id >= m_rowNumVec.back()) {
+				resetOneSegIter(cur);
+				return cur->iter->seekExact(subId, val);
+			}
+			assert(size_t(subId) < seg->m_isDel.size());
+			const size_t ProtectNum = 100;
+			if (seg->m_isFreezed || seg->m_isDel.unused() >= ProtectNum) {
+				if (!seg->m_isDel[subId]) {
+					resetOneSegIter(cur);
+					return cur->iter->seekExact(subId, val);
 				}
 			}
-		} while (old_rowNum < tab->inlineGetRowNum());
-		return std::make_pair(m_segs.size()-1, false);
+			else {
+				SpinRwLock lock(seg->m_segMutex, false);
+				if (!seg->m_isDel[subId]) {
+					resetOneSegIter(cur);
+					return cur->iter->seekExact(subId, val);
+				}
+			}
+		} while (m_rowNumVec.back() < tab->inlineGetRowNum());
+		return false;
 	}
 
 	void resetOneSegIter(OneSeg* x) {
@@ -584,34 +602,17 @@ class DbTable::MyStoreIterForward : public MyStoreIterBase {
 public:
 	MyStoreIterForward(const DbTable* tab, DbContext* ctx) {
 		init(tab, ctx);
-		m_segIdx = 0;
+		m_segIdx = 1;
 	}
-	bool increment(llong* id, valvec<byte>* val) override {
-		assert(dynamic_cast<const DbTable*>(m_store.get()));
-		auto tab = static_cast<const DbTable*>(m_store.get());
-		llong subId = -1;
-		MyRwLock lock(tab->m_rwMutex, false);
-		while (incrementNoCheckDel(&subId, val)) {
-			assert(subId >= 0);
-			assert(subId < m_segs[m_segIdx].seg->numDataRows());
-			llong baseId = m_segs[m_segIdx].baseId;
-			if (!tab->m_segments[m_segIdx]->m_isDel[subId]) {
-				*id = baseId + subId;
-				assert(*id < tab->numDataRows());
-				return true;
-			}
-		}
-		return false;
-	}
-	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
-		auto cur = &m_segs[m_segIdx];
+	bool incrementNoCheckDel(llong* subId, valvec<byte>* val) override {
+		auto cur = &m_segs[m_segIdx-1];
 		if (terark_unlikely(!cur->iter))
 			 cur->iter = cur->seg->createStoreIterForward(m_ctx.get());
 		if (!cur->iter->increment(subId, val)) {
 			syncTabSegs();
-			if (m_segIdx < m_segs.size()-2) {
+			if (m_segIdx < m_segs.size()) {
 				m_segIdx++;
-				cur = &m_segs[m_segIdx];
+				cur = &m_segs[m_segIdx-1];
 				resetOneSegIter(cur);
 				bool ret = cur->iter->increment(subId, val);
 				if (ret) {
@@ -624,16 +625,9 @@ public:
 		assert(*subId < cur->seg->numDataRows());
 		return true;
 	}
-	bool seekExact(llong id, valvec<byte>* val) override {
-		auto ib = seekExactImpl(id, val);
-		if (ib.second) {
-			m_segIdx = ib.first - 1; // first is upp
-		}
-		return ib.second;
-	}
 	void reset() override {
 		resetIterBase();
-		m_segIdx = 0;
+		m_segIdx = 1;
 	}
 };
 
@@ -644,32 +638,14 @@ class DbTable::MyStoreIterBackward : public MyStoreIterBase {
 public:
 	MyStoreIterBackward(const DbTable* tab, DbContext* ctx) {
 		init(tab, ctx);
-		m_segIdx = m_segs.size() - 1;
+		m_segIdx = m_segs.size();
 	}
-	bool increment(llong* id, valvec<byte>* val) override {
-		assert(dynamic_cast<const DbTable*>(m_store.get()));
-		auto tab = static_cast<const DbTable*>(m_store.get());
-		llong subId = -1;
-		MyRwLock lock(tab->m_rwMutex, false);
-		while (incrementNoCheckDel(&subId, val)) {
-			assert(subId >= 0);
-			assert(subId < m_segs[m_segIdx-1].seg->numDataRows());
-			llong baseId = m_segs[m_segIdx-1].baseId;
-			if (!tab->m_segments[m_segIdx-1]->m_isDel[subId]) {
-				*id = baseId + subId;
-				assert(*id < tab->numDataRows());
-				return true;
-			}
-		}
-		return false;
-	}
-	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
-	//	auto tab = static_cast<const DbTable*>(m_store.get());
+	bool incrementNoCheckDel(llong* subId, valvec<byte>* val) override {
 		auto cur = &m_segs[m_segIdx-1];
 		if (terark_unlikely(!cur->iter))
 			 cur->iter = cur->seg->createStoreIterBackward(m_ctx.get());
 		if (!cur->iter->increment(subId, val)) {
-		//	syncTabSegs(); // don't need to sync, because new segs are appended
+			syncTabSegs();
 			if (m_segIdx > 1) {
 				m_segIdx--;
 				cur = &m_segs[m_segIdx-1];
@@ -685,16 +661,9 @@ public:
 		assert(*subId < m_segs[m_segIdx-1].seg->numDataRows());
 		return true;
 	}
-	bool seekExact(llong id, valvec<byte>* val) override {
-		auto ib = seekExactImpl(id, val);
-		if (ib.second) {
-			m_segIdx = ib.first; // first is upp
-		}
-		return ib.second;
-	}
 	void reset() override {
 		resetIterBase();
-		m_segIdx = m_segs.size()-1;
+		m_segIdx = m_segs.size();
 	}
 };
 

@@ -510,10 +510,11 @@ public:
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
 		llong rows = owner->m_isDel.size();
-		if (terark_likely(id >= 0 || id < rows)) {
+		assert(id >= 0);
+		m_id = id + 1;
+		if (id < rows) {
 			// do not check m_isDel, always success!
 			owner->getValueByLogicId(id, val, m_ctx.get());
-			m_id = id + 1;
 			return true;
 		}
 		fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
@@ -547,12 +548,14 @@ public:
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
 		llong rows = owner->m_isDel.size();
-		if (terark_likely(id >= 0 || id < rows)) {
+		assert(id >= 0);
+		if (id < rows) {
+			m_id = id; // is not (id-1)
 			// do not check m_isDel, always success!
 			owner->getValueByLogicId(id, val, m_ctx.get());
-			m_id = id; // is not (id-1)
 			return true;
 		}
+		m_id = rows;
 		fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
 			, BOOST_CURRENT_FUNCTION, id, rows);
 		return false;
