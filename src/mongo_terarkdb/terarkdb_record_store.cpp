@@ -93,6 +93,7 @@ public:
 		ThreadSafeTable* tst = rs.m_table.get();
 		DbTable* tab = tst->m_tab.get();
     	m_ttd = tst->allocTableThreadData();
+		LOG(1) << "TerarkDbRecordStore::Cursor::Cursor(): forward = " << forward;
     	if (forward)
     		_cursor = tab->createStoreIterForward(m_ttd->m_dbCtx.get());
     	else
@@ -321,13 +322,17 @@ TerarkDbRecordStore::dataFor(OperationContext* txn, const RecordId& id) const {
 bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 								   const RecordId& id,
 								   RecordData* out) const {
-	if (id.isNull())
-		return false;
-    llong recIdx = id.repr() - 1;
 	DbTable* tab = m_table->m_tab.get();
+	if (id.isNull()) {
+		LOG(2) << "TerarkDbRecordStore::findRecord(): id = null, dir: " << tab->getDir().string();
+		return false;
+	}
+    llong recIdx = id.repr() - 1;
     auto& td = m_table->getMyThreadData();
     tab->getValue(recIdx, &td.m_buf, &*td.m_dbCtx);
     SharedBuffer bson = td.m_coder.decode(&tab->rowSchema(), td.m_buf);
+	LOG(2) << "TerarkDbRecordStore::findRecord(): id = " << id
+		<< ", bson = " << BSONObj(bson.get()) << ", dir: " << tab->getDir().string();
 
 //  size_t bufsize = sizeof(SharedBuffer::Holder) + bson.objsize();
     int bufsize = ConstDataView(bson.get()).read<LittleEndian<int>>();
@@ -339,7 +344,28 @@ void TerarkDbRecordStore::deleteRecord(OperationContext* txn, const RecordId& id
     auto& td = m_table->getMyThreadData();
 	auto tab = m_table->m_tab.get();
     bool ok = tab->removeRow(id.repr()-1, &*td.m_dbCtx);
-    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string() << ": return = " << ok;
+    LOG(2) << "TerarkDbRecordStore::deleteRecord(): id = " << id
+		<< ", dir: " << tab->getDir().string() << ": return = " << ok;
+}
+
+namespace {
+	struct DeleteDocOnFail : public RecoveryUnit::Change {
+        void rollback() override {
+			auto& td = m_rs->m_table->getMyThreadData();
+			auto tab = m_rs->m_table->m_tab.get();
+			bool ok = tab->removeRow(m_id.repr()-1, &*td.m_dbCtx);
+			LOG(2) << "DeleteDocOnFail::rollback(): id = " << m_id
+				<< ", dir: " << tab->getDir().string() << ": return = " << ok;
+		}
+        void commit() override {
+			// do nothing
+		}
+		DeleteDocOnFail(TerarkDbRecordStore* rs, OperationContext* txn, RecordId id)
+			: m_rs(rs), m_txn(txn), m_id(id) {}
+		TerarkDbRecordStore* m_rs;
+		OperationContext* m_txn;
+		RecordId m_id;
+	};
 }
 
 Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
@@ -347,10 +373,18 @@ Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
 										bool enforceQuota) {
 	DbTable* tab = m_table->m_tab.get();
     auto& td = m_table->getMyThreadData();
-    for (Record& rec : *records) {
+	if (0 == records->size()) {
+	    LOG(1) << "TerarkDbRecordStore::insertRecords(): records->size() = 0";
+	}
+    for (size_t i = 0; i < records->size(); ++i) {
+		Record& rec = (*records)[i];
     	BSONObj bson(rec.data.data());
+	    LOG(2) << "TerarkDbRecordStore::insertRecords(): i = " << i << ", bson = " << bson.toString();
     	td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
     	rec.id = RecordId(1 + tab->insertRow(td.m_buf, &*td.m_dbCtx));
+		if (txn && txn->recoveryUnit()) {
+			txn->recoveryUnit()->registerChange(new DeleteDocOnFail(this, txn, rec.id));
+		}
     }
     return Status::OK();
 }
@@ -363,8 +397,12 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
     auto& td = m_table->getMyThreadData();
     BSONObj bson(data);
 	invariant(bson.objsize() == len);
+    LOG(2) << "TerarkDbRecordStore::insertRecord(): bson = " << bson.toString();
     td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
     llong recIdx = tab->insertRow(td.m_buf, &*td.m_dbCtx);
+	if (txn && txn->recoveryUnit()) {
+		txn->recoveryUnit()->registerChange(new DeleteDocOnFail(this, txn, RecordId(recIdx+1)));
+	}
 	return {RecordId(recIdx + 1)};
 }
 
@@ -373,6 +411,10 @@ TerarkDbRecordStore::insertRecordsWithDocWriter(OperationContext* txn,
                                             const DocWriter* const* docs,
                                             size_t nDocs,
                                             RecordId* idsOut) {
+	if (0 == nDocs) {
+	    LOG(1) << "TerarkDbRecordStore::insertRecordsWithDocWriter(): nDocs = 0";
+		return Status::OK();
+	}
 	DbTable* tab = m_table->m_tab.get();
     auto& td = m_table->getMyThreadData();
     std::unique_ptr<Record[]> records(new Record[nDocs]);
@@ -403,6 +445,11 @@ TerarkDbRecordStore::insertRecordsWithDocWriter(OperationContext* txn,
 		td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
 		llong recIdx = batch.upsertRow(td.m_buf);
 		records[i].id = RecordId(recIdx + 1);
+		if (txn && txn->recoveryUnit()) {
+			txn->recoveryUnit()->registerChange(new DeleteDocOnFail(this, txn, RecordId(recIdx+1)));
+		}
+	    LOG(2) << "TerarkDbRecordStore::insertRecordsWithDocWriter(): i = " << i
+			<< ", id = " << RecordId(recIdx + 1) << ", bson = " << bson.toString();
     }
 	if (!batch.commit()) {
 		return Status(ErrorCodes::OperationFailed, "TerarkDbRecordStore::insertRecordsWithDocWriter: terark::db::BatchWriter::commit failed");
