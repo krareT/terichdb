@@ -34,7 +34,7 @@ TerarkDB is:
 ### 3.1.Linux & MacOS
 
 ```
-wget https://raw.githubusercontent.com/Terark/terark-db/master/online_install.py && (python online_install.py; rm online_install.py)
+sudo wget https://raw.githubusercontent.com/Terark/terark-db/master/online_install.py && (python online_install.py; rm online_install.py)
 ```
 
 ### 3.2.Windows
