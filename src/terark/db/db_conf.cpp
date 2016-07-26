@@ -5,6 +5,7 @@
 //#include <terark/io/MemStream.hpp>
 //#include <terark/io/StreamBuffer.hpp>
 #include <terark/io/var_int.hpp>
+#include <terark/lcast.hpp>
 #include <terark/num_to_str.hpp>
 //#include <terark/util/sortable_strvec.hpp>
 #include <terark/util/linebuf.hpp>
@@ -926,6 +927,9 @@ const {
 		default:
 			THROW_STD(invalid_argument,
 				"type=%s is not supported", columnTypeStr(colmeta.type));
+			break;
+		case ColumnType::Uuid:
+			hex_decode(pos, next - pos, row->grow(16), 16);
 			break;
 		case ColumnType::Sint08:
 		case ColumnType::Uint08:
