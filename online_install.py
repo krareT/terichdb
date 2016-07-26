@@ -100,7 +100,7 @@ def check_package_info():
     global TERARKDB_INFO
     print 'Checking TerarkDB releases ...'
     try:
-        resp = urllib2.urlopen("http://terark.com/download/releases")
+        resp = urllib2.urlopen("http://terark.com/download/terarkdb/releases")
         jsonstr = resp.read()
         resp.close()
         TERARKDB_INFO = json.loads(jsonstr)
@@ -118,7 +118,7 @@ def download_package():
     global PACKAGE_NAME
 
     selection = []
-    resp = urllib2.urlopen("http://terark.com/download/release/" + VERSION)
+    resp = urllib2.urlopen("http://terark.com/download/terarkdb/release/" + VERSION)
     jsonstr = resp.read()
     resp.close()
     pkgs = json.loads(jsonstr)
