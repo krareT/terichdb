@@ -128,6 +128,10 @@ def download_package():
 
     print "Please select TerarkDB package fit for your system :"
 
+    if len(selection) == 0:
+      print 'There is no packages available for your system under the selected TerarkDB version, please retry with another version.'
+      exit(0)
+
     for i in range(len(selection)):
         print i + 1, '\t', selection[i]['name']
 
