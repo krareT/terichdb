@@ -37,8 +37,12 @@ ifeq (CYGWIN, ${UNAME_System})
   DLL_SUFFIX = .dll.a
   CYG_DLL_FILE = $(shell echo $@ | sed 's:\(.*\)/lib\([^/]*\)\.a$$:\1/cyg\2:')
 else
+  ifeq (Darwin,${UNAME_System})
+    DLL_SUFFIX = .dylib
+  else
+    DLL_SUFFIX = .so
+  endif
   FPIC = -fPIC
-  DLL_SUFFIX = .so
   CYG_DLL_FILE = $@
 endif
 override CFLAGS += ${FPIC}
@@ -247,12 +251,12 @@ ifneq (${UNAME_System},Darwin)
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lrt
 endif
 
-#${TerarkDB_d} : override LIBS += ${LIB_TERARK_D} -ltbb_debug
-${TerarkDB_d} : override LIBS += ${LIB_TERARK_D} -ltbb
-${TerarkDB_r} : override LIBS += ${LIB_TERARK_R} -ltbb
+#${TerarkDB_d} : override LIBS := ${LIB_TERARK_D} ${LIBS} -ltbb_debug
+${TerarkDB_d} : override LIBS := ${LIB_TERARK_D} ${LIBS} -ltbb
+${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 
-${LeveldbApi_d} : override LIBS += -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} -ltbb
-${LeveldbApi_r} : override LIBS += -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} -ltbb
+${LeveldbApi_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
+${LeveldbApi_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 ${LeveldbApi_d} : ${TerarkDB_d}
 ${LeveldbApi_r} : ${TerarkDB_r}
 
@@ -301,6 +305,19 @@ endif
 	cp    terark-base/src/terark/thread/*.hpp ${TarBall}/include/terark/thread
 	cp    terark-base/src/terark/util/*.hpp   ${TarBall}/include/terark/util
 	cp -r api/leveldb/leveldb/include         ${TarBall}/api/leveldb
+ifeq (${PKG_WITH_DEP},1)
+	cp    /opt/include/wiredtiger.h          ${TarBall}/include/
+	cp -r /opt/include/tbb                   ${TarBall}/include/
+	cp -r /opt/include/boost                 ${TarBall}/include/
+	cp -r /opt/lib/libwiredtiger*.so*        ${TarBall}/lib/
+  ifeq (Darwin,${UNAME_System})
+	cp -r /opt/lib/libwiredtiger*.dylib*     ${TarBall}/lib/
+  endif
+	cp -r /opt/lib/libtbb*${DLL_SUFFIX}*     ${TarBall}/lib/
+	cp -r /opt/lib/libboost_filesystem*${DLL_SUFFIX}*  ${TarBall}/lib/
+	cp -r /opt/lib/libboost_date_time*${DLL_SUFFIX}*   ${TarBall}/lib/
+	cp -r /opt/lib/libboost_system*${DLL_SUFFIX}*      ${TarBall}/lib/
+endif
 	ln -s lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-r${DLL_SUFFIX}
 	ln -s lib${LeveldbApi_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${LeveldbApi_lib}-r${DLL_SUFFIX}
 	ln -s libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-r${DLL_SUFFIX}
