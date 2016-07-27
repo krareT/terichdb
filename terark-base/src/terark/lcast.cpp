@@ -226,5 +226,61 @@ HEX_FROM_STR(unsigned long)
 HEX_FROM_STR(long long)
 HEX_FROM_STR(unsigned long long)
 
+/// allowing non-hex char in hex string, such as: ABCD-1234_56+78 90-def
+/// @returns decoded hex chars(or required half bytes)
+/// @note
+///   # if the number of hex chars is odd, the last hex char is the
+///     higher 4 bit of the last byte
+///   # if databuf is too small, the returned value is the required
+///     bufsize in half bytes
+///   # the filled(or required) bytes is (retVal+1)/2
+TERARK_DLL_EXPORT
+size_t
+hex_decode(const char* hex, size_t hexlen, void* databuf, size_t bufsize) {
+	byte_t* outBytes = (byte_t*)databuf;
+	size_t j = 0;
+	for(size_t i = 0; i < hexlen; ) {
+		byte_t c;
+		signed char hi, lo;
+		do {
+			c = hex[i++];
+			hi = hex_tab[c];
+			if (terark_unlikely(i == hexlen)) {
+				if (terark_likely(hi >= 0)) {
+					if (terark_likely(j < bufsize)) {
+					//	outBytes[j] = byte_t(hi << 4);
+						outBytes[j] = hi; // use hi as lo, real hi is 0
+					}
+					j++;
+					return 2*j-1;
+				}
+				return 2*j;
+			}
+		} while (hi < 0);
+		do {
+			c = hex[i++];
+			lo = hex_tab[c];
+		} while (i < hexlen && lo < 0);
+		if (terark_likely(lo >= 0)) {
+			if (terark_likely(j < bufsize)) {
+				outBytes[j] = byte_t((hi << 4) | lo);
+			}
+			j++;
+		}
+	}
+	return 2*j;
+}
+
+TERARK_DLL_EXPORT
+void hex_encode(const void* data, size_t datalen, char* hexbuf) {
+	const char* tab = "0123456789abcdef";
+	const byte_t* bData = (const byte_t*)(data);
+	for(size_t i = 0; i < datalen; ++i) {
+		byte_t c = bData[i];
+		hexbuf[2*i + 0] = tab[c >> 4];
+		hexbuf[2*i + 1] = tab[c & 15];
+	}
+}
+
 } // namespace terark
 

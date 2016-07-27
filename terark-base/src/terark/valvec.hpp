@@ -571,6 +571,9 @@ public:
 		}
 	}
 
+	void grow_capacity(size_t cnt) {
+		reserve(n + cnt);
+	}
 	T* grow_no_init(size_t cnt) {
 		size_t oldsize = n;
 		resize_no_init(n + cnt);
