@@ -72,6 +72,7 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/kv/kv_catalog.h"
 #include <terark/io/FileStream.hpp>
+#include <terark/util/profiling.hpp>
 
 #if !defined(__has_feature)
 #define __has_feature(x) 0
@@ -90,10 +91,23 @@ TableThreadData::TableThreadData(DbTable* tab) {
 	m_dbCtx->syncIndex = false;
 }
 
+IndexIterData::IndexIterData(DbTable* tab, size_t indexId, bool forward) {
+	m_ctx = tab->createDbContext();
+	if (forward)
+		m_cursor = tab->createIndexIterForward(indexId, m_ctx.get());
+	else
+		m_cursor = tab->createIndexIterBackward(indexId, m_ctx.get());
+}
+
+IndexIterData::~IndexIterData() {
+}
+
 ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
 	m_tab = DbTable::open(dbPath);
 	m_indexForwardIterCache.resize(m_tab->getIndexNum());
 	m_indexBackwardIterCache.resize(m_tab->getIndexNum());
+	m_livingChanges = 0;
+	m_cacheExpireMillisec = terark::getEnvLong("ThreadSafeTable_cacheExpireMillisec", 5 * 1000);
 }
 
 ThreadSafeTable::~ThreadSafeTable() {
@@ -120,40 +134,69 @@ void ThreadSafeTable::releaseTableThreadData(TableThreadDataPtr ttd) {
 	m_cursorCache.push_back(std::move(ttd));
 }
 
+static terark::profiling g_profiling;
+
+void
+ThreadSafeTable::expiringCacheItems(valvec<valvec<IndexIterDataPtr> >& vv, llong now) {
+	llong expireMillisec = m_cacheExpireMillisec;
+	for (auto& v : vv) {
+		size_t pos = 0;
+		for (; pos < v.size(); ++pos) {
+			if (g_profiling.ms(v[pos]->m_lastUseTime, now) < expireMillisec)
+				break;
+		}
+		v.erase_i(pos, v.size() - pos);
+	}
+}
+
 IndexIterDataPtr ThreadSafeTable::allocIndexIter(size_t indexId, bool forward) {
 	auto tab = m_tab.get();
 	IndexIterDataPtr iter;
 	assert(indexId < tab->getIndexNum());
 	assert(m_indexForwardIterCache.size() == tab->getIndexNum());
 	assert(m_indexBackwardIterCache.size() == tab->getIndexNum());
+	llong now = g_profiling.now();
 	{
 		std::unique_lock<std::mutex> lock(m_cursorCacheMutex);
 		if (forward) {
 			if (m_indexForwardIterCache[indexId].empty()) {
+				expiringCacheItems(m_indexForwardIterCache, now);
+				expiringCacheItems(m_indexBackwardIterCache, now);
 				lock.unlock();
-				iter = new IndexIterData();
-				iter->m_cursor = tab->createIndexIterForward(indexId);
+				iter = new IndexIterData(tab, indexId, forward);
 			} else {
 				iter = m_indexForwardIterCache[indexId].pop_val();
+				expiringCacheItems(m_indexForwardIterCache, now);
+				expiringCacheItems(m_indexBackwardIterCache, now);
 			}
 		}
 		else {
 			if (m_indexBackwardIterCache[indexId].empty()) {
+				expiringCacheItems(m_indexForwardIterCache, now);
+				expiringCacheItems(m_indexBackwardIterCache, now);
 				lock.unlock();
-				iter = new IndexIterData();
-				iter->m_cursor = tab->createIndexIterBackward(indexId);
+				iter = new IndexIterData(tab, indexId, forward);
+				iter->m_cursor = tab->createIndexIterBackward(indexId, nullptr);
 			} else {
 				iter = m_indexBackwardIterCache[indexId].pop_val();
+				expiringCacheItems(m_indexForwardIterCache, now);
+				expiringCacheItems(m_indexBackwardIterCache, now);
 			}
 		}
 	}
+	iter->reset();
 	return iter;
 }
 
 void ThreadSafeTable::releaseIndexIter(size_t indexId, bool forward, IndexIterDataPtr iter) {
 	assert(indexId < m_indexForwardIterCache.size());
 	assert(m_indexForwardIterCache.size() == m_indexBackwardIterCache.size());
+	llong now = g_profiling.now();
+	iter->m_lastUseTime = now;
+	iter->reset();
 	std::unique_lock<std::mutex> lock(m_cursorCacheMutex);
+	expiringCacheItems(m_indexForwardIterCache, now);
+	expiringCacheItems(m_indexBackwardIterCache, now);
 	if (forward) {
 		m_indexForwardIterCache[indexId].push_back(std::move(iter));
 	} else {

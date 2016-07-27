@@ -51,11 +51,16 @@ public:
 typedef boost::intrusive_ptr<TableThreadData> TableThreadDataPtr;
 
 struct IndexIterData : public terark::RefCounter {
+	terark::db::DbContextPtr      m_ctx;
 	terark::db::IndexIteratorPtr  m_cursor;
 	terark::valvec<unsigned char> m_curKey;
 	terark::valvec<         char> m_qryKey;
 //	mongo::terarkdb::SchemaRecordCoder m_coder;
 	terark::valvec<unsigned char> m_endPositionKey;
+	llong     m_lastUseTime;
+
+	IndexIterData(DbTable* tab, size_t indexId, bool forward);
+	~IndexIterData();
 
 	int seekLowerBound(llong* recId) {
 		return m_cursor->seekLowerBound(m_qryKey, recId, &m_curKey);
@@ -68,6 +73,7 @@ struct IndexIterData : public terark::RefCounter {
 	}
 	void reset() {
 		m_cursor->reset();
+		m_ctx->trySyncSegCtxSpeculativeLock(m_ctx->m_tab);
 	}
 };
 typedef boost::intrusive_ptr<IndexIterData> IndexIterDataPtr;
@@ -77,6 +83,7 @@ public:
 	~ThreadSafeTable();
 	void destroy(); // workaround mongodb
 	DbTablePtr m_tab;
+	std::atomic_size_t m_livingChanges;
 	explicit ThreadSafeTable(const fs::path& dbPath);
 	TableThreadData& getMyThreadData();
 
@@ -93,6 +100,8 @@ protected:
 	valvec<TableThreadDataPtr> m_cursorCache; // for RecordStore Iterator
 	valvec<valvec<IndexIterDataPtr> > m_indexForwardIterCache;
 	valvec<valvec<IndexIterDataPtr> > m_indexBackwardIterCache;
+	llong m_cacheExpireMillisec;
+	void expiringCacheItems(valvec<valvec<IndexIterDataPtr> >& vv, llong now);
 };
 typedef boost::intrusive_ptr<ThreadSafeTable> ThreadSafeTablePtr;
 
