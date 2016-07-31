@@ -373,9 +373,10 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 	if (txn && txn->recoveryUnit()) {
 		rud = m_table->tryRecoveryUnitData(txn->recoveryUnit());
 		if (rud)
-			ttd = rud->m_ttd.get();
+			ttd = rud->m_ttd.get(); // may be NULL
 	}
-	else {
+	if (!ttd) {
+		rud = NULL;
 		ttd = &m_table->getMyThreadData();
 	}
     tab->getValue(recIdx, &ttd->m_buf, ttd->m_dbCtx.get());

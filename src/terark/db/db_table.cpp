@@ -1180,7 +1180,11 @@ bool DbTable::exists(llong id) const {
 #if !defined(NDEBUG)
 	size_t upperId = m_rowNumVec[upp];
 	assert(subId < seg->m_isDel.size());
-	assert(seg->m_isDel.size() == upperId - baseId);
+	if (terark_unlikely(seg->m_isDel.size() != upperId - baseId)) {
+		fprintf(stderr, "INFO: DbTable::exists(id=%lld): "
+			"temporay error: seg->m_isDel.size() = %zd, (upperId - baseId) = %zd\n"
+			, id, seg->m_isDel.size() , size_t(upperId - baseId));
+	}
 #endif
 	const size_t ProtectNum = 100;
 	if (seg->m_isFreezed || seg->m_isDel.unused() >= ProtectNum) {
