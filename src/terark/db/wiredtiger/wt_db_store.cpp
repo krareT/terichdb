@@ -113,13 +113,16 @@ public:
 		m_cursor->reset(m_cursor); // reset, terarkdb has no snapshot
 		llong recno = id + 1;
 		m_cursor->set_key(m_cursor, recno);
-		int err = m_cursor->search(m_cursor);
+		int cmp = 0, err = m_cursor->search_near(m_cursor, &cmp);
 		if (err == 0) {
-			WT_ITEM item;
-			memset(&item, 0, sizeof(WT_ITEM));
-			m_cursor->get_value(m_cursor, &item);
-			val->assign((const byte*)item.data, item.size);
-			return true;
+			if (0 == cmp) {
+				WT_ITEM item;
+				memset(&item, 0, sizeof(WT_ITEM));
+				m_cursor->get_value(m_cursor, &item);
+				val->assign((const byte*)item.data, item.size);
+				return true;
+			}
+			return false;
 		}
 		if (WT_NOTFOUND == err) {
 			return false;

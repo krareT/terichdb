@@ -409,7 +409,6 @@ void DbTable::doLoad(PathRef dir) {
 	if (m_segments.size() == 0 || !m_segments.back()->getWritableStore()) {
 		// THROW_STD(invalid_argument, "no any segment found");
 		// allow user create an table dir which just contains json meta file
-		AutoGrownMemIO buf;
 		size_t segIdx = m_segments.size();
 		m_wrSeg = myCreateWritableSegment(getSegPath("wr", segIdx));
 		m_segments.push_back(m_wrSeg);
@@ -539,6 +538,8 @@ protected:
 
 	bool increment(llong* id, valvec<byte>* val) override {
 		assert(dynamic_cast<const DbTable*>(m_store.get()));
+		assert(nullptr != id);
+		assert(nullptr != val);
 		llong subId = -1;
 		while (incrementNoCheckDel(&subId, val)) {
 			const auto& cur = m_segs[m_segIdx-1];
@@ -553,10 +554,37 @@ protected:
 		}
 		return false;
 	}
-	virtual bool incrementNoCheckDel(llong* subId, valvec<byte>* val) = 0;
+	inline bool incrementNoCheckDel(llong* subId, valvec<byte>* val) {
+		assert(m_segIdx >= 1);
+		assert(m_segIdx <= m_segs.size());
+		auto cur = &m_segs[m_segIdx-1];
+		if (terark_unlikely(!cur->iter)) {
+			 cur->iter = cur->seg->createStoreIterForward(m_ctx.get());
+		}
+		if (!cur->iter->increment(subId, val)) {
+			syncTabSegs();
+			if (incrementSegIndex()) {
+				cur = &m_segs[m_segIdx-1];
+				resetOneSegIter(cur);
+				bool ret = cur->iter->increment(subId, val);
+				if (ret) {
+					assert(*subId < cur->seg->numDataRows());
+				}
+				return ret;
+			}
+			return false;
+		}
+		assert(*subId < cur->seg->numDataRows());
+		return true;
+	}
+	virtual bool incrementSegIndex() = 0;
 
+	///! on success, position must point to next record
+	///! on fail, position is unspecified
 	bool seekExact(llong id, valvec<byte>* val) override {
 		auto tab = static_cast<const DbTable*>(m_store.get());
+		assert(m_segIdx >= 1);
+		assert(m_segIdx <= m_segs.size());
 		do {
 			syncTabSegs();
 			size_t upp = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size()-1, id);
@@ -606,26 +634,12 @@ public:
 		init(tab, ctx);
 		m_segIdx = 1;
 	}
-	bool incrementNoCheckDel(llong* subId, valvec<byte>* val) override {
-		auto cur = &m_segs[m_segIdx-1];
-		if (terark_unlikely(!cur->iter))
-			 cur->iter = cur->seg->createStoreIterForward(m_ctx.get());
-		if (!cur->iter->increment(subId, val)) {
-			syncTabSegs();
-			if (m_segIdx < m_segs.size()) {
-				m_segIdx++;
-				cur = &m_segs[m_segIdx-1];
-				resetOneSegIter(cur);
-				bool ret = cur->iter->increment(subId, val);
-				if (ret) {
-					assert(*subId < cur->seg->numDataRows());
-				}
-				return ret;
-			}
-			return false;
+	bool incrementSegIndex() override {
+		if (m_segIdx < m_segs.size()) {
+			m_segIdx++;
+			return true;
 		}
-		assert(*subId < cur->seg->numDataRows());
-		return true;
+		return false;
 	}
 	void reset() override {
 		resetIterBase();
@@ -642,26 +656,12 @@ public:
 		init(tab, ctx);
 		m_segIdx = m_segs.size();
 	}
-	bool incrementNoCheckDel(llong* subId, valvec<byte>* val) override {
-		auto cur = &m_segs[m_segIdx-1];
-		if (terark_unlikely(!cur->iter))
-			 cur->iter = cur->seg->createStoreIterBackward(m_ctx.get());
-		if (!cur->iter->increment(subId, val)) {
-			syncTabSegs();
-			if (m_segIdx > 1) {
-				m_segIdx--;
-				cur = &m_segs[m_segIdx-1];
-				resetOneSegIter(cur);
-				bool ret = cur->iter->increment(subId, val);
-				if (ret) {
-					assert(*subId < m_segs[m_segIdx-1].seg->numDataRows());
-				}
-				return ret;
-			}
-			return false;
+	bool incrementSegIndex() override {
+		if (m_segIdx > 1) {
+			m_segIdx--;
+			return true;
 		}
-		assert(*subId < m_segs[m_segIdx-1].seg->numDataRows());
-		return true;
+		return false;
 	}
 	void reset() override {
 		resetIterBase();
@@ -706,12 +706,13 @@ BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 		m_txn = ctx->m_transaction.get();
 		m_ctx = ctx;
 		ctx->trySyncSegCtxNoLock(tab);
+		ctx->ensureTransactionNoLock();
 		auto txn = ctx->m_transaction.get();
 		txn->startTransaction();
 		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
-		assert(txn->m_removeOnRollback.size() == 0);
+		assert(txn->m_appearOnCommit.size() == 0);
 		txn->m_removeOnCommit.erase_all(); // tolerate on release
-		txn->m_removeOnRollback.erase_all();
+		txn->m_appearOnCommit.erase_all();
 	}
 	catch (const std::exception&) {
 		if (inprogressWritingCountInced) {
@@ -733,7 +734,7 @@ BatchWriter::~BatchWriter() {
 	}
 	tab->m_inprogressWritingCount -= 2;
 	txn->m_removeOnCommit.erase_all();
-	txn->m_removeOnRollback.erase_all();
+	txn->m_appearOnCommit.erase_all();
 }
 
 llong BatchWriter::overwriteExisting(fstring row) {
@@ -797,6 +798,7 @@ llong BatchWriter::upsertRowImpl(fstring row) {
 	MyRwLock lock(tab->m_rwMutex, false);
 	wrBaseId = tab->m_rowNumVec.ende(2);
 	ctx->trySyncSegCtxNoLock(tab);
+	ctx->ensureTransactionNoLock();
 	txn->indexSearch(uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec);
 	if (!ctx->exactMatchRecIdvec.empty()) {
 		return overwriteExisting(row);
@@ -804,7 +806,8 @@ llong BatchWriter::upsertRowImpl(fstring row) {
 	newRecId = tab->insertRowDoInsertNoCommit(row, ctx);
 	if (newRecId >= 0) {
 		llong wrSubId = newRecId - wrBaseId;
-		txn->m_removeOnRollback.push_back(wrSubId);
+		assert(tab->m_wrSeg->m_isDel[wrSubId]); // unvisible
+		txn->m_appearOnCommit.push_back(uint32_t(wrSubId));
 		goto FindInFrozenSegments;
 	}
 	return -1;
@@ -909,61 +912,49 @@ bool BatchWriter::commit() {
 	assert(&ws == m_wrSeg);
 	assert(txn == m_txn);
 	assert(DbTransaction::started == txn->m_status);
-	bool commitOk = txn->commit();
+	if (!txn->commit()) {
+		return false;
+	}
 	const size_t batchCnt = 100; // don't lock too long time
-	size_t myDelcnt = 0;
-	if (commitOk) {
-		sort_a(txn->m_removeOnCommit);
-	//	fprintf(stderr, "TRACE: BatchWriter::commit: txn->m_removeOnCommit.size = %zd\n", txn->m_removeOnCommit.size());
-		for(size_t i = 0; i < txn->m_removeOnCommit.size(); ) {
-			size_t upper = std::min(i + batchCnt, txn->m_removeOnCommit.size());
-			MyRwLock lock(tab->m_rwMutex, false);
-			for(; i < upper; ++i) {
-				llong recId = txn->m_removeOnCommit[i];
-				size_t upp = upper_bound_a(tab->m_rowNumVec, recId);
-				llong baseId = tab->m_rowNumVec[upp-1];
-				size_t subId = size_t(recId - baseId);
-				auto seg = tab->m_segments[upp-1].get();
-				SpinRwLock segLock(seg->m_segMutex, true);
-			//	fprintf(stderr
-			//		, "TRACE: BatchWriter::commit: remove: recId = %lld, subId = %zd, segIdx = %zd, segNum = %zd, seg[del = %zd, all = %zd], delratio = %f\n"
-			//		, recId, subId, upp-1, tab->m_segments.size(), seg->m_delcnt, seg->m_isDel.size(), double(seg->m_delcnt) / seg->m_isDel.size());
-				if (seg->m_isDel[subId]) {
-					continue;
-				}
-				seg->m_isDel.set1(subId);
-				seg->m_delcnt++;
-				if (&ws == seg) {
-					ws.m_deletedWrIdSet.push_back(uint32_t(subId));
-				} else {
-					seg->addtoUpdateList(subId);
-				}
+	sort_a(txn->m_removeOnCommit);
+	sort_a(txn->m_appearOnCommit);
+//	fprintf(stderr, "TRACE: BatchWriter::commit: txn->m_removeOnCommit.size = %zd\n", txn->m_removeOnCommit.size());
+	ws.m_deletedWrIdSet.grow_capacity(txn->m_appearOnCommit.size());
+	{
+		MyRwLock lock(tab->m_rwMutex, false);
+		SpinRwLock segLock(ws.m_segMutex, true);
+		auto bits = ws.m_isDel.bldata();
+		for (llong wrSubId : txn->m_appearOnCommit) {
+			terark_bit_set0(bits, wrSubId);
+		}
+		ws.m_delcnt -= txn->m_appearOnCommit.size();
+	}
+	for(size_t i = 0; i < txn->m_removeOnCommit.size(); ) {
+		size_t upper = std::min(i + batchCnt, txn->m_removeOnCommit.size());
+		MyRwLock lock(tab->m_rwMutex, false);
+		for(; i < upper; ++i) {
+			llong recId = txn->m_removeOnCommit[i];
+			size_t upp = upper_bound_a(tab->m_rowNumVec, recId);
+			llong baseId = tab->m_rowNumVec[upp-1];
+			size_t subId = size_t(recId - baseId);
+			auto seg = tab->m_segments[upp-1].get();
+			SpinRwLock segLock(seg->m_segMutex, true);
+		//	fprintf(stderr
+		//		, "TRACE: BatchWriter::commit: remove: recId = %lld, subId = %zd, segIdx = %zd, segNum = %zd, seg[del = %zd, all = %zd], delratio = %f\n"
+		//		, recId, subId, upp-1, tab->m_segments.size(), seg->m_delcnt, seg->m_isDel.size(), double(seg->m_delcnt) / seg->m_isDel.size());
+			if (seg->m_isDel[subId]) {
+				continue;
+			}
+			seg->m_isDel.set1(subId);
+			seg->m_delcnt++;
+			if (&ws == seg) {
+				ws.m_deletedWrIdSet.push_back(uint32_t(subId));
+			} else {
+				seg->addtoUpdateList(subId);
 			}
 		}
-		myDelcnt = txn->m_removeOnCommit.size();
 	}
-	else {
-		sort_a(txn->m_removeOnRollback);
-		ws.m_deletedWrIdSet.reserve(ws.m_deletedWrIdSet.size() + txn->m_removeOnRollback.size());
-		for(size_t i = 0; i < txn->m_removeOnRollback.size(); ) {
-			size_t upper = std::min(i + batchCnt, txn->m_removeOnRollback.size());
-			SpinRwLock segLock(ws.m_segMutex, true);
-			auto isDel = ws.m_isDel.bldata();
-			auto removeOnRollback = txn->m_removeOnRollback.data();
-			for(; i < upper; ++i) {
-				llong wrSubId = removeOnRollback[i];
-				// rollback would have deleted wrSubId physically
-				// now mark wrSubId as deleted
-				if (!terark_bit_test(isDel, wrSubId)) {
-					terark_bit_set1(isDel, wrSubId);
-					ws.m_delcnt++;
-					ws.m_deletedWrIdSet.push_back(wrSubId);
-				}
-			}
-		}
-		myDelcnt = txn->m_removeOnRollback.size();
-	}
-	if (myDelcnt > 0) {
+	if (txn->m_removeOnCommit.size() > 0) {
 		MyRwLock lock(tab->m_rwMutex, true);
 		const size_t segNum = tab->m_segments.size();
 		for(size_t i = 0; i < segNum-1; ++i) {
@@ -976,7 +967,7 @@ bool BatchWriter::commit() {
 			}
 		}
 	}
-	return commitOk;
+	return true;
 }
 
 void BatchWriter::rollback() {
@@ -986,15 +977,8 @@ void BatchWriter::rollback() {
 	assert(txn == m_txn);
 	assert(DbTransaction::started == txn->m_status);
 	txn->rollback();
-	MyRwLock lock(tab->m_rwMutex, false);
 	auto& ws = *tab->m_wrSeg;
-	for (llong wrSubId : txn->m_removeOnRollback) {
-		// rollback would have deleted wrSubId physically
-		// now mark wrSubId as deleted
-		ws.m_isDel.set1(wrSubId);
-		ws.m_delcnt++;
-		ws.m_deletedWrIdSet.push_back(wrSubId);
-	}
+	ws.m_deletedWrIdSet.append(txn->m_appearOnCommit);
 }
 
 StoreIterator* DbTable::createStoreIterForward(DbContext* ctx) const {
@@ -1015,11 +999,13 @@ DbContext* DbTable::createDbContext() const {
 llong DbTable::existingRows(DbContext* ctx) const {
 	MyRwLock lock(m_rwMutex, false);
 	llong delcnt = 0;
-	for (size_t i = 0; i < m_segments.size(); ++i) {
-		auto seg = m_segments[i].get();
+	auto segA = m_segments.data();
+	auto segN = m_segments.size();
+	for (size_t i = 0; i < segN; ++i) {
+		auto seg = segA[i].get();
 		delcnt += seg->m_delcnt;
 	}
-	fprintf(stderr, "INFO: m_rowNum = %lld, delcnt = %lld\n", m_rowNum, delcnt);
+//	fprintf(stderr, "INFO: m_rowNum = %lld, delcnt = %lld\n", m_rowNum, delcnt);
 	llong r = m_rowNum - delcnt;
 	return r;
 }
@@ -1182,10 +1168,10 @@ DbTable::myCreateWritableSegment(PathRef segDir) const {
 
 bool DbTable::exists(llong id) const {
 	assert(id >= 0);
-	MyRwLock lock(m_rwMutex, false);
-	if (terark_unlikely(id >= llong(m_rowNumVec.back()))) {
+	if (terark_unlikely(id >= llong(m_rowNum))) {
 		return false;
 	}
+	MyRwLock lock(m_rwMutex, false);
 	size_t upp = upper_bound_a(m_rowNumVec, id);
 	assert(upp < m_rowNumVec.size());
 	llong baseId = m_rowNumVec[upp-1];
@@ -1196,7 +1182,14 @@ bool DbTable::exists(llong id) const {
 	assert(subId < seg->m_isDel.size());
 	assert(seg->m_isDel.size() == upperId - baseId);
 #endif
-	return seg->m_isDel.is0(subId);
+	const size_t ProtectNum = 100;
+	if (seg->m_isFreezed || seg->m_isDel.unused() >= ProtectNum) {
+		return !seg->m_isDel[subId];
+	}
+	else {
+		SpinRwLock lock(seg->m_segMutex, false);
+		return !seg->m_isDel[subId];
+	}
 }
 
 llong
@@ -1215,6 +1208,7 @@ DbTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 	DebugCheckRowNumVecNoLock(this);
 	maybeCreateNewSegment(lock);
 	ctx->trySyncSegCtxNoLock(this);
+	ctx->ensureTransactionNoLock();
 	if (!ctx->syncIndex) {
 		return insertRowDoInsert(row, ctx);
 	}
@@ -1399,6 +1393,7 @@ DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	{
 		MyRwLock lock(m_rwMutex, false);
 		ctx->trySyncSegCtxNoLock(this);
+		ctx->ensureTransactionNoLock();
 	}
 	for (size_t segIdx = 0; segIdx < ctx->m_segCtx.size()-1; ++segIdx) {
 		auto seg = ctx->m_segCtx[segIdx]->seg;
@@ -1453,6 +1448,7 @@ DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	}
 	MyRwLock lock(m_rwMutex, false);
 	ctx->trySyncSegCtxNoLock(this);
+	ctx->ensureTransactionNoLock();
 	m_wrSeg->indexSearchExact(m_segments.size()-1, uniqueIndexId,
 		ctx->key1, &ctx->exactMatchRecIdvec, ctx);
 	if (ctx->exactMatchRecIdvec.empty()) {
@@ -1698,6 +1694,12 @@ DbTable::updateSyncMultIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 bool
 DbTable::removeRow(llong id, DbContext* ctx) {
 	assert(ctx != nullptr);
+	assert(id >= 0);
+	assert(id < m_rowNum);
+	if (id < 0 || id >= m_rowNum) {
+		THROW_STD(invalid_argument,
+			"Invalid id = %lld, m_rowNum = %lld\n", id, m_rowNum);
+	}
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	const llong snapshotVersion = this->m_rowNum - 1;
 	assert(snapshotVersion >= id);
@@ -1716,12 +1718,16 @@ DbTable::removeRow(llong id, DbContext* ctx) {
 		assert(!wrseg->m_bookUpdates);
 		{
 			SpinRwLock wsLock(wrseg->m_segMutex);
+		//	assert(!seg->m_isDel[subId]);
 			if (!wrseg->m_isDel[subId]) {
 				wrseg->m_deletedWrIdSet.push_back(uint32_t(subId));
 				wrseg->m_delcnt++;
 				wrseg->m_isDel.set1(subId); // always set delmark
 				wrseg->m_isDirty = true;
-				assert(wrseg->m_isDel.popcnt() == wrseg->m_delcnt);
+		#if !defined(NDEBUG)
+				size_t delcnt = wrseg->m_isDel.popcnt();
+				assert(delcnt == wrseg->m_delcnt);
+		#endif
 			}
 			else {
 				return false;
@@ -1758,8 +1764,10 @@ DbTable::removeRow(llong id, DbContext* ctx) {
 					, id, baseId, subId, wrseg->m_segDir.string().c_str());
 			}
 		}
+		return true;
 	}
 	else { // freezed segment, just set del mark
+		bool success = false;
 		if (seg->m_deletionTime) {
 			assert(nullptr != m_schema->m_snapshotSchema);
 			llong* deltime = (llong*)seg->getRecordsBasePtr();
@@ -1767,10 +1775,12 @@ DbTable::removeRow(llong id, DbContext* ctx) {
 			if (deltime[subId] != LLONG_MAX) {
 				deltime[subId] = snapshotVersion;
 				seg->addtoUpdateList(size_t(subId));
+				success = true;
 			}
 		}
 		else {
 			SpinRwLock wsLock(seg->m_segMutex);
+		//	assert(!seg->m_isDel[subId]);
 			if (!seg->m_isDel[subId]) {
 				seg->addtoUpdateList(size_t(subId));
 				seg->m_isDel.set1(subId);
@@ -1780,14 +1790,75 @@ DbTable::removeRow(llong id, DbContext* ctx) {
 				size_t delcnt = seg->m_isDel.popcnt();
 				assert(delcnt == seg->m_delcnt);
 		#endif
+				success = true;
 			}
 		}
 		if (checkPurgeDeleteNoLock(seg)) {
 			lock.upgrade_to_writer();
 			asyncPurgeDeleteInLock();
 		}
+		return success;
 	}
-	return true;
+}
+
+void DbTable::delmarkSet0(llong id) {
+	assert(id >= 0);
+	assert(id < m_rowNum);
+	if (id < 0 || id >= m_rowNum) {
+		THROW_STD(invalid_argument,
+			"Invalid id = %lld, m_rowNum = %lld\n", id, m_rowNum);
+	}
+	MyRwLock lock(m_rwMutex, false);
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	auto seg = m_segments[upp-1].get();
+	llong baseId = m_rowNumVec[upp-1];
+	size_t subId = size_t(id - baseId);
+	SpinRwLock segLock(seg->m_segMutex, true);
+	assert(seg->m_isDel[subId]);
+	seg->m_isDel.set0(subId);
+	seg->m_delcnt--;
+}
+
+void DbTable::delmarkSet1(llong id) {
+	assert(id >= 0);
+	assert(id < m_rowNum);
+	if (id < 0 || id >= m_rowNum) {
+		THROW_STD(invalid_argument,
+			"Invalid id = %lld, m_rowNum = %lld\n", id, m_rowNum);
+	}
+	MyRwLock lock(m_rwMutex, false);
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	auto seg = m_segments[upp-1].get();
+	llong baseId = m_rowNumVec[upp-1];
+	size_t subId = size_t(id - baseId);
+	SpinRwLock segLock(seg->m_segMutex, true);
+//	assert(!seg->m_isDel[subId]);
+	if (!seg->m_isDel[subId]) {
+		seg->m_isDel.set1(subId);
+		seg->m_delcnt++;
+	}
+}
+
+void DbTable::putToFreeList(llong id) {
+	assert(id >= 0);
+	assert(id < m_rowNum);
+	if (id < 0 || id >= m_rowNum) {
+		THROW_STD(invalid_argument,
+			"Invalid id = %lld, m_rowNum = %lld\n", id, m_rowNum);
+	}
+	MyRwLock lock(m_rwMutex, false);
+	size_t upp = upper_bound_a(m_rowNumVec, id);
+	llong baseId = m_rowNumVec[upp-1];
+	size_t subId = size_t(id - baseId);
+	auto seg = m_segments[upp-1].get();
+	SpinRwLock segLock(seg->m_segMutex, true);
+	assert(seg->m_isDel[subId]);
+	if (terark_likely(!seg->m_isFreezed)) {
+		auto wrseg = static_cast<WritableSegment*>(seg);
+		wrseg->m_deletedWrIdSet.push_back(subId);
+	} else {
+		seg->addtoUpdateList(subId);
+	}
 }
 
 ///! Can inplace update column in ReadonlySegment
@@ -2370,9 +2441,9 @@ class TableIndexIter : public IndexIterator {
 	}
 
 public:
-	TableIndexIter(const DbTable* tab, size_t indexId, bool forward)
+	TableIndexIter(const DbTable* tab, size_t indexId, bool forward, DbContext* ctx)
 	  : m_tab(const_cast<DbTable*>(tab))
-	  , m_ctx(tab->createDbContext())
+	  , m_ctx(ctx ? ctx : tab->createDbContext())
 	  , m_indexId(indexId)
 	  , m_ischema(tab->getIndexSchema(m_indexId))
 	  , m_forward(forward)
@@ -2396,6 +2467,7 @@ public:
 		m_keyBuf.erase_all();
 		m_oldsegArrayUpdateSeq = 0;
 		m_isHeapBuilt = false;
+		m_ctx->trySyncSegCtxSpeculativeLock(m_tab.get());
 	}
 	bool increment(llong* id, valvec<byte>* key) override {
 		if (terark_unlikely(!m_isHeapBuilt)) {
@@ -2571,32 +2643,32 @@ public:
 	}
 };
 
-IndexIteratorPtr DbTable::createIndexIterForward(size_t indexId) const {
+IndexIteratorPtr DbTable::createIndexIterForward(size_t indexId, DbContext* ctx) const {
 	assert(indexId < m_schema->getIndexNum());
 	assert(m_schema->getIndexSchema(indexId).m_isOrdered);
-	return new TableIndexIter(this, indexId, true);
+	return new TableIndexIter(this, indexId, true, ctx);
 }
 
-IndexIteratorPtr DbTable::createIndexIterForward(fstring indexCols) const {
+IndexIteratorPtr DbTable::createIndexIterForward(fstring indexCols, DbContext* ctx) const {
 	size_t indexId = m_schema->getIndexId(indexCols);
 	if (m_schema->getIndexNum() == indexId) {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
 	}
-	return createIndexIterForward(indexId);
+	return createIndexIterForward(indexId, ctx);
 }
 
-IndexIteratorPtr DbTable::createIndexIterBackward(size_t indexId) const {
+IndexIteratorPtr DbTable::createIndexIterBackward(size_t indexId, DbContext* ctx) const {
 	assert(indexId < m_schema->getIndexNum());
 	assert(m_schema->getIndexSchema(indexId).m_isOrdered);
-	return new TableIndexIter(this, indexId, false);
+	return new TableIndexIter(this, indexId, false, ctx);
 }
 
-IndexIteratorPtr DbTable::createIndexIterBackward(fstring indexCols) const {
+IndexIteratorPtr DbTable::createIndexIterBackward(fstring indexCols, DbContext* ctx) const {
 	size_t indexId = m_schema->getIndexId(indexCols);
 	if (m_schema->getIndexNum() == indexId) {
 		THROW_STD(invalid_argument, "index: %s not exists", indexCols.c_str());
 	}
-	return createIndexIterBackward(indexId);
+	return createIndexIterBackward(indexId, ctx);
 }
 
 template<class T>
@@ -3713,6 +3785,16 @@ void DbTable::clear() {
 	}
 	m_segments.clear();
 	m_rowNumVec.clear();
+	m_wrSeg = nullptr;
+	m_mergeSeqNum++;
+	m_segArrayUpdateSeq++;
+
+	const size_t segIdx = 0;
+	m_wrSeg = myCreateWritableSegment(getSegPath("wr", segIdx));
+	m_segments.push_back(m_wrSeg);
+	m_rowNumVec.push_back(0);
+	m_rowNumVec.push_back(0);
+	m_rowNum = 0;
 }
 
 void DbTable::flush() {

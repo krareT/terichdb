@@ -83,10 +83,6 @@ DbContext::DbContext(const DbTable* tab)
 	for (size_t i = 0; i < segNum; ++i) {
 		sctx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
 	}
-	m_wrSegPtr = tab->m_wrSeg.get();
-	if (m_wrSegPtr) {
-		m_transaction.reset(m_wrSegPtr->createTransaction());
-	}
 	m_rowNumVec.assign(tab->m_rowNumVec);
 
 	// record id is also used as a snapshot version
@@ -132,14 +128,10 @@ void DbContext::doSyncSegCtxNoLock(const DbTable* tab) {
 		for (size_t i = oldSegNum; i < segNum; ++i)
 			m_segCtx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
 	}
-	if (tab->m_wrSeg.get() != m_wrSegPtr) {
-		auto new_wrseg = tab->m_wrSeg.get();
-		assert(DbTransaction::started != m_transaction->m_status);
+	if (m_transaction && tab->m_wrSeg.get() != m_wrSegPtr) {
+		// m_transaction is useless, reset it!
 		m_transaction.reset();
-		if (new_wrseg) {
-			m_transaction.reset(new_wrseg->createTransaction());
-		}
-		m_wrSegPtr = new_wrseg;
+		m_wrSegPtr = NULL;
 	}
 	SegCtx** sctx = m_segCtx.data();
 	for (size_t i = 0; i < segNum; ++i) {
@@ -254,5 +246,38 @@ DbContext::getWrSegWrtStoreData(const ReadableSegment* seg, llong subId, valvec<
 	wrseg->m_wrtStore->getValue(subId, buf, this);
 }
 
+void DbContext::ensureTransactionNoLock() {
+	DbTable* tab = m_tab;
+	auto new_wrseg = tab->m_wrSeg.get();
+	if (new_wrseg != m_wrSegPtr) {
+		if (m_transaction) {
+			assert(DbTransaction::started != m_transaction->m_status);
+			m_transaction.reset();
+		}
+		if (new_wrseg) {
+			m_transaction.reset(new_wrseg->createTransaction());
+		}
+		m_wrSegPtr = new_wrseg;
+	}
+	else {
+		assert(m_transaction.get() != nullptr);
+	}
+}
+
+void DbContext::freeWritableSegmentResources() {
+	DbTable* tab = m_tab;
+	size_t indexNum = tab->getIndexNum();
+	for (size_t i = 0; i < m_segCtx.size(); ++i) {
+		auto cur = m_segCtx[i];
+		assert(nullptr != cur->seg);
+		if (cur->seg->getWritableSegment()) {
+			RefcntPtr_release(cur->wrtStoreIter);
+			for (size_t j = 0; j < indexNum; ++j)
+				RefcntPtr_release(cur->indexIter[j]);
+		}
+	}
+	m_wrSegPtr = nullptr;
+	m_transaction.reset();
+}
 
 } } // namespace terark::db
