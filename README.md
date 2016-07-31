@@ -29,31 +29,42 @@ TerarkDB is:
 - Supported Platforms: Linux, Windows, Mac
 - Transparent foundation for developers to build customized products
 
-## 3.Compile TerarkDB
+## 3.Installation
 
-### 3.1.Dependencies
+### 3.1.Linux & MacOS
+
+```
+sudo wget https://raw.githubusercontent.com/Terark/terark-db/master/online_install.py && (python online_install.py; rm online_install.py)
+```
+
+### 3.2.Windows
+[windows installation guide](http://terark.com/docs/2)
+
+## 4.Compile TerarkDB
+
+### 4.1.Dependencies
 
   - libboost_system.so(1.60.0) (boost_1_60_0)
   - libboost_filesystem(1.60.0)(Could be found in boost_1_60_0)
   - libwiredtiger.so(v2.8.0)
   - libtbb.so(tbb44_20160128)
 
-### 3.2.Compiler Support
+### 4.2.Compiler Support
 
 - Linux : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.1`
 - Mac OS : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.0`, `clang++-7.3`
 - Windows : `vs2015`
 
-### 3.3.`dfadb` alternative
+### 4.3.`dfadb` alternative
 1. TerarkDB is open source but our core data structures and algorithms(`dfadb`) are not yet.
 2. `dfadb` is supported by a library named `fsa_all_*` in our released packages.
 3. Developers who want to build their own TerarkDB, should place the `fsa_all-*` library into their library search path(e.g. `/usr/local/lib`).
 4. Self compiled TerarkDB can only uses limited APIs, and need to set `"TableClass" : "MockDbTable"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/docs/4)).
 
-## 4. Notes
+## 5. Notes
 - UNIX `fork()` should not be called in the applications using TerarkDB, this would cause undefined behaviors.
 
-## 5.License
+## 6.License
 TerarkDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
 
 For commercial purposes, please  [contact us](http://www.terark.com).
