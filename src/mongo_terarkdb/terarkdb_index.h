@@ -59,6 +59,12 @@ public:
                          const RecordId& id,
                          bool dupsAllowed) override;
 
+    void do_unindex(const char* func,
+					OperationContext* txn,
+                    const BSONObj& key,
+                    const RecordId& id,
+                    bool dupsAllowed);
+
     virtual void fullValidate(OperationContext* txn,
                               long long* numKeysOut,
                               ValidateResults* output) const override;

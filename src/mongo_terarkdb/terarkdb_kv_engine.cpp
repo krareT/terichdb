@@ -86,6 +86,9 @@ using std::set;
 using std::string;
 using terark::FileStream;
 
+//inline const void* toSigned(uint32_t x) { return (void*)(uintptr_t(x)); }
+inline int32_t toSigned(uint32_t x) { return x; }
+
 TableThreadData::TableThreadData(DbTable* tab) {
 	m_dbCtx.reset(tab->createDbContext());
 	m_dbCtx->syncIndex = false;
@@ -106,7 +109,6 @@ ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
 	m_tab = DbTable::open(dbPath);
 	m_indexForwardIterCache.resize(m_tab->getIndexNum());
 	m_indexBackwardIterCache.resize(m_tab->getIndexNum());
-	m_livingChanges = 0;
 	m_cacheExpireMillisec = terark::getEnvLong("ThreadSafeTable_cacheExpireMillisec", 5 * 1000);
 }
 
@@ -125,6 +127,10 @@ TableThreadDataPtr ThreadSafeTable::allocTableThreadData() {
 	}
 	else {
 		ret = m_cursorCache.pop_val();
+		auto tab = m_tab.get();
+		for (auto& p : m_cursorCache) {
+			p->m_dbCtx->trySyncSegCtxSpeculativeLock(tab);
+		}
 	}
 	return ret;
 }
@@ -209,6 +215,7 @@ void ThreadSafeTable::releaseIndexIter(size_t indexId, bool forward, IndexIterDa
 void ThreadSafeTable::destroy() {
 	log() << BOOST_CURRENT_FUNCTION
 		<< ": mongodb will leak RecordStore and SortedDataInterface, destory underlying objects now";
+	m_ruMap.clear();
 	m_indexForwardIterCache.clear();
 	m_indexBackwardIterCache.clear();
 	m_cursorCache.clear();
@@ -225,6 +232,332 @@ TableThreadData& ThreadSafeTable::getMyThreadData() {
 		ttd = new TableThreadData(tab);
 	}
 	return *ttd;
+}
+
+RecoveryUnitData::RecoveryUnitData()
+  : m_iterNum(0), m_mvccTime(1)
+{
+}
+
+RecoveryUnitData::~RecoveryUnitData() {
+}
+
+RecoveryUnitData* ThreadSafeTable::getRecoveryUnitData(RecoveryUnit* ru) {
+	std::lock_guard<std::mutex> lock(m_ruMapMutex);
+	auto& x = m_ruMap[ru];
+	if (!x) {
+		LOG(2) << "ThreadSafeTable::getRecoveryUnitData(): create new RecoveryUnitData()"
+			   ", m_ruMap.size() = " << m_ruMap.size()
+			<< ", ru = " << (void*)ru
+			<< ", dir: " << m_tab->getDir().string();
+		x = new RecoveryUnitData();
+		x->m_ttd = this->allocTableThreadData();
+	}
+	return x.get();
+}
+
+RecoveryUnitDataPtr ThreadSafeTable::tryRecoveryUnitData(RecoveryUnit* ru) {
+	std::lock_guard<std::mutex> lock(m_ruMapMutex);
+	size_t idx = m_ruMap.find_i(ru);
+	if (idx < m_ruMap.end_i()) {
+		return m_ruMap.val(idx);
+	}
+	return NULL;
+}
+
+void ThreadSafeTable::removeRecoveryUnitData(RecoveryUnit* ru) {
+	RecoveryUnitDataPtr rud(nullptr);
+	{
+		std::lock_guard<std::mutex> lock(m_ruMapMutex);
+		size_t idx = m_ruMap.find_i(ru);
+		invariant(idx < m_ruMap.end_i());
+		rud.swap(m_ruMap.val(idx));
+		m_ruMap.erase_i(idx);
+	}
+	this->releaseTableThreadData(rud->m_ttd);
+	LOG(2) << "ThreadSafeTable::removeRecoveryUnitData(): rud->m_iterNum = " << rud->m_iterNum
+		<< ", rud->m_records.size() = " << rud->m_records.size()
+		<< ", m_ruMap.size() = " << m_ruMap.size()
+		<< ", ru = " << (void*)ru
+		<< ", dir: " << m_tab->getDir().string();
+}
+void ThreadSafeTable::removeRegisterEntry(RecoveryUnit* ru, RecoveryUnitData* rud, size_t f) {
+	invariant(rud->m_records.size() > 0);
+	if (rud->m_records.size() == 1 && 0 == rud->m_iterNum) {
+		removeRecoveryUnitData(ru);
+	}
+	else {
+		rud->m_records.erase_i(f);
+	}
+}
+
+struct ChangeForInsert : public RecoveryUnit::Change {
+    void commit() override {
+		invariant(nullptr != m_ru);
+		m_tst->commitInsert(m_ru, m_id);
+	}
+    void rollback() override {
+		invariant(nullptr != m_ru);
+		m_tst->rollbackInsert(m_ru, m_id);
+	}
+	ChangeForInsert(ThreadSafeTable* tst, RecoveryUnit* ru, RecordId id)
+		: m_tst(tst), m_ru(ru), m_id(id) {}
+	ThreadSafeTable* m_tst;
+	RecoveryUnit* m_ru;
+	RecordId m_id;
+};
+struct ChangeForDelete : public RecoveryUnit::Change {
+    void commit() override {
+		invariant(nullptr != m_ru);
+		m_tst->commitDelete(m_ru, m_id);
+	}
+    void rollback() override {
+		invariant(nullptr != m_ru);
+		m_tst->rollbackDelete(m_ru, m_id);
+	}
+	ChangeForDelete(ThreadSafeTable* tst, RecoveryUnit* ru, RecordId id)
+		: m_tst(tst), m_ru(ru), m_id(id) {}
+	ThreadSafeTable* m_tst;
+	RecoveryUnit* m_ru;
+	RecordId m_id;
+};
+
+void ThreadSafeTable::registerInsert(RecoveryUnit* ru, RecordId id) {
+	m_tab->delmarkSet1(id.repr()-1);
+	auto  x = this->getRecoveryUnitData(ru);
+	auto& v = x->m_records[id.repr()-1];
+	v.deleteTime = UINT32_MAX;
+	v.insertTime = x->m_mvccTime++;
+	LOG(2) << "ThreadSafeTable::registerInsert(): id = " << id
+		<< ", insertTime = " << toSigned(v.insertTime)
+		<< ", deleteTime = " << toSigned(v.deleteTime)
+		<< ", ru = " << (void*)ru
+		<< ", dir: " << m_tab->getDir().string();
+	ru->registerChange(new ChangeForInsert(this, ru, id));
+}
+
+void ThreadSafeTable::commitInsert(RecoveryUnit* ru, RecordId id) {
+	llong recIdx = id.repr()-1;
+	auto rud = this->getRecoveryUnitData(ru);
+	size_t f = rud->m_records.find_i(recIdx);
+	invariant(f < rud->m_records.end_i());
+	auto& v = rud->m_records.val(f);
+	LOG(2) << "ThreadSafeTable::commitInsert(): id = " << id
+		<< ", existingRows = " << m_tab->existingRows()
+		<< ", totalRows = " << m_tab->numDataRows()
+		<< ", insertTime = " << toSigned(v.insertTime)
+		<< ", deleteTime = " << toSigned(v.deleteTime)
+		<< ", ru = " << (void*)ru
+		<< ", dir: " << m_tab->getDir().string();
+	if (UINT32_MAX == v.deleteTime) {
+		m_tab->delmarkSet0(recIdx); //!!!!
+		removeRegisterEntry(ru, rud, f);
+	}
+	else {
+		// will be deleted by commitDelete
+	}
+}
+
+void ThreadSafeTable::rollbackInsert(RecoveryUnit* ru, RecordId id) {
+	llong recIdx = id.repr()-1;
+	auto rud = this->getRecoveryUnitData(ru);
+	size_t f = rud->m_records.find_i(recIdx);
+	invariant(f < rud->m_records.end_i());
+	auto& v = rud->m_records.val(f);
+	LOG(2) << "ThreadSafeTable::rollbackInsert(): id = " << id
+		<< ", existingRows = " << m_tab->existingRows()
+		<< ", insertTime = " << toSigned(v.insertTime)
+		<< ", deleteTime = " << toSigned(v.deleteTime)
+		<< ", ru = " << (void*)ru
+		<< ", dir: " << m_tab->getDir().string();
+	m_tab->putToFreeList(recIdx); //!!!!
+	removeRegisterEntry(ru, rud, f);
+}
+
+void ThreadSafeTable::registerDelete(RecoveryUnit* ru, RecordId id) {
+	auto  x = this->getRecoveryUnitData(ru);
+	auto& v = x->m_records[id.repr()-1];
+	v.deleteTime = x->m_mvccTime++;
+	LOG(2) << "ThreadSafeTable::registerDelete(): id = " << id
+		<< ", insertTime = " << toSigned(v.insertTime)
+		<< ", deleteTime = " << toSigned(v.deleteTime)
+		<< ", ru = " << (void*)ru
+		<< ", dir: " << m_tab->getDir().string();
+	ru->registerChange(new ChangeForDelete(this, ru, id));
+}
+
+void ThreadSafeTable::commitDelete(RecoveryUnit* ru, RecordId id) {
+	llong recIdx = id.repr()-1;
+	auto rud = this->getRecoveryUnitData(ru);
+	size_t f = rud->m_records.find_i(recIdx);
+	invariant(f < rud->m_records.end_i());
+	auto& v = rud->m_records.val(f);
+	terark::db::DbContext* ctx = rud->m_ttd->m_dbCtx.get();
+	LOG(2) << "ThreadSafeTable::commitDelete(): id = " << id
+		<< ", existingRows = " << m_tab->existingRows(ctx)
+		<< ", totalRows = " << m_tab->numDataRows()
+		<< ", insertTime = " << toSigned(v.insertTime)
+		<< ", deleteTime = " << toSigned(v.deleteTime)
+		<< ", ru = " << (void*)ru
+		<< ", dir: " << m_tab->getDir().string();
+	invariant(v.deleteTime != UINT32_MAX);
+	const bool reuseRecId = false;
+	if (reuseRecId) {
+		if (0 == v.insertTime) {
+			m_tab->removeRow(recIdx, ctx);
+		} else {
+			m_tab->putToFreeList(recIdx);
+		}
+	}
+	else {
+		if (0 == v.insertTime) {
+			m_tab->delmarkSet1(recIdx);
+		} else {
+			// do nothing
+		}
+	}
+	removeRegisterEntry(ru, rud, f);
+}
+
+void ThreadSafeTable::rollbackDelete(RecoveryUnit* ru, RecordId id) {
+	llong recIdx = id.repr()-1;
+	auto rud = this->getRecoveryUnitData(ru);
+	size_t f = rud->m_records.find_i(recIdx);
+	invariant(f < rud->m_records.end_i());
+	auto& v = rud->m_records.val(f);
+	LOG(2) << "ThreadSafeTable::rollbackDelete(): id = " << id
+		<< ", existingRows = " << m_tab->existingRows()
+		<< ", insertTime = " << toSigned(v.insertTime)
+		<< ", deleteTime = " << toSigned(v.deleteTime)
+		<< ", ru = " << (void*)ru
+		<< ", dir: " << m_tab->getDir().string();
+//	terark::db::DbContext* ctx = rud->m_ttd->m_dbCtx.get();
+	if (0 == v.insertTime) {
+		removeRegisterEntry(ru, rud, f);
+	}
+	else {
+		// m_tab->delmarkSet0(recIdx); //!!!!
+		// will be rollback'ed in rollbackInsert
+	}
+}
+
+void RuStoreIteratorBase::traceFunc(const char* func) const {
+	auto tab = static_cast<DbTable*>(m_store.get());
+	LOG(2) << func << ": rud->m_iterNum = " << m_rud->m_iterNum
+		<< ", existing = " << tab->existingRows()
+		<< ", rowNum = " << tab->inlineGetRowNum()
+		<< ", ru = " << (void*)m_ru
+		<< ", rud->refcnt = " << m_rud->get_refcount();
+}
+
+RuStoreIteratorBase::RuStoreIteratorBase(RecoveryUnit* ru, ThreadSafeTable* tst) {
+	m_id = -1;
+	m_ru = ru;
+	m_tst = tst;
+	m_rud = tst->getRecoveryUnitData(ru);
+	m_rud->m_iterNum++;
+	m_store = tst->m_tab.get();
+}
+RuStoreIteratorBase::~RuStoreIteratorBase() {
+	if (0 == --m_rud->m_iterNum && m_rud->m_records.size() == 0) {
+		m_tst->removeRecoveryUnitData(m_ru);
+	}
+}
+bool RuStoreIteratorBase::getVal(llong id, valvec<unsigned char>* val) const {
+	auto tab = static_cast<DbTable*>(m_store.get());
+	auto rud = m_rud.get();
+	size_t f = rud->m_records.find_i(id);
+	if (f < rud->m_records.end_i()) {
+		if (rud->m_records.val(f).deleteTime == UINT32_MAX) {
+			tab->getValue(id, val, rud->m_ttd->m_dbCtx.get());
+			return true;
+		}
+		LOG(2) << "RuStoreIteratorBase::getVal(id = "
+			<< id << "): deleteTime = " << rud->m_records.val(f).deleteTime
+			<< ", ru = " << (void*)m_ru;
+		return false;
+	}
+	if (tab->exists(id)) {
+		tab->getValue(id, val, rud->m_ttd->m_dbCtx.get());
+		return true;
+	}
+	LOG(2) << "RuStoreIteratorBase::getVal(id = " << id << "): ru = " << (void*)m_ru
+		<< "not exists in table";
+	return false;
+}
+
+class RuStoreIterForward : public RuStoreIteratorBase {
+public:
+	RuStoreIterForward(RecoveryUnit* ru, ThreadSafeTable* tst)
+		: RuStoreIteratorBase(ru, tst) {
+		m_id = 0;
+		traceFunc("RuStoreIterForward::RuStoreIterForward()");
+	}
+	~RuStoreIterForward() {
+		traceFunc("RuStoreIterForward::~RuStoreIterForward()");
+	}
+	bool increment(llong* id, valvec<unsigned char>* val) override {
+		auto tab = static_cast<DbTable*>(m_store.get());
+		while (m_id < tab->inlineGetRowNum()) {
+			if (getVal(*id = m_id++, val))
+				return true;
+		}
+		return false;
+	}
+	bool seekExact(llong id, valvec<unsigned char>* val) {
+		auto tab = static_cast<DbTable*>(m_store.get());
+		if (terark_unlikely(id >= tab->inlineGetRowNum())) {
+			return false;
+		}
+		m_id = id + 1;
+		return getVal(id, val);
+	}
+	void reset() override {
+		auto tab = static_cast<DbTable*>(m_store.get());
+		m_rud->m_ttd->m_dbCtx->trySyncSegCtxSpeculativeLock(tab);
+		m_id = 0;
+	}
+};
+
+class RuStoreIterBackward : public RuStoreIteratorBase {
+public:
+	RuStoreIterBackward(RecoveryUnit* ru, ThreadSafeTable* tst)
+		: RuStoreIteratorBase(ru, tst) {
+		auto tab = static_cast<DbTable*>(m_store.get());
+		m_id = tab->inlineGetRowNum();
+		traceFunc("RuStoreIterBackward::RuStoreIterBackward()");
+	}
+	~RuStoreIterBackward() {
+		traceFunc("RuStoreIterBackward::~RuStoreIterBackward()");
+	}
+	bool increment(llong* id, valvec<unsigned char>* val) override {
+		while (m_id > 0) {
+			if (getVal(*id = --m_id, val))
+				return true;
+		}
+		return false;
+	}
+	bool seekExact(llong id, valvec<unsigned char>* val) {
+		auto tab = static_cast<DbTable*>(m_store.get());
+		if (terark_unlikely(id >= tab->inlineGetRowNum())) {
+			return false;
+		}
+		m_id = id; // not (id-1)
+		return getVal(id, val);
+	}
+	void reset() override {
+		auto tab = static_cast<DbTable*>(m_store.get());
+		m_rud->m_ttd->m_dbCtx->trySyncSegCtxSpeculativeLock(tab);
+		m_id = tab->inlineGetRowNum();
+	}
+};
+
+RuStoreIteratorBase*
+ThreadSafeTable::createStoreIter(RecoveryUnit* ru, bool forward) {
+	if (forward)
+		return new RuStoreIterForward(ru, this);
+	else
+		return new RuStoreIterBackward(ru, this);
 }
 
 boost::filesystem::path
@@ -417,7 +750,6 @@ void TerarkDbKVEngine::endBackup(OperationContext* txn) {
 
 RecoveryUnit* TerarkDbKVEngine::newRecoveryUnit() {
 	return m_wtEngine->newRecoveryUnit();
-//    return new TerarkDbRecoveryUnit();
 }
 
 void TerarkDbKVEngine::setRecordStoreExtraOptions(const std::string& options) {

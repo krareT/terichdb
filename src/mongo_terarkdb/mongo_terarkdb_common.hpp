@@ -41,12 +41,15 @@ using terark::valvec;
 
 extern const std::string kTerarkDbEngineName;
 
+class ThreadSafeTable;
+
 class TableThreadData : public terark::RefCounter {
 public:
 	explicit TableThreadData(DbTable* tab);
     terark::db::DbContextPtr m_dbCtx;
     terark::valvec<unsigned char> m_buf;
     mongo::terarkdb::SchemaRecordCoder m_coder;
+	llong     m_lastUseTime;
 };
 typedef boost::intrusive_ptr<TableThreadData> TableThreadDataPtr;
 
@@ -78,12 +81,41 @@ struct IndexIterData : public terark::RefCounter {
 };
 typedef boost::intrusive_ptr<IndexIterData> IndexIterDataPtr;
 
+class RecoveryUnitData : public terark::RefCounter {
+public:
+	struct MVCCTime {
+		uint32_t insertTime;
+		uint32_t deleteTime;
+		MVCCTime() : insertTime(), deleteTime() {}
+	};
+	gold_hash_map<llong, MVCCTime> m_records;
+	TableThreadDataPtr   m_ttd;
+	uint32_t m_iterNum;
+	uint32_t m_mvccTime;
+	RecoveryUnitData();
+	~RecoveryUnitData();
+};
+typedef boost::intrusive_ptr<RecoveryUnitData> RecoveryUnitDataPtr;
+
+class RuStoreIteratorBase : public terark::db::StoreIterator {
+public:
+	llong  m_id;
+	size_t m_ruIdx;
+	RecoveryUnit*         m_ru;
+	ThreadSafeTable*      m_tst;
+	RecoveryUnitDataPtr   m_rud;
+
+	RuStoreIteratorBase(RecoveryUnit* ru, ThreadSafeTable* tst);
+	~RuStoreIteratorBase();
+	bool getVal(llong id, valvec<unsigned char>* val) const;
+	void traceFunc(const char* func) const;
+};
+
 class ThreadSafeTable : public terark::RefCounter {
 public:
 	~ThreadSafeTable();
 	void destroy(); // workaround mongodb
 	DbTablePtr m_tab;
-	std::atomic_size_t m_livingChanges;
 	explicit ThreadSafeTable(const fs::path& dbPath);
 	TableThreadData& getMyThreadData();
 
@@ -94,6 +126,22 @@ public:
 	IndexIterDataPtr allocIndexIter(size_t indexId, bool forward);
 	void releaseIndexIter(size_t indexId, bool forward, IndexIterDataPtr);
 
+	// for RecoveryUnit:
+	RecoveryUnitData* getRecoveryUnitData(RecoveryUnit*);
+	RecoveryUnitDataPtr tryRecoveryUnitData(RecoveryUnit*);
+	void removeRecoveryUnitData(RecoveryUnit*);
+	void removeRegisterEntry(RecoveryUnit*, RecoveryUnitData*, size_t f);
+
+	void registerInsert(RecoveryUnit*, RecordId id);
+	void commitInsert(RecoveryUnit*, RecordId id);
+	void rollbackInsert(RecoveryUnit*, RecordId id);
+
+	void registerDelete(RecoveryUnit*, RecordId id);
+	void commitDelete(RecoveryUnit*, RecordId id);
+	void rollbackDelete(RecoveryUnit*, RecordId id);
+
+	RuStoreIteratorBase* createStoreIter(RecoveryUnit*, bool forward);
+
 protected:
 	tbb::enumerable_thread_specific<TableThreadDataPtr> m_ttd;
 	std::mutex m_cursorCacheMutex;
@@ -102,6 +150,9 @@ protected:
 	valvec<valvec<IndexIterDataPtr> > m_indexBackwardIterCache;
 	llong m_cacheExpireMillisec;
 	void expiringCacheItems(valvec<valvec<IndexIterDataPtr> >& vv, llong now);
+
+	std::mutex m_ruMapMutex;
+	gold_hash_map<RecoveryUnit*, RecoveryUnitDataPtr> m_ruMap;
 };
 typedef boost::intrusive_ptr<ThreadSafeTable> ThreadSafeTablePtr;
 

@@ -68,10 +68,11 @@
 #endif
 
 namespace mongo { namespace terarkdb {
-namespace {
 
 using std::string;
 using std::vector;
+
+namespace {
 
 static const int TempKeyMaxSize = 1024;  // this goes away with SERVER-3372
 
@@ -155,6 +156,22 @@ TerarkDbIndex::~TerarkDbIndex() {
     LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
 }
 
+struct UnindexOnFail : RecoveryUnit::Change {
+    void rollback() override {
+		m_index->do_unindex("UnindexOnFail::unindex()", m_txn, m_key, m_id, m_dupsAllowed);
+	}
+    void commit() override {
+		// do nothing
+	}
+	UnindexOnFail(TerarkDbIndex* rs, OperationContext* txn, const BSONObj& key, RecordId id, bool dupsAllowed)
+		: m_index(rs), m_txn(txn), m_key(key), m_id(id), m_dupsAllowed(dupsAllowed) {}
+	TerarkDbIndex* m_index;
+	OperationContext* m_txn;
+	const BSONObj m_key;
+	RecordId m_id;
+	bool m_dupsAllowed;
+};
+
 Status TerarkDbIndex::insert(OperationContext* txn,
                            const BSONObj& key,
                            const RecordId& id,
@@ -165,8 +182,12 @@ Status TerarkDbIndex::insert(OperationContext* txn,
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
 	DbTable* tab = m_table->m_tab.get();
-    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
+    LOG(2) << "TerarkDbIndex::insert(): key = " << key << ", id = " << id
+		<< ",  dir: " << tab->getDir().string();
 	if (tab->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
+		if (txn && txn->recoveryUnit()) {
+			txn->recoveryUnit()->registerChange(new UnindexOnFail(this, txn, key, id, dupsAllowed));
+		}
 		return Status::OK();
 	} else {
 		return Status(ErrorCodes::DuplicateKey, "dup key in TerarkDbIndex::insert");
@@ -176,7 +197,15 @@ Status TerarkDbIndex::insert(OperationContext* txn,
 void TerarkDbIndex::unindex(OperationContext* txn,
                           const BSONObj& key,
                           const RecordId& id,
-                          bool dupsAllowed)
+                          bool dupsAllowed) {
+	do_unindex("TerarkDbIndex::unindex()", txn, key, id, dupsAllowed);
+}
+
+void TerarkDbIndex::do_unindex(const char* func,
+							OperationContext* txn,
+                            const BSONObj& key,
+                            const RecordId& id,
+                            bool dupsAllowed)
 {
     invariant(id.isNormal());
     dassert(!hasFieldNames(key));
@@ -185,7 +214,8 @@ void TerarkDbIndex::unindex(OperationContext* txn,
 	encodeIndexKey(*indexSchema, key, &td.m_buf);
 	llong recIdx = id.repr() - 1;
 	DbTable* tab = m_table->m_tab.get();
-    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
+    LOG(2) << func << ": key = " << key << ", id = " << id
+		<< ",  dir: " << tab->getDir().string();
 	tab->indexRemove(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx);
 }
 
@@ -252,8 +282,6 @@ TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id,
 	DbTable* tab = m_table->m_tab.get();
 	return tab->indexInsert(m_indexId, td->m_buf, id.repr()-1, &*td->m_dbCtx);
 }
-
-namespace {
 
 /**
  * Implements the basic TerarkDb_CURSOR functionality used by both unique and standard indexes.
@@ -355,6 +383,7 @@ public:
 		auto& ttd = _idx.m_table->getMyThreadData();
 		auto& ctx = *ttd.m_dbCtx;
 		auto  indexSchema = _idx.getIndexSchema();
+		_cursor->m_ctx->trySyncSegCtxSpeculativeLock(ctx.m_tab);
 		encodeIndexKey(*indexSchema, bsonKey, &ttd.m_buf);
 		ctx.indexSearchExact(_idx.m_indexId, ttd.m_buf, &ctx.exactMatchRecIdvec);
 		if (!ctx.exactMatchRecIdvec.empty()) {
@@ -536,8 +565,6 @@ protected:
 	bool m_isEndKeyMax = true;
 };
 
-}  // namespace
-
 /**
  * Bulk builds a unique index.
  *
@@ -562,6 +589,9 @@ public:
                 return s;
         }
 		if (_idx->insertIndexKey(newKey, id, &m_td)) {
+			if (_txn && _txn->recoveryUnit()) {
+				_txn->recoveryUnit()->registerChange(new UnindexOnFail(_idx, _txn, newKey, id, _dupsAllowed));
+			}
 	        return Status::OK();
 		} else {
 			return Status(ErrorCodes::DuplicateKey,
@@ -577,7 +607,7 @@ public:
     }
 
 private:
-    TerarkDbIndex*      const _idx;
+    TerarkDbIndex*    const _idx;
     OperationContext* const _txn;
 	TableThreadData  m_td;
     const bool _dupsAllowed;
