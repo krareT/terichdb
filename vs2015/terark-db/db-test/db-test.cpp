@@ -160,7 +160,7 @@ void doTest(const char* tableDir, size_t maxRowNum) {
 		valvec<byte> keyHit, val;
 		valvec<llong> idvec;
 		for (size_t indexId = 0; indexId < tab->getIndexNum(); ++indexId) {
-			IndexIteratorPtr indexIter = tab->createIndexIterForward(indexId);
+			IndexIteratorPtr indexIter = tab->createIndexIterForward(indexId, ctx.get());
 			const Schema& indexSchema = tab->getIndexSchema(indexId);
 			valvec<byte> keyData;
 			for (size_t i = 0; i < maxRowNum/5; ++i) {
