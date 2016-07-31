@@ -377,7 +377,7 @@ private:
 // Implementation of WriteBatch::Handler
 class WriteBatchHandler : public WriteBatch::Handler {
 public:
-  WriteBatchHandler(DbImpl *db, OperationContext *context) : db_(db), context_(context), status_(0) {}
+  WriteBatchHandler(OperationContext *context) : context_(context), status_(0) {}
   virtual ~WriteBatchHandler() {}
   int GetWiredTigerStatus() { return status_; }
 
@@ -392,7 +392,6 @@ public:
 #endif
 
 private:
-  DbImpl *db_;
   OperationContext *context_;
   int status_;
 };
