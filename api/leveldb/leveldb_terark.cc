@@ -387,7 +387,7 @@ Status
 DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   Status status = Status::OK();
   std::unique_ptr<OperationContext> context(GetContext());
-  WriteBatchHandler handler(this, context.get());
+  WriteBatchHandler handler(context.get());
 #if 0
   status = updates->Iterate(&handler);
 #else
