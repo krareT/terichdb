@@ -739,8 +739,6 @@ ReadonlySegment::compressMultipleColgroups(ReadableSegment* input, DbContext* ct
 }
 	// build index from temporary index files
 	colgroupTempFiles.completeWrite();
-	m_indices.resize(indexNum);
-	m_colgroups.resize(m_schema->getColgroupNum());
 	for (size_t i = 0; i < indexNum; ++i) {
 		SortableStrVec strVec;
 		const Schema& schema = m_schema->getIndexSchema(i);
@@ -863,6 +861,9 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 
 	const size_t indexNum = m_schema->getIndexNum();
 	const size_t colgroupNum = m_schema->getColgroupNum();
+
+	m_indices.resize(indexNum);
+	m_colgroups.resize(colgroupNum);
 
 	if (colgroupNum == 1 && indexNum == 0) {
 		// single-key-only

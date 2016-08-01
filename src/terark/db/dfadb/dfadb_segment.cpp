@@ -151,11 +151,11 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		}
 		iter = nullptr;
 		zds->completeBuild(*builder);
+		m_colgroups[0] = new NestLoudsTrieStore(valueSchema, zds.release());
 	}
 	else {
 		iter = nullptr;
 		m_colgroups[0] = this->buildStore(valueSchema, valueVec);
-		valueVec.clear();
 	}
 }
 
@@ -249,10 +249,10 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 		}
 		iter = nullptr;
 		zds->completeBuild(*builder);
+		m_colgroups[1] = new NestLoudsTrieStore(valueSchema, zds.release());
 	}
 	else {
 		m_colgroups[1] = this->buildStore(valueSchema, valueVec);
-		valueVec.clear();
 	}
 }
 
