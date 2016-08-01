@@ -16,6 +16,7 @@
 	#include <unistd.h>
 #endif
 #include <fcntl.h>
+#include <terark/fstring.hpp>
 
 #if !defined(MAP_POPULATE)
 	#define  MAP_POPULATE 0
@@ -70,6 +71,9 @@ mmap_load(const char* fname, size_t* fsize, bool writable, bool populate) {
 	}
 	*fsize = size_t(lsize.QuadPart);
 	DWORD flProtect = writable ? PAGE_READWRITE : PAGE_READONLY;
+	if (getEnvBool("mmap_load_huge_pages")) {
+		flProtect |= SEC_LARGE_PAGES;
+	}
 	HANDLE hMmap = CreateFileMapping(hFile, NULL, flProtect, 0, 0, NULL);
 	if (NULL == hMmap) {
 		DWORD err = GetLastError();
@@ -110,6 +114,9 @@ mmap_load(const char* fname, size_t* fsize, bool writable, bool populate) {
 	*fsize = st.st_size;
 	int flProtect = (writable ? PROT_WRITE : 0) | PROT_READ;
 	int flags = MAP_SHARED | (populate ? MAP_POPULATE : 0);
+	if (getEnvBool("mmap_load_huge_pages")) {
+		flags |= MAP_HUGETLB;
+	}
 	void* base = ::mmap(NULL, st.st_size, flProtect, flags, fd, 0);
 	if (MAP_FAILED == base) {
 		::close(fd);

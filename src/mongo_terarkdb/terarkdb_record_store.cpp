@@ -50,7 +50,7 @@
 #include "terarkdb_global_options.h"
 //#include "terarkdb_kv_engine.h"
 //#include "terarkdb_record_store_oplog_stones.h"
-//#include "terarkdb_recovery_unit.h"
+#include "terarkdb_recovery_unit.h"
 //#include "terarkdb_session_cache.h"
 #include "terarkdb_size_storer.h"
 //#include "terarkdb_util.h"
@@ -90,19 +90,34 @@ public:
     Cursor(OperationContext* txn, const TerarkDbRecordStore& rs, bool forward)
         : _rs(rs),
           _txn(txn), _forward(forward) {
-		ThreadSafeTable* tst = rs.m_table.get();
-		DbTable* tab = tst->m_tab.get();
-    	m_ttd = tst->allocTableThreadData();
 		LOG(1) << "TerarkDbRecordStore::Cursor::Cursor(): forward = " << forward;
-    	if (forward)
-    		_cursor = tab->createStoreIterForward(m_ttd->m_dbCtx.get());
-    	else
-    		_cursor = tab->createStoreIterBackward(m_ttd->m_dbCtx.get());
+		init(txn);
     }
+
+	void init(OperationContext* txn) {
+		ThreadSafeTable* tst = _rs.m_table.get();
+		DbTable* tab = tst->m_tab.get();
+		if (txn && txn->recoveryUnit()) {
+			auto iter = tst->createStoreIter(txn->recoveryUnit(), _forward);
+			_cursor = iter;
+			m_ttd = iter->m_rud->m_ttd;
+			m_hasRecoveryUnit = true;
+		}
+		else {
+			m_hasRecoveryUnit = false;
+	    	m_ttd = tst->allocTableThreadData();
+    		if (_forward)
+    			_cursor = tab->createStoreIterForward(m_ttd->m_dbCtx.get());
+    		else
+    			_cursor = tab->createStoreIterBackward(m_ttd->m_dbCtx.get());
+		}
+	}
 
 	~Cursor() {
 		ThreadSafeTable* tst = _rs.m_table.get();
-		tst->releaseTableThreadData(m_ttd);
+		if (!m_hasRecoveryUnit) {
+			tst->releaseTableThreadData(m_ttd);
+		}
 	}
 
     boost::optional<Record> next() final {
@@ -118,7 +133,7 @@ public:
 			if (_forward && _lastReturnedId.repr() >= recIdx+1) {
 				LOG(1) << "TerarkDbRecordStore::Cursor::next -- c->next_key ( " << RecordId(recIdx+1)
 					   << ") was not greater than _lastReturnedId (" << _lastReturnedId
-					   << ") which is a bug.";
+					   << ") which is a bug, _cursor class: " << demangleName(typeid(*_cursor));
 				// Force a retry of the operation from our last known position by acting as-if
 				// we received a WT_ROLLBACK error.
 				assert(!m_ttd->m_buf.empty());
@@ -135,7 +150,9 @@ public:
 		int len = ConstDataView(sbuf.get()).read<LittleEndian<int>>();
 		LOG(1) << "TerarkDbRecordStore::Cursor::next(): _skipNextAdvance = " << _skipNextAdvance
 			   << ", RecordBson(" << id << "): "
-			   << BSONObj(sbuf.get()).toString() << ", _lastReturnedId = " << _lastReturnedId;
+			   << BSONObj(sbuf.get()).toString() << ", _lastReturnedId = " << _lastReturnedId
+			   << ", _cursor class: " << demangleName(typeid(*_cursor))
+			;
         _skipNextAdvance = false;
         _lastReturnedId = id;
 		return {{id, {sbuf, len}}};
@@ -149,7 +166,8 @@ public:
      */
 	// if successed, the cursor should point to the next record
     boost::optional<Record> seekExact(const RecordId& id) final {
-		LOG(1) << "TerarkDbRecordStore::Cursor::seekExact(): _skipNextAdvance = " << _skipNextAdvance
+		LOG(1) << "TerarkDbRecordStore::Cursor::seekExact(): id = " << id
+			<< ", _skipNextAdvance = " << _skipNextAdvance
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         _skipNextAdvance = false;
 		DbTable& tab = *_rs.m_table->m_tab;
@@ -163,7 +181,6 @@ public:
 			return boost::none;
 		}
 		auto& ttd = *m_ttd;
-	//	ttd.m_dbCtx->getValue(recIdx, &ttd.m_buf);
 		if (!_cursor->seekExact(recIdx, &ttd.m_buf)) {
 			return boost::none;
 		}
@@ -198,27 +215,42 @@ public:
     }
 
     bool restore() override final {
-		LOG(1) << "TerarkDbRecordStore::Cursor::restore(): _skipNextAdvance = " << _skipNextAdvance
-			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
-        _skipNextAdvance = false;
-
         // If we've hit EOF, then this iterator is done and need not be restored.
-        if (_eof)
+        if (_eof) {
+			LOG(1) << "TerarkDbRecordStore::Cursor::restore(): _skipNextAdvance = " << _skipNextAdvance
+				<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
+	        _skipNextAdvance = false;
             return true;
-
-        if (_lastReturnedId.isNull())
+		}
+        if (_lastReturnedId.isNull()) {
+			LOG(1) << "TerarkDbRecordStore::Cursor::restore(): _skipNextAdvance = " << _skipNextAdvance
+				<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
+	        _skipNextAdvance = false;
             return true;
-
+		}
         llong recIdx = _lastReturnedId.repr() - 1;
 		llong recIdx2 = _cursor->seekLowerBound(recIdx, &m_ttd->m_buf);
+		LOG(1) << "TerarkDbRecordStore::Cursor::restore(): _skipNextAdvance = " << _skipNextAdvance
+			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId
+			<< ", next = " << RecordId(recIdx2 + 1)
+			<< ", _cursor class: " << demangleName(typeid(*_cursor));
         if (recIdx2 < 0) {
+			_skipNextAdvance = false;
             _eof = true;
             return false;
         }
 		invariant(!m_ttd->m_buf.empty());
-		if (recIdx2 != recIdx) {
-			_lastReturnedId = RecordId(recIdx2 + 1);
-			_skipNextAdvance = true;
+		if (recIdx2 > recIdx) {
+			if (_forward) {
+				_lastReturnedId = RecordId(recIdx2 + 1);
+				_skipNextAdvance = true;
+			}
+		}
+		else if (recIdx2 < recIdx) {
+			if (!_forward) {
+				_lastReturnedId = RecordId(recIdx2 + 1);
+				_skipNextAdvance = true;
+			}
 		}
         return true;
     }
@@ -226,15 +258,19 @@ public:
     void detachFromOperationContext() final {
 		LOG(1) << "TerarkDbRecordStore::Cursor::detachFromOperationContext(): _skipNextAdvance = " << _skipNextAdvance
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
+		if (m_ttd && !m_hasRecoveryUnit) {
+			_rs.m_table->releaseTableThreadData(m_ttd);
+			m_ttd = nullptr;
+		}
         _txn = nullptr;
-    //  _cursor = nullptr; // do not set to nullptr
-	//	_cursor->reset();
+		_cursor = nullptr;
     }
 
     void reattachToOperationContext(OperationContext* txn) final {
-		LOG(1) << "TerarkDbRecordStore::Cursor::detachFromOperationContext(): _skipNextAdvance = " << _skipNextAdvance
+		LOG(1) << "TerarkDbRecordStore::Cursor::reattachToOperationContext(): _skipNextAdvance = " << _skipNextAdvance
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
         _txn = txn;
+		init(txn);
     }
 
 private:
@@ -242,6 +278,7 @@ private:
     OperationContext* _txn;
     bool _skipNextAdvance = false;
     bool _eof = false;
+	bool m_hasRecoveryUnit = false;
 	const bool _forward;
 	TableThreadDataPtr m_ttd;
     terark::db::StoreIteratorPtr _cursor;
@@ -300,8 +337,11 @@ long long TerarkDbRecordStore::dataSize(OperationContext* txn) const {
 
 long long TerarkDbRecordStore::numRecords(OperationContext* txn) const {
 	auto tab = m_table->m_tab.get();
-    LOG(1) << BOOST_CURRENT_FUNCTION << ": dir: " << tab->getDir().string();
-    return tab->existingRows();
+	long long existing = tab->existingRows();
+	long long total = tab->inlineGetRowNum();
+    LOG(1) << "TerarkDbRecordStore::numRecords(): existing = " << existing
+		<< ", total" << total << ", dir: " << tab->getDir().string();
+    return existing;
 }
 
 bool TerarkDbRecordStore::isCapped() const {
@@ -328,11 +368,23 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 		return false;
 	}
     llong recIdx = id.repr() - 1;
-    auto& td = m_table->getMyThreadData();
-    tab->getValue(recIdx, &td.m_buf, &*td.m_dbCtx);
-    SharedBuffer bson = td.m_coder.decode(&tab->rowSchema(), td.m_buf);
+	RecoveryUnitDataPtr rud = NULL;
+	TableThreadData* ttd = NULL;
+	if (txn && txn->recoveryUnit()) {
+		rud = m_table->tryRecoveryUnitData(txn->recoveryUnit());
+		if (rud)
+			ttd = rud->m_ttd.get(); // may be NULL
+	}
+	if (!ttd) {
+		rud = NULL;
+		ttd = &m_table->getMyThreadData();
+	}
+    tab->getValue(recIdx, &ttd->m_buf, ttd->m_dbCtx.get());
+    SharedBuffer bson = ttd->m_coder.decode(&tab->rowSchema(), ttd->m_buf);
 	LOG(2) << "TerarkDbRecordStore::findRecord(): id = " << id
-		<< ", bson = " << BSONObj(bson.get()) << ", dir: " << tab->getDir().string();
+		<< ", rud = " << (void*)rud.get()
+		<< ", bson = " << BSONObj(bson.get())
+		<< ", dir: " << tab->getDir().string();
 
 //  size_t bufsize = sizeof(SharedBuffer::Holder) + bson.objsize();
     int bufsize = ConstDataView(bson.get()).read<LittleEndian<int>>();
@@ -343,29 +395,16 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 void TerarkDbRecordStore::deleteRecord(OperationContext* txn, const RecordId& id) {
     auto& td = m_table->getMyThreadData();
 	auto tab = m_table->m_tab.get();
-    bool ok = tab->removeRow(id.repr()-1, &*td.m_dbCtx);
-    LOG(2) << "TerarkDbRecordStore::deleteRecord(): id = " << id
-		<< ", dir: " << tab->getDir().string() << ": return = " << ok;
-}
-
-namespace {
-	struct DeleteDocOnFail : public RecoveryUnit::Change {
-        void rollback() override {
-			auto& td = m_rs->m_table->getMyThreadData();
-			auto tab = m_rs->m_table->m_tab.get();
-			bool ok = tab->removeRow(m_id.repr()-1, &*td.m_dbCtx);
-			LOG(2) << "DeleteDocOnFail::rollback(): id = " << m_id
-				<< ", dir: " << tab->getDir().string() << ": return = " << ok;
-		}
-        void commit() override {
-			// do nothing
-		}
-		DeleteDocOnFail(TerarkDbRecordStore* rs, OperationContext* txn, RecordId id)
-			: m_rs(rs), m_txn(txn), m_id(id) {}
-		TerarkDbRecordStore* m_rs;
-		OperationContext* m_txn;
-		RecordId m_id;
-	};
+	if (txn && txn->recoveryUnit()) {
+		LOG(2) << "TerarkDbRecordStore::deleteRecord(): id = " << id
+			<< ", dir: " << tab->getDir().string() << ", to registerDelete()";
+		m_table->registerDelete(txn->recoveryUnit(), id);
+	}
+	else {
+		bool ok = tab->removeRow(id.repr()-1, &*td.m_dbCtx);
+		LOG(2) << "TerarkDbRecordStore::deleteRecord(): id = " << id
+			<< ", dir: " << tab->getDir().string() << ", return = " << ok;
+	}
 }
 
 Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
@@ -379,12 +418,13 @@ Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
     for (size_t i = 0; i < records->size(); ++i) {
 		Record& rec = (*records)[i];
     	BSONObj bson(rec.data.data());
-	    LOG(2) << "TerarkDbRecordStore::insertRecords(): i = " << i << ", bson = " << bson.toString();
     	td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
     	rec.id = RecordId(1 + tab->insertRow(td.m_buf, &*td.m_dbCtx));
 		if (txn && txn->recoveryUnit()) {
-			txn->recoveryUnit()->registerChange(new DeleteDocOnFail(this, txn, rec.id));
+			m_table->registerInsert(txn->recoveryUnit(), rec.id);
 		}
+	    LOG(2) << "TerarkDbRecordStore::insertRecords(): i = " << i
+			<< ", bson = " << bson.toString() << ", id = " << rec.id;
     }
     return Status::OK();
 }
@@ -401,7 +441,7 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
     td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
     llong recIdx = tab->insertRow(td.m_buf, &*td.m_dbCtx);
 	if (txn && txn->recoveryUnit()) {
-		txn->recoveryUnit()->registerChange(new DeleteDocOnFail(this, txn, RecordId(recIdx+1)));
+		m_table->registerInsert(txn->recoveryUnit(), RecordId(recIdx + 1));
 	}
 	return {RecordId(recIdx + 1)};
 }
@@ -446,7 +486,7 @@ TerarkDbRecordStore::insertRecordsWithDocWriter(OperationContext* txn,
 		llong recIdx = batch.upsertRow(td.m_buf);
 		records[i].id = RecordId(recIdx + 1);
 		if (txn && txn->recoveryUnit()) {
-			txn->recoveryUnit()->registerChange(new DeleteDocOnFail(this, txn, RecordId(recIdx+1)));
+			m_table->registerInsert(txn->recoveryUnit(), RecordId(recIdx + 1));
 		}
 	    LOG(2) << "TerarkDbRecordStore::insertRecordsWithDocWriter(): i = " << i
 			<< ", id = " << RecordId(recIdx + 1) << ", bson = " << bson.toString();
@@ -475,19 +515,30 @@ TerarkDbRecordStore::updateRecord(OperationContext* txn,
 	terark::db::IncrementGuard_size_t incrGuard(tab->m_inprogressWritingCount);
 	invariant(id.repr() != 0);
 	llong recId = id.repr() - 1;
+    BSONObj bson(data);
 	{
 		terark::db::MyRwLock lock(tab->m_rwMutex, false);
 		size_t segIdx = tab->getSegmentIndexOfRecordIdNoLock(recId);
 		if (segIdx >= tab->getSegNum()) {
+			LOG(2) << "TerarkDbRecordStore::updateRecord(): bson = " << bson.toString()
+				<< ", id = " << id << " is out of range";
 			return {ErrorCodes::InvalidIdField, "record id is out of range"};
 		}
 		auto seg = tab->getSegmentPtr(segIdx);
 		if (seg->m_isFreezed) {
+			LOG(2) << "TerarkDbRecordStore::updateRecord(): bson = " << bson.toString()
+				<< ", id = " << id << ", NeedsDocumentMove because segment of record is frozen";
 			return {ErrorCodes::NeedsDocumentMove, "segment of record is frozen"};
 		}
+		if (txn && txn->recoveryUnit()) {
+			LOG(2) << "TerarkDbRecordStore::updateRecord(): bson = " << bson.toString()
+				<< ", id = " << id << ", NeedsDocumentMove because is in recovery unit";
+			return {ErrorCodes::NeedsDocumentMove, "TerarkDB is in recovery unit, needs move"};
+		}
 	}
+	LOG(2) << "TerarkDbRecordStore::updateRecord(): bson = " << bson.toString()
+		<< ", id = " << id << ", do inplace update";
     auto& td = m_table->getMyThreadData();
-    BSONObj bson(data);
     td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
 	llong newRecId = tab->updateRow(recId, td.m_buf, &*td.m_dbCtx);
 	invariant(newRecId == recId);
@@ -508,12 +559,13 @@ StatusWith<RecordData> TerarkDbRecordStore::updateWithDamages(
     MONGO_UNREACHABLE;
 }
 
-std::unique_ptr<SeekableRecordCursor> TerarkDbRecordStore::getCursor(OperationContext* txn,
-                                                                       bool forward) const {
+std::unique_ptr<SeekableRecordCursor>
+TerarkDbRecordStore::getCursor(OperationContext* txn, bool forward) const {
     return stdx::make_unique<Cursor>(txn, *this, forward);
 }
 
-std::unique_ptr<RecordCursor> TerarkDbRecordStore::getRandomCursor(OperationContext* txn) const {
+std::unique_ptr<RecordCursor>
+TerarkDbRecordStore::getRandomCursor(OperationContext* txn) const {
     return nullptr;
 }
 
@@ -526,6 +578,7 @@ TerarkDbRecordStore::getManyCursors(OperationContext* txn) const {
 
 Status TerarkDbRecordStore::truncate(OperationContext* txn) {
 	DbTable* tab = m_table->m_tab.get();
+	LOG(2) << "TerarkDbRecordStore::truncate()";
 	tab->clear();
     return Status::OK();
 }

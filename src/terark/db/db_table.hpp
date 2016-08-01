@@ -164,11 +164,11 @@ public:
 
 	llong indexStorageSize(size_t indexId) const;
 
-	IndexIteratorPtr createIndexIterForward(size_t indexId) const;
-	IndexIteratorPtr createIndexIterForward(fstring indexCols) const;
+	IndexIteratorPtr createIndexIterForward(size_t indexId, DbContext*) const;
+	IndexIteratorPtr createIndexIterForward(fstring indexCols, DbContext*) const;
 
-	IndexIteratorPtr createIndexIterBackward(size_t indexId) const;
-	IndexIteratorPtr createIndexIterBackward(fstring indexCols) const;
+	IndexIteratorPtr createIndexIterBackward(size_t indexId, DbContext*) const;
+	IndexIteratorPtr createIndexIterBackward(fstring indexCols, DbContext*) const;
 
 	valvec<size_t> getProjectColumns(const hash_strmap<>& colnames) const;
 
@@ -248,6 +248,12 @@ public:
 	void putToCompressionQueue(size_t segIdx);
 	///@}
 
+	///@{
+	void delmarkSet0(llong id);
+	void delmarkSet1(llong id); ///< set del but do not put to free list
+	void putToFreeList(llong id);
+	///@}
+
 	static void safeStopAndWaitForFlush();
 	static void safeStopAndWaitForCompress();
 
@@ -272,6 +278,9 @@ protected:
 	void updateSyncMultIndex(llong newSubId, DbTransaction*, DbContext*);
 
 	llong doUpsertRow(fstring row, DbContext*);
+
+	llong allocInvisibleWrSubId_NoTabLock();
+	void freeInvisibleWrSubId_NoTabLock(llong wrSubId);
 
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;

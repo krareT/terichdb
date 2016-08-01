@@ -81,6 +81,9 @@ public:
 
 	class ReadableSegment* getSegmentPtr(size_t segIdx) const;
 
+	void ensureTransactionNoLock();
+	void freeWritableSegmentResources();
+
 public:
 	struct SegCtx {
 		class ReadableSegment* seg;

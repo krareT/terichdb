@@ -201,7 +201,7 @@ public:
 	enum Status { started, committed, rollbacked } m_status;
 	///@{ just for BatchWriter
 	valvec<llong>   m_removeOnCommit;
-	valvec<llong>   m_removeOnRollback; // the subId, must be in m_wrSeg
+	valvec<uint32_t>m_appearOnCommit; // the subId, must be in m_wrSeg
 	// @}
 	virtual void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) = 0;
 	virtual void indexRemove(size_t indexId, fstring key, llong recId) = 0;
@@ -342,6 +342,8 @@ public:
 	void saveRecordStore(PathRef segDir) const override;
 
 	void getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx) const;
+
+	void delmarkSet0(llong subId);
 
 	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;

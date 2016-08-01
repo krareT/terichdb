@@ -387,7 +387,7 @@ Status
 DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   Status status = Status::OK();
   std::unique_ptr<OperationContext> context(GetContext());
-  WriteBatchHandler handler(this, context.get());
+  WriteBatchHandler handler(context.get());
 #if 0
   status = updates->Iterate(&handler);
 #else
@@ -661,7 +661,7 @@ IteratorImpl::SeekToFirst() {
 		m_direction = Direction::forward;
 	}
 	if (!m_iter) {
-		m_iter = m_tab->createIndexIterForward(0);
+		m_iter = m_tab->createIndexIterForward(0, nullptr);
 	}
 	m_iter->reset();
 	iterIncrement();
@@ -677,7 +677,7 @@ IteratorImpl::SeekToLast() {
 		m_direction = Direction::backward;
 	}
 	if (!m_iter) {
-		m_iter = m_tab->createIndexIterBackward(0);
+		m_iter = m_tab->createIndexIterBackward(0, nullptr);
 	}
 	m_iter->reset();
 	iterIncrement();
@@ -691,13 +691,13 @@ void
 IteratorImpl::Seek(const Slice& target) {
 	if (Direction::backward == m_direction) {
 		if (!m_iter) {
-			m_iter = m_tab->createIndexIterBackward(0);
+			m_iter = m_tab->createIndexIterBackward(0, nullptr);
 		}
 	//	fprintf(stderr, "DEBUG: %s: direction=backward\n", BOOST_CURRENT_FUNCTION);
 	}
 	else {
 		if (!m_iter) {
-			m_iter = m_tab->createIndexIterForward(0);
+			m_iter = m_tab->createIndexIterForward(0, nullptr);
 		}
 	//	fprintf(stderr, "DEBUG: %s: direction=forward\n", BOOST_CURRENT_FUNCTION);
 	}
@@ -724,7 +724,7 @@ IteratorImpl::Next() {
 		TRACE_KEY_VAL(m_key, m_val);
 	}
 	else {
-		m_iter = m_tab->createIndexIterForward(0);
+		m_iter = m_tab->createIndexIterForward(0, nullptr);
 		m_direction = Direction::forward;
 		m_posKey.swap(m_key);
 		int cmp = m_iter->seekLowerBound(m_posKey, &m_recId, &m_key);
@@ -760,7 +760,7 @@ IteratorImpl::Prev() {
 		TRACE_KEY_VAL(m_key, m_val);
 	}
 	else {
-		m_iter = m_tab->createIndexIterBackward(0);
+		m_iter = m_tab->createIndexIterBackward(0, nullptr);
 		m_direction = Direction::backward;
 		m_posKey.swap(m_key);
 		int cmp = m_iter->seekLowerBound(m_posKey, &m_recId, &m_key);

@@ -11,10 +11,10 @@ void usage(const char* prog) {
 
 int main(int argc, char* argv[]) {
 	int inputFormat = 't';
-	int compressionThreadsNum = 1;
 	size_t rowsLimit = 10000000;
+	terark::hash_strmap<const char*> colformat;
 	for (;;) {
-		int opt = getopt(argc, argv, "tjL:T:");
+		int opt = getopt(argc, argv, "tjL:");
 		switch (opt) {
 		case -1:
 			goto GetoptDone;
@@ -24,9 +24,6 @@ int main(int argc, char* argv[]) {
 			break;
 		case 'L':
 			rowsLimit = strtoull(optarg, NULL, 10);
-			break;
-		case 'T':
-			compressionThreadsNum = std::min(atoi(optarg), 8);
 			break;
 		}
 	}

@@ -428,7 +428,7 @@ public:
 			THROW_STD(invalid_argument
 				, "ERROR: wiredtiger store upsert: %s", ses->strerror(ses, err));
 		}
-		m_sizeDiff += row.size();
+		m_sizeDiff += row.size() + sizeof(llong);
 //		StoreIteratorPtr iter = m_seg->m_wrtStore->createStoreIterForward(NULL);
 //		valvec<byte> buf3;
 //		iter->seekExact(recId, &buf3);

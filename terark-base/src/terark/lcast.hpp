@@ -119,6 +119,11 @@ TERARK_DLL_EXPORT std::string hexlcast(unsigned long x);
 TERARK_DLL_EXPORT std::string hexlcast(long long x);
 TERARK_DLL_EXPORT std::string hexlcast(unsigned long long x);
 
+TERARK_DLL_EXPORT size_t hex_decode(const char* hex, size_t hexlen, void* databuf, size_t bufsize);
+
+///@note size of hexbuf must at least (2*datalen)
+TERARK_DLL_EXPORT void hex_encode(const void* data, size_t datalen, char* hexbuf);
+
 } // namespace terark
 
 #endif // __terark_lcast_hpp_penglei__
