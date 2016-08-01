@@ -168,6 +168,10 @@ protected:
 			const;
 
 	void compressMultipleColgroups(ReadableSegment* input, DbContext* ctx);
+	void compressSingleKeyIndex(ReadableSegment* input, DbContext* ctx);
+	virtual
+	void compressSingleColgroup(ReadableSegment* input, DbContext* ctx);
+	virtual
 	void compressSingleKeyValue(ReadableSegment* input, DbContext* ctx);
 
 	void completeAndReload(class DbTable*, size_t segIdx,

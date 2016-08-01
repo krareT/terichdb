@@ -16,9 +16,6 @@
 #include <terark/util/sortable_strvec.hpp>
 #include <terark/util/truncate_file.hpp>
 
-#include <terark/fast_zip_blob_store.hpp>
-#include <mutex>
-
 //#define TERARK_DB_ENABLE_DFA_META
 #if defined(TERARK_DB_ENABLE_DFA_META)
 #include <terark/fsa/nest_trie_dawg.hpp>
@@ -714,22 +711,24 @@ ReadonlySegment::compressMultipleColgroups(ReadableSegment* input, DbContext* ct
 	ColumnVec columns(m_schema->columnNum(), valvec_reserve());
 	valvec<byte> buf;
 	StoreIteratorPtr iter(input->createStoreIterForward(ctx));
-	llong prevId = -1;
-	llong id = -1;
-	while (iter->increment(&id, &buf)) {
+	llong prevId = -1, id = -1;
+	while (iter->increment(&id, &buf) && id < logicRowNum) {
 		assert(id >= 0);
 		assert(id < logicRowNum);
 		assert(prevId < id);
-		m_schema->m_rowSchema->parseRow(buf, &columns);
-		colgroupTempFiles.writeColgroups(columns);
-		newRowNum++;
-		prevId = id;
+		if (!m_isDel[id]) {
+			m_schema->m_rowSchema->parseRow(buf, &columns);
+			colgroupTempFiles.writeColgroups(columns);
+			newRowNum++;
+			m_isDel.beg_end_set1(prevId + 1, id);
+			prevId = id;
+		}
 	}
 	llong inputRowNum = id + 1;
 	assert(inputRowNum <= logicRowNum);
 	if (inputRowNum < logicRowNum) {
 		fprintf(stderr
-			, "WARN: inputRows[real=%lld saved=%lld], some data have lost\n"
+			, "WARN: ReadonlySegment::compressMultipleColgroups(): realrows=%lld, m_isDel=%lld, some data have lost\n"
 			, inputRowNum, logicRowNum);
 		input->m_isDel.beg_end_set1(inputRowNum, logicRowNum);
 		this->m_isDel.beg_end_set1(inputRowNum, logicRowNum);
@@ -792,100 +791,58 @@ ReadonlySegment::compressMultipleColgroups(ReadableSegment* input, DbContext* ct
 	}
 }
 
-namespace dfadb {
-std::mutex& DictZip_reduceMemMutex(); // defined in nlt_store.cpp
-}
-
-void ReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* ctx) {
+void
+ReadonlySegment::compressSingleKeyIndex(ReadableSegment* input, DbContext* ctx) {
 	llong logicRowNum = input->m_isDel.size();
 	llong newRowNum = 0;
 	assert(logicRowNum > 0);
 	auto tmpDir = m_segDir + ".tmp";
 	ColumnVec columns(m_schema->columnNum(), valvec_reserve());
-	valvec<byte> buf;
+	valvec<byte> key;
 	StoreIteratorPtr iter(input->createStoreIterForward(ctx));
-	llong prevId = -1;
-	llong id = -1;
+	llong prevId = -1, id = -1;
 	SortableStrVec keyVec;
-	SortableStrVec valueVec;
-	const Schema& rowSchema = m_schema->getRowSchema();
 	const Schema& keySchema = m_schema->getIndexSchema(0);
-	const Schema& valueSchema = m_schema->getColgroupSchema(1);
-	std::unique_ptr<DictZipBlobStore> zds;
-	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder;
-	size_t sampleLenSum = 0;
-	if (valueSchema.m_dictZipSampleRatio >= 0.0) {
-		double sRatio = valueSchema.m_dictZipSampleRatio;
-		double avgLen = double(input->dataInflateSize()) / logicRowNum;
-		if ((sRatio > FLT_EPSILON) || (sRatio >= 0 && avgLen > 120)) {
-			zds.reset(new DictZipBlobStore());
-			builder.reset(zds->createZipBuilder());
-		}
-	}
-	while (iter->increment(&id, &buf) && id < logicRowNum) {
+	while (iter->increment(&id, &key) && id < logicRowNum) {
 		assert(id >= 0);
 		assert(id < logicRowNum);
 		assert(prevId < id);
-		rowSchema.parseRow(buf, &columns);
-		fstring key = columns[0];
-		fstring val = columns[1];
-		if (keySchema.getFixedRowLen() > 0) {
-			keyVec.m_strpool.append(key);
-		} else {
-			keyVec.push_back(key);
+		if (!m_isDel[id]) {
+			if (keySchema.getFixedRowLen() > 0) {
+				keyVec.m_strpool.append(key);
+			} else {
+				keyVec.push_back(key);
+			}
+			newRowNum++;
+			m_isDel.beg_end_set1(prevId+1, id);
+			prevId = id;
 		}
-		if (builder) {
-			builder->addSample(val);
-			sampleLenSum += val.size();
-		}
-		else {
-			if (valueSchema.should_use_FixedLenStore())
-				valueVec.m_strpool.append(val);
-			else
-				valueVec.push_back(val);
-		}
-		newRowNum++;
-		m_isDel.beg_end_set1(prevId+1, id);
-		prevId = id;
-	}
-	m_indices[0] = this->buildIndex(keySchema, keyVec);
-	m_colgroups[0] = m_indices[0]->getReadableStore();
-	valueVec.clear();
-	if (builder) {
-		iter->reset(); // reset seek to begin
-		std::lock_guard<std::mutex> lock(dfadb::DictZip_reduceMemMutex());
-		auto fpath = tmpDir / ("colgroup-" + valueSchema.m_name + ".nlt");
-		builder->prepare(logicRowNum, fpath.string());
-		while (iter->increment(&id, &buf)) {
-			rowSchema.parseRow(buf, &columns);
-			fstring val = columns[1];
-			builder->addRecord(val);
-		}
-		zds->completeBuild(*builder);
-	}
-	else {
-		m_colgroups[1] = this->buildStore(valueSchema, valueVec);
-	}
-	if (builder && 0 == sampleLenSum) {
-		builder->addSample("Hello World");
 	}
 	llong inputRowNum = id + 1;
 	assert(inputRowNum <= logicRowNum);
 	if (inputRowNum < logicRowNum) {
 		fprintf(stderr
-			, "WARN: inputRows[real=%lld saved=%lld], some data have lost\n"
+			, "WARN: DfaDbReadonlySegment::compressSingleKeyValue(): realrows=%lld, m_isDel=%lld, some data have lost\n"
 			, inputRowNum, logicRowNum);
 		input->m_isDel.beg_end_set1(inputRowNum, logicRowNum);
 		this->m_isDel.beg_end_set1(inputRowNum, logicRowNum);
 	}
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
-	assert(newRowNum <= inputRowNum);
-	assert(size_t(logicRowNum - newRowNum) == m_delcnt);
+	m_indices[0] = buildIndex(keySchema, keyVec); // memory heavy
+	m_colgroups[0] = m_indices[0]->getReadableStore();
 }
 
 void
-ReadonlySegment::convFrom(DbTable* tab, size_t segIdx)
-{
+ReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* ctx) {
+	compressMultipleColgroups(input, ctx); // fallback
+}
+void
+ReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* ctx) {
+	compressMultipleColgroups(input, ctx); // fallback
+}
+
+void
+ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 	auto tmpDir = m_segDir + ".tmp";
 	fs::create_directories(tmpDir);
 
@@ -903,21 +860,23 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx)
 	input->m_updateList.reserve(1024);
 	input->m_bookUpdates = true;
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
-//	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 
 	const size_t indexNum = m_schema->getIndexNum();
 	const size_t colgroupNum = m_schema->getColgroupNum();
 
 	if (colgroupNum == 1 && indexNum == 0) {
 		// single-key-only
+		compressSingleKeyIndex(input.get(), ctx.get());
 	}
 	else if (colgroupNum == 1 && indexNum == 1) {
 		// single-value-only
+		compressSingleColgroup(input.get(), ctx.get());
 	}
 	else if (colgroupNum == 2 && indexNum == 1) {
 		// key-value
 		compressSingleKeyValue(input.get(), ctx.get());
-	} else {
+	}
+	else {
 		compressMultipleColgroups(input.get(), ctx.get());
 	}
 	completeAndReload(tab, segIdx, &*input);

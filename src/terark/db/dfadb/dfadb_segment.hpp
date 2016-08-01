@@ -20,6 +20,8 @@ protected:
 	ReadableStore*
 	buildDictZipStore(const Schema&, PathRef dir, StoreIterator&iter,
 		const bm_uint_t* isDel, const febitvec* isPurged) const override;
+	void compressSingleColgroup(ReadableSegment* input, DbContext* ctx) override;
+	void compressSingleKeyValue(ReadableSegment* input, DbContext* ctx) override;
 };
 
 }}} // namespace terark::db::dfadb

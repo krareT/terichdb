@@ -11,7 +11,8 @@ TERARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
 
 NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema) : m_schema(schema) {
 }
-NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema, BlobStore* blobStore) {
+NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema, BlobStore* blobStore)
+  : m_schema(schema), m_store(blobStore) {
 }
 
 NestLoudsTrieStore::~NestLoudsTrieStore() {
