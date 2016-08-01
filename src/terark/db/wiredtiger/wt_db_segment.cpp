@@ -7,6 +7,10 @@
 #undef min
 #undef max
 
+namespace terark { namespace db {
+	llong parseSizeValue(fstring str); // defined in db_conf.cpp
+}}
+
 namespace terark { namespace db { namespace wt {
 
 WtWritableSegment::WtWritableSegment() {
@@ -17,7 +21,6 @@ WtWritableSegment::WtWritableSegment() {
 		m_cacheSize = (size_t)strtoull(env, NULL, 10) * 1024 * 1024;
 	}
 	if (const char* env = getenv("TerarkDB_WrSegCacheSize")) {
-		llong parseSizeValue(fstring str); // defined in db_conf.cpp
 		m_cacheSize = parseSizeValue(env);
 	}
 	m_hasLockFreePointSearch = false;
