@@ -12,6 +12,7 @@ namespace terark { namespace db { namespace dfadb {
 class TERARK_DB_DLL NestLoudsTrieStore : public ReadableStore {
 public:
 	explicit NestLoudsTrieStore(const Schema& schema);
+	explicit NestLoudsTrieStore(const Schema& schema, BlobStore* blobStore);
 	~NestLoudsTrieStore();
 
 	llong dataStorageSize() const override;

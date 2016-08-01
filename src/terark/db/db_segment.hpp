@@ -167,6 +167,9 @@ protected:
 							  const bm_uint_t* isDel, const febitvec* isPurged)
 			const;
 
+	void compressMultipleColgroups(ReadableSegment* input, DbContext* ctx);
+	void compressSingleKeyValue(ReadableSegment* input, DbContext* ctx);
+
 	void completeAndReload(class DbTable*, size_t segIdx,
 						   class ReadableSegment* input);
 	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,

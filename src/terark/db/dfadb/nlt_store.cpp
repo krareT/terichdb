@@ -11,6 +11,9 @@ TERARK_DB_REGISTER_STORE("nlt", NestLoudsTrieStore);
 
 NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema) : m_schema(schema) {
 }
+NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema, BlobStore* blobStore) {
+}
+
 NestLoudsTrieStore::~NestLoudsTrieStore() {
 }
 
@@ -101,6 +104,11 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	}
 }
 
+std::mutex& DictZip_reduceMemMutex() {
+	static std::mutex m;
+	return m;
+}
+
 void
 NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 								  StoreIterator& iter,
@@ -133,7 +141,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 	// 4. using lock, the concurrent large memory using durations in
 	//    multi threads are serialized, then the peak memory usage
 	//    is reduced
-	static std::mutex reduceMemMutex;
+	std::mutex& reduceMemMutex = DictZip_reduceMemMutex();
 	// the lock will be hold for a long time, maybe several minutes
 	std::unique_lock<std::mutex> lock(reduceMemMutex, std::defer_lock);
 
