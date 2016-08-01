@@ -703,11 +703,11 @@ BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 		tab->m_inprogressWritingCount += 2;
 		inprogressWritingCountInced = true;
 		m_wrSeg = tab->m_wrSeg.get();
-		m_txn = ctx->m_transaction.get();
 		m_ctx = ctx;
 		ctx->trySyncSegCtxNoLock(tab);
 		ctx->ensureTransactionNoLock();
 		auto txn = ctx->m_transaction.get();
+		m_txn = txn;
 		txn->startTransaction();
 		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
 		assert(txn->m_appearOnCommit.size() == 0);
@@ -789,30 +789,35 @@ llong BatchWriter::upsertRowImpl(fstring row) {
 	}
 	assert(sconf.m_uniqIndices.size() <= 1);
 	size_t uniqueIndexId = sconf.m_uniqIndices[0];
-	llong  wrBaseId, newRecId;
+	llong  newRecId;
 	// parseRow doesn't need lock
 	sconf.m_rowSchema->parseRow(row, &ctx->cols1);
 	const Schema& indexSchema = sconf.getIndexSchema(uniqueIndexId);
 	indexSchema.selectParent(ctx->cols1, &ctx->key1);
 {
 	MyRwLock lock(tab->m_rwMutex, false);
-	wrBaseId = tab->m_rowNumVec.ende(2);
 	ctx->trySyncSegCtxNoLock(tab);
 	ctx->ensureTransactionNoLock();
 	txn->indexSearch(uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec);
 	if (!ctx->exactMatchRecIdvec.empty()) {
 		return overwriteExisting(row);
 	}
-	newRecId = tab->insertRowDoInsertNoCommit(row, ctx);
-	if (newRecId >= 0) {
-		llong wrSubId = newRecId - wrBaseId;
-		assert(tab->m_wrSeg->m_isDel[wrSubId]); // unvisible
-		txn->m_appearOnCommit.push_back(uint32_t(wrSubId));
-		goto FindInFrozenSegments;
+	llong wrBaseId = tab->m_rowNumVec.ende(2);
+	llong wrSubId = tab->allocInvisibleWrSubId_NoTabLock();
+	if (ctx->syncIndex) {
+		if (tab->insertSyncIndex(wrSubId, txn, ctx)) {
+			txn->storeUpsert(wrSubId, row);
+		} else {
+			return -1; // fail
+		}
+	} else {
+		txn->storeUpsert(wrSubId, row);
 	}
-	return -1;
+	newRecId = wrBaseId + wrSubId;
+	assert(tab->m_wrSeg->m_isDel[wrSubId]); // unvisible
+	txn->m_appearOnCommit.push_back(uint32_t(wrSubId));
 }
-FindInFrozenSegments:
+// Find and put existing row with same unique key to txn->m_removeOnCommit
 	for (size_t segIdx = 0; segIdx < ctx->m_segCtx.size()-1; ++segIdx) {
 		auto seg = ctx->m_segCtx[segIdx]->seg;
 		assert(seg->m_isFreezed);
@@ -1261,60 +1266,66 @@ DbTable::insertRowDoInsert(fstring row, DbContext* ctx) {
 	return recId;
 }
 
+llong DbTable::allocInvisibleWrSubId_NoTabLock() {
+	auto& ws = *m_wrSeg;
+	SpinRwLock wsLock(ws.m_segMutex, true);
+	if (ws.m_deletedWrIdSet.empty()) {
+		llong subId = (llong)ws.m_isDel.size();
+		ws.pushIsDel(true); // invisible to others
+		ws.m_delcnt++;
+		m_rowNumVec.back() = ++m_rowNum;
+		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+		return subId;
+	}
+	else {
+		llong subId = ws.m_deletedWrIdSet.pop_val();
+		assert(ws.m_isDel[subId]);
+		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+		return subId;
+	}
+}
+
+void DbTable::freeInvisibleWrSubId_NoTabLock(llong wrSubId) {
+	auto& ws = *m_wrSeg;
+	SpinRwLock wsLock(ws.m_segMutex, true);
+	assert(ws.m_isDel[wrSubId]);
+#if 0
+	llong wrBaseId = m_rowNumVec.ende(2);
+	if (wrBaseId + wrSubId + 1 == m_rowNum) {
+		m_rowNumVec.back()--;
+		m_rowNum--;
+		ws.popIsDel();
+		ws.m_delcnt--;
+		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+	}
+	else {
+		ws.m_deletedWrIdSet.push_back(wrSubId);
+	}
+#else
+	// the free'ed subId will be reused soon
+	ws.m_deletedWrIdSet.push_back(uint32_t(wrSubId));
+#endif
+}
+
 llong
 DbTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
-	DbTransaction* txn = ctx->m_transaction.get();
-	llong subId;
-	llong wrBaseId = m_rowNumVec.end()[-2];
-	auto& ws = *m_wrSeg;
-	{
-		SpinRwLock wsLock(ws.m_segMutex, true);
-		if (ws.m_deletedWrIdSet.empty()) {
-			subId = (llong)ws.m_isDel.size();
-			ws.pushIsDel(true); // invisible to others
-			ws.m_delcnt++;
-			m_rowNum = m_rowNumVec.back() = wrBaseId + subId + 1;
-			assert(ws.m_isDel.popcnt() == ws.m_delcnt);
-		}
-		else {
-			subId = ws.m_deletedWrIdSet.pop_val();
-			assert(ws.m_isDel[subId]);
-			assert(ws.m_isDel.popcnt() == ws.m_delcnt);
-		}
-	}
+	llong subId = allocInvisibleWrSubId_NoTabLock();
 	if (ctx->syncIndex) {
+		DbTransaction* txn = ctx->m_transaction.get();
 		if (insertSyncIndex(subId, txn, ctx)) {
 			txn->storeUpsert(subId, row);
-			SpinRwLock wsLock(ws.m_segMutex, true);
-			ws.m_isDirty = true;
-			ws.m_isDel.set0(subId);
-			ws.m_delcnt--;
-			assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+			m_wrSeg->delmarkSet0(subId);
 		}
-		else {{
-				SpinRwLock wsLock(ws.m_segMutex, true);
-				if (wrBaseId + subId + 1 == m_rowNum) {
-					m_rowNumVec.back()--;
-					m_rowNum--;
-					ws.popIsDel();
-					ws.m_delcnt--;
-					assert(ws.m_isDel.popcnt() == ws.m_delcnt);
-				}
-				else {
-					ws.m_deletedWrIdSet.push_back(subId);
-				}
-			}
+		else {
+			freeInvisibleWrSubId_NoTabLock(subId);
 			return -1; // fail
 		}
 	}
 	else {
-		ws.update(subId, row, ctx);
-		SpinRwLock wsLock(ws.m_segMutex, true);
-		ws.m_isDirty = true;
-		ws.m_isDel.set0(subId);
-		ws.m_delcnt--;
-		assert(ws.m_isDel.popcnt() == ws.m_delcnt);
+		m_wrSeg->update(subId, row, ctx);
+		m_wrSeg->delmarkSet0(subId);
 	}
+	llong  wrBaseId = m_rowNumVec.ende(2);
 	return wrBaseId + subId;
 }
 

@@ -1029,9 +1029,11 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		input->m_bookUpdates = true;
 	}
 	std::string strThreadId = ThreadIdToString(tbb::this_tbb_thread::get_id());
-	fprintf(stderr, "INFO: thread-%s: purging %s\n"
+	fprintf(stderr, "INFO: thread-%s: purging %s, rows = %zd, delcnt = %zd\n"
 		, strThreadId.c_str()
-		, input->m_segDir.string().c_str());
+		, input->m_segDir.string().c_str()
+		, input->m_isDel.size(), input->m_delcnt
+		);
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	m_indices.resize(m_schema->getIndexNum());
@@ -2009,6 +2011,15 @@ const {
 	else {
 		ctx->getWrSegWrtStoreData(this, subId, buf);
 	}
+}
+
+void WritableSegment::delmarkSet0(llong subId) {
+	SpinRwLock segLock(m_segMutex, true);
+	assert(m_isDel[subId]);
+	m_isDirty = true;
+	m_isDel.set0(subId);
+	m_delcnt--;
+	assert(m_isDel.popcnt() == m_delcnt);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

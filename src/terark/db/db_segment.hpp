@@ -340,6 +340,8 @@ public:
 
 	void getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx) const;
 
+	void delmarkSet0(llong subId);
+
 	ReadableStorePtr  m_wrtStore;
 	valvec<uint32_t>  m_deletedWrIdSet;
 };

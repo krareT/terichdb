@@ -279,6 +279,9 @@ protected:
 
 	llong doUpsertRow(fstring row, DbContext*);
 
+	llong allocInvisibleWrSubId_NoTabLock();
+	void freeInvisibleWrSubId_NoTabLock(llong wrSubId);
+
 	boost::filesystem::path getMergePath(PathRef dir, size_t mergeSeq) const;
 	boost::filesystem::path getSegPath(const char* type, size_t segIdx) const;
 	static
