@@ -296,23 +296,32 @@ TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id, bool du
  * Implements the basic TerarkDb_CURSOR functionality used by both unique and standard indexes.
  */
 class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor {
+	IndexIterData* getCursor() const {
+		if (terark_likely(_cursor))
+			return _cursor.get();
+		_cursor = _idx.m_table->allocIndexIter(_idx.m_indexId, _forward);
+		return _cursor.get();
+	}
+	void releaseCursor() {
+		if (_cursor)
+			_idx.m_table->releaseIndexIter(_idx.m_indexId, _forward, std::move(_cursor));
+	}
 public:
     TerarkDbIndexCursorBase(const TerarkDbIndex& idx, OperationContext* txn, bool forward)
         : _txn(txn), _idx(idx), _forward(forward), _endPositionInclude(false) {
-		_cursor = idx.m_table->allocIndexIter(idx.m_indexId, forward);
     }
 	~TerarkDbIndexCursorBase() {
-		_idx.m_table->releaseIndexIter(_idx.m_indexId, _forward, _cursor);
+		releaseCursor();
 	}
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
         if (_eof) { // Advance on a cursor at the end is a no-op
 	        TRACE_CURSOR << "next(): _eof=true";
             return {};
 		}
- 		auto cur = _cursor.get();
+ 		auto cur = getCursor();
         if (!_lastMoveWasRestore) {
 			llong recIdx = -1;
-			if (_cursor->increment(&recIdx)) {
+			if (cur->increment(&recIdx)) {
 				_cursorAtEof = false;
 				_id = RecordId(recIdx + 1);
 		        TRACE_CURSOR << "next(): increment() ret true, curKey=" << _idx.getIndexSchema()->toJsonStr(cur->m_curKey);
@@ -333,7 +342,7 @@ public:
 
     void setEndPosition(const BSONObj& key, bool inclusive) override {
         TRACE_CURSOR << "setEndPosition: inclusive = " << inclusive << ", bsonKey = " << key;
-		auto cur = _cursor.get();
+		auto cur = getCursor();
         if (key.isEmpty()) {
 		EmptyKey:
             // This means scan to end of index.
@@ -392,7 +401,9 @@ public:
 		auto& ttd = _idx.m_table->getMyThreadData();
 		auto& ctx = *ttd.m_dbCtx;
 		auto  indexSchema = _idx.getIndexSchema();
-		_cursor->m_ctx->trySyncSegCtxSpeculativeLock(ctx.m_tab);
+		if (_cursor) {
+			_cursor->m_ctx->trySyncSegCtxSpeculativeLock(ctx.m_tab);
+		}
 		encodeIndexKey(*indexSchema, bsonKey, &ttd.m_buf);
 		ctx.indexSearchExact(_idx.m_indexId, ttd.m_buf, &ctx.exactMatchRecIdvec);
 		if (!ctx.exactMatchRecIdvec.empty()) {
@@ -405,7 +416,8 @@ public:
     void save() override {
         TRACE_CURSOR << "save()";
         try {
-            _cursor->reset();
+			if (_cursor)
+				_cursor->reset();
         } catch (const WriteConflictException&) {
             // Ignore since this is only called when we are about to kill our transaction
             // anyway.
@@ -430,7 +442,7 @@ public:
             // Standard (non-unique) indices *do* include the record id in their KeyStrings. This
             // means that restoring to the same key with a new record id will return false, and we
             // will *not* skip the key with the new record id.
-			auto cur = _cursor.get();
+			auto cur = getCursor();
 			cur->m_qryKey.assign(cur->m_curKey);
             _lastMoveWasRestore = !seekWTCursor(true);
             TRACE_CURSOR << "restore _lastMoveWasRestore:" << _lastMoveWasRestore;
@@ -439,13 +451,13 @@ public:
 
     void detachFromOperationContext() final {
         _txn = nullptr;
-        _cursor = nullptr;
+        releaseCursor();
     }
 
     void reattachToOperationContext(OperationContext* txn) final {
         _txn = txn;
         // _cursor recreated in restore() to avoid risk of WT_ROLLBACK issues.
-		_cursor = _idx.m_table->allocIndexIter(_idx.m_indexId, _forward);
+		// _cursor = _idx.m_table->allocIndexIter(_idx.m_indexId, _forward);
     }
 
 protected:
@@ -455,6 +467,7 @@ protected:
         if (atOrPastEndPointAfterSeeking())
             return {};
         dassert(!_id.isNull());
+		invariant(nullptr != _cursor);
         BSONObj bson;
         if (TRACING_ENABLED || (parts & kWantKey)) {
             bson = BSONObj(decodeIndexKey(*_idx.getIndexSchema(), _cursor->m_curKey));
@@ -466,7 +479,7 @@ protected:
     bool atOrPastEndPointAfterSeeking() const {
         if (_eof)
             return true;
-		auto cur = _cursor.get();
+		auto cur = getCursor();
         if (cur->m_endPositionKey.empty())
             return false;
         const int cmp = _idx.getIndexSchema()->compareData(cur->m_curKey, cur->m_endPositionKey);
@@ -485,7 +498,7 @@ protected:
 
     void advanceWTCursor() {
 		llong recIdx = -1;
-		if (_cursor->increment(&recIdx)) {
+		if (getCursor()->increment(&recIdx)) {
 	        _cursorAtEof = false;
 			_id = RecordId(recIdx + 1);
 			TRACE_CURSOR << "advanceWTCursor(): increment() = true, _id = " << _id;
@@ -498,7 +511,7 @@ protected:
     // Seeks to query. Returns true on exact match.
     bool seekWTCursor(const BSONObj& bsonKey, bool inclusive) {
 		auto indexSchema = _idx.getIndexSchema();
-		encodeIndexKey(*indexSchema, bsonKey, &_cursor->m_qryKey);
+		encodeIndexKey(*indexSchema, bsonKey, &getCursor()->m_qryKey);
 		return seekWTCursor(inclusive);
 	}
     bool seekWTCursor(bool inclusive) {
@@ -506,7 +519,7 @@ protected:
 		_eof = false;
         int ret;
 		const char* funcName;
-		auto cur = _cursor.get();
+		auto cur = getCursor();
 	//	m_curKey.erase_all();
 		if (inclusive) {
 			funcName = "seekLowerBound";
@@ -553,7 +566,7 @@ protected:
 
     OperationContext*  _txn;
     const TerarkDbIndex& _idx;  // not owned
-    IndexIterDataPtr  _cursor;
+    mutable IndexIterDataPtr  _cursor;
 
     // These are where this cursor instance is. They are not changed in the face of a failing
     // next().
