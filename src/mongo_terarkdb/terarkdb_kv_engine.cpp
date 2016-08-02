@@ -126,11 +126,11 @@ TableThreadDataPtr ThreadSafeTable::allocTableThreadData() {
 		ret = new TableThreadData(this->m_tab.get());
 	}
 	else {
-		ret = m_cursorCache.pop_val();
 		auto tab = m_tab.get();
 		for (auto& p : m_cursorCache) {
 			p->m_dbCtx->trySyncSegCtxSpeculativeLock(tab);
 		}
+		ret = m_cursorCache.pop_val();
 	}
 	return ret;
 }
