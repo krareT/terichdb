@@ -455,6 +455,7 @@ void RuStoreIteratorBase::traceFunc(const char* func) const {
 
 RuStoreIteratorBase::RuStoreIteratorBase(RecoveryUnit* ru, ThreadSafeTable* tst) {
 	m_id = -1;
+	m_ru = ru;
 	m_tst = tst;
 	m_rud = tst->getRecoveryUnitData(ru);
 	m_rud->m_iterNum++;

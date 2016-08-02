@@ -373,7 +373,7 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 	if (txn && txn->recoveryUnit()) {
 		rud = m_table->tryRecoveryUnitData(txn->recoveryUnit());
 		if (rud) {
-			ttd = rud->m_ttd.get(); // may be NULL
+			ttd = rud->m_ttd.get();
 			assert(NULL != ttd);
 		}
 	}
