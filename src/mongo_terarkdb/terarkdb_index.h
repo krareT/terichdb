@@ -102,8 +102,8 @@ public:
 		return &m_table->m_tab->getIndexSchema(m_indexId);
 	}
 
-	bool insertIndexKey(const BSONObj& newKey, const RecordId& id,
-						TableThreadData* td);
+	bool insertIndexKey(const BSONObj& newKey, const RecordId& id, bool dupsAllowed,
+						OperationContext* txn, TableThreadData* td);
 
 protected:
     class BulkBuilder;

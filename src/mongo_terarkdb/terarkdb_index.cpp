@@ -177,17 +177,20 @@ Status TerarkDbIndex::insert(OperationContext* txn,
                            const RecordId& id,
                            bool dupsAllowed)
 {
-	auto& td = m_table->getMyThreadData();
-	auto indexSchema = getIndexSchema();
-	encodeIndexKey(*indexSchema, key, &td.m_buf);
-	llong recIdx = id.repr() - 1;
-	DbTable* tab = m_table->m_tab.get();
+	ThreadSafeTable* tst = m_table.get();
+	DbTable* tab = tst->m_tab.get();
     LOG(2) << "TerarkDbIndex::insert(): key = " << key << ", id = " << id
 		<< ",  dir: " << tab->getDir().string();
-	if (tab->indexInsert(m_indexId, td.m_buf, recIdx, &*td.m_dbCtx)) {
-		if (txn && txn->recoveryUnit()) {
-			txn->recoveryUnit()->registerChange(new UnindexOnFail(this, txn, key, id, dupsAllowed));
-		}
+	RecoveryUnitDataPtr rud = NULL;
+	TableThreadData* ttd = NULL;
+	if (txn && txn->recoveryUnit()) {
+		rud = tst->getRecoveryUnitData(txn->recoveryUnit());
+		ttd = rud->m_ttd.get();
+		assert(NULL != ttd);
+	} else {
+		ttd = &tst->getMyThreadData();
+	}
+	if (insertIndexKey(key, id, dupsAllowed, txn, ttd)) {
 		return Status::OK();
 	} else {
 		return Status(ErrorCodes::DuplicateKey, "dup key in TerarkDbIndex::insert");
@@ -276,11 +279,17 @@ Status TerarkDbIndex::initAsEmpty(OperationContext* txn) {
 }
 
 bool
-TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id,
-							TableThreadData* td) {
+TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id, bool dupsAllowed,
+							  OperationContext* txn, TableThreadData* td) {
 	encodeIndexKey(*getIndexSchema(), newKey, &td->m_buf);
 	DbTable* tab = m_table->m_tab.get();
-	return tab->indexInsert(m_indexId, td->m_buf, id.repr()-1, &*td->m_dbCtx);
+	if (tab->indexInsert(m_indexId, td->m_buf, id.repr()-1, &*td->m_dbCtx)) {
+		if (txn && txn->recoveryUnit()) {
+			txn->recoveryUnit()->registerChange(new UnindexOnFail(this, txn, newKey, id, dupsAllowed));
+		}
+		return true;
+	}
+	return false;
 }
 
 /**
@@ -577,9 +586,17 @@ class TerarkDbIndex::BulkBuilder : public SortedDataBuilderInterface {
 public:
     BulkBuilder(TerarkDbIndex* idx, OperationContext* txn, bool dupsAllowed)
         : _idx(idx), _txn(txn)
-		, m_td(idx->m_table->m_tab.get())
 		, _dupsAllowed(dupsAllowed)
 	{
+		auto tst = idx->m_table.get();
+		if (txn && txn->recoveryUnit()) {
+			m_rud = tst->getRecoveryUnitData(txn->recoveryUnit());
+			m_ttd = m_rud->m_ttd;
+			assert(m_ttd.get() != NULL);
+		}
+		else {
+			m_ttd = tst->allocTableThreadData();
+		}
 	}
 
     Status addKey(const BSONObj& newKey, const RecordId& id) override {
@@ -588,10 +605,7 @@ public:
             if (!s.isOK())
                 return s;
         }
-		if (_idx->insertIndexKey(newKey, id, &m_td)) {
-			if (_txn && _txn->recoveryUnit()) {
-				_txn->recoveryUnit()->registerChange(new UnindexOnFail(_idx, _txn, newKey, id, _dupsAllowed));
-			}
+		if (_idx->insertIndexKey(newKey, id, _dupsAllowed, _txn, &*m_ttd)) {
 	        return Status::OK();
 		} else {
 			return Status(ErrorCodes::DuplicateKey,
@@ -609,7 +623,8 @@ public:
 private:
     TerarkDbIndex*    const _idx;
     OperationContext* const _txn;
-	TableThreadData  m_td;
+	RecoveryUnitDataPtr     m_rud;
+	TableThreadDataPtr      m_ttd;
     const bool _dupsAllowed;
 };
 

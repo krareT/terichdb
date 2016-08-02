@@ -234,12 +234,17 @@ TableThreadData& ThreadSafeTable::getMyThreadData() {
 	return *ttd;
 }
 
-RecoveryUnitData::RecoveryUnitData()
+RecoveryUnitData::RecoveryUnitData(ThreadSafeTable* tst)
   : m_iterNum(0), m_mvccTime(1)
 {
+	m_ttd = tst->allocTableThreadData();
+	m_tst = tst;
 }
 
 RecoveryUnitData::~RecoveryUnitData() {
+	assert(m_ttd.get() != NULL);
+	m_tst->releaseTableThreadData(std::move(m_ttd));
+	assert(m_ttd.get() == NULL);
 }
 
 RecoveryUnitData* ThreadSafeTable::getRecoveryUnitData(RecoveryUnit* ru) {
@@ -250,8 +255,7 @@ RecoveryUnitData* ThreadSafeTable::getRecoveryUnitData(RecoveryUnit* ru) {
 			   ", m_ruMap.size() = " << m_ruMap.size()
 			<< ", ru = " << (void*)ru
 			<< ", dir: " << m_tab->getDir().string();
-		x = new RecoveryUnitData();
-		x->m_ttd = this->allocTableThreadData();
+		x = new RecoveryUnitData(this);
 	}
 	return x.get();
 }
@@ -274,7 +278,6 @@ void ThreadSafeTable::removeRecoveryUnitData(RecoveryUnit* ru) {
 		rud.swap(m_ruMap.val(idx));
 		m_ruMap.erase_i(idx);
 	}
-	this->releaseTableThreadData(rud->m_ttd);
 	LOG(2) << "ThreadSafeTable::removeRecoveryUnitData(): rud->m_iterNum = " << rud->m_iterNum
 		<< ", rud->m_records.size() = " << rud->m_records.size()
 		<< ", m_ruMap.size() = " << m_ruMap.size()
@@ -452,7 +455,6 @@ void RuStoreIteratorBase::traceFunc(const char* func) const {
 
 RuStoreIteratorBase::RuStoreIteratorBase(RecoveryUnit* ru, ThreadSafeTable* tst) {
 	m_id = -1;
-	m_ru = ru;
 	m_tst = tst;
 	m_rud = tst->getRecoveryUnitData(ru);
 	m_rud->m_iterNum++;

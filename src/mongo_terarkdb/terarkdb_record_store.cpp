@@ -372,8 +372,10 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 	TableThreadData* ttd = NULL;
 	if (txn && txn->recoveryUnit()) {
 		rud = m_table->tryRecoveryUnitData(txn->recoveryUnit());
-		if (rud)
+		if (rud) {
 			ttd = rud->m_ttd.get(); // may be NULL
+			assert(NULL != ttd);
+		}
 	}
 	if (!ttd) {
 		rud = NULL;
@@ -386,7 +388,6 @@ bool TerarkDbRecordStore::findRecord(OperationContext* txn,
 		<< ", bson = " << BSONObj(bson.get())
 		<< ", dir: " << tab->getDir().string();
 
-//  size_t bufsize = sizeof(SharedBuffer::Holder) + bson.objsize();
     int bufsize = ConstDataView(bson.get()).read<LittleEndian<int>>();
     *out = RecordData(bson, bufsize);
     return true;

@@ -90,9 +90,10 @@ public:
 	};
 	gold_hash_map<llong, MVCCTime> m_records;
 	TableThreadDataPtr   m_ttd;
+	ThreadSafeTable*     m_tst;
 	uint32_t m_iterNum;
 	uint32_t m_mvccTime;
-	RecoveryUnitData();
+	explicit RecoveryUnitData(ThreadSafeTable* tst);
 	~RecoveryUnitData();
 };
 typedef boost::intrusive_ptr<RecoveryUnitData> RecoveryUnitDataPtr;
@@ -100,7 +101,6 @@ typedef boost::intrusive_ptr<RecoveryUnitData> RecoveryUnitDataPtr;
 class RuStoreIteratorBase : public terark::db::StoreIterator {
 public:
 	llong  m_id;
-	size_t m_ruIdx;
 	RecoveryUnit*         m_ru;
 	ThreadSafeTable*      m_tst;
 	RecoveryUnitDataPtr   m_rud;
