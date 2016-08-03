@@ -86,6 +86,8 @@ using std::set;
 using std::string;
 using terark::FileStream;
 
+static terark::profiling g_profiling;
+
 //inline const void* toSigned(uint32_t x) { return (void*)(uintptr_t(x)); }
 inline int32_t toSigned(uint32_t x) { return x; }
 
@@ -103,6 +105,15 @@ IndexIterData::IndexIterData(DbTable* tab, size_t indexId, bool forward) {
 }
 
 IndexIterData::~IndexIterData() {
+}
+
+void IndexIterData::reset() {
+	reset(g_profiling.now());
+}
+void IndexIterData::reset(llong now) {
+	m_lastUseTime = now;
+	m_cursor->reset();
+	m_ctx->trySyncSegCtxSpeculativeLock(m_ctx->m_tab);
 }
 
 ThreadSafeTable::ThreadSafeTable(const fs::path& dbPath) {
@@ -139,8 +150,6 @@ void ThreadSafeTable::releaseTableThreadData(TableThreadDataPtr ttd) {
 	std::unique_lock<std::mutex> lock(this->m_cursorCacheMutex);
 	m_cursorCache.push_back(std::move(ttd));
 }
-
-static terark::profiling g_profiling;
 
 void
 ThreadSafeTable::expiringCacheItems(valvec<valvec<IndexIterDataPtr> >& vv, llong now) {
@@ -190,7 +199,7 @@ IndexIterDataPtr ThreadSafeTable::allocIndexIter(size_t indexId, bool forward) {
 			}
 		}
 	}
-	iter->reset();
+	iter->reset(now);
 	return iter;
 }
 
@@ -198,8 +207,7 @@ void ThreadSafeTable::releaseIndexIter(size_t indexId, bool forward, IndexIterDa
 	assert(indexId < m_indexForwardIterCache.size());
 	assert(m_indexForwardIterCache.size() == m_indexBackwardIterCache.size());
 	llong now = g_profiling.now();
-	iter->m_lastUseTime = now;
-	iter->reset();
+	iter->reset(now);
 	std::unique_lock<std::mutex> lock(m_cursorCacheMutex);
 	expiringCacheItems(m_indexForwardIterCache, now);
 	expiringCacheItems(m_indexBackwardIterCache, now);

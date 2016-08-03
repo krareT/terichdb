@@ -74,10 +74,8 @@ struct IndexIterData : public terark::RefCounter {
 	bool increment(llong* recId) {
 		return m_cursor->increment(recId, &m_curKey);
 	}
-	void reset() {
-		m_cursor->reset();
-		m_ctx->trySyncSegCtxSpeculativeLock(m_ctx->m_tab);
-	}
+	void reset();
+	void reset(llong now);
 };
 typedef boost::intrusive_ptr<IndexIterData> IndexIterDataPtr;
 
