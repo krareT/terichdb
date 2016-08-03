@@ -297,7 +297,7 @@ TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id, bool du
  */
 class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor {
 	IndexIterData* getCursor() const {
-		if (terark_likely(_cursor))
+		if (terark_likely(_cursor.get() != nullptr))
 			return _cursor.get();
 		_cursor = _idx.m_table->allocIndexIter(_idx.m_indexId, _forward);
 		return _cursor.get();
