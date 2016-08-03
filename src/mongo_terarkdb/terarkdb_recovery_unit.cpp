@@ -162,7 +162,6 @@ TerarkDbRecoveryUnit* TerarkDbRecoveryUnit::get(OperationContext* txn) {
 }
 
 void TerarkDbRecoveryUnit::assertInActiveTxn() const {
-    fassert(28575, _active);
 }
 
 void TerarkDbRecoveryUnit::abandonSnapshot() {
