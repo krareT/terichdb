@@ -91,6 +91,9 @@ static terark::profiling g_profiling;
 //inline const void* toSigned(uint32_t x) { return (void*)(uintptr_t(x)); }
 inline int32_t toSigned(uint32_t x) { return x; }
 
+ICleanOnOwnerDead::~ICleanOnOwnerDead() {
+}
+
 TableThreadData::TableThreadData(DbTable* tab) {
 	m_dbCtx.reset(tab->createDbContext());
 	m_dbCtx->syncIndex = false;
@@ -221,15 +224,23 @@ void ThreadSafeTable::releaseIndexIter(size_t indexId, bool forward, IndexIterDa
 // brain dead mongodb may not delete RecordStore and SortedDataInterface
 // so, workaround mongodb, call destroy in cleanShutdown()
 void ThreadSafeTable::destroy() {
-	log() << BOOST_CURRENT_FUNCTION
-		<< ": mongodb will leak RecordStore and SortedDataInterface, destory underlying objects now";
+	log() << "ThreadSafeTable::destroy(): mongodb will leak RecordStore and SortedDataInterface, destory underlying objects now";
+	{
+		std::lock_guard<std::mutex> lock(m_dangerSubObjectsMutex);
+		m_dangerSubObjects.for_each([](ICleanOnOwnerDead* p) {
+			log() << "ThreadSafeTable::destroy(): clean ICleanOnOwnerDead object: "
+				<< (void*)p << ", class = " << demangleName(typeid(*p));
+			p->onOwnerPrematureDeath();
+		});
+		m_dangerSubObjects.clear();
+	}
 	m_ruMap.clear();
 	m_indexForwardIterCache.clear();
 	m_indexBackwardIterCache.clear();
 	m_cursorCache.clear();
 	m_ttd.clear();
-	log() << BOOST_CURRENT_FUNCTION << ": m_tab->refcnt = " << m_tab->get_refcount()
-		<< ", m_ttd.size = " << m_ttd.size();
+	log() << "ThreadSafeTable::destroy(): m_tab->refcnt = " << m_tab->get_refcount()
+		<< ", thread local m_ttd.size = " << m_ttd.size();
 	m_tab = nullptr;
 }
 
@@ -569,6 +580,18 @@ ThreadSafeTable::createStoreIter(RecoveryUnit* ru, bool forward) {
 		return new RuStoreIterForward(ru, this);
 	else
 		return new RuStoreIterBackward(ru, this);
+}
+
+void ThreadSafeTable::registerCleanOnOwnerDead(ICleanOnOwnerDead* p) {
+	std::lock_guard<std::mutex> lock(m_dangerSubObjectsMutex);
+	auto ib = m_dangerSubObjects.insert_i(p);
+	LOG(2) << "ThreadSafeTable::registerCleanOnOwnerDead(" << (void*)p << "): isInserted = " << ib.second;
+}
+
+void ThreadSafeTable::unregisterCleanOnOwnerDead(ICleanOnOwnerDead* p) {
+	std::lock_guard<std::mutex> lock(m_dangerSubObjectsMutex);
+	size_t cnt = m_dangerSubObjects.erase(p);
+	LOG(2) << "ThreadSafeTable::unregisterCleanOnOwnerDead(" << (void*)p << "): erased = " << cnt;
 }
 
 boost::filesystem::path

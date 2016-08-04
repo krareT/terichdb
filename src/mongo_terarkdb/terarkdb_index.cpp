@@ -295,7 +295,7 @@ TerarkDbIndex::insertIndexKey(const BSONObj& newKey, const RecordId& id, bool du
 /**
  * Implements the basic TerarkDb_CURSOR functionality used by both unique and standard indexes.
  */
-class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor {
+class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor, public ICleanOnOwnerDead {
 	IndexIterData* getCursor() const {
 		if (terark_likely(_cursor.get() != nullptr))
 			return _cursor.get();
@@ -309,9 +309,18 @@ class TerarkDbIndexCursorBase : public SortedDataInterface::Cursor {
 public:
     TerarkDbIndexCursorBase(const TerarkDbIndex& idx, OperationContext* txn, bool forward)
         : _txn(txn), _idx(idx), _forward(forward), _endPositionInclude(false) {
+		idx.m_table->registerCleanOnOwnerDead(this);
     }
 	~TerarkDbIndexCursorBase() {
+		if (!m_isOwnerAlive) {
+			return;
+		}
 		releaseCursor();
+		_idx.m_table->unregisterCleanOnOwnerDead(this);
+	}
+	void onOwnerPrematureDeath() override final {
+		_cursor = nullptr;
+		m_isOwnerAlive = false;
 	}
     boost::optional<IndexKeyEntry> next(RequestedInfo parts) override {
         if (_eof) { // Advance on a cursor at the end is a no-op
@@ -585,6 +594,7 @@ protected:
 
 	bool _endPositionInclude;
 	bool m_isEndKeyMax = true;
+	bool m_isOwnerAlive = true;
 };
 
 /**

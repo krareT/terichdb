@@ -113,7 +113,7 @@ void terarkEncodeBsonElemVal(const BSONElement& elem, valvec<char>& encoded) {
 	case Symbol:
 	case Code:
 	case mongo::String:
-	//	log() << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
+		LOG(4) << "encode: strlen+1=" << elem.valuestrsize() << ", str=" << elem.valuestr();
 		{
 			size_t declstrlen = elem.valuestrsize();
 			size_t realstrlen = strnlen(value + 4, declstrlen) + 1;
@@ -121,9 +121,11 @@ void terarkEncodeBsonElemVal(const BSONElement& elem, valvec<char>& encoded) {
 				encoded.append(value + 4, realstrlen);
 			}
 			else {
+				valvec<char> buf(declstrlen*2+1);
+				hex_encode(value+4, declstrlen, buf.data());
 				THROW_STD(invalid_argument
-					, "mongoType = %d, declstrlen = %zd, realstrlen = %zd"
-					, elem.type(), realstrlen, declstrlen);
+					, "mongoType = %d, declstrlen = %zd, realstrlen = %zd, str = %s, hex(str) = %s"
+					, elem.type(), declstrlen, realstrlen, value+4, buf.data());
 			}
 		}
 		break;
@@ -1085,6 +1087,7 @@ static void terarkDecodeBsonElemVal(MyBsonBuilder& bb, const char*& pos, const c
 		break;
 	default:
 		{
+			LOG(0) << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)type;
 			StringBuilder ss;
 			ss << "terarkDecodeIndexKey(): BSONElement: bad subkey.type " << (int)type;
 			std::string msg = ss.str();
@@ -1102,7 +1105,7 @@ static void terarkDecodeBsonObject(MyBsonBuilder& bb, const char*& pos, const ch
 		if (pos >= end) {
 			THROW_STD(invalid_argument, "Invalid encoded bson object");
 		}
-		const int type = (unsigned char)(*pos++);
+		const int type = (signed char)(*pos++);
 		bb << char(type);
 		if (type == EOO)
 			break;
@@ -1127,15 +1130,33 @@ static void terarkDecodeBsonArray(MyBsonBuilder& bb, const char*& pos, const cha
 	int arrItemType = (unsigned char)(*pos++);
 	int arrByteNumOffset = bb.tell();
 	bb << int(0); // reserve for arrByteNum
-	for (int arrIndex = 0; arrIndex < cnt; arrIndex++) {
-		if (pos >= end) {
-			THROW_STD(invalid_argument, "Invalid encoded bson array");
+	switch (arrItemType) {
+	case Undefined:
+	case jstNULL:
+	case MaxKey:
+	case MinKey:
+		invariant(pos == end);
+		for (int arrIndex = 0; arrIndex < cnt; arrIndex++) {
+			bb << char(arrItemType);
+			std::string idxStr = BSONObjBuilder::numStr(arrIndex);
+			bb.ensureWrite(idxStr.c_str(), idxStr.size()+1);
 		}
-		const int curItemType = arrItemType == 129 ? (unsigned char)(*pos++) : arrItemType;
-		bb << char(curItemType);
-		std::string idxStr = BSONObjBuilder::numStr(arrIndex);
-		bb.ensureWrite(idxStr.c_str(), idxStr.size()+1);
-		terarkDecodeBsonElemVal(bb, pos, end, curItemType);
+		break;
+	default:
+		for (int arrIndex = 0; arrIndex < cnt; arrIndex++) {
+			if (pos >= end) {
+				THROW_STD(invalid_argument
+					, "Invalid encoded bson array: arrItemType = %d, arrIndex = %d, cnt = %d"
+					, arrItemType, arrIndex, cnt);
+			}
+			const int curItemType = arrItemType == 129
+				? (signed char)(*pos++)
+				: (signed char)(arrItemType);
+			bb << char(curItemType);
+			std::string idxStr = BSONObjBuilder::numStr(arrIndex);
+			bb.ensureWrite(idxStr.c_str(), idxStr.size()+1);
+			terarkDecodeBsonElemVal(bb, pos, end, curItemType);
+		}
 	}
 	bb << char(EOO);
 	int arrByteNum = bb.tell() - arrByteNumOffset;
@@ -1374,7 +1395,7 @@ SchemaRecordCoder::decode(const Schema* schema, const char* data, size_t size) {
 	}
 	if (pos < end) {
 		while (pos < end) {
-			const int type = (unsigned char)(*pos++);
+			const int type = (signed char)(*pos++);
 			bb << char(type);
 			assert(EOO != type);
 			StringData fieldname = pos;

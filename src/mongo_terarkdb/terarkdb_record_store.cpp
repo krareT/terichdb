@@ -85,13 +85,14 @@ static_assert(kCurrentRecordStoreVersion <= kMaximumRecordStoreVersion,
 
 //MONGO_FP_DECLARE(TerarkDbWriteConflictException);
 
-class TerarkDbRecordStore::Cursor final : public SeekableRecordCursor {
+class TerarkDbRecordStore::Cursor final : public SeekableRecordCursor, public ICleanOnOwnerDead {
 public:
     Cursor(OperationContext* txn, const TerarkDbRecordStore& rs, bool forward)
         : _rs(rs),
           _txn(txn), _forward(forward) {
 		LOG(1) << "TerarkDbRecordStore::Cursor::Cursor(): forward = " << forward;
 		init(txn);
+		rs.m_table->registerCleanOnOwnerDead(this);
     }
 
 	void init(OperationContext* txn) {
@@ -114,10 +115,29 @@ public:
 	}
 
 	~Cursor() {
+		LOG(1) << "TerarkDbRecordStore::Cursor::~Cursor(): forward = " << _forward
+			<< ", m_isOwnerAlive = " << m_isOwnerAlive
+			<< ", m_hasRecoveryUnit = " << m_hasRecoveryUnit;
+		if (!m_isOwnerAlive) {
+			return;
+		}
 		ThreadSafeTable* tst = _rs.m_table.get();
 		if (!m_hasRecoveryUnit) {
 			tst->releaseTableThreadData(m_ttd);
 		}
+		m_ttd = nullptr;
+		_cursor = nullptr;
+		tst->unregisterCleanOnOwnerDead(this);
+	}
+
+	void onOwnerPrematureDeath() override final {
+		ThreadSafeTable* tst = _rs.m_table.get();
+		if (!m_hasRecoveryUnit) {
+			tst->releaseTableThreadData(m_ttd);
+		}
+		m_ttd = nullptr;
+		_cursor = nullptr;
+		m_isOwnerAlive = false;
 	}
 
     boost::optional<Record> next() final {
@@ -260,8 +280,8 @@ public:
 			<< ", _eof = " << _eof << ", _lastReturnedId = " << _lastReturnedId;
 		if (m_ttd && !m_hasRecoveryUnit) {
 			_rs.m_table->releaseTableThreadData(m_ttd);
-			m_ttd = nullptr;
 		}
+		m_ttd = nullptr;
         _txn = nullptr;
 		_cursor = nullptr;
     }
@@ -279,6 +299,7 @@ private:
     bool _skipNextAdvance = false;
     bool _eof = false;
 	bool m_hasRecoveryUnit = false;
+	bool m_isOwnerAlive = true;
 	const bool _forward;
 	TableThreadDataPtr m_ttd;
     terark::db::StoreIteratorPtr _cursor;
@@ -419,8 +440,16 @@ Status TerarkDbRecordStore::insertRecords(OperationContext* txn,
     for (size_t i = 0; i < records->size(); ++i) {
 		Record& rec = (*records)[i];
     	BSONObj bson(rec.data.data());
-    	td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
-    	rec.id = RecordId(1 + tab->insertRow(td.m_buf, &*td.m_dbCtx));
+		try {
+			td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+		} catch (const std::exception& ex) {
+			return Status(ErrorCodes::InvalidBSON, ex.what());
+		}
+		try {
+			rec.id = RecordId(1 + tab->insertRow(td.m_buf, &*td.m_dbCtx));
+		} catch (const std::exception& ex) {
+			return Status(ErrorCodes::InternalError, ex.what());
+		}
 		if (txn && txn->recoveryUnit()) {
 			m_table->registerInsert(txn->recoveryUnit(), rec.id);
 		}
@@ -439,12 +468,20 @@ StatusWith<RecordId> TerarkDbRecordStore::insertRecord(OperationContext* txn,
     BSONObj bson(data);
 	invariant(bson.objsize() == len);
     LOG(2) << "TerarkDbRecordStore::insertRecord(): bson = " << bson.toString();
-    td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
-    llong recIdx = tab->insertRow(td.m_buf, &*td.m_dbCtx);
-	if (txn && txn->recoveryUnit()) {
-		m_table->registerInsert(txn->recoveryUnit(), RecordId(recIdx + 1));
+    try {
+		td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+	} catch (const std::exception& ex) {
+		return Status(ErrorCodes::InvalidBSON, ex.what());
 	}
-	return {RecordId(recIdx + 1)};
+	try {
+		llong recIdx = tab->insertRow(td.m_buf, &*td.m_dbCtx);
+		if (txn && txn->recoveryUnit()) {
+			m_table->registerInsert(txn->recoveryUnit(), RecordId(recIdx + 1));
+		}
+		return {RecordId(recIdx + 1)};
+	} catch (const std::exception& ex) {
+		return Status(ErrorCodes::InternalError, ex.what());
+	}
 }
 
 Status
@@ -483,14 +520,22 @@ TerarkDbRecordStore::insertRecordsWithDocWriter(OperationContext* txn,
     for (size_t i = 0; i < nDocs; i++) {
         docs[i]->writeDocument(pos);
         BSONObj bson = records[i].data.releaseToBson();
-		td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
-		llong recIdx = batch.upsertRow(td.m_buf);
-		records[i].id = RecordId(recIdx + 1);
-		if (txn && txn->recoveryUnit()) {
-			m_table->registerInsert(txn->recoveryUnit(), RecordId(recIdx + 1));
+		try {
+			td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+		} catch (const std::exception& ex) {
+			return Status(ErrorCodes::InvalidBSON, ex.what());
 		}
-	    LOG(2) << "TerarkDbRecordStore::insertRecordsWithDocWriter(): i = " << i
-			<< ", id = " << RecordId(recIdx + 1) << ", bson = " << bson.toString();
+		try {
+			llong recIdx = batch.upsertRow(td.m_buf);
+			records[i].id = RecordId(recIdx + 1);
+			if (txn && txn->recoveryUnit()) {
+				m_table->registerInsert(txn->recoveryUnit(), RecordId(recIdx + 1));
+			}
+			LOG(2) << "TerarkDbRecordStore::insertRecordsWithDocWriter(): i = " << i
+				<< ", id = " << RecordId(recIdx + 1) << ", bson = " << bson.toString();
+		} catch (const std::exception& ex) {
+			return Status(ErrorCodes::InternalError, ex.what());
+		}
     }
 	if (!batch.commit()) {
 		return Status(ErrorCodes::OperationFailed, "TerarkDbRecordStore::insertRecordsWithDocWriter: terark::db::BatchWriter::commit failed");
@@ -540,10 +585,18 @@ TerarkDbRecordStore::updateRecord(OperationContext* txn,
 	LOG(2) << "TerarkDbRecordStore::updateRecord(): bson = " << bson.toString()
 		<< ", id = " << id << ", do inplace update";
     auto& td = m_table->getMyThreadData();
-    td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
-	llong newRecId = tab->updateRow(recId, td.m_buf, &*td.m_dbCtx);
-	invariant(newRecId == recId);
-	return Status::OK();
+	try {
+	    td.m_coder.encode(&tab->rowSchema(), nullptr, bson, &td.m_buf);
+	} catch (const std::exception& ex) {
+		return Status(ErrorCodes::InvalidBSON, ex.what());
+	}
+	try {
+		llong newRecId = tab->updateRow(recId, td.m_buf, &*td.m_dbCtx);
+		invariant(newRecId == recId);
+		return Status::OK();
+	} catch (const std::exception& ex) {
+		return Status(ErrorCodes::InternalError, ex.what());
+	}
 }
 
 bool TerarkDbRecordStore::updateWithDamagesSupported() const {

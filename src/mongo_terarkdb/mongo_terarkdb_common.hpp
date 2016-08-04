@@ -43,6 +43,12 @@ extern const std::string kTerarkDbEngineName;
 
 class ThreadSafeTable;
 
+class ICleanOnOwnerDead {
+public:
+	virtual ~ICleanOnOwnerDead();
+	virtual void onOwnerPrematureDeath() = 0;
+};
+
 class TableThreadData : public terark::RefCounter {
 public:
 	explicit TableThreadData(DbTable* tab);
@@ -140,6 +146,9 @@ public:
 
 	RuStoreIteratorBase* createStoreIter(RecoveryUnit*, bool forward);
 
+	void registerCleanOnOwnerDead(ICleanOnOwnerDead*);
+	void unregisterCleanOnOwnerDead(ICleanOnOwnerDead*);
+
 protected:
 	tbb::enumerable_thread_specific<TableThreadDataPtr> m_ttd;
 	std::mutex m_cursorCacheMutex;
@@ -151,6 +160,9 @@ protected:
 
 	std::mutex m_ruMapMutex;
 	gold_hash_map<RecoveryUnit*, RecoveryUnitDataPtr> m_ruMap;
+
+	std::mutex m_dangerSubObjectsMutex;
+	terark::gold_hash_set<ICleanOnOwnerDead*> m_dangerSubObjects;
 };
 typedef boost::intrusive_ptr<ThreadSafeTable> ThreadSafeTablePtr;
 
