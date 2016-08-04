@@ -1852,11 +1852,22 @@ void DbTable::delmarkSet1(llong id) {
 	auto seg = m_segments[upp-1].get();
 	llong baseId = m_rowNumVec[upp-1];
 	size_t subId = size_t(id - baseId);
-	SpinRwLock segLock(seg->m_segMutex, true);
-//	assert(!seg->m_isDel[subId]);
-	if (!seg->m_isDel[subId]) {
-		seg->m_isDel.set1(subId);
-		seg->m_delcnt++;
+	bool success = false;
+	{
+		SpinRwLock segLock(seg->m_segMutex, true);
+		assert(subId < seg->m_isDel.size());
+	//	assert(!seg->m_isDel[subId]);
+		if (!seg->m_isDel[subId]) {
+			seg->m_isDel.set1(subId);
+			seg->m_delcnt++;
+			success = true;
+		}
+	}
+	if (success && seg->getReadonlySegment()) {
+		if (checkPurgeDeleteNoLock(seg)) {
+			lock.upgrade_to_writer();
+			asyncPurgeDeleteInLock();
+		}
 	}
 }
 
