@@ -1184,7 +1184,7 @@ bool DbTable::exists(llong id) const {
 	auto seg = m_segments[upp-1].get();
 #if !defined(NDEBUG)
 	size_t upperId = m_rowNumVec[upp];
-	assert(subId < seg->m_isDel.size());
+//	assert(subId < seg->m_isDel.size());
 	if (terark_unlikely(seg->m_isDel.size() != upperId - baseId)) {
 		fprintf(stderr, "INFO: DbTable::exists(id=%lld): "
 			"temporay error: seg->m_isDel.size() = %zd, (upperId - baseId) = %zd\n"
@@ -1193,10 +1193,16 @@ bool DbTable::exists(llong id) const {
 #endif
 	const size_t ProtectNum = 100;
 	if (seg->m_isFreezed || seg->m_isDel.unused() >= ProtectNum) {
+		if (subId >= seg->m_isDel.size()) {
+			return false;
+		}
 		return !seg->m_isDel[subId];
 	}
 	else {
 		SpinRwLock lock(seg->m_segMutex, false);
+		if (subId >= seg->m_isDel.size()) {
+			return false;
+		}
 		return !seg->m_isDel[subId];
 	}
 }

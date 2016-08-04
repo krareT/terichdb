@@ -866,12 +866,12 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 	m_colgroups.resize(colgroupNum);
 
 	if (colgroupNum == 1 && indexNum == 0) {
-		// single-key-only
-		compressSingleKeyIndex(input.get(), ctx.get());
-	}
-	else if (colgroupNum == 1 && indexNum == 1) {
 		// single-value-only
 		compressSingleColgroup(input.get(), ctx.get());
+	}
+	else if (colgroupNum == 1 && indexNum == 1) {
+		// single-key-only
+		compressSingleKeyIndex(input.get(), ctx.get());
 	}
 	else if (colgroupNum == 2 && indexNum == 1) {
 		// key-value
