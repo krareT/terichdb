@@ -965,14 +965,15 @@ const {
 			break;
 		case ColumnType::Uint64:
 			{
-				llong val = strtoull(pos, &next2, 0);
+				ullong val = strtoull(pos, &next2, 0);
 				unaligned_save<uint64_t>(row->grow_no_init(8), uint64_t(val));
 			}
 			break;
 		case ColumnType::Float32:
 			{
 				float val = strtof(pos, &next2);
-				unaligned_save<float>(row->grow_no_init(8), val);
+				BOOST_STATIC_ASSERT(sizeof(float) == 4);
+				unaligned_save<float>(row->grow_no_init(4), val);
 			}
 			break;
 		case ColumnType::Float64:
