@@ -1,6 +1,6 @@
 
 mydir=`dirname $0`
-$mydir/cpu_features.sh | grep -qs bmi2
+sh $mydir/cpu_features.sh | grep -qs bmi2
 bmi2_status=${PIPESTATUS[1]}
 if [ $bmi2_status -eq 0 ] # 0 indicate success
 then
