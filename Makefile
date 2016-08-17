@@ -18,7 +18,7 @@ rdir:=${BUILD_ROOT}/rls
 
 gen_sh := $(dir $(lastword ${MAKEFILE_LIST}))gen_env_conf.sh
 
-err := $(shell env BDB_HOME=${BDB_HOME} BOOST_INC=${BOOST_INC} bash ${gen_sh} "${CXX}" ${COMPILER} ${BUILD_ROOT}/env.mk; echo $$?)
+err := $(shell env BOOST_INC=${BOOST_INC} bash ${gen_sh} "${CXX}" ${COMPILER} ${BUILD_ROOT}/env.mk; echo $$?)
 ifneq "${err}" "0"
    $(error err = ${err} MAKEFILE_LIST = ${MAKEFILE_LIST}, PWD = ${PWD}, gen_sh = ${gen_sh} "${CXX}" ${COMPILER} ${BUILD_ROOT}/env.mk)
 endif
@@ -160,9 +160,7 @@ override CXXFLAGS += ${extf}
 override INCS += -Iapi/leveldb/leveldb/include
 override INCS += -Iapi/leveldb/leveldb
 override INCS += -Iapi/leveldb
-override INCS += -I${BDB_HOME}/include
 override INCS += -I/opt/include
-override LIBS += -L${BDB_HOME}/lib
 override LIBS += -L/opt/lib
 
 ifeq (, ${prefix})
