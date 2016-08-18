@@ -191,9 +191,9 @@ ifeq (1,${WITH_DFA_DB})
   TerarkDB_lib := terark-db
 else
   override INCS += -Iterark-base/src
-  zip_src := \
-    terark-base/src/terark/io/BzipStream.cpp \
-	terark-base/src/terark/io/GzipStream.cpp
+#  zip_src := \
+#    terark-base/src/terark/io/BzipStream.cpp \
+#  terark-base/src/terark/io/GzipStream.cpp
 #  TerarkDB_src += $(wildcard terark-base/src/terark/*.cpp)
 #  TerarkDB_src += $(wildcard terark-base/src/terark/io/*.cpp)
 #  TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)

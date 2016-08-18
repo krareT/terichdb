@@ -1373,11 +1373,18 @@ Fail:
 
 // dup keys in unique index errors will be ignored
 llong DbTable::upsertRow(fstring row, DbContext* ctx) {
-	for (size_t retry = 0; retry < 2; ++retry) {
+	for (int retry = 0; retry < 3; ++retry) {
 		llong recId = doUpsertRow(row, ctx);
 		if (recId >= 0) {
 			return recId;
 		}
+		// sleep a while to recover race conditions caused errors
+		int millisec = 100 * std::pow(2, retry);
+		fprintf(stderr
+			, "ERROR: DbTable::upsertRow(%s) failed, sleep for %d'ms and auto retry\n"
+			, rowSchema().toJsonStr(row).c_str(), millisec
+			);
+		std::this_thread::sleep_for(std::chrono::milliseconds(millisec));
 	}
 	TERARK_THROW(NeedRetryException, "Insertion temporary failed, retry later");
 }
@@ -2098,6 +2105,10 @@ const {
 bool
 DbTable::indexKeyExistsNoLock(size_t indexId, fstring key, DbContext* ctx)
 const {
+	if (indexId >= m_schema->getIndexNum()) {
+		THROW_STD(invalid_argument, "invalid indexId = %zd, indexNum = %zd"
+			, indexId, m_schema->getIndexNum());
+	}
 	ctx->exactMatchRecIdvec.erase_all();
 	size_t segNum = ctx->m_segCtx.size();
 	for (size_t i = 0; i < segNum; ++i) {
@@ -2121,6 +2132,10 @@ const {
 void
 DbTable::indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext* ctx)
 const {
+	if (indexId >= m_schema->getIndexNum()) {
+		THROW_STD(invalid_argument, "invalid indexId = %zd, indexNum = %zd"
+			, indexId, m_schema->getIndexNum());
+	}
 	recIdvec->erase_all();
 	const bool isUnique = m_schema->getIndexSchema(indexId).m_isUnique;
 	size_t segNum = ctx->m_segCtx.size();
