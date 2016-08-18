@@ -183,14 +183,15 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 			builder.reset(zds->createZipBuilder());
 		}
 	}
+	valvec<byte_t> key, val;
 	while (iter->increment(&id, &buf) && id < logicRowNum) {
 		assert(id >= 0);
 		assert(id < logicRowNum);
 		assert(prevId < id);
 		if (!m_isDel[id]) {
 			rowSchema.parseRow(buf, &columns);
-			fstring key = columns[0];
-			fstring val = columns[1];
+			keySchema.selectParent(columns, &key);
+			valueSchema.selectParent(columns, &val);
 			if (keySchema.getFixedRowLen() > 0) {
 				keyVec.m_strpool.append(key);
 			} else {
@@ -243,7 +244,7 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 		while (iter->increment(&id, &buf) && id < inputRowNum) {
 			if (!m_isDel[id]) {
 				rowSchema.parseRow(buf, &columns);
-				fstring val = columns[1];
+				valueSchema.selectParent(columns, &val);
 				builder->addRecord(val);
 			}
 		}

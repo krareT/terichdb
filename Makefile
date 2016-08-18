@@ -282,6 +282,8 @@ pkg: ${TerarkDB_d} ${TerarkDB_r}
 	mkdir -p ${TarBall}/include/terark/util
 	mkdir -p ${TarBall}/api/leveldb
 ifeq (${PKG_WITH_DBG},1)
+	cp    ../terark/lib/libterark-fsa_all-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	ln -s libterark-fsa_all-${COMPILER}-d${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-d${DLL_SUFFIX}
 	cp    ${TerarkDB_d} ${TarBall}/lib
 	ln -s lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-d${DLL_SUFFIX}
 endif
