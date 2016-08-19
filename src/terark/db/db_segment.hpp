@@ -181,6 +181,9 @@ protected:
 
 	ReadableIndexPtr purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx);
 	ReadableStorePtr purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
+	ReadableStorePtr purgeColgroup_s(size_t colgroupId,
+			const febitvec& newIsDel, size_t newDelcnt,
+			ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;

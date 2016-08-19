@@ -724,6 +724,11 @@ ReadonlySegment::compressMultipleColgroups(ReadableSegment* input, DbContext* ct
 			prevId = id;
 		}
 	}
+	if (prevId != id) {
+		assert(prevId < id);
+		assert(m_isDel[id]);
+		m_isDel.beg_end_set1(prevId+1, id);
+	}
 	llong inputRowNum = id + 1;
 	assert(inputRowNum <= logicRowNum);
 	if (inputRowNum < logicRowNum) {
@@ -815,6 +820,11 @@ ReadonlySegment::compressSingleKeyIndex(ReadableSegment* input, DbContext* ctx) 
 			m_isDel.beg_end_set1(prevId+1, id);
 			prevId = id;
 		}
+	}
+	if (prevId != id) {
+		assert(prevId < id);
+		assert(m_isDel[id]);
+		m_isDel.beg_end_set1(prevId+1, id);
 	}
 	llong inputRowNum = id + 1;
 	assert(inputRowNum <= logicRowNum);
@@ -1192,16 +1202,26 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 ReadableStorePtr
 ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir) {
 	assert(m_isDel.size() == input->m_isDel.size());
-	if (m_isDel.size() == m_delcnt) {
+	return purgeColgroup_s(colgroupId, m_isDel, m_delcnt, input, ctx, tmpSegDir);
+}
+
+// should be a static/factory method in the future refactory
+ReadableStorePtr
+ReadonlySegment::purgeColgroup_s(size_t colgroupId,
+		const febitvec& newIsDel, size_t newDelcnt,
+		ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir) {
+	assert(newIsDel.size() == input->m_isDel.size());
+	assert(newIsDel.popcnt() == newDelcnt);
+	if (newIsDel.size() == newDelcnt) {
 		return new EmptyIndexStore();
 	}
-	const bm_uint_t* isDel = m_isDel.bldata();
+	const bm_uint_t* isDel = newIsDel.bldata();
 	const llong inputRowNum = input->m_isDel.size();
 	const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 	const auto& colgroup = *input->m_colgroups[colgroupId];
 	if (schema.should_use_FixedLenStore()) {
 		FixedLenStorePtr store = new FixedLenStore(tmpSegDir, schema);
-		store->reserveRows(m_isDel.size() - m_delcnt);
+		store->reserveRows(newIsDel.size() - newDelcnt);
 		llong physicId = 0;
 		const bm_uint_t* isPurged = input->m_isPurged.bldata();
 		valvec<byte> buf;
@@ -1244,7 +1264,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 			seqStore->append(fstring(strVec.m_strpool).substr(oldsize), NULL);
 	};
 	const bm_uint_t* oldpurgeBits = input->m_isPurged.bldata();
-	assert(!oldpurgeBits || input->m_isPurged.size() == m_isDel.size());
+	assert(!oldpurgeBits || input->m_isPurged.size() == newIsDel.size());
 	if (auto cgparts = dynamic_cast<const MultiPartStore*>(&colgroup)) {
 		llong logicId = 0;
 		for (size_t j = 0; j < cgparts->numParts(); ++j) {
@@ -1275,7 +1295,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 		}
 #if !defined(NDEBUG)
 		if (oldpurgeBits) { assert(size_t(physicId) == input->m_isPurged.max_rank0()); }
-		else			  { assert(size_t(physicId) == m_isDel.size()); }
+		else			  { assert(size_t(physicId) == newIsDel.size()); }
 #endif
 	}
 	if (strVec.str_size() > 0) {
@@ -1477,6 +1497,9 @@ ReadonlySegment::openIndex(const Schema& schema, PathRef path) const {
 ReadableIndex*
 ReadonlySegment::buildIndex(const Schema& schema, SortableStrVec& indexData)
 const {
+	if (indexData.size() == 0 && indexData.str_size() == 0) {
+		return new EmptyIndexStore();
+	}
 	const size_t fixlen = schema.getFixedRowLen();
 	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
 		try {
@@ -1500,6 +1523,9 @@ ReadableStore*
 ReadonlySegment::buildStore(const Schema& schema, SortableStrVec& storeData)
 const {
 	assert(!schema.should_use_FixedLenStore());
+	if (storeData.size() == 0 && storeData.str_size() == 0) {
+		return new EmptyIndexStore();
+	}
 	if (schema.columnNum() == 1 && schema.getColumnMeta(0).isInteger()) {
 		assert(schema.getFixedRowLen() > 0);
 		try {

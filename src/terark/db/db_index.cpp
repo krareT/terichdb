@@ -147,6 +147,7 @@ llong EmptyIndexStore::dataStorageSize() const { return 0; }
 llong EmptyIndexStore::dataInflateSize() const { return 0; }
 llong EmptyIndexStore::numDataRows() const { return 0; }
 void EmptyIndexStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
+	assert(false);
 	THROW_STD(invalid_argument, "Invalid method call");
 }
 void EmptyIndexStore::deleteFiles() {}

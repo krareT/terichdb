@@ -74,7 +74,7 @@ void WtWritableSegment::init(PathRef segDir) {
 	char conf[512];
 	snprintf(conf, sizeof(conf)
 		, "create,cache_size=%zd,"
-		  "log=(enabled,recover=on),"
+		  "log=(enabled,recover=on" TERARK_IF_DEBUG(",file_max=4M","") "),"
 		  "session_max=10000,"
 		  "checkpoint=(log_size=64MB,wait=60)"
 		, m_cacheSize);

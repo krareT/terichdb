@@ -273,6 +273,7 @@ public:
 		}
 		else if (m_partIdx + 1 < owner->m_parts.size()) {
 			m_partIdx++;
+			assert(owner->m_parts[m_partIdx]->numDataRows() > 0);
 		}
 		else {
 			return false;

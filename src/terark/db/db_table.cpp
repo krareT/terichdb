@@ -3533,15 +3533,15 @@ try{
 		e.files.sort();
 		assert(e.seg->m_bookUpdates);
 	}
-	for (size_t i = indexNum; i < colgroupNum; ++i) {
-		const Schema& schema = m_schema->getColgroupSchema(i);
+	for (size_t cgId = indexNum; cgId < colgroupNum; ++cgId) {
+		const Schema& schema = m_schema->getColgroupSchema(cgId);
 		if (schema.should_use_FixedLenStore()) {
-			toMerge.mergeFixedLenColgroup(dseg.get(), i);
+			toMerge.mergeFixedLenColgroup(dseg.get(), cgId);
 			continue;
 		}
 		if (toMerge.m_newpurgeBits.size() > 0) {
 			assert(toMerge.m_newpurgeBits.size() == toMerge.m_newSegRows);
-			toMerge.mergeAndPurgeColgroup(dseg.get(), i);
+			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
 			continue;
 		}
 		const std::string prefix = "colgroup-" + schema.m_name;
@@ -3556,9 +3556,8 @@ try{
 				}
 				auto tmpDir1 = destSegDir / "temp-store";
 				fs::create_directory(tmpDir1);
-				dseg->m_isDel.swap(e.newIsPurged);
-				auto store = dseg->purgeColgroup(i, e.seg, ctx.get(), tmpDir1);
-				dseg->m_isDel.swap(e.newIsPurged);
+				auto store = dseg->purgeColgroup_s(cgId,
+					e.newIsPurged, e.newNumPurged, e.seg, ctx.get(), tmpDir1);
 				store->save(tmpDir1 / prefix);
 				moveStoreFiles(tmpDir1, destSegDir, prefix, newPartIdx);
 				fs::remove_all(tmpDir1);

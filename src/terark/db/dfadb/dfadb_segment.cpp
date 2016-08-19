@@ -1,6 +1,7 @@
 #include "dfadb_segment.hpp"
 #include "nlt_index.hpp"
 #include "nlt_store.hpp"
+#include <terark/db/fixed_len_store.hpp>
 #include <terark/fast_zip_blob_store.hpp>
 #include <mutex>
 #include <float.h>
@@ -40,9 +41,8 @@ const {
 	if (index0) {
 		return index0;
 	}
-	if (indexData.m_index.size() == 0) {
-		const size_t fixlen = schema.getFixedRowLen();
-		assert(fixlen > 0);
+	const size_t fixlen = schema.getFixedRowLen();
+	if (fixlen) {
 		patchStrVec(indexData, fixlen);
 	}
 	std::unique_ptr<NestLoudsTrieIndex> index(new NestLoudsTrieIndex(schema));
@@ -94,8 +94,11 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 	const Schema& valueSchema = m_schema->getColgroupSchema(0);
 	std::unique_ptr<DictZipBlobStore> zds;
 	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder;
-	size_t sampleLenSum = 0;
-	if (valueSchema.m_dictZipSampleRatio >= 0.0) {
+	FixedLenStorePtr store;
+	if (valueSchema.should_use_FixedLenStore()) {
+		store = new FixedLenStore(tmpDir, valueSchema);
+	}
+	else if (valueSchema.m_dictZipSampleRatio >= 0.0) {
 		double sRatio = valueSchema.m_dictZipSampleRatio;
 		double avgLen = double(input->dataInflateSize()) / logicRowNum;
 		if ((sRatio > FLT_EPSILON) || (sRatio >= 0 && avgLen > 100)) {
@@ -103,6 +106,7 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 			builder.reset(zds->createZipBuilder());
 		}
 	}
+	size_t sampleLenSum = 0;
 	while (iter->increment(&id, &val) && id < logicRowNum) {
 		assert(id >= 0);
 		assert(id < logicRowNum);
@@ -113,8 +117,8 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 				sampleLenSum += val.size();
 			}
 			else {
-				if (valueSchema.should_use_FixedLenStore())
-					valueVec.m_strpool.append(val);
+				if (store)
+					store->append(val, NULL);
 				else
 					valueVec.push_back(val);
 			}
@@ -122,6 +126,11 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 			m_isDel.beg_end_set1(prevId+1, id);
 			prevId = id;
 		}
+	}
+	if (prevId != id) {
+		assert(prevId < id);
+		assert(m_isDel[id]);
+		m_isDel.beg_end_set1(prevId+1, id);
 	}
 	llong  inputRowNum = id + 1;
 	assert(inputRowNum <= logicRowNum);
@@ -153,6 +162,9 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		zds->completeBuild(*builder);
 		m_colgroups[0] = new NestLoudsTrieStore(valueSchema, zds.release());
 	}
+	else if (store) {
+		m_colgroups[0] = std::move(store);
+	}
 	else {
 		iter = nullptr;
 		m_colgroups[0] = this->buildStore(valueSchema, valueVec);
@@ -174,8 +186,11 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 	const Schema& valueSchema = m_schema->getColgroupSchema(1);
 	std::unique_ptr<DictZipBlobStore> zds;
 	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder;
-	size_t sampleLenSum = 0;
-	if (valueSchema.m_dictZipSampleRatio >= 0.0) {
+	FixedLenStorePtr store;
+	if (valueSchema.should_use_FixedLenStore()) {
+		store = new FixedLenStore(tmpDir, valueSchema);
+	}
+	else if (valueSchema.m_dictZipSampleRatio >= 0.0) {
 		double sRatio = valueSchema.m_dictZipSampleRatio;
 		double avgLen = double(input->dataInflateSize()) / logicRowNum;
 		if ((sRatio > FLT_EPSILON) || (sRatio >= 0 && avgLen > 120)) {
@@ -183,6 +198,7 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 			builder.reset(zds->createZipBuilder());
 		}
 	}
+	size_t sampleLenSum = 0;
 	valvec<byte_t> key, val;
 	while (iter->increment(&id, &buf) && id < logicRowNum) {
 		assert(id >= 0);
@@ -202,8 +218,8 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 				sampleLenSum += val.size();
 			}
 			else {
-				if (valueSchema.should_use_FixedLenStore())
-					valueVec.m_strpool.append(val);
+				if (store)
+					store->append(val, NULL);
 				else
 					valueVec.push_back(val);
 			}
@@ -211,6 +227,11 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 			m_isDel.beg_end_set1(prevId+1, id);
 			prevId = id;
 		}
+	}
+	if (prevId != id) {
+		assert(prevId < id);
+		assert(m_isDel[id]);
+		m_isDel.beg_end_set1(prevId+1, id);
 	}
 	llong  inputRowNum = id + 1;
 	assert(inputRowNum <= logicRowNum);
@@ -251,6 +272,9 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 		iter = nullptr;
 		zds->completeBuild(*builder);
 		m_colgroups[1] = new NestLoudsTrieStore(valueSchema, zds.release());
+	}
+	else if (store) {
+		m_colgroups[1] = std::move(store);
 	}
 	else {
 		m_colgroups[1] = this->buildStore(valueSchema, valueVec);
