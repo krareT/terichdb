@@ -1107,10 +1107,11 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		input->m_bookUpdates = true;
 	}
 	std::string strThreadId = ThreadIdToString(tbb::this_tbb_thread::get_id());
-	fprintf(stderr, "INFO: thread-%s: purging %s, rows = %zd, delcnt = %zd\n"
+	fprintf(stderr, "INFO: thread-%s: purging %s, rows = %zd, delcnt = %zd, purged = %zd\n"
 		, strThreadId.c_str()
 		, input->m_segDir.string().c_str()
 		, input->m_isDel.size(), input->m_delcnt
+		, input->m_isPurged.max_rank1()
 		);
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
