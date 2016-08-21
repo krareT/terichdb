@@ -758,6 +758,10 @@ ReadonlySegment::compressMultipleColgroups(ReadableSegment* input, DbContext* ct
 		}
 	}
 	for (size_t i = indexNum; i < colgroupTempFiles.size(); ++i) {
+		if (0 == newRowNum) {
+			m_colgroups[i] = new EmptyIndexStore();
+			continue;
+		}
 		const Schema& schema = m_schema->getColgroupSchema(i);
 		auto tmpStore = colgroupTempFiles.getStore(i);
 		if (schema.should_use_FixedLenStore()) {

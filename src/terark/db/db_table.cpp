@@ -3357,10 +3357,11 @@ mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 			parts->addpartIfNonEmpty(store);
 		}
 	}
-	if (parts->numParts() == 0) {
-		dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
-		return;
-	}
+	TERARK_RT_assert(parts->numParts() > 0, std::logic_error);
+//	if (parts->numParts() == 0) {
+//		dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
+//		return;
+//	}
 	ReadableStorePtr mpstore = parts->finishParts();
 	StoreIteratorPtr iter = mpstore->ensureStoreIterForward(m_ctx.get());
 	dseg->m_colgroups[colgroupId] = dseg->buildDictZipStore(schema,
@@ -3376,8 +3377,11 @@ mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	fs::path storeFilePath = dseg->m_segDir / ("colgroup-" + schema.m_name);
 	if (m_newpurgeBits.size() == m_newpurgeBits.max_rank1()) {
-	//	dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
-	//	dseg->m_colgroups[colgroupId]->save(storeFilePath);
+		fprintf(stderr
+			, "mergeAndPurgeColgroup(%zd): result is empty, newSegRows = %zd\n"
+			, colgroupId, m_newSegRows);
+		dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
+		dseg->m_colgroups[colgroupId]->save(storeFilePath);
 		return;
 	}
 	if (schema.m_dictZipSampleRatio >= 0.0) {
