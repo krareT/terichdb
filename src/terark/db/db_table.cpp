@@ -3350,12 +3350,16 @@ mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 		auto store = sseg->m_colgroups[colgroupId].get();
 		if (auto mstore = dynamic_cast<MultiPartStore*>(store)) {
 			for (size_t i = 0; i < mstore->numParts(); ++i) {
-				parts->addpart(mstore->getPart(i));
+				parts->addpartIfNonEmpty(mstore->getPart(i));
 			}
 		}
 		else {
-			parts->addpart(store);
+			parts->addpartIfNonEmpty(store);
 		}
+	}
+	if (parts->numParts() == 0) {
+		dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
+		return;
 	}
 	ReadableStorePtr mpstore = parts->finishParts();
 	StoreIteratorPtr iter = mpstore->ensureStoreIterForward(m_ctx.get());

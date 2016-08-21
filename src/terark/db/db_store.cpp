@@ -1,4 +1,5 @@
 #include "db_store.hpp"
+//#include "db_index.hpp"
 
 namespace terark { namespace db {
 
@@ -399,9 +400,19 @@ void MultiPartStore::addpart(ReadableStore* store) {
 	m_parts.push_back(store);
 }
 
+void MultiPartStore::addpartIfNonEmpty(ReadableStore* store) {
+	assert(m_rowNumVec.empty());
+	if (store->numDataRows() > 0) {
+		m_parts.push_back(store);
+	}
+}
+
 ReadableStore* MultiPartStore::finishParts() {
 	assert(m_parts.size() > 0);
 	assert(m_rowNumVec.size() == 0);
+//	if (m_parts.size() == 0) {
+//		return new EmptyIndexStore();
+//	}
 	if (m_parts.size() == 1) {
 		return m_parts[0].get();
 	}

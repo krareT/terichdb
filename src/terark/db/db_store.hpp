@@ -135,6 +135,7 @@ public:
 	ReadableStore* getPart(size_t i) const { return m_parts[i].get(); }
 
 	void addpart(ReadableStore* store);
+	void addpartIfNonEmpty(ReadableStore* store);
 	ReadableStore* finishParts();
 
 private:
