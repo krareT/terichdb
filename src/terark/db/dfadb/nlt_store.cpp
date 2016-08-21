@@ -4,6 +4,7 @@
 #include <typeinfo>
 #include <float.h>
 #include <mutex>
+#include <random>
 
 namespace terark { namespace db { namespace dfadb {
 
@@ -126,6 +127,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 		if (dataSize * sampleRatio >= INT32_MAX * 0.95) {
 			sampleRatio = INT32_MAX * 0.95 / dataSize;
 		}
+		sampleRatio = std::min(sampleRatio, 0.5);
 	}
 
 	// 1. sample memory usage = inputBytes*sampleRatio, and will
@@ -156,12 +158,17 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				builder->addSample(rec);
 		}
 	};
+	std::mt19937_64 random;
+	// (random.max() - random.min()) + 1 may overflow
+	// do not +1 to avoid overflow
+	size_t sampleUpperBound = random.min() +
+		size_t((random.max() - random.min()) * sampleRatio);
 	if (NULL == isPurged || isPurged->size() == 0) {
 		llong recId;
 		size_t sampled = 0;
 		while (iter.increment(&recId, &rec)) {
 			if (NULL == isDel || !terark_bit_test(isDel, recId)) {
-				if (!rec.empty() && rand() < RAND_MAX * sampleRatio) {
+				if (!rec.empty() && random() < sampleUpperBound) {
 					builder->addSample(rec);
 					sampled++;
 				}
@@ -199,7 +206,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				//	if (hasData && rec.empty()) {
 				//		hasData = false;
 				//	}
-					if (!rec.empty() && rand() < RAND_MAX * sampleRatio) {
+					if (!rec.empty() && random() < sampleUpperBound) {
 						builder->addSample(rec);
 						sampled++;
 					}

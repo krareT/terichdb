@@ -3358,10 +3358,6 @@ mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 		}
 	}
 	TERARK_RT_assert(parts->numParts() > 0, std::logic_error);
-//	if (parts->numParts() == 0) {
-//		dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
-//		return;
-//	}
 	ReadableStorePtr mpstore = parts->finishParts();
 	StoreIteratorPtr iter = mpstore->ensureStoreIterForward(m_ctx.get());
 	dseg->m_colgroups[colgroupId] = dseg->buildDictZipStore(schema,
@@ -3372,24 +3368,25 @@ void
 DbTable::MergeParam::
 mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	assert(dseg->m_isDel.size() == m_newSegRows);
-	assert(m_oldpurgeBits.size() == m_newSegRows);
-	assert(m_newpurgeBits.size() == m_newSegRows);
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	fs::path storeFilePath = dseg->m_segDir / ("colgroup-" + schema.m_name);
-	if (m_newpurgeBits.size() == m_newpurgeBits.max_rank1()) {
+	if (m_newpurgeBits.size() &&
+		m_newpurgeBits.size() == m_newpurgeBits.max_rank1()) {
 		fprintf(stderr
 			, "mergeAndPurgeColgroup(%zd): result is empty, newSegRows = %zd\n"
 			, colgroupId, m_newSegRows);
+		assert(m_newpurgeBits.size() == m_newSegRows);
 		dseg->m_colgroups[colgroupId] = new EmptyIndexStore();
 		dseg->m_colgroups[colgroupId]->save(storeFilePath);
 		return;
 	}
 	if (schema.m_dictZipSampleRatio >= 0.0) {
 		llong sumLen = 0;
-		llong oldphysicRowNum = m_oldpurgeBits.max_rank0();
 		for (const auto& e : *this) {
 			sumLen += e.seg->m_colgroups[colgroupId]->dataInflateSize();
 		}
+		size_t oldphysicRowNum = m_oldpurgeBits.size() ?
+								 m_oldpurgeBits.max_rank0() : m_newSegRows;
 		assert(oldphysicRowNum > 0);
 		double sRatio = schema.m_dictZipSampleRatio;
 		double avgLen = 1.0 * sumLen / oldphysicRowNum;
@@ -3543,6 +3540,10 @@ try{
 		}
 		if (toMerge.m_newpurgeBits.size() > 0) {
 			assert(toMerge.m_newpurgeBits.size() == toMerge.m_newSegRows);
+			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
+			continue;
+		}
+		if (toMerge.m_forcePurgeAndMerge) {
 			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
 			continue;
 		}
