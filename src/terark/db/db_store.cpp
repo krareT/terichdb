@@ -217,9 +217,7 @@ WritableStore::~WritableStore() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-MultiPartStore::MultiPartStore(valvec<ReadableStorePtr>& parts) {
-	m_parts.swap(parts);
-	syncRowNumVec();
+MultiPartStore::MultiPartStore() {
 }
 
 MultiPartStore::~MultiPartStore() {
@@ -395,7 +393,27 @@ void MultiPartStore::save(PathRef path) const {
 	}
 }
 
+void MultiPartStore::addpart(ReadableStore* store) {
+	assert(m_rowNumVec.empty());
+	assert(store->numDataRows() > 0);
+	m_parts.push_back(store);
+}
+
+ReadableStore* MultiPartStore::finishParts() {
+	assert(m_parts.size() > 0);
+	assert(m_rowNumVec.size() == 0);
+	if (m_parts.size() == 1) {
+		return m_parts[0].get();
+	}
+	else {
+		syncRowNumVec();
+		return this;
+	}
+}
+
 void MultiPartStore::syncRowNumVec() {
+	// must be called only once
+	assert(m_rowNumVec.empty());
 	m_rowNumVec.resize_no_init(m_parts.size() + 1);
 	llong rows = 0;
 	for (size_t i = 0; i < m_parts.size(); ++i) {

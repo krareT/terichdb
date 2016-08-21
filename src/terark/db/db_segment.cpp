@@ -781,14 +781,14 @@ ReadonlySegment::compressMultipleColgroups(ReadableSegment* input, DbContext* ct
 		}
 		size_t maxMem = m_schema->m_compressingWorkMemSize;
 		llong rows = 0;
-		valvec<ReadableStorePtr> parts;
+		MultiPartStorePtr parts = new MultiPartStore();
 		StoreIteratorPtr iter = tmpStore->ensureStoreIterForward(NULL);
 		while (rows < newRowNum) {
 			SortableStrVec strVec;
 			rows += colgroupTempFiles.collectData(i, iter.get(), strVec, maxMem);
-			parts.push_back(this->buildStore(schema, strVec));
+			parts->addpart(this->buildStore(schema, strVec));
 		}
-		m_colgroups[i] = parts.size()==1 ? parts[0] : new MultiPartStore(parts);
+		m_colgroups[i] = parts->finishParts();
 		iter.reset();
 		tmpStore->deleteFiles();
 	}
@@ -1253,10 +1253,10 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 	SortableStrVec strVec;
 	size_t fixlen = schema.getFixedRowLen();
 	size_t maxMem = size_t(m_schema->m_compressingWorkMemSize);
-	valvec<ReadableStorePtr> parts;
+	MultiPartStorePtr parts = new MultiPartStore();
 	auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
 		if (terark_unlikely(strVec.mem_size() >= maxMem)) {
-			parts.push_back(this->buildStore(schema, strVec));
+			parts->addpart(this->buildStore(schema, strVec));
 			strVec.clear();
 		}
 		size_t oldsize = strVec.size();
@@ -1300,9 +1300,9 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 #endif
 	}
 	if (strVec.str_size() > 0) {
-		parts.push_back(this->buildStore(schema, strVec));
+		parts->addpart(this->buildStore(schema, strVec));
 	}
-	return parts.size()==1 ? parts[0] : new MultiPartStore(parts);
+	return parts->finishParts();
 }
 
 void ReadonlySegment::load(PathRef segDir) {
@@ -1444,7 +1444,7 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 		}
 		fstring fname = files[lo];
 		if (fname.substr(prefix.size()).startsWith(".0000.")) {
-			valvec<ReadableStorePtr> parts;
+			MultiPartStorePtr parts = new MultiPartStore();
 			size_t j = lo;
 			while (j < files.size() && (fname = files[j]).startsWith(prefix)) {
 				size_t partIdx = lcast(fname.substr(prefix.size()+1));
@@ -1453,10 +1453,10 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 					THROW_STD(invalid_argument, "missing part: %s.%zd",
 						(segDir / prefix).string().c_str(), j - lo);
 				}
-				parts.push_back(ReadableStore::openStore(schema, segDir, fname));
+				parts->addpart(ReadableStore::openStore(schema, segDir, fname));
 				++j;
 			}
-			m_colgroups[i] = new MultiPartStore(parts);
+			m_colgroups[i] = parts->finishParts();
 		}
 		else {
 			m_colgroups[i] = ReadableStore::openStore(schema, segDir, fname);

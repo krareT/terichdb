@@ -118,7 +118,7 @@ class TERARK_DB_DLL MultiPartStore : public ReadableStore {
 	class MyStoreIterBackward;	friend class MyStoreIterBackward;
 
 public:
-	explicit MultiPartStore(valvec<ReadableStorePtr>& parts);
+	explicit MultiPartStore();
 	~MultiPartStore();
 
 	llong dataInflateSize() const override;
@@ -134,6 +134,9 @@ public:
 	size_t numParts() const { return m_parts.size(); }
 	ReadableStore* getPart(size_t i) const { return m_parts[i].get(); }
 
+	void addpart(ReadableStore* store);
+	ReadableStore* finishParts();
+
 private:
 	void syncRowNumVec();
 
@@ -141,6 +144,7 @@ private:
 	valvec<uint32_t> m_rowNumVec;  // parallel with m_parts
 	valvec<ReadableStorePtr> m_parts; // partition of row set
 };
+typedef boost::intrusive_ptr<MultiPartStore> MultiPartStorePtr;
 
 #ifdef _MSC_VER
 //warning C4275: non dll-interface class 'std::logic_error' used as base for dll-interface class 'terark::db::ReadRecordException'

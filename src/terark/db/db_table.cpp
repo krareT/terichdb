@@ -3344,20 +3344,20 @@ void
 DbTable::MergeParam::
 mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
-	valvec<ReadableStorePtr> parts;
+	MultiPartStorePtr parts = new MultiPartStore();
 	for (const auto& e : *this) {
 		auto sseg = e.seg;
 		auto store = sseg->m_colgroups[colgroupId].get();
 		if (auto mstore = dynamic_cast<MultiPartStore*>(store)) {
 			for (size_t i = 0; i < mstore->numParts(); ++i) {
-				parts.push_back(mstore->getPart(i));
+				parts->addpart(mstore->getPart(i));
 			}
 		}
 		else {
-			parts.push_back(store);
+			parts->addpart(store);
 		}
 	}
-	ReadableStorePtr mpstore = new MultiPartStore(parts);
+	ReadableStorePtr mpstore = parts->finishParts();
 	StoreIteratorPtr iter = mpstore->ensureStoreIterForward(m_ctx.get());
 	dseg->m_colgroups[colgroupId] = dseg->buildDictZipStore(schema,
 		dseg->m_segDir, *iter, m_newpurgeBits.bldata(), &m_oldpurgeBits);
