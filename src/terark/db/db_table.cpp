@@ -3153,9 +3153,9 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 						strVec.m_strpool.append(rec);
 					} else {
 						strVec.push_back(rec);
-						if (seqStore)
-							seqStore->append(rec, ctx);
 					}
+					if (seqStore)
+						seqStore->append(rec, ctx);
 #if defined(SLOW_DEBUG_CHECK)
 					key2id[rec].push_back(baseLogicId + logicId);
 #endif
@@ -3510,12 +3510,6 @@ try{
 			} else {
 				assert(e.seg->m_isDel.size() == e.newIsPurged.size());
 				dseg->m_isPurged.append(e.newIsPurged);
-#if !defined(NDEBUG)
-				size_t baseId = dseg->m_isPurged.size() - e.newIsPurged.size();
-				for (size_t i = 0; i < e.newIsPurged.size(); ++i) {
-					assert(dseg->m_isPurged[baseId+i] == e.newIsPurged[i]);
-				}
-#endif
 			}
 		}
 		dseg->m_isPurged.build_cache(true, false);

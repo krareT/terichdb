@@ -399,6 +399,7 @@ void MultiPartStore::syncRowNumVec() {
 	m_rowNumVec.resize_no_init(m_parts.size() + 1);
 	llong rows = 0;
 	for (size_t i = 0; i < m_parts.size(); ++i) {
+		assert(m_parts[i]->numDataRows() > 0);
 		m_rowNumVec[i] = uint32_t(rows);
 		rows += m_parts[i]->numDataRows();
 	}
