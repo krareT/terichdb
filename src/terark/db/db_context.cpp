@@ -100,6 +100,7 @@ DbContext::DbContext(const DbTable* tab)
 		fprintf(stderr, "DEBUG: DbContext live count = %zd, created = %zd\n"
 			, g_dbCtxLiveCnt.load(), g_dbCtxCreatedCnt.load());
 	}
+	upsertMaxRetry = 0;
 }
 
 DbContext::~DbContext() {

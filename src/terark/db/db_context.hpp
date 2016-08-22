@@ -119,6 +119,7 @@ public:
 	valvec<llong> exactMatchRecIdvec;
 	size_t regexMatchMemLimit;
 	size_t segArrayUpdateSeq;
+	int  upsertMaxRetry;
 	bool syncIndex;
 	bool m_isUserDefineSnapshot;
 	byte isUpsertOverwritten;

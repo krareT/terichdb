@@ -1373,10 +1373,13 @@ Fail:
 
 // dup keys in unique index errors will be ignored
 llong DbTable::upsertRow(fstring row, DbContext* ctx) {
-	for (int retry = 0; retry < 3; ++retry) {
+	for (int retry = 0; ; ++retry) {
 		llong recId = doUpsertRow(row, ctx);
 		if (recId >= 0) {
 			return recId;
+		}
+		if (retry >= ctx->upsertMaxRetry) {
+			break;
 		}
 		// sleep a while to recover race conditions caused errors
 		int millisec = 100 * std::pow(2, retry);
