@@ -3037,8 +3037,11 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 	}
 	size_t avgSegRows = sumSegRows / this->size();
 	size_t maxSegRows = avgSegRows * 7/4;
+	size_t minMergeSegNum = tab->m_schema->m_minMergeSegNum;
 	if (m_forcePurgeAndMerge) {
-		maxSegRows = avgSegRows * 3;
+		//maxSegRows = avgSegRows * 3;
+		maxSegRows = size_t(-1);
+		minMergeSegNum = 2;
 	}
 
 	// find max range in which every seg rows < maxSegRows
@@ -3059,7 +3062,7 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		this->p[j] = this->p[rngBeg + j];
 	}
 	this->trim(rngLen);
-	if (rngLen < tab->m_schema->m_minMergeSegNum) {
+	if (rngLen < minMergeSegNum) {
 		tab->m_isMerging = false;
 		return false;
 	}
