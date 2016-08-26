@@ -220,7 +220,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				, "ERROR: %s:%d: physicId != physicNum: physicId = %lld, physicNum = %zd, logicNum = %zd\n"
 				, __FILE__, __LINE__, physicId, physicNum, logicNum);
 		}
-		emptyCheckProtect(sampled);
+		emptyCheckProtect(sampled, rec, *builder);
 		lock.lock(); // start lock
 		builder->prepare(newPhysicId, fpath.string());
 		iter.reset();
