@@ -4141,7 +4141,7 @@ void DbTable::runPurgeDelete() {
 				auto r = segs[i]->getReadonlySegment();
 				if (r) {
 					size_t newDelcnt = r->m_delcnt - r->m_isPurged.max_rank1();
-					size_t physicNum = r->m_isPurged.max_rank0();
+					size_t physicNum = r->getPhysicRows();
 					if (newDelcnt > physicNum * threshold) {
 						assert(newDelcnt > 0);
 						segIdx = i;
