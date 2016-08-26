@@ -110,6 +110,15 @@ std::mutex& DictZip_reduceMemMutex() {
 	static std::mutex m;
 	return m;
 }
+void emptyCheckProtect(size_t sampleLenSum, fstring rec,
+					   DictZipBlobStore::ZipBuilder& builder) {
+	if (0 == sampleLenSum) {
+		if (rec.empty())
+			builder.addSample("Hello World!"); // for fallback
+		else
+			builder.addSample(rec);
+	}
+}
 
 void
 NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
@@ -149,20 +158,11 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 	std::unique_lock<std::mutex> lock(reduceMemMutex, std::defer_lock);
 
 	valvec<byte> rec;
-	auto emptyCheckProtect = [&](size_t sampled) {
-	//	TERARK_RT_assert(sampled > 0, std::logic_error);
-		if (0 == sampled) {
-			if (rec.empty())
-				builder->addSample("Hello World!"); // for fallback
-			else
-				builder->addSample(rec);
-		}
-	};
 	std::mt19937_64 random;
 	// (random.max() - random.min()) + 1 may overflow
 	// do not +1 to avoid overflow
-	size_t sampleUpperBound = random.min() +
-		size_t((random.max() - random.min()) * sampleRatio);
+	uint64_t sampleUpperBound = random.min() +
+		(random.max() - random.min()) * sampleRatio;
 	if (NULL == isPurged || isPurged->size() == 0) {
 		llong recId;
 		size_t sampled = 0;
@@ -174,7 +174,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				}
 			}
 		}
-		emptyCheckProtect(sampled);
+		emptyCheckProtect(sampled, rec, *builder);
 		lock.lock(); // start lock
 		builder->prepare(recId + 1, fpath.string());
 		iter.reset();

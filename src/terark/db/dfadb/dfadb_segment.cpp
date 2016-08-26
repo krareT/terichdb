@@ -4,7 +4,11 @@
 #include <terark/db/fixed_len_store.hpp>
 #include <terark/fast_zip_blob_store.hpp>
 #include <mutex>
+#include <random>
 #include <float.h>
+
+#undef min
+#undef max
 
 namespace terark { namespace db { namespace dfadb {
 
@@ -81,6 +85,8 @@ const {
 }
 
 std::mutex& DictZip_reduceMemMutex(); // defined in nlt_store.cpp
+void emptyCheckProtect(size_t sampleLenSum, fstring rec,
+					   DictZipBlobStore::ZipBuilder& builder);
 
 void
 DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* ctx) {
@@ -106,6 +112,11 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 			builder.reset(zds->createZipBuilder());
 		}
 	}
+	std::mt19937_64 random;
+	// (random.max() - random.min()) + 1 may overflow
+	// do not +1 to avoid overflow
+	uint64_t sampleUpperBound = random.min() +
+		(random.max() - random.min()) * valueSchema.m_dictZipSampleRatio;
 	size_t sampleLenSum = 0;
 	while (iter->increment(&id, &val) && id < logicRowNum) {
 		assert(id >= 0);
@@ -113,8 +124,10 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		assert(prevId < id);
 		if (!m_isDel[id]) {
 			if (builder) {
-				builder->addSample(val);
-				sampleLenSum += val.size();
+				if (random() < sampleUpperBound) {
+					builder->addSample(val);
+					sampleLenSum += val.size();
+				}
 			}
 			else {
 				if (store)
@@ -150,9 +163,7 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		iter->reset(); // free resources and seek to begin
 		std::lock_guard<std::mutex> lock(DictZip_reduceMemMutex());
 		auto fpath = tmpDir / ("colgroup-" + valueSchema.m_name + ".nlt");
-		if (0 == sampleLenSum) {
-			builder->addSample("Hello World");
-		}
+		emptyCheckProtect(sampleLenSum, val, *builder);
 		builder->prepare(newRowNum, fpath.string());
 		while (iter->increment(&id, &val) && id < inputRowNum) {
 			if (!m_isDel[id])
@@ -198,6 +209,11 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 			builder.reset(zds->createZipBuilder());
 		}
 	}
+	std::mt19937_64 random;
+	// (random.max() - random.min()) + 1 may overflow
+	// do not +1 to avoid overflow
+	uint64_t sampleUpperBound = random.min() +
+		(random.max() - random.min()) * valueSchema.m_dictZipSampleRatio;
 	size_t sampleLenSum = 0;
 	valvec<byte_t> key, val;
 	while (iter->increment(&id, &buf) && id < logicRowNum) {
@@ -214,8 +230,10 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 				keyVec.push_back(key);
 			}
 			if (builder) {
-				builder->addSample(val);
-				sampleLenSum += val.size();
+				if (random() < sampleUpperBound) {
+					builder->addSample(val);
+					sampleLenSum += val.size();
+				}
 			}
 			else {
 				if (store)
@@ -258,9 +276,7 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 		assert(valueVec.m_strpool.size() == 0);
 		std::lock_guard<std::mutex> lock(DictZip_reduceMemMutex());
 		auto fpath = tmpDir / ("colgroup-" + valueSchema.m_name + ".nlt");
-		if (0 == sampleLenSum) {
-			builder->addSample("Hello World");
-		}
+		emptyCheckProtect(sampleLenSum, val, *builder);
 		builder->prepare(newRowNum, fpath.string());
 		while (iter->increment(&id, &buf) && id < inputRowNum) {
 			if (!m_isDel[id]) {
