@@ -375,7 +375,7 @@ void ZipIntKeyIndex::load(PathRef path) {
 	m_isUnique   = h->isUnique ? true : false;
 	m_keyType    = ColumnType(h->keyType);
 	m_minKey     = h->minKey;
-	size_t indexBits = terark_bsr_u64(h->rows - 1) + 1;
+	size_t indexBits = h->rows <= 1 ? 0 : terark_bsr_u64(h->rows - 1) + 1;
 	m_keys .risk_set_data((byte*)(h+1)                    , h->rows, h->keyBits);
 	m_index.risk_set_data((byte*)(h+1) + m_keys.mem_size(), h->rows,  indexBits);
 }
