@@ -109,7 +109,7 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		double avgLen = double(input->dataInflateSize()) / logicRowNum;
 		if ((sRatio > FLT_EPSILON) || (sRatio >= 0 && avgLen > 100)) {
 			zds.reset(new DictZipBlobStore());
-			builder.reset(DictZipBlobStore::createZipBuilder(DFADB_crc32cLevel));
+			builder.reset(DictZipBlobStore::createZipBuilder(valueSchema.m_checksumLevel));
 		}
 	}
 	std::mt19937_64 random;
@@ -206,7 +206,7 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 		double avgLen = double(input->dataInflateSize()) / logicRowNum;
 		if ((sRatio > FLT_EPSILON) || (sRatio >= 0 && avgLen > 120)) {
 			zds.reset(new DictZipBlobStore());
-			builder.reset(DictZipBlobStore::createZipBuilder(DFADB_crc32cLevel));
+			builder.reset(DictZipBlobStore::createZipBuilder(valueSchema.m_checksumLevel));
 		}
 	}
 	std::mt19937_64 random;

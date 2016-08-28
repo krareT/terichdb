@@ -271,6 +271,7 @@ namespace terark { namespace db {
 		int    m_maxFragLen;
 		int    m_sufarrMinFreq;
 		int    m_rankSelectClass;
+		int    m_checksumLevel;
 		float  m_dictZipSampleRatio;
 		byte   m_nltNestLevel;
 

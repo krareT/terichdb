@@ -172,6 +172,7 @@ Schema::Schema() {
 	m_maxFragLen = 0;
 	m_sufarrMinFreq = 0;
 	m_rankSelectClass = 512;
+	m_checksumLevel = 2; // checksum all
 	m_nltNestLevel = DEFAULT_nltNestLevel;
 	m_lastVarLenCol = 0;
 	m_restFixLenSum = 0;
@@ -2138,6 +2139,7 @@ parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 	schema.m_useFastZip = getJsonValue(js, "useFastZip", false);
 	schema.m_nltNestLevel = (byte)limitInBound(
 		getJsonValue(js, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
+	schema.m_checksumLevel = getJsonValue(js, "checkumLevel", schema.m_checksumLevel);
 }
 
 static
