@@ -98,7 +98,6 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 	StoreIteratorPtr iter(input->createStoreIterForward(ctx));
 	SortableStrVec valueVec;
 	const Schema& valueSchema = m_schema->getColgroupSchema(0);
-	std::unique_ptr<DictZipBlobStore> zds;
 	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder;
 	FixedLenStorePtr store;
 	if (valueSchema.should_use_FixedLenStore()) {
@@ -108,7 +107,6 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		double sRatio = valueSchema.m_dictZipSampleRatio;
 		double avgLen = double(input->dataInflateSize()) / logicRowNum;
 		if ((sRatio > FLT_EPSILON) || (sRatio >= 0 && avgLen > 100)) {
-			zds.reset(new DictZipBlobStore());
 			builder.reset(DictZipBlobStore::createZipBuilder(valueSchema.m_checksumLevel));
 		}
 	}
@@ -170,8 +168,7 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 				builder->addRecord(val);
 		}
 		iter = nullptr;
-		zds->completeBuild(*builder);
-		m_colgroups[0] = new NestLoudsTrieStore(valueSchema, zds.release());
+		m_colgroups[0] = new NestLoudsTrieStore(valueSchema, builder->finish());
 	}
 	else if (store) {
 		m_colgroups[0] = std::move(store);
@@ -195,7 +192,6 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 	const Schema& rowSchema = m_schema->getRowSchema();
 	const Schema& keySchema = m_schema->getIndexSchema(0);
 	const Schema& valueSchema = m_schema->getColgroupSchema(1);
-	std::unique_ptr<DictZipBlobStore> zds;
 	std::unique_ptr<DictZipBlobStore::ZipBuilder> builder;
 	FixedLenStorePtr store;
 	if (valueSchema.should_use_FixedLenStore()) {
@@ -205,7 +201,6 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 		double sRatio = valueSchema.m_dictZipSampleRatio;
 		double avgLen = double(input->dataInflateSize()) / logicRowNum;
 		if ((sRatio > FLT_EPSILON) || (sRatio >= 0 && avgLen > 120)) {
-			zds.reset(new DictZipBlobStore());
 			builder.reset(DictZipBlobStore::createZipBuilder(valueSchema.m_checksumLevel));
 		}
 	}
@@ -286,8 +281,7 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 			}
 		}
 		iter = nullptr;
-		zds->completeBuild(*builder);
-		m_colgroups[1] = new NestLoudsTrieStore(valueSchema, zds.release());
+		m_colgroups[1] = new NestLoudsTrieStore(valueSchema, builder->finish());
 	}
 	else if (store) {
 		m_colgroups[1] = std::move(store);
