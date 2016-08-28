@@ -33,4 +33,6 @@ protected:
 	std::unique_ptr<BlobStore> m_store;
 };
 
+#define DFADB_crc32cLevel 2
+
 }}} // namespace terark::db::dfadb
