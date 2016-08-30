@@ -397,7 +397,7 @@ public:
 		if (0 == n) {
 			free(p);
 			p = NULL;
-			n = 0;
+			c = 0;
 			return;
 		}
 		if (n == c)
