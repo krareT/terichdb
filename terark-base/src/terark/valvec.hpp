@@ -18,6 +18,7 @@
 #include <boost/mpl/bool.hpp>
 
 #include <terark/util/autofree.hpp>
+#include "config.hpp"
 
 namespace terark {
 #if (defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
@@ -360,10 +361,7 @@ public:
     }
 
     void ensure_capacity(size_t min_cap) {
-        size_t hard_min_cap = 1;
-        if (min_cap < hard_min_cap)
-            min_cap = hard_min_cap;
-        if (min_cap <= c) {
+        if (terark_likely(min_cap <= c)) {
             // nothing to do
             return;
         }

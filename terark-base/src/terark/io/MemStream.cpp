@@ -253,6 +253,19 @@ void AutoGrownMemIO::growAndWriteByte(byte b)
 	*m_pos++ = b;
 }
 
+void AutoGrownMemIO::clear() {
+	if (this->m_beg) {
+		::free(this->m_beg);
+		this->m_beg = NULL;
+		this->m_end = NULL;
+		this->m_pos = NULL;
+	}
+	else {
+		assert(NULL == this->m_end);
+		assert(NULL == this->m_pos);
+	}
+}
+
 /**
  * shrink allocated memory to fit this->tell()
  */

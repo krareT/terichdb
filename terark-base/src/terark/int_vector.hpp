@@ -50,6 +50,7 @@ public:
 		// 58 bit can span 9 bytes, but this only happens when start bit index
 		// is odd, 58 is not odd, so 58 is safe.
 		if (bits > 58) {
+			assert(false);
 			THROW_STD(logic_error, "bits=%zd is too large(max_allowed=58)", bits);
 		}
 #endif

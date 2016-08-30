@@ -392,6 +392,7 @@ public:
 		m_pos += length;
 	}
 
+	void clear();
 	void swap(AutoGrownMemIO& that) { SeekableMemIO::swap(that); }
 	void shrink_to_fit();
 

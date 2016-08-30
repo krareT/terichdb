@@ -440,7 +440,8 @@ namespace terark { namespace db {
 		};
 
 		template<class T>
-		static pass_by_value<CarBinPackReader<T> > CarBinPack(T& x) { return CarBinPackReader<T>(x); }
+		static pass_by_value<CarBinPackReader<T> >
+		CarBinPack(T& x) { return CarBinPackReader<T>(x); }
 		template<class T>
 		static CarBinPackWriter<T> CarBinPack(const T& x) { return x; }
 

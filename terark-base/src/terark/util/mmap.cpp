@@ -114,9 +114,11 @@ mmap_load(const char* fname, size_t* fsize, bool writable, bool populate) {
 	*fsize = st.st_size;
 	int flProtect = (writable ? PROT_WRITE : 0) | PROT_READ;
 	int flags = MAP_SHARED | (populate ? MAP_POPULATE : 0);
+  #ifdef MAP_HUGETLB
 	if (getEnvBool("mmap_load_huge_pages")) {
 		flags |= MAP_HUGETLB;
 	}
+  #endif
 	void* base = ::mmap(NULL, st.st_size, flProtect, flags, fd, 0);
 	if (MAP_FAILED == base) {
 		::close(fd);
