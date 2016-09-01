@@ -111,6 +111,15 @@ private:
 	void ensureRead_slow(void* vbuf, size_t length);
 	void ensureWrite_slow(const void* vbuf, size_t length);
 #endif
+
+public:
+	uint64_t fsize() const;
+	static uint64_t fpsize(FILE* fp);
+	static uint64_t fdsize(int fd);
+
+	void chsize(uint64_t newfsize) const;
+	static void fpchsize(FILE* fp, uint64_t newfsize);
+	static void fdchsize(int fd, uint64_t newfsize);
 };
 
 class TERARK_DLL_EXPORT NonOwnerFileStream : public FileStream {

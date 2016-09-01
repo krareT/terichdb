@@ -133,12 +133,15 @@ public:
 		m_mask = sizeof(Uint)*8 == bits ? Uint(-1) : (Uint(1)<<bits)-1;
 		m_size = num;
 		if (num) {
-			size_t usedsize = (bits * num + 7)/8;
-			size_t realsize = (bits * num + 7)/8 + sizeof(size_t)-1 + 15;
-			realsize &= ~size_t(15); // align to 16
-			m_data.resize_no_init(realsize);
-			m_data.fill(usedsize, realsize - usedsize, 0);
+			m_data.resize_fill(compute_mem_size(bits, num));
 		}
+	}
+
+	static size_t compute_mem_size(size_t bits, size_t num) {
+		size_t usingsize = (bits * num + 7)/8;
+		size_t touchsize =  usingsize + sizeof(uint64_t)-1;
+		size_t alignsize = (touchsize + 15) &  ~size_t(15); // align to 16
+		return alignsize;
 	}
 
 	template<class Int>
@@ -188,6 +191,7 @@ public:
 	using UintVecMin0::data;
 	using UintVecMin0::size;
 	using UintVecMin0::mem_size;
+	using UintVecMin0::compute_mem_size;
 	using UintVecMin0::clear;
 	using UintVecMin0::risk_release_ownership;
 	using UintVecMin0::uintbits;

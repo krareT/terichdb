@@ -529,6 +529,54 @@ bool FileStream::copyFile(fstring srcPath, fstring dstPath)
 	return false;
 }
 
+uint64_t FileStream::fsize() const {
+	return fpsize(m_fp);
+}
+uint64_t FileStream::fpsize(FILE* fp) {
+	return fdsize(fileno(fp));
+}
+uint64_t FileStream::fdsize(int fd) {
+#if (defined(_WIN32) || defined(_WIN64)) && !defined(__CYGWIN__)
+	__int64 ilen = _filelengthi64(fd);
+	if (ilen < 0) {
+		THROW_STD(invalid_argument, "_filelengthi64(fd=%d) = %s", fd, strerror(errno));
+	}
+#else
+	long long ilen;
+	struct stat st;
+	if (fstat(fd, &st) < 0) {
+		THROW_STD(invalid_argument, "fstat(fd=%d) = %s", fd, strerror(errno));
+	}
+	ilen = st.st_size;
+	if (ilen < 0) {
+		THROW_STD(invalid_argument, "fstat(fd=%d), st_size = %lld", fd, ilen);
+	}
+#endif
+	return ilen;
+}
+
+void FileStream::chsize(uint64_t newfsize) const {
+	fpchsize(m_fp, newfsize);
+}
+
+void FileStream::fpchsize(FILE* fp, uint64_t newfsize) {
+	fdchsize(fileno(fp), newfsize);
+}
+
+void FileStream::fdchsize(int fd, uint64_t newfsize) {
+#if (defined(_WIN32) || defined(_WIN64)) && !defined(__CYGWIN__)
+	int err = _chsize_s(fd, newfsize);
+	if (err) {
+		THROW_STD(invalid_argument, "_chsize_s(fd=%d, %I64) = %s"
+			, fd, newfsize, strerror(err));
+	}
+#else
+	if (ftruncate(fd, newfsize) < 0) {
+		THROW_STD(invalid_argument, "ftruncate(fd=%d, %lld) = %s"
+			, fd, (long long)newfsize, strerror(errno));
+	}
+#endif
+}
 
 } // namespace terark
 
