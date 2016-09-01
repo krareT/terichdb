@@ -2197,7 +2197,7 @@ llong parseSizeValue(fstring str) {
 	return val;
 }
 
-llong getJsonSizeValue(const terark::json& js, const std::string& key, const llong& Default) {
+llong getJsonSizeValue(const terark::json& js, const std::string& key, llong Default) {
 	auto iter = js.find(key);
 	if (js.end() != iter) {
 		if (iter.value().is_string()) {
