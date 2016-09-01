@@ -2139,7 +2139,7 @@ parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 	schema.m_useFastZip = getJsonValue(js, "useFastZip", false);
 	schema.m_nltNestLevel = (byte)limitInBound(
 		getJsonValue(js, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
-	schema.m_checksumLevel = getJsonValue(js, "checkumLevel", schema.m_checksumLevel);
+	schema.m_checksumLevel = getJsonValue(js, "checksumLevel", schema.m_checksumLevel);
 }
 
 static
