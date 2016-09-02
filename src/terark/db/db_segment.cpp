@@ -1110,10 +1110,11 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		input->m_updateList.reserve(1024);
 		input->m_bookUpdates = true;
 	}
+	std::string strDir = m_segDir.string();
 	std::string strThreadId = ThreadIdToString(tbb::this_tbb_thread::get_id());
-	fprintf(stderr, "INFO: thread-%s: purging %s, rows = %zd, delcnt = %zd, purged = %zd\n"
-		, strThreadId.c_str()
-		, input->m_segDir.string().c_str()
+	fprintf(stderr
+		, "INFO: thread-%s: purging %s, rows = %zd, delcnt = %zd, purged = %zd\n"
+		, strThreadId.c_str(), strDir.c_str()
 		, input->m_isDel.size(), input->m_delcnt
 		, input->m_isPurged.max_rank1()
 		);
@@ -1131,7 +1132,7 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		for (size_t i = m_indices.size(); i < m_colgroups.size(); ++i) {
 			m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), tmpSegDir);
 		}
-		completeAndReload(tab, segIdx, &*input);
+		completeAndReload(tab, segIdx, input.get());
 		assert(input->m_segDir == this->m_segDir);
 	}
 	catch (const std::exception& ex) {
@@ -1140,24 +1141,18 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 			, tmpSegDir.string().c_str(), ex.what());
 	}
 	fs::path backupDir = renameToBackupFromDir(input->m_segDir);
-	{
-		fs::path backupDirCopy = backupDir;
-		MyRwLock lock(tab->m_rwMutex, true);
-		input->m_segDir.swap(backupDirCopy);
-		input->deleteSegment(); // will delete backupDir
-	}
 	try { fs::rename(tmpSegDir, m_segDir); }
 	catch (const std::exception& ex) {
 		fs::rename(backupDir, m_segDir);
-		std::string strDir = m_segDir.string();
-		fprintf(stderr
-			, "ERROR: thread-%s: rename(%s.tmp, %s), ex.what = %s\n"
+		THROW_STD(logic_error
+			, "ERROR: thread-%s: rename(%s.tmp, %s), ex.what = %s"
 			, strThreadId.c_str()
 			, strDir.c_str(), strDir.c_str(), ex.what());
-		// abort();
-		THROW_STD(logic_error, "thread-%s: rename(%s.tmp, %s), ex.what = %s"
-			, strThreadId.c_str()
-			, strDir.c_str(), strDir.c_str(), ex.what());
+	}
+	{
+		MyRwLock lock(tab->m_rwMutex, true);
+		input->m_segDir.swap(backupDir);
+		input->deleteSegment(); // will delete backupDir
 	}
 }
 

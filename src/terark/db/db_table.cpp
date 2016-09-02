@@ -4133,6 +4133,9 @@ void DbTable::runPurgeDelete() {
 	}
 	{
 		MyRwLock lock(m_rwMutex, true);
+		if (this->m_isMerging) { // should be very rare
+			return;
+		}
 		if (PurgeStatus::inqueue != m_purgeStatus) {
 			fprintf(stderr, "ERROR: m_purgeStatus = %d, expect inqueue\n"
 						  , unsigned(m_purgeStatus));
@@ -4148,12 +4151,10 @@ void DbTable::runPurgeDelete() {
 			MyRwLock lock(m_rwMutex, false);
 			auto segs = m_segments.data();
 			for (size_t i = 0, n = m_segments.size(); i < n; ++i) {
-				auto r = segs[i]->getReadonlySegment();
-				if (r) {
+				if (auto r = segs[i]->getReadonlySegment()) {
 					size_t newDelcnt = r->m_delcnt - r->m_isPurged.max_rank1();
 					size_t physicNum = r->getPhysicRows();
 					if (newDelcnt > physicNum * threshold) {
-						assert(newDelcnt > 0);
 						segIdx = i;
 						srcSeg = r;
 						break;
