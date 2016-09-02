@@ -4122,10 +4122,20 @@ void DbTable::runPurgeDelete() {
 		m_bgTaskNum--;
 	} BOOST_SCOPE_EXIT_END;
 //	return; // skip purge delete, to test purge in merge
+	// try merge first, merge will do purge if possible
+	{
+		MergeParam toMerge;
+		if (toMerge.canMerge(this)) {
+			assert(this->m_isMerging);
+			this->merge(toMerge);
+			return;
+		}
+	}
 	{
 		MyRwLock lock(m_rwMutex, true);
 		if (PurgeStatus::inqueue != m_purgeStatus) {
-			fprintf(stderr, "ERROR: m_purgeStatus = %d, expect inqueue\n", unsigned(m_purgeStatus));
+			fprintf(stderr, "ERROR: m_purgeStatus = %d, expect inqueue\n"
+						  , unsigned(m_purgeStatus));
 			return;
 		}
 		m_purgeStatus = PurgeStatus::purging;
