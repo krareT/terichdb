@@ -68,6 +68,7 @@ DbTable::DbTable() {
 	m_rowNum = 0;
 	m_oldestSnapshotVersion = 0;
 	m_segArrayUpdateSeq = 1;
+	m_throwOnThrottle = false; // if true, auto delay/sleep on throttle
 //	m_ctxListHead = new DbContextLink();
 }
 
@@ -807,11 +808,13 @@ llong BatchWriter::upsertRowImpl(fstring row) {
 	if (ctx->syncIndex) {
 		if (tab->insertSyncIndex(wrSubId, txn, ctx)) {
 			txn->storeUpsert(wrSubId, row);
+			tab->m_accumulateWrittenBytes += row.size();
 		} else {
 			return -1; // fail
 		}
 	} else {
 		txn->storeUpsert(wrSubId, row);
+		tab->m_accumulateWrittenBytes += row.size();
 	}
 	newRecId = wrBaseId + wrSubId;
 	assert(tab->m_wrSeg->m_isDel[wrSubId]); // unvisible
@@ -1209,6 +1212,7 @@ bool DbTable::exists(llong id) const {
 
 llong
 DbTable::insertRow(fstring row, DbContext* txn) {
+	this->throttleWrite();
 	if (txn->syncIndex) { // parseRow doesn't need lock
 		m_schema->m_rowSchema->parseRow(row, &txn->cols1);
 	}
@@ -1321,6 +1325,7 @@ DbTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
 		if (insertSyncIndex(subId, txn, ctx)) {
 			txn->storeUpsert(subId, row);
 			m_wrSeg->delmarkSet0(subId);
+			m_accumulateWrittenBytes += row.size();
 		}
 		else {
 			freeInvisibleWrSubId_NoTabLock(subId);
@@ -1405,6 +1410,7 @@ DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	if (sconf.m_uniqIndices.empty()) {
 		return insertRow(row, ctx); // should always success
 	}
+	this->throttleWrite();
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	assert(sconf.m_uniqIndices.size() == 1);
 	if (!ctx->syncIndex) {
@@ -1473,6 +1479,7 @@ DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 				else {
 					maybeCreateNewSegment(lock);
 				}
+				m_accumulateWrittenBytes += row.size();
 			}
 			return newRecId;
 		}
@@ -1515,6 +1522,7 @@ DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	}
 	ctx->isUpsertOverwritten = 1;
 	maybeCreateNewSegment(lock);
+	m_accumulateWrittenBytes += row.size();
 	return baseId + subId;
 }
 
@@ -1529,6 +1537,7 @@ DbTable::upsertRowMultiUniqueIndices(fstring row, valvec<llong>* resRecIdvec, Db
 
 llong
 DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
+	this->throttleWrite();
 	m_schema->m_rowSchema->parseRow(row, &ctx->cols1); // new row
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	MyRwLock lock(m_rwMutex, false);
@@ -1598,6 +1607,7 @@ DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 	//	lock.acquire(m_rwMutex, false);
 		llong recId = insertRowImpl(row, ctx, lock); // id is changed
 		if (recId >= 0) {
+			m_accumulateWrittenBytes += row.size();
 			// mark old subId as deleted
 			SpinRwLock segLock(seg->m_segMutex);
 			seg->addtoUpdateList(size_t(subId));
@@ -1720,6 +1730,43 @@ DbTable::updateSyncMultIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 			txn->indexInsert(indexId, ctx->key1, subId);
 		}
 	}
+}
+
+static profiling g_pf;
+
+/// @returns number of sleep and retries for throttle
+size_t DbTable::throttleWrite() {
+	const SchemaConfig& sconf = *m_schema;
+	size_t retry = 0, sleepMicrosec = 500;
+	for (; ; retry++) {
+		size_t throttleRate = sconf.m_writeThrottleBytesPerSecond;
+		if (0 == throttleRate)
+			return retry;
+		ullong newBytes =
+			m_accumulateWrittenBytes.load(std::memory_order_relaxed) -
+			m_lastWriteThrottleBytes.load(std::memory_order_relaxed);
+		if (terark_likely(newBytes < 256*1024)) {
+			return retry;
+		}
+		ullong prev = m_lastWriteThrottleTimePoint.load(std::memory_order_relaxed);
+		ullong curr = g_pf.now();
+		ullong dura = g_pf.ns(prev, curr); // nanoseconds
+		if (newBytes < 1e-9*dura*throttleRate) {
+			if (retry && newBytes > 10*1024*1024) {
+				m_lastWriteThrottleBytes.store(m_accumulateWrittenBytes);
+				m_lastWriteThrottleTimePoint.store(curr);
+			}
+			return retry;
+		}
+		if (m_throwOnThrottle) {
+			std::string dir = m_dir.string();
+			TERARK_THROW(WriteThrottleException, "dbdir = %s", dir.c_str());
+		}
+		std::this_thread::sleep_for(std::chrono::microseconds(sleepMicrosec));
+		sleepMicrosec = sleepMicrosec*21/13; // fibonacci ratio
+	}
+	abort();
+//	return 0; // never goes here
 }
 
 bool

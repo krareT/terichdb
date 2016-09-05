@@ -1938,6 +1938,7 @@ SchemaConfig::SchemaConfig() {
 	m_compressingWorkMemSize = DEFAULT_compressingWorkMemSize;
 	m_maxWritingSegmentSize = DEFAULT_maxWritingSegmentSize;
 	m_minMergeSegNum = DEFAULT_minMergeSegNum;
+	m_writeThrottleBytesPerSecond = 0; // no limit
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
 	m_usePermanentRecordId = false;
 	m_enableSnapshot = false;
@@ -2615,6 +2616,8 @@ if (colgroupsIter != meta.end()) {
 
 	m_minMergeSegNum = getJsonValue(
 		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
+	m_writeThrottleBytesPerSecond = getJsonSizeValue(
+		meta, "WriteThrottleBytesPerSecond", 0);
 	m_purgeDeleteThreshold = getJsonValue(
 		meta, "PurgeDeleteThreshold", DEFAULT_purgeDeleteThreshold);
 

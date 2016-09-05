@@ -124,6 +124,9 @@ public:
 	void incrementColumnValue(llong recordId, size_t columnId, double incVal, DbContext* = NULL);
 	void incrementColumnValue(llong recordId, fstring colname, double incVal, DbContext* = NULL);
 
+	void setThrowOnThrottle(bool val) { m_throwOnThrottle = val; }
+	bool isThrowOnThrottle() const { return m_throwOnThrottle; }
+
 	size_t getColumnId(fstring colname) const {
 		return m_schema->m_rowSchema->getColumnId(colname);
 	}
@@ -304,6 +307,8 @@ protected:
 //	void registerDbContext(DbContext* ctx) const;
 //	void unregisterDbContext(DbContext* ctx) const;
 
+	size_t throttleWrite();
+
 public:
 	mutable MyRwMutex m_rwMutex;
 	mutable size_t m_tableScanningRefCount;
@@ -326,6 +331,10 @@ protected:
 	size_t m_segArrayUpdateSeq;
 	llong  m_rowNum;
 	llong  m_oldestSnapshotVersion;
+	std::atomic<ullong> m_lastWriteThrottleTimePoint;
+	std::atomic<ullong> m_lastWriteThrottleBytes;
+	std::atomic<ullong> m_accumulateWrittenBytes;
+	bool m_throwOnThrottle;
 	bool m_tobeDrop;
 	bool m_isMerging;
 	PurgeStatus m_purgeStatus;
