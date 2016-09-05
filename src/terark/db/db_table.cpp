@@ -1749,11 +1749,15 @@ size_t DbTable::throttleWrite() {
 			return retry;
 		}
 		ullong prev = m_lastWriteThrottleTimePoint.load(std::memory_order_relaxed);
+		if (terark_unlikely(0 == prev)) {
+			m_lastWriteThrottleTimePoint.store(g_pf.now());
+		}
 		ullong curr = g_pf.now();
 		ullong dura = g_pf.ns(prev, curr); // nanoseconds
 		if (newBytes < 1e-9*dura*throttleRate) {
 			if (retry && newBytes > 10*1024*1024) {
-				m_lastWriteThrottleBytes.store(m_accumulateWrittenBytes);
+				m_lastWriteThrottleBytes.store(
+					m_accumulateWrittenBytes.load(std::memory_order_relaxed));
 				m_lastWriteThrottleTimePoint.store(curr);
 			}
 			return retry;
