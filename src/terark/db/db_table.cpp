@@ -4199,35 +4199,33 @@ void DbTable::runPurgeDelete() {
 		}
 		m_purgeStatus = PurgeStatus::purging;
 	}
-	for (;;) {
-		double threshold = std::max(m_schema->m_purgeDeleteThreshold, 0.001);
-		size_t segIdx = size_t(-1);
-		ReadonlySegmentPtr srcSeg;
-		{
-			MyRwLock lock(m_rwMutex, false);
-			auto segs = m_segments.data();
-			for (size_t i = 0, n = m_segments.size(); i < n; ++i) {
-				if (auto r = segs[i]->getReadonlySegment()) {
-					size_t newDelcnt = r->m_delcnt - r->m_isPurged.max_rank1();
-					size_t physicNum = r->getPhysicRows();
-					if (newDelcnt > physicNum * threshold) {
-						segIdx = i;
-						srcSeg = r;
-						break;
-					}
+	double threshold = std::max(m_schema->m_purgeDeleteThreshold, 0.001);
+	size_t segIdx = size_t(-1);
+	ReadonlySegmentPtr srcSeg;
+	{
+		MyRwLock lock(m_rwMutex, false);
+		auto segs = m_segments.data();
+		for (size_t i = 0, n = m_segments.size(); i < n; ++i) {
+			if (auto r = segs[i]->getReadonlySegment()) {
+				size_t newDelcnt = r->m_delcnt - r->m_isPurged.max_rank1();
+				size_t physicNum = r->getPhysicRows();
+				if (newDelcnt > physicNum * threshold) {
+					segIdx = i;
+					srcSeg = r;
+					break;
 				}
 			}
 		}
-		if (size_t(-1) == segIdx) {
-			break;
-		}
-		try {
-			ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
-			dest->purgeDeletedRecords(this, segIdx);
-		}
-		catch (const std::exception&) {
-			break; // would try in merge()
-		}
+	}
+	if (size_t(-1) == segIdx) {
+		return;
+	}
+	try {
+		ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
+		dest->purgeDeletedRecords(this, segIdx);
+	}
+	catch (const std::exception&) {
+		//break; // would try in merge()
 	}
 }
 
