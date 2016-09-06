@@ -4374,6 +4374,10 @@ bool DbTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
 	if (g_stopPutToFlushQueue) {
 		return false;
 	}
+	if (m_segments.size() > m_schema->m_minMergeSegNum*3) {
+		// too many segments, leave the purging in future merge
+		return false;
+	}
 	auto maxDelcnt = seg->m_isDel.size() * m_schema->m_purgeDeleteThreshold;
 	if (seg->m_delcnt >= maxDelcnt) {
 		return true;
