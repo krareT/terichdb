@@ -3075,6 +3075,9 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 			if (PurgeStatus::none != tab->m_purgeStatus)
 				return false;
 		}
+		if (tab->m_bgTaskNum > 1) {
+			return false;
+		}
 		tab->m_isMerging = true;
 		// if tab->m_isMerging is false, tab can create new segments
 		// then this->m_tabSegNum would be staled, this->m_tabSegNum is
@@ -3976,20 +3979,18 @@ void DbTable::compact() {
 		break;
 	}
 	waitForBackgroundTasks(m_rwMutex, m_bgTaskNum);
-
+	{
+		MyRwLock lock(m_rwMutex, true);
+		this->m_bgTaskNum++;
+	}
+	BOOST_SCOPE_EXIT(&m_rwMutex, &m_bgTaskNum){
+		MyRwLock lock(m_rwMutex, true);
+		m_bgTaskNum--;
+	}BOOST_SCOPE_EXIT_END;
 	MergeParam toMerge;
 	toMerge.m_forcePurgeAndMerge = true;
 	if (toMerge.canMerge(this)) {
 		assert(this->m_isMerging);
-		{
-			MyRwLock lock(m_rwMutex, true);
-			this->m_bgTaskNum++;
-		}
-		BOOST_SCOPE_EXIT(&m_rwMutex, &m_bgTaskNum){
-			MyRwLock lock(m_rwMutex, true);
-			m_bgTaskNum--;
-		}BOOST_SCOPE_EXIT_END;
-
 		this->merge(toMerge);
 	}
 }
@@ -4179,6 +4180,10 @@ void DbTable::runPurgeDelete() {
 		if (toMerge.canMerge(this)) {
 			assert(this->m_isMerging);
 			this->merge(toMerge);
+			return;
+		}
+		else if (m_segments.size() > m_schema->m_minMergeSegNum*3) {
+			// too many segments, leave the purging in future merge
 			return;
 		}
 	}
