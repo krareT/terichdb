@@ -1764,7 +1764,8 @@ size_t DbTable::throttleWrite() {
 		}
 		if (m_throwOnThrottle) {
 			std::string dir = m_dir.string();
-			TERARK_THROW(WriteThrottleException, "dbdir = %s", dir.c_str());
+			std::string msg = "WriteThrottleException: dbdir = " + dir;
+			throw WriteThrottleException(msg);
 		}
 		std::this_thread::sleep_for(std::chrono::microseconds(sleepMicrosec));
 		sleepMicrosec = sleepMicrosec*21/13; // fibonacci ratio
