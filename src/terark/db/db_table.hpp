@@ -127,6 +127,7 @@ public:
 	void setThrowOnThrottle(bool val) { m_throwOnThrottle = val; }
 	bool isThrowOnThrottle() const { return m_throwOnThrottle; }
 
+	SchemaConfig& getSchemaConfig() const { return *m_schema; }
 	size_t getColumnId(fstring colname) const {
 		return m_schema->m_rowSchema->getColumnId(colname);
 	}
