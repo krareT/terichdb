@@ -1763,8 +1763,8 @@ size_t DbTable::throttleWrite() {
 			return retry;
 		}
 		if (m_throwOnThrottle) {
-			std::string dir = m_dir.string();
-			std::string msg = "WriteThrottleException: dbdir = " + dir;
+			std::string msg =
+				 "WriteThrottleException: dbdir = " + m_dir.string();
 			throw WriteThrottleException(msg);
 		}
 		std::this_thread::sleep_for(std::chrono::microseconds(sleepMicrosec));
