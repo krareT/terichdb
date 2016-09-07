@@ -1325,7 +1325,6 @@ DbTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
 		if (insertSyncIndex(subId, txn, ctx)) {
 			txn->storeUpsert(subId, row);
 			m_wrSeg->delmarkSet0(subId);
-			m_accumulateWrittenBytes += row.size();
 		}
 		else {
 			freeInvisibleWrSubId_NoTabLock(subId);
@@ -1336,6 +1335,7 @@ DbTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
 		m_wrSeg->update(subId, row, ctx);
 		m_wrSeg->delmarkSet0(subId);
 	}
+	m_accumulateWrittenBytes += row.size();
 	llong  wrBaseId = m_rowNumVec.ende(2);
 	return wrBaseId + subId;
 }
@@ -1479,7 +1479,6 @@ DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 				else {
 					maybeCreateNewSegment(lock);
 				}
-				m_accumulateWrittenBytes += row.size();
 			}
 			return newRecId;
 		}
