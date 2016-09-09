@@ -1524,7 +1524,6 @@ DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	}
 	ctx->isUpsertOverwritten = 1;
 	maybeCreateNewSegment(lock);
-	m_accumulateWrittenBytes += row.size();
 	return baseId + subId;
 }
 
@@ -1609,7 +1608,6 @@ DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 	//	lock.acquire(m_rwMutex, false);
 		llong recId = insertRowImpl(row, ctx, lock); // id is changed
 		if (recId >= 0) {
-			m_accumulateWrittenBytes += row.size();
 			// mark old subId as deleted
 			SpinRwLock segLock(seg->m_segMutex);
 			seg->addtoUpdateList(size_t(subId));
@@ -1757,7 +1755,7 @@ size_t DbTable::throttleWrite() {
 		ullong curr = g_pf.now();
 		ullong dura = g_pf.ns(prev, curr); // nanoseconds
 		if (newBytes < 1e-9*dura*throttleRate) {
-			if (retry && newBytes > 10*1024*1024) {
+			if (newBytes > 10*1024*1024) {
 				m_lastWriteThrottleBytes.store(
 					m_accumulateWrittenBytes.load(std::memory_order_relaxed));
 				m_lastWriteThrottleTimePoint.store(curr);

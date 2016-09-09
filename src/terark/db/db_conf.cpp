@@ -2694,6 +2694,9 @@ if (tableIndex != meta.end()) {
 		indexSchema->m_nltNestLevel = (byte)limitInBound(
 			getJsonValue(index, "nltNestLevel", DEFAULT_nltNestLevel), 1u, 20u);
 
+		// default mmapPopulate for index is true
+		indexSchema->m_mmapPopulate = getJsonValue(index, "mmapPopulate", true);
+
 /*
 		if (indexSchema->m_isPrimary) {
 			if (hasPrimaryIndex) {
