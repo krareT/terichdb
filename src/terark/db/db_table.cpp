@@ -22,6 +22,9 @@
 #undef min
 #undef max
 
+using std::min;
+using std::max;
+
 //#define SegDir_c_str(seg) seg->m_segDir.string().c_str()
 
 //#define SLOW_DEBUG_CHECK
@@ -4276,16 +4279,11 @@ void CompressThreadFunc() {
 class CompressionThreadsList : private std::vector<tbb::tbb_thread*> {
 public:
 	CompressionThreadsList() {
-		size_t n = tbb::tbb_thread::hardware_concurrency();
-		if (const char* env = getenv("TerarkDB_CompressionThreadsNum")) {
-			size_t n2 = atoi(env);
-			n = std::min(n, n2);
-		}
-		else {
-			n = std::min<size_t>(n, 4);
-		}
-		this->resize(n);
-		for (size_t i = 0; i < n; ++i) {
+		size_t cpu = tbb::tbb_thread::hardware_concurrency();
+		size_t cfg = getEnvLong("TerarkDB_CompressionThreadsNum", 0);
+		size_t num = cfg ? min(cpu, cfg) : min<size_t>(cpu, 4);
+		this->resize(num);
+		for (size_t i = 0; i < num; ++i) {
 			(*this)[i] = new tbb::tbb_thread(&CompressThreadFunc);
 		}
 	}
