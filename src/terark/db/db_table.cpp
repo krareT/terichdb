@@ -3015,6 +3015,7 @@ public:
 	bool   m_forcePurgeAndMerge = false;
 	size_t m_tabSegNum = 0;
 	size_t m_newSegRows = 0;
+	size_t m_old_segArrayUpdateSeq = 0;
 	DbContextPtr   m_ctx;
 	rank_select_se m_oldpurgeBits; // join from all input segs
 	rank_select_se m_newpurgeBits;
@@ -3050,7 +3051,7 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		return false;
 	if (PurgeStatus::none != tab->m_purgeStatus)
 		return false;
-
+	m_old_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 	// memory alloc should be out of lock scope
 	this->reserve(tab->m_segments.size() + 1);
 	{
@@ -3075,6 +3076,13 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 				return false;
 			if (PurgeStatus::none != tab->m_purgeStatus)
 				return false;
+			if (m_old_segArrayUpdateSeq != tab->m_segArrayUpdateSeq) {
+				assert(m_old_segArrayUpdateSeq < tab->m_segArrayUpdateSeq);
+				fprintf(stderr,
+"INFO: MergeParam::canMerge(): m_segArrayUpdateSeq: old = %zd, new = %zd\n",
+					m_old_segArrayUpdateSeq, tab->m_segArrayUpdateSeq);
+				return false;
+			}
 		}
 		if (tab->m_bgTaskNum > 1) {
 			return false;
@@ -3804,6 +3812,7 @@ try{
 				newSegs.back()->m_segDir.swap(newSegPathes.back());
 			}
 		}
+		assert(toMerge.m_old_segArrayUpdateSeq == m_segArrayUpdateSeq);
 		m_segments.swap(newSegs);
 		m_rowNumVec.swap(newRowNumVec);
 		m_rowNumVec.back() = newRowNumVec.back();
