@@ -139,12 +139,20 @@ public:
 		assert(indexId < m_schema->getIndexNum());
 		return *m_schema->m_indexSchemaSet->m_nested.elem_at(indexId);
 	}
+	Schema& getIndexSchemaForChange(size_t indexId) const {
+		assert(indexId < m_schema->getIndexNum());
+		return *m_schema->m_indexSchemaSet->m_nested.elem_at(indexId);
+	}
 	size_t getIndexId(fstring colnames) const {
 		return m_schema->m_indexSchemaSet->m_nested.find_i(colnames);
 	}
 	size_t getIndexNum() const { return m_schema->getIndexNum(); }
 
 	const Schema& getColgroupSchema(size_t cgId) const {
+		assert(cgId < m_schema->getColgroupNum());
+		return *m_schema->m_colgroupSchemaSet->m_nested.elem_at(cgId);
+	}
+	Schema& getColgroupSchemaForChange(size_t cgId) {
 		assert(cgId < m_schema->getColgroupNum());
 		return *m_schema->m_colgroupSchemaSet->m_nested.elem_at(cgId);
 	}
