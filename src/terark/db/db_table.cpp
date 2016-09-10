@@ -3010,8 +3010,9 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 
 } // namespace
 
-class DbTable::MergeParam : public valvec<SegEntry> {
+class DbTable::MergeParam {
 public:
+	valvec<SegEntry> m_segs;
 	bool   m_forcePurgeAndMerge = false;
 	size_t m_tabSegNum = 0;
 	size_t m_newSegRows = 0;
@@ -3037,7 +3038,7 @@ public:
 
 std::string DbTable::MergeParam::joinPathList() const {
 	std::string str;
-	for (auto& x : *this) {
+	for (auto& x : m_segs) {
 		str += "\t";
 		str += x.seg->m_segDir.string();
 		str += "\n";
@@ -3053,7 +3054,7 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		return false;
 	m_old_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 	// memory alloc should be out of lock scope
-	this->reserve(tab->m_segments.size() + 1);
+	m_segs.reserve(tab->m_segments.size() + 1);
 	{
 		MyRwLock lock(tab->m_rwMutex, false);
 		for (size_t i = 0; i < tab->m_segments.size(); ++i) {
@@ -3061,11 +3062,11 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 			if (seg->getWritableStore())
 				break; // writable seg must be at top side
 			else
-				this->push_back({seg->getReadonlySegment(), i});
+				m_segs.push_back({seg->getReadonlySegment(), i});
 		}
-		if (this->size() <= 1)
+		if (m_segs.size() <= 1)
 			return false;
-		if (this->size() + 1 < tab->m_segments.size())
+		if (m_segs.size() + 1 < tab->m_segments.size())
 			return false;
 		if (tab->m_isMerging)
 			return false;
@@ -3095,12 +3096,27 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		DebugCheckRowNumVecNoLock(tab);
 	}
 	size_t sumSegRows = 0;
-	for (size_t i = 0; i < this->size(); ++i) {
-		sumSegRows += this->p[i].seg->m_isDel.size();
+	for (size_t i = 0; i < m_segs.size(); ++i) {
+		sumSegRows += m_segs[i].seg->m_isDel.size();
 	}
-	size_t avgSegRows = sumSegRows / this->size();
+	size_t avgSegRows = sumSegRows / m_segs.size();
+	size_t largeSegRows = avgSegRows * 2;
+
+	// eleminate large segments and compute average of others
+	size_t smallsegNum = 0;
+	size_t smallsegRows = 0;
+	for(size_t i = 0; i < m_segs.size(); ++i) {
+		size_t rows = m_segs[i].seg->m_isDel.size();
+		if (rows < largeSegRows)
+			smallsegNum++, smallsegRows += rows;
+	}
+	if (smallsegNum) {
+		avgSegRows = smallsegRows / smallsegNum++;
+	}
 	size_t maxSegRows = avgSegRows * 7/4;
 	size_t minMergeSegNum = tab->m_schema->m_minMergeSegNum;
+	if (minMergeSegNum < 2)	minMergeSegNum = 2;
+	if (minMergeSegNum > 9)	minMergeSegNum = 9;
 	if (m_forcePurgeAndMerge) {
 		//maxSegRows = avgSegRows * 3;
 		maxSegRows = size_t(-1);
@@ -3109,10 +3125,10 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 
 	// find max range in which every seg rows < maxSegRows
 	size_t rngBeg = 0, rngLen = 0;
-	for(size_t j = 0; j < this->size(); ) {
+	for(size_t j = 0; j < m_segs.size(); ) {
 		size_t k = j;
-		for (; k < this->size(); ++k) {
-			if (this->p[k].seg->m_isDel.size() > maxSegRows)
+		for (; k < m_segs.size(); ++k) {
+			if (m_segs[k].seg->m_isDel.size() > maxSegRows)
 				break;
 		}
 		if (k - j > rngLen) {
@@ -3122,23 +3138,23 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		j = k + 1;
 	}
 	for (size_t j = 0; j < rngLen; ++j) {
-		this->p[j] = this->p[rngBeg + j];
+		m_segs[j] = m_segs[rngBeg + j];
 	}
-	this->trim(rngLen);
+	m_segs.trim(rngLen);
 	if (rngLen < minMergeSegNum) {
 		tab->m_isMerging = false;
 		return false;
 	}
 	m_newSegRows = 0;
 	for (size_t j = 0; j < rngLen; ++j) {
-		m_newSegRows += this->p[j].seg->m_isDel.size();
+		m_newSegRows += m_segs[j].seg->m_isDel.size();
 	}
 	return true;
 }
 
 void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 	size_t newSumDelcnt = 0;
-	for (const auto& e : *this) {
+	for (const auto& e : m_segs) {
 		const ReadonlySegment* seg = e.seg;
 		newSumDelcnt += seg->m_delcnt;
 	}
@@ -3149,7 +3165,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		// all colgroups need purge
 		assert(m_oldpurgeBits.empty());
 		assert(m_newpurgeBits.empty());
-		for (auto& e : *this) {
+		for (auto& e : m_segs) {
 			ReadonlySegment* seg = e.seg;
 			size_t segRows = seg->m_isDel.size();
 			if (seg->m_isPurged.empty()) {
@@ -3168,7 +3184,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		m_oldpurgeBits.build_cache(true, false);
 		m_newpurgeBits.build_cache(true, false);
 	}
-	else for (auto& e : *this) {
+	else for (auto& e : m_segs) {
 		ReadonlySegment* seg   = e.seg;
 		size_t oldNumPurged    = seg->m_isPurged.max_rank1();
 		size_t newMarkDelcnt   = seg->m_delcnt - oldNumPurged;
@@ -3195,7 +3211,7 @@ DbTable::MergeParam::
 mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	valvec<byte> rec;
 	SortableStrVec strVec;
-	const Schema& schema = this->p[0].seg->m_schema->getIndexSchema(indexId);
+	const Schema& schema = m_segs[0].seg->m_schema->getIndexSchema(indexId);
 	const size_t fixedIndexRowLen = schema.getFixedRowLen();
 	std::unique_ptr<SeqReadAppendonlyStore> seqStore;
 	if (schema.m_enableLinearScan) {
@@ -3205,7 +3221,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	hash_strmap<valvec<size_t> > key2id;
 	size_t baseLogicId = 0;
 #endif
-	for (auto& e : *this) {
+	for (auto& e : m_segs) {
 		auto seg = e.seg;
 		auto indexStore = seg->m_indices[indexId]->getReadableStore();
 		assert(nullptr != indexStore);
@@ -3251,7 +3267,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	}
 	size_t newBasePhysicId = 0;
 	baseLogicId = 0;
-	for (size_t segIdx = 0; segIdx < this->size(); ++segIdx) {
+	for (size_t segIdx = 0; segIdx < m_segs.size(); ++segIdx) {
 		auto& e = (*this)[segIdx];
 		auto seg = e.seg;
 		auto subStore = seg->m_indices[indexId]->getReadableStore();
@@ -3337,7 +3353,7 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 }
 
 bool DbTable::MergeParam::needsPurgeBits() const {
-	for (auto& e : *this) {
+	for (auto& e : m_segs) {
 		if (!e.newIsPurged.empty())
 			return true;
 	}
@@ -3353,7 +3369,7 @@ mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	byte_t* newBasePtr = dstStore->getRecordsBasePtr();
 	size_t  newPhysicId = 0;
 	size_t  const fixlen = schema.getFixedRowLen();
-	for (auto& e : *this) {
+	for (auto& e : m_segs) {
 		auto srcStore = e.seg->m_colgroups[colgroupId];
 		assert(nullptr != srcStore);
 		const byte_t* subBasePtr = srcStore->getRecordsBasePtr();
@@ -3414,7 +3430,7 @@ DbTable::MergeParam::
 mergeGdictZipColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	MultiPartStorePtr parts = new MultiPartStore();
-	for (const auto& e : *this) {
+	for (const auto& e : m_segs) {
 		auto sseg = e.seg;
 		auto store = sseg->m_colgroups[colgroupId].get();
 		if (auto mstore = dynamic_cast<MultiPartStore*>(store)) {
@@ -3451,7 +3467,7 @@ mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	}
 	if (schema.m_dictZipSampleRatio >= 0.0) {
 		llong sumLen = 0;
-		for (const auto& e : *this) {
+		for (const auto& e : m_segs) {
 			sumLen += e.seg->m_colgroups[colgroupId]->dataInflateSize();
 		}
 		size_t oldphysicRowNum = m_oldpurgeBits.size() ?
@@ -3467,7 +3483,7 @@ mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	valvec<byte> rec;
 	SortableStrVec strVec;
 	const size_t fixedIndexRowLen = schema.getFixedRowLen();
-	for (auto& e : *this) {
+	for (auto& e : m_segs) {
 		auto seg = e.seg;
 		auto store = seg->m_colgroups[colgroupId].get();
 		assert(nullptr != store);
@@ -3549,7 +3565,7 @@ void DbTable::merge(MergeParam& toMerge) {
 		THROW_STD(logic_error, "dir: '%s' should not existed"
 			, destMergeDir.string().c_str());
 	}
-	fs::path destSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", toMerge[0].idx);
+	fs::path destSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", toMerge.m_segs[0].idx);
 	std::string segPathList = toMerge.joinPathList();
 	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s ...\n"
 		, segPathList.c_str(), destSegDir.string().c_str());
@@ -3569,7 +3585,7 @@ try{
 	toMerge.m_ctx = ctx;
 	dseg->m_isDel.erase_all();
 	dseg->m_isDel.reserve(toMerge.m_newSegRows);
-	for (auto& e : toMerge) {
+	for (auto& e : toMerge.m_segs) {
 		dseg->m_isDel.append(e.seg->m_isDel);
 		assert(e.seg->m_bookUpdates);
 	}
@@ -3578,7 +3594,7 @@ try{
 	if (toMerge.needsPurgeBits()) {
 		assert(dseg->m_isPurged.size() == 0);
 		dseg->m_isPurged.reserve(toMerge.m_newSegRows);
-		for (auto& e : toMerge) {
+		for (auto& e : toMerge.m_segs) {
 			if (e.newIsPurged.empty()) {
 				dseg->m_isPurged.grow(e.seg->m_isDel.size(), false);
 			} else {
@@ -3594,7 +3610,7 @@ try{
 		dseg->m_indices[i] = index;
 		dseg->m_colgroups[i] = index->getReadableStore();
 	}
-	for (auto& e : toMerge) {
+	for (auto& e : toMerge.m_segs) {
 		for(auto fpath : fs::directory_iterator(e.seg->m_segDir)) {
 			e.files.push_back(fpath.path().filename().string());
 		}
@@ -3618,7 +3634,7 @@ try{
 		}
 		const std::string prefix = "colgroup-" + schema.m_name;
 		size_t newPartIdx = 0;
-		for (auto& e : toMerge) {
+		for (auto& e : toMerge.m_segs) {
 			if (e.needsRePurge()) {
 				assert(e.newIsPurged.size() >= 1);
 				assert(e.newIsPurged.size() == e.seg->m_isDel.size());
@@ -3710,12 +3726,12 @@ try{
 		addseg(seg);
 		newSegPathes.emplace_back(std::move(newSegDir));
 	};
-	for (size_t i = 0; i < toMerge[0].idx; ++i) {
+	for (size_t i = 0; i < toMerge.m_segs[0].idx; ++i) {
 		shareReadonlySeg(i);
 	}
 	addseg(dseg);
 	newSegPathes.emplace_back();
-	for (size_t i = toMerge.back().idx + 1; i < m_segments.size()-1; ++i) {
+	for (size_t i = toMerge.m_segs.back().idx + 1; i < m_segments.size()-1; ++i) {
 		shareReadonlySeg(i);
 	}
 	if (m_segments.back()->getWritableStore()) {
@@ -3730,7 +3746,7 @@ try{
 		}
 		addseg(seg);
 	}
-	else if (toMerge.back().idx + 1 < m_segments.size()) {
+	else if (toMerge.m_segs.back().idx + 1 < m_segments.size()) {
 		assert(nullptr == m_wrSeg);
 		shareReadonlySeg(m_segments.size()-1);
 	}
@@ -3738,7 +3754,7 @@ try{
 		// called by syncFinishWriting(), and
 		// last ReadonlySegment is in 'toMerge'
 		assert(nullptr == m_wrSeg);
-		assert(toMerge.back().idx + 1 == m_segments.size());
+		assert(toMerge.m_segs.back().idx + 1 == m_segments.size());
 	}
 	auto syncOneRecord = [](ReadonlySegment* dseg, ReadableSegment* sseg,
 							size_t baseLogicId, size_t subId) {
@@ -3752,7 +3768,7 @@ try{
 	};
 	auto syncUpdates = [&](ReadonlySegment* dseg) {
 		DebugCheckRowNumVecNoLock(this);
-		for (auto& e : toMerge) {
+		for (auto& e : toMerge.m_segs) {
 			ReadableSegment* sseg = e.seg;
 			assert(sseg->m_bookUpdates);
 			assert(e.updateBits.empty());
@@ -3762,7 +3778,7 @@ try{
 			e.updateList.swap(sseg->m_updateList);
 		}
 		size_t baseLogicId = 0;
-		for (auto& e : toMerge) {
+		for (auto& e : toMerge.m_segs) {
 			ReadableSegment* sseg = e.seg;
 			if (e.updateBits.empty()) {
 				for (size_t subId : e.updateList) {
@@ -3792,7 +3808,7 @@ try{
 		syncUpdates(dseg.get()); // no lock
 		MyRwLock lock(m_rwMutex, true);
 		syncUpdates(dseg.get()); // write locked
-		for (auto& e : toMerge) {
+		for (auto& e : toMerge.m_segs) {
 			e.seg->m_bookUpdates = false;
 		}
 		for (size_t i = 0; i < newSegs.size()-1; ++i) {
@@ -3803,7 +3819,7 @@ try{
 		}
 		if (newSegs.back()->getWritableStore() == nullptr) {
 			assert(nullptr == m_wrSeg);
-			if (toMerge.back().idx + 1 == m_segments.size()) {
+			if (toMerge.m_segs.back().idx + 1 == m_segments.size()) {
 				// called by syncFinishWriting(), and
 				// last ReadonlySegment is merged
 				assert(newSegPathes.back().empty());
@@ -3856,7 +3872,7 @@ try{
 	}
 	mergingLockFp.close();
 	fs::remove(mergingLockFile);
-	for (auto& tobeDel : toMerge) {
+	for (auto& tobeDel : toMerge.m_segs) {
 		tobeDel.seg->deleteSegment();
 	}
 	fprintf(stderr, "INFO: merge segments:\n%sTo\t%s done!\n"
