@@ -3150,16 +3150,28 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 	return true;
 }
 
-void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
+void DbTable::MergeParam::syncPurgeBits(double purgeThresholdRatio) {
 	size_t newSumDelcnt = 0;
+	size_t oldSumPurged = 0;
 	for (const auto& e : m_segs) {
 		const ReadonlySegment* seg = e.seg;
 		newSumDelcnt += seg->m_delcnt;
+		oldSumPurged += seg->m_isPurged.max_rank1();
 	}
+	assert(newSumDelcnt >= oldSumPurged);
+	size_t newIncDelcnt  = newSumDelcnt - oldSumPurged;
+	size_t oldPhysicRows = m_newSegRows - oldSumPurged;
+	double purgeThresholdRows = oldPhysicRows * purgeThresholdRatio;
 	fprintf(stderr
-		, "INFO: m_forcePurgeAndMerge = %d, newSumDelcnt = %zd, m_newSegRows = %zd, purgeThreshold = %f\n"
-		, m_forcePurgeAndMerge, newSumDelcnt, m_newSegRows, purgeThreshold);
-	if (m_forcePurgeAndMerge || newSumDelcnt >= m_newSegRows * purgeThreshold) {
+		, "INFO: m_forcePurgeAndMerge = %d, "
+		  "newSumDelcnt = %zd, newIncDelcnt = %zd, "
+		  "oldPhysicRows = %zd, m_newSegRows = %zd, "
+		  "purgeThresholdRatio = %f, purgeThresholdRows = %f\n"
+		, m_forcePurgeAndMerge
+		, newSumDelcnt, newIncDelcnt
+		, oldPhysicRows, m_newSegRows
+		, purgeThresholdRatio, purgeThresholdRows);
+	if (m_forcePurgeAndMerge || newIncDelcnt >= purgeThresholdRows) {
 		// all colgroups need purge
 		assert(m_oldpurgeBits.empty());
 		assert(m_newpurgeBits.empty());
@@ -3192,7 +3204,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThreshold) {
 		// but this would not cause big problems
 		seg->m_updateList.reserve(1024); // reduce enlarge times
 		seg->m_bookUpdates = true;
-		if (newMarkDelRatio > purgeThreshold) {
+		if (newMarkDelRatio > purgeThresholdRatio) {
 			// do purge: physic delete
 			e.newIsPurged = seg->m_isDel; // don't lock
 			e.newNumPurged = e.newIsPurged.popcnt(); // recompute purge count
