@@ -3097,22 +3097,20 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 	}
 	size_t sumSegRows = 0;
 	for (size_t i = 0; i < m_segs.size(); ++i) {
-		sumSegRows += m_segs[i].seg->m_isDel.size();
+		sumSegRows += m_segs[i].seg->getPhysicRows();
 	}
-	size_t avgSegRows = sumSegRows / m_segs.size();
-	size_t largeSegRows = avgSegRows * 2;
+	size_t largeSegRows = 2 * sumSegRows / m_segs.size();
 
 	// eleminate large segments and compute average of others
 	size_t smallsegNum = 0;
 	size_t smallsegRows = 0;
 	for(size_t i = 0; i < m_segs.size(); ++i) {
-		size_t rows = m_segs[i].seg->m_isDel.size();
-		if (rows < largeSegRows)
+		size_t rows = m_segs[i].seg->getPhysicRows();
+		if (rows <= largeSegRows)
+			// use '<=' for very rare case: largeSegRows==0
 			smallsegNum++, smallsegRows += rows;
 	}
-	if (smallsegNum) {
-		avgSegRows = smallsegRows / smallsegNum++;
-	}
+	size_t avgSegRows = smallsegRows / smallsegNum;
 	size_t maxSegRows = avgSegRows * 7/4;
 	size_t minMergeSegNum = tab->m_schema->m_minMergeSegNum;
 	if (m_forcePurgeAndMerge) {
@@ -3130,7 +3128,7 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 	for(size_t j = 0; j < m_segs.size(); ) {
 		size_t k = j;
 		for (; k < m_segs.size(); ++k) {
-			if (m_segs[k].seg->m_isDel.size() > maxSegRows)
+			if (m_segs[k].seg->getPhysicRows() > maxSegRows)
 				break;
 		}
 		if (k - j > rngLen) {
