@@ -3096,16 +3096,14 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		DebugCheckRowNumVecNoLock(tab);
 	}
 	size_t sumSegRows = 0;
-	for (size_t i = 0; i < m_segs.size(); ++i) {
-		sumSegRows += m_segs[i].seg->getPhysicRows();
-	}
+	for (auto& e : m_segs) sumSegRows += e.seg->getPhysicRows();
 	size_t largeSegRows = 2 * sumSegRows / m_segs.size();
 
 	// eleminate large segments and compute average of others
 	size_t smallsegNum = 0;
 	size_t smallsegRows = 0;
-	for(size_t i = 0; i < m_segs.size(); ++i) {
-		size_t rows = m_segs[i].seg->getPhysicRows();
+	for (auto& e : m_segs) {
+		size_t rows = e.seg->getPhysicRows();
 		if (rows <= largeSegRows)
 			// use '<=' for very rare case: largeSegRows==0
 			smallsegNum++, smallsegRows += rows;
