@@ -434,8 +434,12 @@ public:
 		}
 		else {
 			ensure_capacity(newsize);
-			std::fill_n(p, n, val);
-			std::uninitialized_fill_n(p+n, newsize-n, val);
+			if (boost::is_pod<T>::value) {
+				std::uninitialized_fill_n(p, newsize, val);
+			} else {
+				std::fill_n(p, n, val);
+				std::uninitialized_fill_n(p+n, newsize-n, val);
+			}
         }
         n = newsize;
 	}
@@ -484,8 +488,7 @@ public:
 		if (pos > n) {
 			throw std::out_of_range("valvec::insert");
 		}
-        if (n == c)
-            ensure_capacity(n+1);
+        ensure_capacity(n+1);
 	//	for (ptrdiff_t i = n; i > pos; --i) memcpy(p+i, p+i-1, sizeof T);
 		memmove(p+pos+1, p+pos, sizeof(T)*(n-pos));
 		new(p+pos)T(x);
@@ -498,8 +501,7 @@ public:
 		if (pos > n) {
 			throw std::out_of_range("valvec::insert");
 		}
-        if (n == c)
-            ensure_capacity(n+count);
+        ensure_capacity(n+count);
 	//	for (ptrdiff_t i = n; i > pos; --i) memcpy(p+i, p+i-1, sizeof T);
 		memmove(p+pos+count, p+pos, sizeof(T)*(n-pos));
 		STDEXT_uninitialized_copy_n(iter, count, p+pos);
