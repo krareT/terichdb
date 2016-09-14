@@ -510,14 +510,14 @@ public:
 
 	void push_back() {
 		assert(n <= c);
-		if (n == c) {
+		if (terark_unlikely(n == c)) {
 			ensure_capacity(n + 1);
 		}
 		new(p + n)T(); // default cons
 		++n;
 	}
 	void push_back(const T& x) {
-		if (n < c) {
+		if (terark_likely(n < c)) {
 			new(p+n)T(x); // copy cons
 			++n;
 		} else {
@@ -901,8 +901,8 @@ public:
 		assert(idx < n);
 		return p[idx];
 	}
-	T& get_2d(size_t col_size, size_t row, size_t col) {
-		size_t idx = row * col_size + col;
+	T& get_2d(size_t colsize, size_t row, size_t col) {
+		size_t idx = row * colsize + col;
 		assert(idx < n);
 		return p[idx];
 	}

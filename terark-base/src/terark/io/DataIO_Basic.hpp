@@ -57,18 +57,36 @@ namespace terark {
 typedef boost::mpl::true_  IsDump_true;
 typedef boost::mpl::false_ IsDump_false;
 
-#if defined(CXX_DECLTYPE)
-  template<class DataIO, class T>
-  IsDump_false Deduce_DataIO_is_dump(DataIO*, T*) { return IsDump_false(); }
-  template<class DataIO, class T>
-  struct DataIO_is_dump :
-    public decltype(Deduce_DataIO_is_dump((DataIO*)NULL, (T*)NULL))
-  {};
-#else
-  //! default false
-  template<class DataIO, class T>
-  struct DataIO_is_dump : public IsDump_false {};
-#endif
+inline char MplBoolTrueToSizeOne(boost::mpl::true_);
+inline long MplBoolTrueToSizeOne(boost::mpl::false_);
+
+template<class DataIO, class T>
+IsDump_false Deduce_DataIO_is_dump(DataIO*, T&);
+
+#define DataIO_is_dump_by_sizeof(dio_pt, obj_pt) \
+  ( sizeof(MplBoolTrueToSizeOne(Deduce_DataIO_is_dump( \
+    dio_pt(NULL), *obj_pt(NULL)))) == 1 )
+
+template<class DataIO, class T1, class T2>
+boost::mpl::bool_<
+  DataIO_is_dump_by_sizeof((DataIO*), (T1*)) &&
+  DataIO_is_dump_by_sizeof((DataIO*), (T2*)) &&
+  sizeof(T1) + sizeof(T2) == sizeof(std::pair<T1,T2>)
+>
+Deduce_DataIO_is_dump(DataIO*, std::pair<T1,T2>&);
+
+template<class DataIO, class T, size_t Dim>
+boost::mpl::bool_<DataIO_is_dump_by_sizeof((DataIO*), (T*))>
+Deduce_DataIO_is_dump(DataIO*, T (&)[Dim]);
+
+template<class DataIO, class T, size_t Dim>
+boost::mpl::bool_<DataIO_is_dump_by_sizeof((DataIO*), (T*))>
+Deduce_DataIO_is_dump(DataIO*, const T (&)[Dim]);
+
+template<class DataIO, class T>
+struct DataIO_is_dump :
+ public boost::mpl::bool_<DataIO_is_dump_by_sizeof((DataIO*), (T*))>
+{};
 
 #if defined(TERARK_DATA_IO_DISABLE_OPTIMIZE_DUMPABLE)
 
@@ -78,15 +96,17 @@ typedef boost::mpl::false_ IsDump_false;
 #else
 
 	#define DataIO_IsDump_TypeTrue1(T) \
-	template<class DataIO> struct DataIO_is_dump<DataIO, T> : public IsDump_true {};
+		template<class DataIO> \
+		IsDump_true \
+		Deduce_DataIO_is_dump(DataIO*, T&);
 
-	#define DataIO_IsDump_TypeTrue2(ByteOrder, T)		\
-	template<class Stream>								\
-	struct DataIO_is_dump<ByteOrder##Input<Stream>, T>	\
-		: public IsDump_true {};				\
-	template<class Stream>								\
-	struct DataIO_is_dump<ByteOrder##Output<Stream>, T>	\
-		: public IsDump_true {};				\
+	#define DataIO_IsDump_TypeTrue2(ByteOrder, T) \
+		template<class Stream> \
+		IsDump_true \
+		Deduce_DataIO_is_dump(ByteOrder##Input<Stream>*, T&); \
+		template<class Stream> \
+		IsDump_true \
+		Deduce_DataIO_is_dump(ByteOrder##Output<Stream>*, T&);
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 #endif // TERARK_DATA_IO_DISABLE_OPTIMIZE_DUMPABLE
@@ -106,14 +126,14 @@ typedef boost::mpl::false_ IsDump_false;
 
 template<class DataIO, class Derived, class Class>
 auto
-Workaround_IncompleteType(DataIO* dio, Class* self) ->
-decltype(static_cast<Derived*>(self)->
+Workaround_IncompleteType(DataIO* dio, Class& self) ->
+decltype(static_cast<Derived&>(self).
 		_M_Deduce_DataIO_is_realdump(dio).is_dumpable());
 
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class) \
       template<class DataIO> \
       Friend auto \
-	  Deduce_DataIO_is_dump(DataIO* dio, Class* self) -> \
+	  Deduce_DataIO_is_dump(DataIO* dio, Class& self) -> \
       decltype(terark::Workaround_IncompleteType(dio, self));
 #else
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS(Class, Members)
@@ -142,25 +162,6 @@ DataIO_IsDump_TypeTrue1(unsigned long long)
 DataIO_IsDump_TypeTrue1(__int64)
 DataIO_IsDump_TypeTrue1(unsigned __int64)
 #endif
-
-// support std::pair
-template<class DataIO, class X, class Y>
-struct DataIO_is_dump<DataIO, std::pair<X,Y> > :
-	public ::boost::mpl::bool_<DataIO_is_dump<DataIO, X>::value &&
-							   DataIO_is_dump<DataIO, Y>::value &&
-							   sizeof(std::pair<X,Y>) == sizeof(X)+sizeof(Y)>
-{
-};
-
-template<class DataIO, class T, int Dim>
-struct DataIO_is_dump<DataIO, T[Dim]> : public DataIO_is_dump<DataIO, T>::type
-{
-};
-
-template<class DataIO, class T, int Dim>
-struct DataIO_is_dump<DataIO, const T[Dim]> : public DataIO_is_dump<DataIO, T>::type
-{
-};
 
 //////////////////////////////////////////////////////////////////////////
 template<class DataIO, class Outer, int Size, bool MembersDumpable>

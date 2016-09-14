@@ -62,3 +62,14 @@ public:
 		return *this;
 	}
 
+	template<class T>
+	MyType& load_add(valvec<T>& x) {
+		DataIO_load_add_vector(*this, (T*)NULL, x, DATA_IO_BSWAP_FOR_LITTLE(T)());
+		return *this;
+	}
+
+	template<class T, class Alloc>
+	MyType& load_add(std::vector<T>& x) {
+		DataIO_load_add_vector(*this, (T*)NULL, x, DATA_IO_BSWAP_FOR_LITTLE(T)());
+		return *this;
+	}

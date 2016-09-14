@@ -206,7 +206,7 @@ DataIO_IsDump_TypeTrue2(PortableNoVarInt, var_int64_t)
 	template<class DataIO>                              \
 	Friend												\
 	terark::											\
-	IsDump_true Deduce_DataIO_is_dump(DataIO*, Class*);
+	IsDump_true Deduce_DataIO_is_dump(DataIO*, Class&);
 
 #else
 

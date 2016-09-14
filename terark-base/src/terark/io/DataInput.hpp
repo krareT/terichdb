@@ -59,59 +59,35 @@ void DataIO_loadObject(Input& input, Class& x)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-template<class DataIO, class T, class Vector>
-void DataIO_load_vector_raw(DataIO& dio, T*, Vector& x, ByteSwap_false)
-{
-	dio.ensureRead(&*x.begin(), sizeof(T) * x.size());
-}
 
-template<class DataIO, class T, class Vector>
-void DataIO_load_vector_raw(DataIO& dio, T*, Vector& x, ByteSwap_true)
-{
-	dio.ensureRead(&*x.begin(), sizeof(T) * x.size());
-	byte_swap(&*x.begin(), x.size());
+template<class DataIO, class Vector>
+void FastResizeVector(DataIO&, Vector& x, size_t newsize) {
+	x.resize(newsize);
 }
-
-template<class DataIO, class T, class Vector, class Bswap>
-void DataIO_load_vector_aux(DataIO& dio, T*, Vector& x, Bswap, IsDump_true)
-{
-	var_size_t size0;
-   	dio >> size0;
-	x.resize(size0.t);
-	if (size0.t)
-		DataIO_load_vector_raw(dio, (T*)NULL, x, Bswap());
-}
-
-template<class DataIO, class T, class Vector, class Bswap>
-void DataIO_load_vector_aux(DataIO& dio, T*, Vector& x, Bswap, IsDump_false)
-{
-	var_size_t size0;
-   	dio >> size0;
-	x.resize(0);
-	x.reserve(size0.t);
-	const size_t n = size0.t;
-	for (size_t i = 0; i < n; ++i) {
-		T t;
-	   	dio >> t;
-	#if defined(HSM_HAS_MOVE)
-		x.push_back(std::move(t));
-	#else
-		x.push_back(t);
-	#endif
+template<class DataIO, class T>
+void FastResizeVector(DataIO&, valvec<T>& x, size_t newsize) {
+	if (DataIO_is_dump<DataIO, T>::value || boost::is_pod<T>::value) {
+		x.resize_no_init(newsize);
+	} else {
+		x.resize(newsize);
 	}
 }
-
-template<class DataIO, class T1, class T2, class Vector, class Bswap>
-void DataIO_load_vector(DataIO& dio, std::pair<T1,T2>*, Vector& x, Bswap)
-{
-	typedef std::pair<T1,T2> P;
-	DataIO_load_vector_aux(dio, (P*)NULL, x, Bswap(), DataIO_is_dump<DataIO, P>());
-}
-
 template<class DataIO, class T, class Vector, class Bswap>
-void DataIO_load_vector(DataIO& dio, T*, Vector& x, Bswap)
-{
-	DataIO_load_vector_aux(dio, (T*)NULL, x, Bswap(), DataIO_is_dump<DataIO, T>());
+void DataIO_load_vector(DataIO& dio, T*, Vector& x, Bswap) {
+	if (size_t size = dio.template load_as<var_size_t>().t) {
+		FastResizeVector(dio, x, size);
+		DataIO_load_array(dio, &*x.begin(), size, Bswap());
+	} else {
+		x.resize(0);
+	}
+}
+template<class DataIO, class T, class Vector, class Bswap>
+void DataIO_load_add_vector(DataIO& dio, T*, Vector& x, Bswap) {
+	if (size_t size = dio.template load_as<var_size_t>().t) {
+		size_t oldsize = x.size();
+		FastResizeVector(dio, x, oldsize + size);
+		DataIO_load_array(dio, &*x.begin() + oldsize, size, Bswap());
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -233,7 +209,7 @@ void DataIO_load_elem(DataIO& dio, T& x, Bswap)
 	MyType& operator>>(valvec<Int>& x) {	\
 	  var_size_t n;							\
 	  *this >> n;							\
-	  x.resize(n.t);						\
+	  x.resize_no_init(n.t);				\
 	  if (terark_likely(n.t)) {				\
 	    this->ensureRead(&x[0], sizeof(Int)*n.t);\
 	    byte_swap(x.begin(), x.end());		\
@@ -408,7 +384,7 @@ unsigned int DataIO_load_check_version(Input& in, unsigned int curr_version, con
 	friend void DataIO_loadObject(Input& in, Class& x)		\
 	{														\
 		using namespace terark;								\
-		x.dio_load(in, DataIO_load_check_version(				\
+		x.dio_load(in, DataIO_load_check_version(			\
 			in, CurrentVersion, BOOST_STRINGIZE(Class)));	\
 	}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
