@@ -2942,7 +2942,7 @@ fstring getDotExtension(fstring fpath) {
 }
 
 struct SegEntry {
-	ReadonlySegment* seg;
+	ColgroupSegment* seg;
 	size_t idx;
 	SortableStrVec files;
 	febitvec newIsPurged;
@@ -2952,7 +2952,7 @@ struct SegEntry {
 	valvec<uint32_t> updateList;
 
 	// constructor must be fast enough
-	SegEntry(ReadonlySegment* s, size_t i) : seg(s), idx(i) {
+	SegEntry(ColgroupSegment* s, size_t i) : seg(s), idx(i) {
 		oldNumPurged = 0;
 		newNumPurged = 0;
 	}
@@ -3062,7 +3062,7 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 			if (seg->getWritableStore())
 				break; // writable seg must be at top side
 			else
-				m_segs.push_back({seg->getReadonlySegment(), i});
+				m_segs.emplace_back(seg->getMergableSegment(), i);
 		}
 		if (m_segs.size() <= 1)
 			return false;
@@ -3154,7 +3154,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThresholdRatio) {
 	size_t newSumDelcnt = 0;
 	size_t oldSumPurged = 0;
 	for (const auto& e : m_segs) {
-		const ReadonlySegment* seg = e.seg;
+		const ColgroupSegment* seg = e.seg;
 		newSumDelcnt += seg->m_delcnt;
 		oldSumPurged += seg->m_isPurged.max_rank1();
 	}
@@ -3176,7 +3176,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThresholdRatio) {
 		assert(m_oldpurgeBits.empty());
 		assert(m_newpurgeBits.empty());
 		for (auto& e : m_segs) {
-			ReadonlySegment* seg = e.seg;
+			ColgroupSegment* seg = e.seg;
 			size_t segRows = seg->m_isDel.size();
 			if (seg->m_isPurged.empty()) {
 				m_oldpurgeBits.grow(segRows, false);
@@ -3195,7 +3195,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThresholdRatio) {
 		m_newpurgeBits.build_cache(true, false);
 	}
 	else for (auto& e : m_segs) {
-		ReadonlySegment* seg   = e.seg;
+		ColgroupSegment* seg   = e.seg;
 		size_t oldNumPurged    = seg->m_isPurged.max_rank1();
 		size_t newMarkDelcnt   = seg->m_delcnt - oldNumPurged;
 		size_t oldRealRecords  = seg->m_isDel.size() - oldNumPurged;

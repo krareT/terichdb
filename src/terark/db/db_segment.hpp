@@ -26,8 +26,12 @@ public:
 	virtual class ColgroupSegment* getColgroupSegment() const;
 	virtual class ReadonlySegment* getReadonlySegment() const;
 	virtual class WritableSegment* getWritableSegment() const;
+	inline  class ColgroupSegment* getMergableSegment() const {
+		return m_isFreezed ? getColgroupSegment() : nullptr;
+	}
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
+
 
 	// Index can use different implementation for different
 	// index schema and index content features
@@ -144,6 +148,7 @@ public:
 	llong  m_dataMemSize;
 	llong  m_totalStorageSize;
 };
+typedef boost::intrusive_ptr<ColgroupSegment> ColgroupSegmentPtr;
 
 // Every index is a ReadableIndexStore
 //

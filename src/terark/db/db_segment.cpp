@@ -1171,11 +1171,12 @@ ThreadIdToString(BrainDeadThreadId id) {
 void
 ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	DbContextPtr ctx(tab->createDbContext());
-	ReadonlySegmentPtr input;
+	ColgroupSegmentPtr input;
 	{
 		MyRwLock lock(tab->m_rwMutex, false);
-		input = tab->m_segments[segIdx]->getReadonlySegment();
+		input = tab->m_segments[segIdx]->getColgroupSegment();
 		assert(NULL != input);
+		assert(input->m_isFreezed);
 		assert(!input->m_bookUpdates);
 		input->m_updateList.reserve(1024);
 		input->m_bookUpdates = true;
