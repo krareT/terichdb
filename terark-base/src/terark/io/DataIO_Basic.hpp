@@ -60,32 +60,34 @@ typedef boost::mpl::false_ IsDump_false;
 inline char MplBoolTrueToSizeOne(boost::mpl::true_);
 inline long MplBoolTrueToSizeOne(boost::mpl::false_);
 
+template<class T> T& DataIO_ReturnObjRef();
+
 template<class DataIO, class T>
 IsDump_false Deduce_DataIO_is_dump(DataIO*, T&);
 
-#define DataIO_is_dump_by_sizeof(dio_pt, obj_pt) \
+#define DataIO_is_dump_by_sizeof(DataIO, T) \
   ( sizeof(MplBoolTrueToSizeOne(Deduce_DataIO_is_dump( \
-    dio_pt(NULL), *obj_pt(NULL)))) == 1 )
+    (DataIO*)(NULL), DataIO_ReturnObjRef<T>()))) == 1 )
 
 template<class DataIO, class T1, class T2>
 boost::mpl::bool_<
-  DataIO_is_dump_by_sizeof((DataIO*), (T1*)) &&
-  DataIO_is_dump_by_sizeof((DataIO*), (T2*)) &&
+  DataIO_is_dump_by_sizeof(DataIO, T1) &&
+  DataIO_is_dump_by_sizeof(DataIO, T2) &&
   sizeof(T1) + sizeof(T2) == sizeof(std::pair<T1,T2>)
 >
 Deduce_DataIO_is_dump(DataIO*, std::pair<T1,T2>&);
 
 template<class DataIO, class T, size_t Dim>
-boost::mpl::bool_<DataIO_is_dump_by_sizeof((DataIO*), (T*))>
+boost::mpl::bool_<DataIO_is_dump_by_sizeof(DataIO, T)>
 Deduce_DataIO_is_dump(DataIO*, T (&)[Dim]);
 
 template<class DataIO, class T, size_t Dim>
-boost::mpl::bool_<DataIO_is_dump_by_sizeof((DataIO*), (T*))>
+boost::mpl::bool_<DataIO_is_dump_by_sizeof(DataIO, T)>
 Deduce_DataIO_is_dump(DataIO*, const T (&)[Dim]);
 
 template<class DataIO, class T>
 struct DataIO_is_dump :
- public boost::mpl::bool_<DataIO_is_dump_by_sizeof((DataIO*), (T*))>
+ public boost::mpl::bool_<DataIO_is_dump_by_sizeof(DataIO, T)>
 {};
 
 #if defined(TERARK_DATA_IO_DISABLE_OPTIMIZE_DUMPABLE)
@@ -126,15 +128,14 @@ struct DataIO_is_dump :
 
 template<class DataIO, class Derived, class Class>
 auto
-Workaround_IncompleteType(DataIO* dio, Class& self) ->
-decltype(static_cast<Derived&>(self).
-		_M_Deduce_DataIO_is_realdump(dio).is_dumpable());
+Workaround_IncompleteType(DataIO* dio, Derived& derived, Class&) ->
+decltype(derived._M_Deduce_DataIO_is_realdump(dio).is_dumpable());
 
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class) \
       template<class DataIO> \
       Friend auto \
 	  Deduce_DataIO_is_dump(DataIO* dio, Class& self) -> \
-      decltype(terark::Workaround_IncompleteType(dio, self));
+      decltype(terark::Workaround_IncompleteType(dio, static_cast<Derived&>(self), self));
 #else
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS(Class, Members)
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class)
@@ -203,12 +204,12 @@ struct DataIO_is_realdump
 #endif
 
 	template<class T>
-	DataIO_is_realdump<DataIO, Outer, Size+sizeof(T), boost::mpl::bool_<MembersDumpable && DataIO_is_dump<DataIO, T>::value>::value>
+	DataIO_is_realdump<DataIO, Outer, Size+sizeof(T), MembersDumpable && DataIO_is_dump_by_sizeof(DataIO, T)>
 	operator&(const T& x)
 	{
-		typedef DataIO_is_realdump<DataIO, Outer, Size+sizeof(T), boost::mpl::bool_<MembersDumpable && DataIO_is_dump<DataIO, T>::value>::value> ret_t;
+		typedef DataIO_is_realdump<DataIO, Outer, Size+sizeof(T), MembersDumpable && DataIO_is_dump_by_sizeof(DataIO, T)> ret_t;
 #if (defined(_DEBUG) || !defined(NDEBUG)) && !defined(DATA_IO_DONT_CHECK_REAL_DUMP)
-		check_member_order(x, ::boost::mpl::bool_<MembersDumpable && DataIO_is_dump<DataIO, T>::value>());
+		check_member_order(x, ::boost::mpl::bool_<MembersDumpable && DataIO_is_dump_by_sizeof(DataIO, T)>());
 		return ret_t(address, &x);
 #else
 		(void)(x); // use x
