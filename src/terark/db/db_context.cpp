@@ -185,10 +185,10 @@ StoreIterator* DbContext::getWrtStoreIterNoLock(size_t segIdx) {
 	assert(segIdx < m_segCtx.size());
 	SegCtx* p = m_segCtx[segIdx];
 	assert(p->seg);
-	assert(p->seg->getWritableSegment() != nullptr);
+	assert(p->seg->getPlainWritableSegment() != nullptr);
 	assert(!p->seg->m_hasLockFreePointSearch);
 	if (p->wrtStoreIter == nullptr) {
-		auto wrseg = p->seg->getWritableSegment();
+		auto wrseg = p->seg->getPlainWritableSegment();
 		p->wrtStoreIter = wrseg->m_wrtStore->createStoreIterForward(this);
 		p->wrtStoreIter->add_ref();
 	}
@@ -219,7 +219,7 @@ void DbContext::debugCheckUnique(fstring row, size_t uniqueIndexId) {
 
 void
 DbContext::getWrSegWrtStoreData(const ReadableSegment* seg, llong subId, valvec<byte>* buf) {
-	assert(seg->getWritableSegment() != NULL);
+	assert(seg->getPlainWritableSegment() != NULL);
 	assert(!seg->m_hasLockFreePointSearch);
 	auto sctx = m_segCtx.data();
 	size_t segIdx = m_segCtx.size();
@@ -242,7 +242,7 @@ DbContext::getWrSegWrtStoreData(const ReadableSegment* seg, llong subId, valvec<
 		, "WARN: DbContext::getWrSegWrtStoreData: not found segment: %s\n"
 		, seg->m_segDir.string().c_str());
 	// fallback to slow locked getValue:
-	WritableSegment* wrseg = seg->getWritableSegment();
+	auto wrseg = seg->getPlainWritableSegment();
 	assert(wrseg != nullptr);
 	wrseg->m_wrtStore->getValue(subId, buf, this);
 }
@@ -271,7 +271,7 @@ void DbContext::freeWritableSegmentResources() {
 	for (size_t i = 0; i < m_segCtx.size(); ++i) {
 		auto cur = m_segCtx[i];
 		assert(nullptr != cur->seg);
-		if (cur->seg->getWritableSegment()) {
+		if (cur->seg->getPlainWritableSegment()) {
 			RefcntPtr_release(cur->wrtStoreIter);
 			for (size_t j = 0; j < indexNum; ++j)
 				RefcntPtr_release(cur->indexIter[j]);

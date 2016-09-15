@@ -84,6 +84,9 @@ ReadonlySegment* ReadableSegment::getReadonlySegment() const {
 WritableSegment* ReadableSegment::getWritableSegment() const {
 	return nullptr;
 }
+PlainWritableSegment* ReadableSegment::getPlainWritableSegment() const {
+	return nullptr;
+}
 
 void ReadableSegment::deleteSegment() {
 	assert(!m_segDir.empty());
@@ -1722,7 +1725,7 @@ UpdatableStore* WritableSegment::getUpdatableStore() { return this; }
 WritableStore* WritableSegment::getWritableStore() { return this; }
 
 void
-WritableSegment::getValueAppend(llong recId, valvec<byte>* val, DbContext* ctx)
+PlainWritableSegment::getValueAppend(llong recId, valvec<byte>* val, DbContext* ctx)
 const {
 	assert(&ctx->buf1 != val);
 	assert(&ctx->buf2 != val);
@@ -1804,7 +1807,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	iter->reset();
 }
 
-void WritableSegment::getCombineAppend(llong recId, valvec<byte>* val,
+void PlainWritableSegment::getCombineAppend(llong recId, valvec<byte>* val,
 					valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2)
 const {
 	auto& sconf = *m_schema;
@@ -1841,7 +1844,7 @@ const {
 	sconf.m_rowSchema->combineRowAppend(cols2, val);
 }
 
-void WritableSegment::selectColumns(llong recId,
+void PlainWritableSegment::selectColumns(llong recId,
 									const size_t* colsId, size_t colsNum,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
@@ -1853,7 +1856,7 @@ const {
 	}
 }
 
-void WritableSegment::selectColumnsByWhole(llong recId,
+void PlainWritableSegment::selectColumnsByWhole(llong recId,
 									const size_t* colsId, size_t colsNum,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
@@ -1874,7 +1877,7 @@ const {
 	}
 }
 
-void WritableSegment::selectColumnsCombine(llong recId,
+void PlainWritableSegment::selectColumnsCombine(llong recId,
 									const size_t* colsIdvec, size_t colsNum,
 									valvec<byte>* colsData, DbContext* ctx)
 const {
@@ -1919,7 +1922,7 @@ const {
 	}
 }
 
-void WritableSegment::selectOneColumn(llong recId, size_t columnId,
+void PlainWritableSegment::selectOneColumn(llong recId, size_t columnId,
 									  valvec<byte>* colsData, DbContext* ctx)
 const {
 	assert(columnId < m_schema->columnNum());
@@ -1957,7 +1960,7 @@ const {
 	}
 }
 
-void WritableSegment::selectColgroups(llong recId,
+void PlainWritableSegment::selectColgroups(llong recId,
 						const size_t* cgIdvec, size_t cgIdvecSize,
 						valvec<byte>* cgDataVec, DbContext* ctx) const {
 	for(size_t i = 0; i < cgIdvecSize; ++i) {
@@ -1991,7 +1994,7 @@ void WritableSegment::flushSegment() {
 	}
 }
 
-void WritableSegment::saveRecordStore(PathRef segDir) const {
+void PlainWritableSegment::saveRecordStore(PathRef segDir) const {
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
 		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 		assert(schema.m_isInplaceUpdatable);
@@ -2003,7 +2006,7 @@ void WritableSegment::saveRecordStore(PathRef segDir) const {
 	m_wrtStore->save(segDir / "__wrtStore__");
 }
 
-void WritableSegment::loadRecordStore(PathRef segDir) {
+void PlainWritableSegment::loadRecordStore(PathRef segDir) {
 	assert(m_colgroups.size() == 0);
 	m_colgroups.resize(m_schema->getColgroupNum());
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
@@ -2018,11 +2021,27 @@ void WritableSegment::loadRecordStore(PathRef segDir) {
 	m_wrtStore->load(segDir / "__wrtStore__");
 }
 
+ColgroupSegment* WritableSegment::getColgroupSegment() const {
+	THROW_STD(invalid_argument, "this method should not be called");
+}
+ColgroupSegment* PlainWritableSegment::getColgroupSegment() const {
+	// although WritableSegment is derived from ColgroupSegment
+	// this function doen't return this as ColgroupSegment
+	return nullptr;
+}
+ColgroupSegment* ColgroupWritableSegment::getColgroupSegment() const {
+	return const_cast<ColgroupWritableSegment*>(this);
+}
+
 WritableSegment* WritableSegment::getWritableSegment() const {
 	return const_cast<WritableSegment*>(this);
 }
 
-llong WritableSegment::totalStorageSize() const {
+PlainWritableSegment* PlainWritableSegment::getPlainWritableSegment() const {
+	return const_cast<PlainWritableSegment*>(this);
+}
+
+llong PlainWritableSegment::totalStorageSize() const {
 	llong size = m_wrtStore->dataStorageSize() + totalIndexSize();
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
 		auto store = m_colgroups[colgroupId].get();
@@ -2032,7 +2051,7 @@ llong WritableSegment::totalStorageSize() const {
 	return size;
 }
 
-llong WritableSegment::dataInflateSize() const {
+llong PlainWritableSegment::dataInflateSize() const {
 	llong size = m_wrtStore->dataInflateSize();
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
 		auto store = m_colgroups[colgroupId].get();
@@ -2042,7 +2061,7 @@ llong WritableSegment::dataInflateSize() const {
 	return size;
 }
 
-llong WritableSegment::dataStorageSize() const {
+llong PlainWritableSegment::dataStorageSize() const {
 	llong size = m_wrtStore->dataStorageSize();
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
 		auto store = m_colgroups[colgroupId].get();
@@ -2052,19 +2071,19 @@ llong WritableSegment::dataStorageSize() const {
 	return size;
 }
 
-class WritableSegment::MyStoreIter : public StoreIterator {
+class PlainWritableSegment::MyStoreIter : public StoreIterator {
 	const SchemaConfig& m_sconf;
-	const WritableSegment* m_wrtSeg;
+	const PlainWritableSegment* m_wrtSeg;
 	StoreIteratorPtr m_wrtIter;
 	valvec<byte> m_wrtBuf;
 	ColumnVec    m_cols1;
 	ColumnVec    m_cols2;
 public:
-	MyStoreIter(const WritableSegment* wrtSeg, StoreIterator* wrtIter,
+	MyStoreIter(const PlainWritableSegment* wrtSeg, StoreIterator* wrtIter,
 				DbContext* ctx, const SchemaConfig& sconf)
 	  : m_sconf(sconf)
 	{
-		m_store = const_cast<WritableSegment*>(wrtSeg);
+		m_store = const_cast<PlainWritableSegment*>(wrtSeg);
 		m_wrtSeg = wrtSeg;
 		m_wrtIter = wrtIter;
 	}
@@ -2104,7 +2123,7 @@ public:
 };
 
 StoreIterator*
-WritableSegment::createStoreIterForward(DbContext* ctx) const {
+PlainWritableSegment::createStoreIterForward(DbContext* ctx) const {
 	if (m_schema->m_updatableColgroups.empty()) {
 		return m_wrtStore->createStoreIterForward(ctx);
 	}
@@ -2115,7 +2134,7 @@ WritableSegment::createStoreIterForward(DbContext* ctx) const {
 }
 
 StoreIterator*
-WritableSegment::createStoreIterBackward(DbContext* ctx) const {
+PlainWritableSegment::createStoreIterBackward(DbContext* ctx) const {
 	if (m_schema->m_updatableColgroups.empty()) {
 		return m_wrtStore->createStoreIterBackward(ctx);
 	}
@@ -2127,7 +2146,7 @@ WritableSegment::createStoreIterBackward(DbContext* ctx) const {
 
 //static void splitRowToWrt
 
-llong WritableSegment::append(fstring row, DbContext* ctx) {
+llong PlainWritableSegment::append(fstring row, DbContext* ctx) {
 	auto store = m_wrtStore->getAppendableStore();
 	assert(nullptr != store);
 	const SchemaConfig& sconf = *m_schema;
@@ -2150,7 +2169,7 @@ llong WritableSegment::append(fstring row, DbContext* ctx) {
 	}
 }
 
-void WritableSegment::update(llong id, fstring row, DbContext* ctx) {
+void PlainWritableSegment::update(llong id, fstring row, DbContext* ctx) {
 	assert(id <= llong(m_isDel.size()));
 	auto store = m_wrtStore->getUpdatableStore();
 	assert(nullptr != store);
@@ -2172,11 +2191,11 @@ void WritableSegment::update(llong id, fstring row, DbContext* ctx) {
 	}
 }
 
-void WritableSegment::remove(llong id, DbContext* ctx) {
+void PlainWritableSegment::remove(llong id, DbContext* ctx) {
 	m_wrtStore->getWritableStore()->remove(id, ctx);
 }
 
-void WritableSegment::shrinkToFit() {
+void PlainWritableSegment::shrinkToFit() {
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
 		auto store = m_colgroups[colgroupId]->getAppendableStore();
 		assert(nullptr != store);
@@ -2185,7 +2204,7 @@ void WritableSegment::shrinkToFit() {
 	m_wrtStore->getAppendableStore()->shrinkToFit();
 }
 
-void WritableSegment::getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx)
+void PlainWritableSegment::getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx)
 const {
 	if (m_hasLockFreePointSearch) {
 		m_wrtStore->getValue(subId, buf, ctx);
@@ -2206,42 +2225,24 @@ void WritableSegment::delmarkSet0(llong subId) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-SmartWritableSegment::~SmartWritableSegment() {
+ColgroupWritableSegment::~ColgroupWritableSegment() {
 }
 
-void
-SmartWritableSegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn)
-const {
-	assert(txn != nullptr);
-	// m_indices also store index keys
-//	DbContextPtr dummy;
-	assert(0);
-	// should similar to ReadonlySegment::getValueAppend(...)
+void ColgroupWritableSegment::saveRecordStore(PathRef dir) const {
+	ColgroupSegment::saveRecordStore(dir);
 }
 
-StoreIterator* SmartWritableSegment::createStoreIterForward(DbContext* ctx) const {
-	return nullptr;
-}
-StoreIterator* SmartWritableSegment::createStoreIterBackward(DbContext* ctx) const {
-	return nullptr;
-}
-
-void SmartWritableSegment::saveRecordStore(PathRef dir) const {
+void ColgroupWritableSegment::loadRecordStore(PathRef dir) {
+//  TODO:
 	abort();
 }
 
-void SmartWritableSegment::loadRecordStore(PathRef dir) {
-	abort();
+llong ColgroupWritableSegment::dataStorageSize() const {
+	return ColgroupSegment::dataStorageSize();
 }
 
-llong SmartWritableSegment::dataStorageSize() const {
-	abort();
-	return 0;
-}
-
-llong SmartWritableSegment::totalStorageSize() const {
-	abort();
-	return totalIndexSize() + 0;
+llong ColgroupWritableSegment::totalStorageSize() const {
+	return ColgroupSegment::totalStorageSize();
 }
 
 } } // namespace terark::db

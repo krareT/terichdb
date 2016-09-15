@@ -29,6 +29,7 @@ public:
 	inline  class ColgroupSegment* getMergableSegment() const {
 		return m_isFreezed ? getColgroupSegment() : nullptr;
 	}
+	virtual class PlainWritableSegment* getPlainWritableSegment() const;
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
 
@@ -306,9 +307,8 @@ public:
 };
 
 // Concrete WritableSegment should not implement this class,
-// should implement PlainWritableSegment or SmartWritableSegment
-class TERARK_DB_DLL WritableSegment : public ReadableSegment, public WritableStore {
-	class MyStoreIter;
+// should implement PlainWritableSegment or ColgroupWritableSegment
+class TERARK_DB_DLL WritableSegment : public ColgroupSegment, public WritableStore {
 public:
 	virtual DbTransaction* createTransaction() = 0;
 
@@ -318,14 +318,8 @@ public:
 	void pushIsDel(bool val);
 	void popIsDel();
 
+	ColgroupSegment* getColgroupSegment() const override;
 	WritableSegment* getWritableSegment() const override;
-
-	llong totalStorageSize() const override;
-	llong dataStorageSize() const override;
-	llong dataInflateSize() const override;
-
-	StoreIterator* createStoreIterForward(DbContext*) const override;
-	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	AppendableStore* getAppendableStore() override;
 	UpdatableStore* getUpdatableStore() override;
@@ -335,16 +329,37 @@ public:
 	// index schema and index content features
 	virtual ReadableIndex* createIndex(const Schema&, PathRef path) const = 0;
 
-	virtual void getValueAppend(llong recId, valvec<byte>* val, DbContext*) const override;
-
-	virtual llong append(fstring row, DbContext*) override;
-	virtual void update(llong id, fstring row, DbContext*) override;
-	virtual void remove(llong id, DbContext* ctx) override;
-	virtual void shrinkToFit() override;
-
 	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 								fstring key, valvec<llong>* recIdvec,
 								DbContext*) const override;
+
+	void flushSegment();
+
+	void delmarkSet0(llong subId);
+
+	valvec<uint32_t>  m_deletedWrIdSet;
+};
+typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
+
+class TERARK_DB_DLL PlainWritableSegment : public WritableSegment {
+	class MyStoreIter;
+public:
+	ColgroupSegment* getColgroupSegment() const override;
+	PlainWritableSegment* getPlainWritableSegment() const override;
+
+	llong totalStorageSize() const override;
+	llong dataStorageSize() const override;
+	llong dataInflateSize() const override;
+
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
+
+	void getValueAppend(llong recId, valvec<byte>* val, DbContext*) const override;
+
+	llong append(fstring row, DbContext*) override;
+	void update(llong id, fstring row, DbContext*) override;
+	void remove(llong id, DbContext* ctx) override;
+	void shrinkToFit() override;
 
 	void getCombineAppend(llong recId, valvec<byte>* val, valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2) const;
 
@@ -363,49 +378,30 @@ public:
 	void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
 						 valvec<byte>* cgDataVec, DbContext*) const override;
 
-	void flushSegment();
-
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
 
 	void getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx) const;
 
-	void delmarkSet0(llong subId);
-
 	ReadableStorePtr  m_wrtStore;
-	valvec<uint32_t>  m_deletedWrIdSet;
-};
-typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
-
-class TERARK_DB_DLL PlainWritableSegment : public WritableSegment {
-public:
-protected:
 };
 typedef boost::intrusive_ptr<PlainWritableSegment> PlainWritableSegmentPtr;
 
 // Every index is a WritableIndexStore
 // But the <<store>> is not multi-part(such as ReadonlySegment)
-class TERARK_DB_DLL SmartWritableSegment : public WritableSegment {
+class TERARK_DB_DLL ColgroupWritableSegment : public WritableSegment {
 public:
 protected:
-	~SmartWritableSegment();
-
-	void getValueAppend(llong id, valvec<byte>* val, DbContext*)
-	const override final;
-
-	StoreIterator* createStoreIterForward(DbContext*) const override;
-	StoreIterator* createStoreIterBackward(DbContext*) const override;
+	~ColgroupWritableSegment();
+	ColgroupSegment* getColgroupSegment() const override;
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;
 
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
-
-	class MyStoreIterForward;  friend class MyStoreIterForward;
-	class MyStoreIterBackward; friend class MyStoreIterBackward;
 };
-typedef boost::intrusive_ptr<SmartWritableSegment> SmartWritableSegmentPtr;
+typedef boost::intrusive_ptr<ColgroupWritableSegment> SmartWritableSegmentPtr;
 
 } } // namespace terark::db
 
