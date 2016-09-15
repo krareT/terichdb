@@ -1646,6 +1646,23 @@ void DbTransaction::rollback() {
 	m_status = rollbacked;
 }
 
+DefaultRollbackTransaction::~DefaultRollbackTransaction() {
+	assert(nullptr != m_txn);
+	if (DbTransaction::started == m_txn->m_status) {
+		try {
+			m_txn->rollback();
+		}
+		catch (const std::exception& ex) {
+			fprintf(stderr, "ERROR: %s: auto rollback failed: %s\n"
+				, BOOST_CURRENT_FUNCTION, ex.what());
+		}
+		catch (...) {
+			fprintf(stderr, "ERROR: %s: auto rollback failed by catch ...\n"
+				, BOOST_CURRENT_FUNCTION);
+		}
+	}
+}
+
 WritableSegment::WritableSegment() {
 }
 WritableSegment::~WritableSegment() {

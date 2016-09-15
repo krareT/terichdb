@@ -302,11 +302,7 @@ class DefaultRollbackTransaction : public TransactionGuard {
 public:
 	explicit
 	DefaultRollbackTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
-	~DefaultRollbackTransaction() {
-		if (DbTransaction::started == m_txn->m_status) {
-			m_txn->rollback();
-		}
-	}
+	~DefaultRollbackTransaction();
 };
 
 // Concrete WritableSegment should not implement this class,
