@@ -17,5 +17,7 @@
 #include <terark/valvec.hpp>
 #include <terark/util/linebuf.hpp>
 #include <terark/lcast.hpp>
+#include <terark/io/MemStream.hpp>
+#include <terark/io/DataIO.hpp>
 
 // TODO: reference additional headers your program requires here

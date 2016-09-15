@@ -163,6 +163,11 @@
     </ClCompile>
     <ClCompile Include="TestStrIndex.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\terark\vs2015\terark-fsa\terark-fsa\terark-fsa.vcxproj">
+      <Project>{c5ecd2a1-c18e-4c04-b2fa-c5c6f206f5ae}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
