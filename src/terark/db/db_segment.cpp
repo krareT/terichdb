@@ -75,6 +75,9 @@ ReadableSegment::~ReadableSegment() {
 	}
 }
 
+ColgroupSegment* ReadableSegment::getColgroupSegment() const {
+	return nullptr;
+}
 ReadonlySegment* ReadableSegment::getReadonlySegment() const {
 	return nullptr;
 }
@@ -272,17 +275,28 @@ void ReadableSegment::addtoUpdateList(size_t logicId) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-ReadonlySegment::ReadonlySegment() {
+ColgroupSegment::ColgroupSegment() {
 	m_dataMemSize = 0;
 	m_totalStorageSize = 0;
 	m_dataInflateSize = 0;
+}
+ColgroupSegment::~ColgroupSegment() {
+	assert(nullptr == m_isPurgedMmap);
+	m_colgroups.clear();
+}
+
+ColgroupSegment* ColgroupSegment::getColgroupSegment() const {
+	return const_cast<ColgroupSegment*>(this);
+}
+
+ReadonlySegment::ReadonlySegment() {
 	m_isFreezed = true;
-	m_isPurgedMmap = 0;
 }
 ReadonlySegment::~ReadonlySegment() {
 	if (m_isPurgedMmap) {
 		mmap_close(m_isPurgedMmap, m_isPurged.mem_size());
 		m_isPurged.risk_release_ownership();
+		m_isPurgedMmap = nullptr;
 	}
 	m_colgroups.clear();
 }
@@ -291,17 +305,17 @@ ReadonlySegment* ReadonlySegment::getReadonlySegment() const {
 	return const_cast<ReadonlySegment*>(this);
 }
 
-llong ReadonlySegment::dataInflateSize() const {
+llong ColgroupSegment::dataInflateSize() const {
 	return m_dataMemSize;
 }
-llong ReadonlySegment::dataStorageSize() const {
+llong ColgroupSegment::dataStorageSize() const {
 	return m_dataMemSize;
 }
-llong ReadonlySegment::totalStorageSize() const {
+llong ColgroupSegment::totalStorageSize() const {
 	return m_totalStorageSize;
 }
 
-void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn) const {
+void ColgroupSegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn) const {
 	assert(txn != nullptr);
 	llong rows = m_isDel.size();
 	if (terark_unlikely(id < 0 || id >= rows)) {
@@ -311,13 +325,13 @@ void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn
 }
 
 void
-ReadonlySegment::getValueByLogicId(size_t id, valvec<byte>* val, DbContext* ctx)
+ColgroupSegment::getValueByLogicId(size_t id, valvec<byte>* val, DbContext* ctx)
 const {
 	getValueByPhysicId(getPhysicId(id), val, ctx);
 }
 
 void
-ReadonlySegment::getValueByPhysicId(size_t id, valvec<byte>* val, DbContext* ctx)
+ColgroupSegment::getValueByPhysicId(size_t id, valvec<byte>* val, DbContext* ctx)
 const {
 	val->risk_set_size(0);
 	ctx->buf1.risk_set_size(0);
@@ -361,6 +375,38 @@ const {
 
 	// combine to val
 	m_schema->m_rowSchema->combineRow(ctx->cols2, val);
+}
+
+void
+ColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+										fstring key, valvec<llong>* recIdvec,
+										DbContext* ctx) const {
+	assert(m_isPurged.empty());
+	size_t oldsize = recIdvec->size();
+	auto index = m_indices[indexId].get();
+	index->searchExactAppend(key, recIdvec, ctx);
+	if (recIdvec->size() == oldsize) {
+		return;
+	}
+	size_t newsize = oldsize;
+	llong* recIdvecData = recIdvec->data();
+	if (m_deletionTime) {
+		auto deltime = (const llong*)m_deletionTime->getRecordsBasePtr();
+		auto snapshotVersion = ctx->m_mySnapshotVersion;
+		for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+			llong logicId = recIdvecData[k];
+			if (deltime[logicId] > snapshotVersion)
+				recIdvecData[newsize++] = logicId;
+		}
+	}
+	else {
+		for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+			llong logicId = recIdvecData[k];
+			if (!m_isDel[logicId])
+				recIdvecData[newsize++] = logicId;
+		}
+	}
+	recIdvec->risk_set_size(newsize);
 }
 
 void
@@ -426,7 +472,16 @@ ReadonlySegment::selectColumns(llong recId,
 							   valvec<byte>* colsData, DbContext* ctx)
 const {
 	assert(recId >= 0);
-	recId = getPhysicId(size_t(recId));
+	llong physicId = getPhysicId(size_t(recId));
+	return selectColumnsByPhysicId(physicId, colsId, colsNum, colsData, ctx);
+}
+
+void
+ColgroupSegment::selectColumnsByPhysicId(llong physicId,
+							   const size_t* colsId, size_t colsNum,
+							   valvec<byte>* colsData, DbContext* ctx)
+const {
+	assert(physicId >= 0);
 	colsData->erase_all();
 	ctx->buf1.erase_all();
 	ctx->offsets.resize_fill(m_colgroups.size(), UINT32_MAX);
@@ -439,7 +494,7 @@ const {
 		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 		if (offsets[colgroupId] == UINT32_MAX) {
 			offsets[colgroupId] = ctx->cols1.size();
-			m_colgroups[colgroupId]->getValueAppend(recId, &ctx->buf1, ctx);
+			m_colgroups[colgroupId]->getValueAppend(physicId, &ctx->buf1, ctx);
 			schema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
 		}
 		fstring d = ctx->cols1[offsets[colgroupId] + cp.subColumnId];
@@ -455,7 +510,15 @@ ReadonlySegment::selectOneColumn(llong recId, size_t columnId,
 								 valvec<byte>* colsData, DbContext* ctx)
 const {
 	assert(recId >= 0);
-	recId = getPhysicId(size_t(recId));
+	llong physicId = getPhysicId(size_t(recId));
+	selectOneColumnByPhysicId(physicId, columnId, colsData, ctx);
+}
+
+void
+ColgroupSegment::selectOneColumnByPhysicId(llong physicId, size_t columnId,
+								 valvec<byte>* colsData, DbContext* ctx)
+const {
+	assert(physicId >= 0);
 	assert(columnId < m_schema->m_rowSchema->columnNum());
 	auto cp = m_schema->m_colproject[columnId];
 	size_t colgroupId = cp.colgroupId;
@@ -463,10 +526,10 @@ const {
 //	printf("colprojects = %zd, colgroupId = %zd, schema.cols = %zd\n"
 //		, m_schema->m_colproject.size(), colgroupId, schema.columnNum());
 	if (schema.columnNum() == 1) {
-		m_colgroups[colgroupId]->getValue(recId, colsData, ctx);
+		m_colgroups[colgroupId]->getValue(physicId, colsData, ctx);
 	}
 	else {
-		m_colgroups[colgroupId]->getValue(recId, &ctx->buf1, ctx);
+		m_colgroups[colgroupId]->getValue(physicId, &ctx->buf1, ctx);
 		schema.parseRow(ctx->buf1, &ctx->cols1);
 		colsData->erase_all();
 		colsData->append(ctx->cols1[cp.subColumnId]);
@@ -476,27 +539,34 @@ const {
 void ReadonlySegment::selectColgroups(llong recId,
 						const size_t* cgIdvec, size_t cgIdvecSize,
 						valvec<byte>* cgDataVec, DbContext* ctx) const {
+	assert(recId >= 0);
+	llong physicId = getPhysicId(size_t(recId));
+	selectColgroupsByPhysicId(physicId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+}
+
+void ColgroupSegment::selectColgroupsByPhysicId(llong physicId,
+						const size_t* cgIdvec, size_t cgIdvecSize,
+						valvec<byte>* cgDataVec, DbContext* ctx) const {
 	for(size_t i = 0; i < cgIdvecSize; ++i) {
 		size_t cgId = cgIdvec[i];
 		if (cgId >= m_schema->getColgroupNum()) {
 			THROW_STD(out_of_range, "cgId = %zd, cgNum = %zd"
 				, cgId, m_schema->getColgroupNum());
 		}
-		llong physicId = this->getPhysicId(recId);
 		m_colgroups[cgId]->getValue(physicId, &cgDataVec[i], ctx);
 	}
 }
 
-class ReadonlySegment::MyStoreIterForward : public StoreIterator {
+class ColgroupSegment::MyStoreIterForward : public StoreIterator {
 	llong  m_id = 0;
 	DbContextPtr m_ctx;
 public:
-	MyStoreIterForward(const ReadonlySegment* owner, DbContext* ctx)
+	MyStoreIterForward(const ColgroupSegment* owner, DbContext* ctx)
 	  : m_ctx(ctx) {
-		m_store.reset(const_cast<ReadonlySegment*>(owner));
+		m_store.reset(const_cast<ColgroupSegment*>(owner));
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		auto owner = static_cast<const ColgroupSegment*>(m_store.get());
 		size_t rows = owner->m_isDel.size();
 		while (size_t(m_id) < rows && owner->m_isDel[m_id])
 			m_id++;
@@ -508,7 +578,7 @@ public:
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		auto owner = static_cast<const ColgroupSegment*>(m_store.get());
 		llong rows = owner->m_isDel.size();
 		assert(id >= 0);
 		m_id = id + 1;
@@ -525,17 +595,17 @@ public:
 		m_id = 0;
 	}
 };
-class ReadonlySegment::MyStoreIterBackward : public StoreIterator {
+class ColgroupSegment::MyStoreIterBackward : public StoreIterator {
 	llong  m_id;
 	DbContextPtr m_ctx;
 public:
-	MyStoreIterBackward(const ReadonlySegment* owner, const DbContextPtr& ctx)
+	MyStoreIterBackward(const ColgroupSegment* owner, const DbContextPtr& ctx)
 	  : m_ctx(ctx) {
-		m_store.reset(const_cast<ReadonlySegment*>(owner));
+		m_store.reset(const_cast<ColgroupSegment*>(owner));
 		m_id = owner->m_isDel.size();
 	}
 	bool increment(llong* id, valvec<byte>* val) override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		auto owner = static_cast<const ColgroupSegment*>(m_store.get());
 		while (m_id > 0 && owner->m_isDel[m_id-1])
 			 --m_id;
 		if (terark_likely(m_id > 0)) {
@@ -546,7 +616,7 @@ public:
 		return false;
 	}
 	bool seekExact(llong id, valvec<byte>* val) override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		auto owner = static_cast<const ColgroupSegment*>(m_store.get());
 		llong rows = owner->m_isDel.size();
 		assert(id >= 0);
 		if (id < rows) {
@@ -561,14 +631,14 @@ public:
 		return false;
 	}
 	void reset() override {
-		auto owner = static_cast<const ReadonlySegment*>(m_store.get());
+		auto owner = static_cast<const ColgroupSegment*>(m_store.get());
 		m_id = owner->m_isDel.size();
 	}
 };
-StoreIterator* ReadonlySegment::createStoreIterForward(DbContext* ctx) const {
+StoreIterator* ColgroupSegment::createStoreIterForward(DbContext* ctx) const {
 	return new MyStoreIterForward(this, ctx);
 }
-StoreIterator* ReadonlySegment::createStoreIterBackward(DbContext* ctx) const {
+StoreIterator* ColgroupSegment::createStoreIterBackward(DbContext* ctx) const {
 	return new MyStoreIterBackward(this, ctx);
 }
 
@@ -1157,7 +1227,7 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 }
 
 ReadableIndexPtr
-ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx) {
+ReadonlySegment::purgeIndex(size_t indexId, ColgroupSegment* input, DbContext* ctx) {
 	llong inputRowNum = input->m_isDel.size();
 	assert(inputRowNum > 0);
 	if (m_isDel.size() == m_delcnt) {
@@ -1200,7 +1270,7 @@ ReadonlySegment::purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* c
 }
 
 ReadableStorePtr
-ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir) {
+ReadonlySegment::purgeColgroup(size_t colgroupId, ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir) {
 	assert(m_isDel.size() == input->m_isDel.size());
 	return purgeColgroup_s(colgroupId, m_isDel, m_delcnt, input, ctx, tmpSegDir);
 }
@@ -1209,7 +1279,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbCont
 ReadableStorePtr
 ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 		const febitvec& newIsDel, size_t newDelcnt,
-		ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir) {
+		ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir) {
 	assert(newIsDel.size() == input->m_isDel.size());
 	assert(newIsDel.popcnt() == newDelcnt);
 	if (newIsDel.size() == newDelcnt) {
@@ -1399,7 +1469,7 @@ void ReadonlySegment::save(PathRef segDir) const {
 	ReadableSegment::save(segDir);
 }
 
-void ReadonlySegment::saveRecordStore(PathRef segDir) const {
+void ColgroupSegment::saveRecordStore(PathRef segDir) const {
 	size_t indexNum = m_schema->getIndexNum();
 	size_t colgroupNum = m_schema->getColgroupNum();
 	for (size_t i = indexNum; i < colgroupNum; ++i) {
@@ -1463,7 +1533,7 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 	}
 }
 
-void ReadonlySegment::closeFiles() {
+void ColgroupSegment::closeFiles() {
 	if (m_isDelMmap) {
 		size_t bitBytes = m_isDel.capacity()/8;
 		mmap_close(m_isDelMmap, sizeof(uint64_t) + bitBytes);

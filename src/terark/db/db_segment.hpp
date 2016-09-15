@@ -23,6 +23,7 @@ class TERARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
 	ReadableSegment();
 	~ReadableSegment();
+	virtual class ColgroupSegment* getColgroupSegment() const;
 	virtual class ReadonlySegment* getReadonlySegment() const;
 	virtual class WritableSegment* getWritableSegment() const;
 	virtual llong totalStorageSize() const = 0;
@@ -102,6 +103,48 @@ public:
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
+class TERARK_DB_DLL ColgroupSegment : public ReadableSegment {
+public:
+	ColgroupSegment();
+	~ColgroupSegment();
+
+	ColgroupSegment* getColgroupSegment() const override;
+
+	llong dataInflateSize() const override;
+	llong dataStorageSize() const override;
+	llong totalStorageSize() const override;
+
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+
+	StoreIterator* createStoreIterForward(DbContext*) const override;
+	StoreIterator* createStoreIterBackward(DbContext*) const override;
+
+	void getValueByLogicId(size_t id, valvec<byte>* val, DbContext*) const;
+	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
+
+	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+								fstring key, valvec<llong>* recIdvec,
+								DbContext*) const override;
+
+	void selectColumnsByPhysicId(llong recId, const size_t* colsId,
+				size_t colsNum, valvec<byte>* colsData, DbContext*) const;
+	void selectOneColumnByPhysicId(llong recId, size_t columnId,
+								valvec<byte>* colsData, DbContext*) const;
+	void selectColgroupsByPhysicId(llong id, const size_t* cgIdvec,
+			size_t cgIdvecSize, valvec<byte>* cgDataVec, DbContext*) const;
+
+	void saveRecordStore(PathRef segDir) const override;
+	void closeFiles();
+
+	friend class DbTable;
+	friend class TableIndexIter;
+	class MyStoreIterForward;  friend class MyStoreIterForward;
+	class MyStoreIterBackward; friend class MyStoreIterBackward;
+	llong  m_dataInflateSize;
+	llong  m_dataMemSize;
+	llong  m_totalStorageSize;
+};
+
 // Every index is a ReadableIndexStore
 //
 // The <<store>> is multi-part, because the <<store>> may be
@@ -114,27 +157,15 @@ typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 // The <<index>> is single-part, because index is much smaller
 // than the whole <<store>> data.
 //
-class TERARK_DB_DLL ReadonlySegment : public ReadableSegment {
+class TERARK_DB_DLL ReadonlySegment : public ColgroupSegment {
 public:
 	ReadonlySegment();
 	~ReadonlySegment();
 
 	ReadonlySegment* getReadonlySegment() const override;
 
-	llong dataInflateSize() const override;
-	llong dataStorageSize() const override;
-	llong totalStorageSize() const override;
-
-	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-
-	StoreIterator* createStoreIterForward(DbContext*) const override;
-	StoreIterator* createStoreIterBackward(DbContext*) const override;
-
 	void convFrom(class DbTable*, size_t segIdx);
 	void purgeDeletedRecords(class DbTable*, size_t segIdx);
-
-	void getValueByLogicId(size_t id, valvec<byte>* val, DbContext*) const;
-	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
 
 	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 								fstring key, valvec<llong>* recIdvec,
@@ -151,7 +182,6 @@ public:
 	void load(PathRef segDir) override;
 	void save(PathRef segDir) const override;
 
-protected:
 	virtual ReadableIndex* openIndex(const Schema&, PathRef path) const override = 0;
 
 	virtual ReadableIndex*
@@ -179,27 +209,16 @@ protected:
 	void syncUpdateRecordNoLock(size_t dstBaseId, size_t logicId,
 								const ReadableSegment* input);
 
-	ReadableIndexPtr purgeIndex(size_t indexId, ReadonlySegment* input, DbContext* ctx);
-	ReadableStorePtr purgeColgroup(size_t colgroupId, ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
+	ReadableIndexPtr purgeIndex(size_t indexId, ColgroupSegment* input, DbContext* ctx);
+	ReadableStorePtr purgeColgroup(size_t colgroupId, ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir);
 	ReadableStorePtr purgeColgroup_s(size_t colgroupId,
 			const febitvec& newIsDel, size_t newDelcnt,
-			ReadonlySegment* input, DbContext* ctx, PathRef tmpSegDir);
+			ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir);
 
 	void loadRecordStore(PathRef segDir) override;
-	void saveRecordStore(PathRef segDir) const override;
 
-	void closeFiles();
 	void removePurgeBitsForCompactIdspace(PathRef segDir);
 	void savePurgeBits(PathRef segDir) const;
-
-protected:
-	friend class DbTable;
-	friend class TableIndexIter;
-	class MyStoreIterForward;  friend class MyStoreIterForward;
-	class MyStoreIterBackward; friend class MyStoreIterBackward;
-	llong  m_dataInflateSize;
-	llong  m_dataMemSize;
-	llong  m_totalStorageSize;
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
