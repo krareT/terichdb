@@ -41,7 +41,7 @@ static	StoreFactory& s_storeFactory() {
 }
 
 ReadableStore::RegisterStoreFactory::RegisterStoreFactory
-(const char* fnameSuffix, const std::function<ReadableStore*(const Schema& schema)>& f)
+(const char* fnameSuffix, const StoreFactory& f)
 {
 	auto ib = s_storeFactory().insert_i(fnameSuffix, f);
 	assert(ib.second);
