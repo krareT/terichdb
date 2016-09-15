@@ -14,7 +14,18 @@ using namespace std;
 using namespace terark;
 using namespace terark::db;
 
-void compileOneSchema(const Schema& schema, const char* className) {
+int maxColnameLen(const Schema& schema) {
+	const size_t colnum = schema.columnNum();
+	int maxNameLen = 0;
+	for (size_t i = 0; i < colnum; ++i) {
+		const fstring colname = schema.getColumnName(i);
+		maxNameLen = std::max(maxNameLen, colname.ilen());
+	}
+	return maxNameLen;
+}
+
+void compileOneSchema(const Schema& schema, const char* className,
+					  const char* rowClassName) {
 	const size_t colnum = schema.columnNum();
 	printf("  struct %s {\n", className);
 	for (size_t i = 0; i < colnum; ++i) {
@@ -187,19 +198,34 @@ void compileOneSchema(const Schema& schema, const char* className) {
 	printf("    )\n");
 	printf(
 R"EOS(
-    %s& decode(terark::fstring row) {
-      terark::NativeDataInput<terark::MemIO> dio(row.range());
-      dio >> *this;
+    %s& decode(terark::fstring ___row) {
+      terark::NativeDataInput<terark::MemIO> ___dio(___row.range());
+      ___dio >> *this;
       return *this;
     }
     terark::fstring
-    encode(terark::NativeDataOutput<terark::AutoGrownMemIO>& dio) const {
-      dio.rewind();
-      dio << *this;
-      return dio.written();
+    encode(terark::NativeDataOutput<terark::AutoGrownMemIO>& ___dio) const {
+      ___dio.rewind();
+      ___dio << *this;
+      return ___dio.written();
     }
 )EOS", className
 	);
+	int maxNameLen = maxColnameLen(schema);
+	printf("    %s& select(const %s& ___row) {\n", className, rowClassName);
+	for (size_t i = 0; i < colnum; ++i) {
+		const char* colname = schema.getColumnName(i).c_str();
+		printf("      %-*s = ___row.%s;\n", maxNameLen, colname, colname);
+	}
+	printf("      return *this;\n"); // select
+	printf("    }\n"); // select
+	printf("    void assign_to(%s& ___row) const {\n", rowClassName);
+	for (size_t i = 0; i < colnum; ++i) {
+		const char* colname = schema.getColumnName(i).c_str();
+		printf("      ___row.%-*s = %s;\n", maxNameLen, colname, colname);
+	}
+	printf("    }\n"); // select
+
 	printf("  }; // %s\n\n", className);
 }
 
@@ -216,7 +242,7 @@ int main(int argc, char* argv[]) {
 		case -1:
 			goto GetoptDone;
 		case '?':
-			return 1;
+			return usage(argv[0]);
 		case 'i':
 			includes.push_back(optarg);
 			break;
@@ -242,6 +268,7 @@ GetoptDone:
 #include <terark/io/DataIO.hpp>
 #include <terark/io/MemStream.hpp>
 #include <terark/io/RangeStream.hpp>
+#include <boost/static_assert.hpp>
 
 )EOS");
 	for (const char* inc : includes) {
@@ -249,7 +276,7 @@ GetoptDone:
 	}
 	printf("\n");
 	printf("namespace %s {\n", ns);
-	compileOneSchema(*sconf.m_rowSchema, tabName);
+	compileOneSchema(*sconf.m_rowSchema, tabName, tabName);
 	for (size_t i = 0; i < sconf.m_colgroupSchemaSet->indexNum(); ++i) {
 		const Schema& schema = *sconf.m_colgroupSchemaSet->getSchema(i);
 		if (schema.columnNum() == 1)
@@ -265,7 +292,7 @@ GetoptDone:
 		std::string className = tabName;
 		className += "_Colgroup_";
 		className += cgName;
-		compileOneSchema(schema, className.c_str());
+		compileOneSchema(schema, className.c_str(), tabName);
 		if (i < sconf.m_indexSchemaSet->indexNum()) {
 			printf("  typedef %s %s_Index_%s;\n\n", className.c_str(), tabName, cgName.c_str());
 		}
