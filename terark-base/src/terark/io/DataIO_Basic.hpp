@@ -57,11 +57,6 @@ namespace terark {
 typedef boost::mpl::true_  IsDump_true;
 typedef boost::mpl::false_ IsDump_false;
 
-inline char MplBoolTrueToSizeOne(boost::mpl::true_);
-inline long MplBoolTrueToSizeOne(boost::mpl::false_);
-
-template<class T> T& DataIO_ReturnObjRef();
-
 template<class DataIO, class T>
 IsDump_false Deduce_DataIO_is_dump(DataIO*, T&);
 
@@ -123,19 +118,31 @@ struct DataIO_is_dump :
   // used for type deduction
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS(Class, Members) \
       template<class DataIO> \
+      auto _M_Deduce_DataIO_need_bswap(DataIO*) -> \
+        decltype(terark::DataIO_need_bswap_class<DataIO, false>()Members); \
+      template<class DataIO> \
       auto _M_Deduce_DataIO_is_realdump(DataIO*) -> \
         decltype(terark::DataIO_is_realdump<DataIO,Class,0,true>(this)Members);
 
 template<class DataIO, class Derived, class Class>
 auto
-Workaround_IncompleteType(DataIO* dio, Derived& derived, Class&) ->
+Workaround_IncompleteType_for_is_dump(DataIO* dio, Derived& derived, Class&) ->
 decltype(derived._M_Deduce_DataIO_is_realdump(dio).is_dumpable());
+
+template<class DataIO, class Derived, class Class>
+auto
+Workaround_IncompleteType_for_need_bswap(DataIO* dio, Derived& derived, Class&) ->
+decltype(derived._M_Deduce_DataIO_need_bswap(dio).need_bswap());
 
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class) \
       template<class DataIO> \
       Friend auto \
+	  Deduce_DataIO_need_bswap(DataIO* dio, Class& self) -> \
+      decltype(terark::Workaround_IncompleteType_for_need_bswap(dio, static_cast<Derived&>(self), self)); \
+      template<class DataIO> \
+      Friend auto \
 	  Deduce_DataIO_is_dump(DataIO* dio, Class& self) -> \
-      decltype(terark::Workaround_IncompleteType(dio, static_cast<Derived&>(self), self));
+      decltype(terark::Workaround_IncompleteType_for_is_dump(dio, static_cast<Derived&>(self), self));
 #else
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS(Class, Members)
     #define DATA_IO_GEN_DUMP_TYPE_TRAITS_REG(Friend, Derived, Class)

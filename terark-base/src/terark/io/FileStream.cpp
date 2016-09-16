@@ -567,7 +567,7 @@ void FileStream::fdchsize(int fd, uint64_t newfsize) {
 #if (defined(_WIN32) || defined(_WIN64)) && !defined(__CYGWIN__)
 	int err = _chsize_s(fd, newfsize);
 	if (err) {
-		THROW_STD(invalid_argument, "_chsize_s(fd=%d, %I64) = %s"
+		THROW_STD(invalid_argument, "_chsize_s(fd=%d, %I64d) = %s"
 			, fd, newfsize, strerror(err));
 	}
 #else

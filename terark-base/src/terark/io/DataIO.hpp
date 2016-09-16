@@ -179,8 +179,6 @@ DataIO_IsDump_TypeTrue2(PortableNoVarInt, var_int64_t)
 		DATA_IO_DISABLE_SAVE(Class)
 
 //////////////////////////////////////////////////////////////////////////////////////////
-#if defined(BOOST_TYPEOF_NATIVE)
-
 /// not required be called in global namespace
 /// should be called in Class's namespace, or any outer namespace of it
 #define DATA_IO_DUMP_RAW_MEM(Class) \
@@ -200,42 +198,12 @@ DataIO_IsDump_TypeTrue2(PortableNoVarInt, var_int64_t)
 	{													\
 		out.ensureWrite(&x, sizeof(Class));				\
 	}													\
-	Friend												\
-	terark::											\
-	ByteSwap_false Deduce_DataIO_need_bswap(Class*);	\
+	template<class DataIO>                              \
+	Friend ByteSwap_false								\
+	Deduce_DataIO_need_bswap(DataIO*, Class&);			\
 	template<class DataIO>                              \
 	Friend												\
-	terark::											\
 	IsDump_true Deduce_DataIO_is_dump(DataIO*, Class&);
-
-#else
-
-// no BOOST_TYPEOF_NATIVE
-// no DATA_IO_DUMP_RAW_MEM(Class) if there is no native `typeof`
-//! must be called in global namespace
-//! Class will be simply dump read/write
-//! called by operator& operator<< operator>>
-#define DATA_IO_DUMP_RAW_MEM_E(Class)					\
-  namespace terark {									\
-	template<class Input>								\
-	void DataIO_loadObject(Input& in, Class& x)			\
-	{													\
-		in.ensureRead(&x, sizeof(Class));				\
-	}													\
-	template<class Output>								\
-	void DataIO_saveObject(Output& out, const Class& x)	\
-	{													\
-		out.ensureWrite(&x, sizeof(Class));				\
-	}													\
-	template<> struct DataIO_need_bswap<Class>			\
-		: public boost::mpl::bool_<false> {};			\
-	template<class DataIO>								\
-	struct DataIO_is_dump<DataIO, Class>				\
-		: public boost::mpl::bool_<true> {};			\
-  } /* namespace terark */
-//	DataIO_IsDump_TypeTrue1(Class)
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#endif // BOOST_TYPEOF_NATIVE
 
 
 //! define an input/output object of stream

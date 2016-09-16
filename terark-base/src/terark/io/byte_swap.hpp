@@ -14,6 +14,57 @@
 
 namespace terark {
 
+inline char MplBoolTrueToSizeOne(boost::mpl::true_);
+inline long MplBoolTrueToSizeOne(boost::mpl::false_);
+
+template<class T> T& DataIO_ReturnObjRef();
+
+struct DummyDataIO {};
+
+// DataIO is just used for workarond <<incomplete type>> compilation errors
+template<class DataIO, class T>
+boost::mpl::true_ Deduce_DataIO_need_bswap(DataIO*, T&);
+
+#define DataIO_need_bswap_by_sizeof(DataIO, T) \
+  ( sizeof(MplBoolTrueToSizeOne(Deduce_DataIO_need_bswap( \
+    (DataIO*)(NULL), DataIO_ReturnObjRef<T>()))) == 1 )
+
+template<class D>boost::mpl::false_ Deduce_DataIO_need_bswap(D*,char&);
+template<class D>boost::mpl::false_ Deduce_DataIO_need_bswap(D*,signed char&);
+template<class D>boost::mpl::false_ Deduce_DataIO_need_bswap(D*,unsigned char&);
+
+template<class DataIO, class T1, class T2>
+boost::mpl::bool_<
+  DataIO_need_bswap_by_sizeof(DataIO, T1) ||
+  DataIO_need_bswap_by_sizeof(DataIO, T2)
+>
+Deduce_DataIO_need_bswap(DataIO*, std::pair<T1, T2>&);
+
+template<class DataIO, class T, size_t Dim>
+boost::mpl::bool_<DataIO_need_bswap_by_sizeof(DataIO, T)>
+Deduce_DataIO_need_bswap(DataIO*, T (&)[Dim]);
+
+template<class T>
+struct DataIO_need_bswap :
+	public boost::mpl::bool_<DataIO_need_bswap_by_sizeof(DummyDataIO, T)>
+{};
+
+// for Deduce_DataIO_need_bswap in DATA_IO_LOAD_SAVE
+template<class DataIO, bool CurrBswap>
+struct DataIO_need_bswap_class {
+	DataIO_need_bswap_class(){}
+
+	typedef boost::mpl::bool_<CurrBswap> need_bswap_t;
+	need_bswap_t need_bswap() const { return need_bswap_t(); }
+
+	template<class T>
+	DataIO_need_bswap_class<
+		DataIO,
+		CurrBswap || DataIO_need_bswap_by_sizeof(DataIO, T)
+	>
+	operator&(const T&) const;
+};
+
 // inline void byte_swap_in(float&) {}
 // inline void byte_swap_in(double&) {}
 // inline void byte_swap_in(long double&) {}
@@ -116,47 +167,14 @@ typedef boost::mpl::true_   ByteSwap_true;
 typedef boost::mpl::false_  ByteSwap_false;
 
 //////////////////////////////////////////////////////////////////////////
-// DataIO_need_bswap
-#if defined(BOOST_TYPEOF_NATIVE)
-  #ifdef BOOST_TYPEOF_KEYWORD
-    #define TERARK_TYPEOF_KEYWORD BOOST_TYPEOF_KEYWORD
-  #else
-    #define TERARK_TYPEOF_KEYWORD decltype
-  #endif
-  template<class T>
-  struct WorkAround_typeof : T {};
-  template<class T>
-  ByteSwap_true Deduce_DataIO_need_bswap(T*);
-  template<class T>
-  struct DataIO_need_bswap :
-    public WorkAround_typeof<
-	  TERARK_TYPEOF_KEYWORD(Deduce_DataIO_need_bswap((T*)NULL))
-	> {};
-#else
-  template<class T>
-  struct DataIO_need_bswap : public boost::mpl::true_ { };
-#endif
-#define DATA_IO_NEED_BYTE_SWAP(T, cbool) \
-	template<> struct DataIO_need_bswap<T> : public boost::mpl::bool_<cbool> {};
-
-DATA_IO_NEED_BYTE_SWAP(		    char, false)
-DATA_IO_NEED_BYTE_SWAP(  signed char, false)
-DATA_IO_NEED_BYTE_SWAP(unsigned char, false)
-//DATA_IO_NEED_BYTE_SWAP(		   float, false)
-//DATA_IO_NEED_BYTE_SWAP(		  double, false)
-//DATA_IO_NEED_BYTE_SWAP(  long double, false)
-
 template<class T1, class T2>
-struct DataIO_need_bswap<std::pair<T1, T2> > : public
-	boost::mpl::bool_<DataIO_need_bswap<T1>::value||DataIO_need_bswap<T1>::value>
+void byte_swap_in(std::pair<T1, T2>& x,
+				  boost::mpl::bool_<
+					DataIO_need_bswap_by_sizeof(DummyDataIO, T1) ||
+					DataIO_need_bswap_by_sizeof(DummyDataIO, T2) > )
 {
-};
-
-template<class T1, class T2>
-void byte_swap_in(std::pair<T1, T2>& x, typename DataIO_need_bswap<std::pair<T1,T2> >::type)
-{
-	byte_swap_in(x.first,  typename DataIO_need_bswap<T1>::type());
-	byte_swap_in(x.second, typename DataIO_need_bswap<T2>::type());
+	byte_swap_in(x.first,  boost::mpl::bool_<DataIO_need_bswap_by_sizeof(DummyDataIO, T1)>());
+	byte_swap_in(x.second, boost::mpl::bool_<DataIO_need_bswap_by_sizeof(DummyDataIO, T2)>());
 }
 
 template<class Bswap>
@@ -168,8 +186,7 @@ template<> class ByteSwapChain<boost::mpl::true_>
 public:
 	template<class T> ByteSwapChain operator&(T& x) const
 	{
-	//	BOOST_STATIC_ASSERT(DataIO_need_bswap<T>::value);
-		byte_swap_in(x, typename DataIO_need_bswap<T>::type());
+		byte_swap_in(x, boost::mpl::bool_<DataIO_need_bswap_by_sizeof(DummyDataIO, T)>());
 		return *this;
 	}
 };
