@@ -324,9 +324,10 @@ namespace terark { namespace db {
 			DataIO_saveObject(DIO& dio,const Fixed&x){dio.ensureWrite(&x,N);}
 			template<class DIO>
 			friend boost::mpl::true_
-			Deduce_DataIO_is_dump(DIO*,Fixed&){return boost::mpl::true_();}
+			Deduce_DataIO_is_dump(DIO*,Fixed&);
+			template<class DIO>
 			friend boost::mpl::false_
-			Deduce_DataIO_need_bswap(Fixed*){return boost::mpl::false_();}
+			Deduce_DataIO_need_bswap(DIO*,Fixed&);
 		};
 		template<class Str>
 		class StrZeroLoader {
