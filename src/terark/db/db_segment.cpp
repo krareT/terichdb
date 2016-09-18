@@ -1535,14 +1535,14 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 				, "FATAL: MultiParts = %zd, "
 				  "m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
 				, parts->numParts()
-				, m_colgroups[i]->numDataRows(), getPhysicRows()
+				, i, m_colgroups[i]->numDataRows(), getPhysicRows()
 				);
 		}
 		else {
 			m_colgroups[i] = ReadableStore::openStore(schema, segDir, fname);
 			TERARK_THROW(DbException
 				, "FATAL: m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
-				, m_colgroups[i]->numDataRows(), getPhysicRows()
+				, i, m_colgroups[i]->numDataRows(), getPhysicRows()
 				);
 		}
 	}
