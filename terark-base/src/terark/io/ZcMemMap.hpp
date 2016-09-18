@@ -61,8 +61,8 @@ public:
 
 	bool eof() const;
 
-	size_t zcRead(const void** ppbuf, size_t length);
-	size_t zcWrite(void** ppbuf, size_t length);
+	const void* zcRead(size_t length, size_t* readed) override;
+	void* zcWrite(size_t length, size_t* writable) override;
 
 	void zcFlush(size_t nWritten);
 

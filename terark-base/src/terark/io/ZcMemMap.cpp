@@ -575,38 +575,37 @@ stream_position_t ZcMemMap::size() const
 	return m_file_size;
 }
 
-size_t ZcMemMap::zcRead(const void** ppbuf, size_t length)
-{
+const void* ZcMemMap::zcRead(size_t length, size_t* readed) {
 	if (m_pos < m_end) {
-		*ppbuf = m_pos;
 		length = m_end-m_pos;
 	}
 	else {
 		size_t len2 = max(m_best_block_size, length);
 		size_t remain = m_file_size - tell();
 		unaligned_remap(tell(), min(len2, remain));
-		*ppbuf = m_pos;
 		length = min(length, size_t(m_end-m_pos));
 	}
+	const void* pbuf = m_pos;
+	*readed = length;
 	m_pos += length;
-	return length;
+	return pbuf;
 }
 
-size_t ZcMemMap::zcWrite(void** ppbuf, size_t length)
+void* ZcMemMap::zcWrite(size_t length, size_t* writable)
 {
 	if (m_pos < m_end) {
-		*ppbuf = m_pos;
 		length = m_end-m_pos;
 		m_pos = m_end;
 	}
 	else {
 		size_t len2 = max(m_best_block_size, length);
 		unaligned_remap(tell(), len2);
-		*ppbuf = m_pos;
 		length = min(length, size_t(m_end-m_pos));
 	}
+	void* pbuf = m_pos;
+	*writable = length;
 	m_pos += length;
-	return length;
+	return pbuf;
 }
 
 } // namespace terark
