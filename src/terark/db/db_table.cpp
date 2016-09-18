@@ -1080,19 +1080,26 @@ DbTable::maybeCreateNewSegment(MyRwLock& lock) {
 	if (m_inprogressWritingCount > 1) {
 		return false;
 	}
-	if (m_wrSeg->dataStorageSize() >= m_schema->m_maxWritingSegmentSize) {
-		if (lock.upgrade_to_writer() ||
-			// if upgrade_to_writer fails, it means the lock has been
-			// temporary released and re-acquired, so we need check
-			// the condition again
-			m_wrSeg->dataStorageSize() >= m_schema->m_maxWritingSegmentSize)
-		{
-			doCreateNewSegmentInLock();
-		}
-	//	lock.downgrade_to_reader(); // TBB bug, sometimes didn't downgrade
-		return true;
+	if (m_wrSeg->dataStorageSize() < m_schema->m_maxWritingSegmentSize) {
+		return false;
 	}
-	return false;
+	if (!lock.upgrade_to_writer()) {
+		// if upgrade_to_writer fails, it means the lock has been
+		// temporary released and re-acquired, so we need check
+		// the condition again
+		if (m_isMerging) {
+			return false;
+		}
+		if (m_inprogressWritingCount > 1) {
+			return false;
+		}
+		if (m_wrSeg->dataStorageSize() < m_schema->m_maxWritingSegmentSize) {
+			return false;
+		}
+	}
+	doCreateNewSegmentInLock();
+//	lock.downgrade_to_reader(); // TBB bug, sometimes didn't downgrade
+	return true;
 }
 
 void DbTable::maybeCreateNewSegmentInWriteLock() {
