@@ -246,6 +246,7 @@ MultiPartStore::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx)
 const {
 	assert(m_parts.size() + 1 == m_rowNumVec.size());
 	llong maxId = m_rowNumVec.back();
+	assert(id < maxId);
 	if (id >= maxId) {
 		THROW_STD(out_of_range, "id %lld, maxId = %lld", id, maxId);
 	}

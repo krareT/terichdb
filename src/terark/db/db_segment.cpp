@@ -1530,9 +1530,20 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 				++j;
 			}
 			m_colgroups[i] = parts->finishParts();
+			assert(m_colgroups[i]->numDataRows() == getPhysicRows());
+			TERARK_THROW(DbException
+				, "FATAL: MultiParts = %zd, "
+				  "m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
+				, parts->numParts()
+				, m_colgroups[i]->numDataRows(), getPhysicRows()
+				);
 		}
 		else {
 			m_colgroups[i] = ReadableStore::openStore(schema, segDir, fname);
+			TERARK_THROW(DbException
+				, "FATAL: m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
+				, m_colgroups[i]->numDataRows(), getPhysicRows()
+				);
 		}
 	}
 }
