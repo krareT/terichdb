@@ -988,6 +988,14 @@ ReadonlySegment::completeAndReload(DbTable* tab, size_t segIdx,
 		m_isPurged.build_cache(true, false); // need select0
 		m_withPurgeBits = true;
 	}
+#if !defined(NDEBUG)
+	for (size_t cgId = 0; cgId < m_colgroups.size(); ++cgId) {
+		auto store = m_colgroups[cgId].get();
+		size_t physicRows1 = (size_t)this->getPhysicRows();
+		size_t physicRows2 = (size_t)store->numDataRows();
+		assert(physicRows1 == physicRows2);
+	}
+#endif
 	auto tmpDir = m_segDir + ".tmp";
 	this->save(tmpDir);
 
@@ -1310,13 +1318,16 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 			}
 		}
 		assert(!isPurged || llong(input->m_isPurged.max_rank0()) == physicId);
+		assert(newIsDel.size() - newDelcnt == store->numDataRows());
 		return store;
 	}
 	if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
 		double avgLen = 1.0 * colgroup.dataInflateSize() / colgroup.numDataRows();
 		if (schema.m_dictZipSampleRatio > FLT_EPSILON || avgLen > 100) {
 			StoreIteratorPtr iter = colgroup.ensureStoreIterForward(ctx);
-			return buildDictZipStore(schema, tmpSegDir, *iter, isDel, &input->m_isPurged);
+			auto store = buildDictZipStore(schema, tmpSegDir, *iter, isDel, &input->m_isPurged);
+			assert(newIsDel.size() - newDelcnt == store->numDataRows());
+			return store;
 		}
 	}
 	std::unique_ptr<SeqReadAppendonlyStore> seqStore;
@@ -1375,12 +1386,27 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 	if (strVec.str_size() > 0) {
 		parts->addpart(this->buildStore(schema, strVec));
 	}
-	return parts->finishParts();
+	auto store = parts->finishParts();
+	assert(newIsDel.size() - newDelcnt == store->numDataRows());
+	return store;
 }
 
 void ReadonlySegment::load(PathRef segDir) {
-	ReadableSegment::load(segDir);
+	ColgroupSegment::load(segDir);
 	removePurgeBitsForCompactIdspace(segDir);
+
+	size_t physicRows = this->getPhysicRows();
+	for (size_t i = 0; i < m_colgroups.size(); ++i) {
+		auto store = m_colgroups[i].get();
+		assert(size_t(store->numDataRows()) == physicRows);
+		if (size_t(store->numDataRows()) != physicRows) {
+			TERARK_THROW(DbException
+				, "FATAL: "
+					"m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
+				, i, store->numDataRows(), physicRows
+				);
+		}
+	}
 }
 
 void ReadonlySegment::removePurgeBitsForCompactIdspace(PathRef segDir) {
@@ -1470,7 +1496,7 @@ void ReadonlySegment::save(PathRef segDir) const {
 		return;
 	}
 	savePurgeBits(segDir);
-	ReadableSegment::save(segDir);
+	ColgroupSegment::save(segDir);
 }
 
 void ColgroupSegment::saveRecordStore(PathRef segDir) const {
@@ -1530,27 +1556,10 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 				++j;
 			}
 			m_colgroups[i] = parts->finishParts();
-			assert(size_t(m_colgroups[i]->numDataRows()) == getPhysicRows());
 			assert(parts->numParts() > 1);
-			if (size_t(m_colgroups[i]->numDataRows()) != getPhysicRows()) {
-				TERARK_THROW(DbException
-					, "FATAL: MultiParts = %zd, "
-					  "m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
-					, parts->numParts()
-					, i, m_colgroups[i]->numDataRows(), getPhysicRows()
-					);
-			}
 		}
 		else {
 			m_colgroups[i] = ReadableStore::openStore(schema, segDir, fname);
-			assert(size_t(m_colgroups[i]->numDataRows()) == getPhysicRows());
-			if (size_t(m_colgroups[i]->numDataRows()) != getPhysicRows()) {
-				TERARK_THROW(DbException
-					, "FATAL: "
-					  "m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
-					, i, m_colgroups[i]->numDataRows(), getPhysicRows()
-					);
-			}
 		}
 	}
 }
