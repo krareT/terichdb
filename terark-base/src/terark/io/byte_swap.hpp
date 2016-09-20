@@ -194,15 +194,19 @@ public:
 template<class T>
 void byte_swap(T* p, size_t n)
 {
-	for (size_t i = n; i; --i, ++p)
-		byte_swap_in(*p, boost::mpl::true_());
+	if (Deduce_DataIO_need_bswap((DummyDataIO*)NULL, *p).value) {
+		for (size_t i = n; i; --i, ++p)
+			byte_swap_in(*p, boost::mpl::true_());
+	}
 }
 
 template<class Iter>
 void byte_swap(Iter first, Iter last)
 {
-	for (; first != last; ++first)
-		byte_swap_in(*first, boost::mpl::true_());
+	if (Deduce_DataIO_need_bswap((DummyDataIO*)NULL, *first).value) {
+		for (; first != last; ++first)
+			byte_swap_in(*first, boost::mpl::true_());
+	}
 }
 
 inline void byte_swap(char* /*buffer*/, size_t /*length*/) { }
