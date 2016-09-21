@@ -210,6 +210,31 @@ Schema::Schema() {
 Schema::~Schema() {
 }
 
+bool Schema::isEquivalentSchema(const Schema& x, const Schema& y, bool checkColname) {
+	if (x.columnNum() != y.columnNum()) {
+		return false;
+	}
+	size_t colnum = x.columnNum();
+	for(size_t i = 0; i < colnum; ++i) {
+		const auto  colname1 = x.m_columnsMeta.key(i);
+		const auto& colmeta1 = x.m_columnsMeta.val(i);
+		const auto  colname2 = y.m_columnsMeta.key(i);
+		const auto& colmeta2 = y.m_columnsMeta.val(i);
+		if (checkColname && colname1 != colname2) {
+			return false;
+		}
+		if (colmeta1.type != colmeta2.type) {
+			return false;
+		}
+		if (colmeta1.type == ColumnType::Fixed) {
+			if (colmeta1.fixedLen != colmeta2.fixedLen) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 void Schema::compile(const Schema* parent) {
 	assert(!m_columnsMeta.empty());
 	if (m_isCompiled)

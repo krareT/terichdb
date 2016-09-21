@@ -186,6 +186,8 @@ namespace terark { namespace db {
 		static const size_t MaxProjColumns = 64;
 		Schema();
 		~Schema();
+		static
+		bool isEquivalentSchema(const Schema&, const Schema&, bool checkColname = false);
 		void compile(const Schema* parent = nullptr);
 
 		void parseRow(fstring row, ColumnVec* columns) const;
