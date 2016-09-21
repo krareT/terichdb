@@ -17,7 +17,7 @@ int main(int argc, char* argv[]){
 
   // open table
   static const char* dbtable = "db";
-  terark::db::DbTablePtr tab = terark::db::DbTable::open(dbtable);
+  terark::db::DbTablePtr tab = test_ns::User::openTable(dbtable);
 
   // write data (1000 records)
   terark::NativeDataOutput<terark::AutoGrownMemIO> rowBuilder;
