@@ -27,6 +27,7 @@ int maxColnameLen(const Schema& schema) {
 void compileOneSchema(const Schema& schema, const char* className,
 					  const char* rowClassName) {
 	const size_t colnum = schema.columnNum();
+	printf("\n");
 	printf("  struct %s {\n", className);
 	for (size_t i = 0; i < colnum; ++i) {
 		const ColumnMeta& colmeta = schema.getColumnMeta(i);
@@ -211,7 +212,27 @@ R"EOS(
     }
 )EOS", className
 	);
-	if (fstring(className) != rowClassName) {
+	if (fstring(className) == rowClassName) {
+		printf(
+R"EOS(
+    // DbTablePtr use none-const ref is just for ensure application code:
+    // var 'tab' must be a 'DbTablePtr', can not be a 'DbTable*'
+    static bool checkTableSchema(terark::db::DbTablePtr& tab);
+
+    static terark::db::DbTablePtr
+    openTable(const boost::filesystem::path& dbdir) {
+      using namespace terark::db;
+      DbTablePtr tab = DbTable::open(dbdir);
+      if (!checkTableSchema(tab)) {
+        THROW_STD(invalid_argument,
+          "database schema is inconsistence with compiled c++ code, dbdir: %%s",
+          dbdir.string().c_str());
+      }
+      return tab;
+    }
+)EOS");
+	}
+	else {
 		int maxNameLen = maxColnameLen(schema);
 		printf("    %s& select(const %s& ___row) {\n", className, rowClassName);
 		for (size_t i = 0; i < colnum; ++i) {
@@ -303,12 +324,24 @@ R"EOS(      return true;
     }
 )EOS"); // checkSchema
 
-	printf("  }; // %s\n\n", className);
+	printf("  }; // %s\n", className);
 }
 
 int usage(const char* prog) {
 	fprintf(stderr, "usage: %s [ options ] terark-db-schema-file namespace table-name\n", prog);
 	return 1;
+}
+
+std::string TransformColgroupName(fstring cgName0) {
+	std::string cgName = cgName0.str();
+	std::transform(cgName.begin(), cgName.end(), cgName.begin(),
+		[](unsigned char ch) -> char {
+			if (isalnum(ch) || '_' == ch)
+				return ch;
+			else
+				return '_';
+		});
+	return cgName;
 }
 
 int main(int argc, char* argv[]) {
@@ -354,18 +387,10 @@ GetoptDone:
 	printf("\n");
 	printf("namespace %s {\n", ns);
 	compileOneSchema(*sconf.m_rowSchema, tabName, tabName);
-	for (size_t i = 0; i < sconf.m_colgroupSchemaSet->indexNum(); ++i) {
+	size_t cgNum = sconf.getColgroupNum();
+	for (size_t i = 0; i < cgNum; ++i) {
 		const Schema& schema = *sconf.m_colgroupSchemaSet->getSchema(i);
-		if (schema.columnNum() == 1)
-			continue;
-		std::string cgName = schema.m_name;
-		std::transform(cgName.begin(), cgName.end(), cgName.begin(),
-			[](unsigned char ch) -> char {
-				if (isalnum(ch) || '_' == ch)
-					return ch;
-				else
-					return '_';
-			});
+		std::string cgName = TransformColgroupName(schema.m_name);
 		std::string className = tabName;
 		className += "_Colgroup_";
 		className += cgName;
@@ -374,7 +399,37 @@ GetoptDone:
 			printf("  typedef %s %s_Index_%s;\n\n", className.c_str(), tabName, cgName.c_str());
 		}
 	}
-	printf("} // namespace %s\n", ns);
+
+	printf(
+R"EOS(
+  // DbTablePtr use none-const ref is just for ensure application code:
+  // var 'tab' must be a 'DbTablePtr', can not be a 'DbTable*'
+  bool %s::checkTableSchema(terark::db::DbTablePtr& tab) {
+    using namespace terark::db;
+    assert(tab.get() != nullptr);
+    const SchemaConfig& sconf = tab->getSchemaConfig();
+    if (!%s::checkSchema(*sconf.m_rowSchema)) {
+      return false;
+    }
+)EOS", tabName, tabName);
+
+	for (size_t i = 0; i < cgNum; ++i) {
+		const Schema& schema = *sconf.m_colgroupSchemaSet->getSchema(i);
+		std::string cgName = TransformColgroupName(schema.m_name);
+		printf(
+R"EOS(    if (!%s_Colgroup_%s::checkSchema(sconf.getColgroupSchema(%zd))) {
+      return false;
+    }
+)EOS", tabName, cgName.c_str(), i);
+	}
+
+	printf(
+R"EOS(    return true;
+  } // %s
+
+} // namespace %s
+)EOS", tabName, ns);
+
     return 0;
 }
 
