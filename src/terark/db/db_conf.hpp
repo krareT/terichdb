@@ -102,6 +102,9 @@ namespace terark { namespace db {
 				return ColumnType::Float64; // msvc
 		}
 
+		static const char* typeNameString(ColumnType t);
+		const char* typeNameString() const { return typeNameString(type); }
+
 	private:
 		template<class Uint>
 		static ColumnType uintType(Uint) {

@@ -133,6 +133,36 @@ bool ColumnMeta::isString() const {
 	}
 }
 
+const char* ColumnMeta::typeNameString(ColumnType t) {
+	switch (t) {
+		case ColumnType::Any: return "Any";
+		case ColumnType::Nested: return "Nested";
+		case ColumnType::Uint08: return "Uint08";
+		case ColumnType::Sint08: return "Sint08";
+		case ColumnType::Uint16: return "Uint16";
+		case ColumnType::Sint16: return "Sint16";
+		case ColumnType::Uint32: return "Uint32";
+		case ColumnType::Sint32: return "Sint32";
+		case ColumnType::Uint64: return "Uint64";
+		case ColumnType::Sint64: return "Sint64";
+		case ColumnType::Uint128: return "Uint128";
+		case ColumnType::Sint128: return "Sint128";
+		case ColumnType::Float32: return "Float32";
+		case ColumnType::Float64: return "Float64";
+		case ColumnType::Float128: return "Float128";
+		case ColumnType::Decimal128: return "Decimal128";
+		case ColumnType::Uuid: return "Uuid";
+		case ColumnType::Fixed: return "Fixed";
+		case ColumnType::VarSint: return "VarSint";
+		case ColumnType::VarUint: return "VarUint";
+		case ColumnType::StrZero: return "StrZero";
+		case ColumnType::TwoStrZero: return "TwoStrZero";
+		case ColumnType::Binary: return "Binary";
+		case ColumnType::CarBin: return "CarBin";
+	}
+	return "UnknownColumnType";
+}
+
 /////////////////////////////////////////////////////////////////////////////
 ColumnVec::~ColumnVec() {
 }
