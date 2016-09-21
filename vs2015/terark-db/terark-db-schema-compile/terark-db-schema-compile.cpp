@@ -418,11 +418,11 @@ R"EOS(
 		const Schema& schema = *sconf.m_colgroupSchemaSet->getSchema(i);
 		std::string cgName = TransformColgroupName(schema.m_name);
 		printf(
-R"EOS(    const Schema& schema = sconf.getColgroupSchema(%zd);
-    if (!%s_Colgroup_%s::checkSchema(schema, checkColname)) {
+R"EOS(    if (!%s_Colgroup_%s::checkSchema(
+          sconf.getColgroupSchema(%zd), checkColname)) {
       return false;
     }
-)EOS", i, tabName, cgName.c_str());
+)EOS", tabName, cgName.c_str(), i);
 	}
 
 	printf(
