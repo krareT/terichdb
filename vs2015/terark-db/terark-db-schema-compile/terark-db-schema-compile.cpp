@@ -217,13 +217,14 @@ R"EOS(
 R"EOS(
     // DbTablePtr use none-const ref is just for ensure application code:
     // var 'tab' must be a 'DbTablePtr', can not be a 'DbTable*'
-    static bool checkTableSchema(terark::db::DbTablePtr& tab);
+    static bool
+    checkTableSchema(terark::db::DbTablePtr& tab, bool checkColname = false);
 
     static terark::db::DbTablePtr
-    openTable(const boost::filesystem::path& dbdir) {
+    openTable(const boost::filesystem::path& dbdir, bool checkColname = false) {
       using namespace terark::db;
       DbTablePtr tab = DbTable::open(dbdir);
-      if (!checkTableSchema(tab)) {
+      if (!checkTableSchema(tab, checkColname)) {
         THROW_STD(invalid_argument,
           "database schema is inconsistence with compiled c++ code, dbdir: %%s",
           dbdir.string().c_str());
@@ -404,7 +405,7 @@ GetoptDone:
 R"EOS(
   // DbTablePtr use none-const ref is just for ensure application code:
   // var 'tab' must be a 'DbTablePtr', can not be a 'DbTable*'
-  bool %s::checkTableSchema(terark::db::DbTablePtr& tab) {
+  bool %s::checkTableSchema(terark::db::DbTablePtr& tab, bool checkColname = false) {
     using namespace terark::db;
     assert(tab.get() != nullptr);
     const SchemaConfig& sconf = tab->getSchemaConfig();
@@ -417,10 +418,11 @@ R"EOS(
 		const Schema& schema = *sconf.m_colgroupSchemaSet->getSchema(i);
 		std::string cgName = TransformColgroupName(schema.m_name);
 		printf(
-R"EOS(    if (!%s_Colgroup_%s::checkSchema(sconf.getColgroupSchema(%zd))) {
+R"EOS(    const Schema& schema = sconf.getColgroupSchema(%zd);
+    if (!%s_Colgroup_%s::checkSchema(schema, checkColname)) {
       return false;
     }
-)EOS", tabName, cgName.c_str(), i);
+)EOS", i, tabName, cgName.c_str());
 	}
 
 	printf(
