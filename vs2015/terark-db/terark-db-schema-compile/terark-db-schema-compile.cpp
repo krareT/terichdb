@@ -211,20 +211,84 @@ R"EOS(
     }
 )EOS", className
 	);
-	int maxNameLen = maxColnameLen(schema);
-	printf("    %s& select(const %s& ___row) {\n", className, rowClassName);
+	if (fstring(className) != rowClassName) {
+		int maxNameLen = maxColnameLen(schema);
+		printf("    %s& select(const %s& ___row) {\n", className, rowClassName);
+		for (size_t i = 0; i < colnum; ++i) {
+			const char* colname = schema.getColumnName(i).c_str();
+			printf("      %-*s = ___row.%s;\n", maxNameLen, colname, colname);
+		}
+		printf("      return *this;\n"); // select
+		printf("    }\n"); // select
+		printf("    void assign_to(%s& ___row) const {\n", rowClassName);
+		for (size_t i = 0; i < colnum; ++i) {
+			const char* colname = schema.getColumnName(i).c_str();
+			printf("      ___row.%-*s = %s;\n", maxNameLen, colname, colname);
+		}
+		printf("    }\n"); // select
+	}
+	printf(
+R"EOS(
+    static const terark::db::Schema& getSchema() {
+      using namespace terark::db;
+      static Schema schema;
+      // static std::mutex mtx;
+      // std::unique_lock<std::mutex> lock(mtx);
+      if (schema.columnNum() == 0) {
+)EOS");
 	for (size_t i = 0; i < colnum; ++i) {
 		const char* colname = schema.getColumnName(i).c_str();
-		printf("      %-*s = ___row.%s;\n", maxNameLen, colname, colname);
+		const auto& colmeta = schema.getColumnMeta(i);
+		printf(
+R"EOS(        {
+          ColumnMeta colmeta(ColumnType::%s);
+          colmeta.fixedLen = %d;
+          schema.m_columnsMeta.insert_i("%s", colmeta);
+        }
+)EOS", colmeta.typeNameString(), colmeta.fixedLen, colname
+		);
 	}
-	printf("      return *this;\n"); // select
-	printf("    }\n"); // select
-	printf("    void assign_to(%s& ___row) const {\n", rowClassName);
+	printf(
+R"EOS(      }
+      return schema;
+    }
+)EOS"); // getSchema
+
+	printf(
+R"EOS(
+    static bool
+    checkSchema(const terark::db::Schema& schema, bool checkColname = false) {
+      using namespace terark;
+      using namespace terark::db;
+      if (schema.columnNum() != %zd) {
+        return false;
+      }
+)EOS", colnum);
 	for (size_t i = 0; i < colnum; ++i) {
 		const char* colname = schema.getColumnName(i).c_str();
-		printf("      ___row.%-*s = %s;\n", maxNameLen, colname, colname);
+		const auto& colmeta = schema.getColumnMeta(i);
+		size_t fixlen = colmeta.fixedLen;
+		printf(
+R"EOS(      {
+        const fstring     colname = schema.getColumnName(%zd);
+        const ColumnMeta& colmeta = schema.getColumnMeta(%zd);
+        if (checkColname && colname != "%s") {
+          return false;
+        }
+        if (colmeta.type != ColumnType::%s) {
+          return false;
+        }
+        if (colmeta.fixedLen != %zd) {
+          assert(colmeta.type == ColumnType::Fixed);
+          return false;
+        }
+      }
+)EOS", i, i, colname, colmeta.typeNameString(), fixlen);
 	}
-	printf("    }\n"); // select
+	printf(
+R"EOS(      return true;
+    }
+)EOS"); // checkSchema
 
 	printf("  }; // %s\n\n", className);
 }
