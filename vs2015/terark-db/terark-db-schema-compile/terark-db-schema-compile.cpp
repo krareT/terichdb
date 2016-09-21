@@ -405,7 +405,7 @@ GetoptDone:
 R"EOS(
   // DbTablePtr use none-const ref is just for ensure application code:
   // var 'tab' must be a 'DbTablePtr', can not be a 'DbTable*'
-  bool %s::checkTableSchema(terark::db::DbTablePtr& tab, bool checkColname = false) {
+  bool %s::checkTableSchema(terark::db::DbTablePtr& tab, bool checkColname) {
     using namespace terark::db;
     assert(tab.get() != nullptr);
     const SchemaConfig& sconf = tab->getSchemaConfig();
