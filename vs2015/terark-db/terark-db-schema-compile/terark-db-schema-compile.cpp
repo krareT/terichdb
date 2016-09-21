@@ -227,6 +227,7 @@ R"EOS(
 		}
 		printf("    }\n"); // select
 	}
+#if 0
 	printf(
 R"EOS(
     static const terark::db::Schema& getSchema() {
@@ -242,10 +243,15 @@ R"EOS(
 		printf(
 R"EOS(        {
           ColumnMeta colmeta(ColumnType::%s);
-          colmeta.fixedLen = %d;
+          colmeta.fixedLen = %u;
+          colmeta.fixedOffset = %u;
+          colmeta.mongoType = (unsigned char)(%d);
+          colmeta.mysqlType = (unsigned char)(%d);
           schema.m_columnsMeta.insert_i("%s", colmeta);
         }
-)EOS", colmeta.typeNameString(), colmeta.fixedLen, colname
+)EOS", colmeta.typeNameString(), unsigned(colmeta.fixedLen)
+	 , unsigned(colmeta.fixedOffset), colmeta.mongoType, colmeta.mysqlType
+	 , colname
 		);
 	}
 	printf(
@@ -253,7 +259,7 @@ R"EOS(      }
       return schema;
     }
 )EOS"); // getSchema
-
+#endif
 	printf(
 R"EOS(
     static bool
@@ -278,12 +284,19 @@ R"EOS(      {
         if (colmeta.type != ColumnType::%s) {
           return false;
         }
-        if (colmeta.fixedLen != %zd) {
-          assert(colmeta.type == ColumnType::Fixed);
+)EOS", i, i, colname, colmeta.typeNameString());
+
+		if (colmeta.type == ColumnType::Fixed) {
+		  printf(
+R"EOS(        if (colmeta.fixedLen != %zd) {
           return false;
         }
       }
-)EOS", i, i, colname, colmeta.typeNameString(), fixlen);
+)EOS", fixlen);
+		}
+		else {
+			printf("      }\n");
+		}
 	}
 	printf(
 R"EOS(      return true;
