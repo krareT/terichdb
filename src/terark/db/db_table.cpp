@@ -1639,10 +1639,9 @@ DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
 		for (size_t segIdx = begSeg; segIdx < endSeg; ++segIdx) {
 			auto seg = &*m_segments[segIdx];
-			auto rIndex = seg->m_indices[indexId];
 			assert(iSchema.m_isUnique);
 			iSchema.selectParent(ctx->cols1, &ctx->key1);
-			rIndex->searchExact(ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			seg->indexSearchExact(segIdx, indexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
 			for(llong physicId : ctx->exactMatchRecIdvec) {
 				llong logicId = seg->getLogicId(physicId);
 				if (!seg->m_isDel[logicId]) {
