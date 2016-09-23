@@ -17,7 +17,10 @@ template<class Offset>
 struct default_offset_op {
 	size_t get(const Offset& x) const { return x; }
 	void   set(Offset& x, size_t y) const { x = static_cast<Offset>(y); }
-	void   inc(Offset& x, ptrdiff_t d = 1) const { x += d; }
+	void   inc(Offset& x, ptrdiff_t d = 1) const {
+		assert(d >= 0);
+		x += Offset(d);
+	}
 	Offset make(size_t y) const { return Offset(y); }
 	static const Offset maxpool = Offset(-1);
 };

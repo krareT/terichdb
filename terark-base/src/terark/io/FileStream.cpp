@@ -529,6 +529,25 @@ bool FileStream::copyFile(fstring srcPath, fstring dstPath)
 	return false;
 }
 
+uint64_t FileStream::cat(FILE* fp) {
+	assert(NULL != fp);
+	AutoFree<char> buf(BUFSIZ);
+	size_t len;
+	uint64_t sum = 0;
+	do {
+		len = fread(buf, 1, BUFSIZ, fp);
+		this->ensureWrite(buf, len);
+		sum += len;
+	} while (BUFSIZ == len);
+	return sum;
+}
+
+uint64_t FileStream::cat(fstring fpath) {
+	FileStream f(fpath, "rb");
+	f.disbuf();
+	return cat(f.fp());
+}
+
 uint64_t FileStream::fsize() const {
 	return fpsize(m_fp);
 }

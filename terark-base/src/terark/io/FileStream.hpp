@@ -113,6 +113,8 @@ private:
 #endif
 
 public:
+	uint64_t cat(FILE* fp);
+	uint64_t cat(fstring fpath);
 	uint64_t fsize() const;
 	static uint64_t fpsize(FILE* fp);
 	static uint64_t fdsize(int fd);
