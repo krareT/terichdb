@@ -1641,6 +1641,7 @@ DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 		for (size_t segIdx = begSeg; segIdx < endSeg; ++segIdx) {
 			auto seg = &*m_segments[segIdx];
 			assert(iSchema.m_isUnique);
+			assert(seg->m_isFreezed);
 			iSchema.selectParent(ctx->cols1, &ctx->key1);
 			seg->indexSearchExact(segIdx, indexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
 			for(llong physicId : ctx->exactMatchRecIdvec) {
