@@ -1318,7 +1318,7 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 			}
 		}
 		assert(!isPurged || llong(input->m_isPurged.max_rank0()) == physicId);
-		assert(newIsDel.size() - newDelcnt == store->numDataRows());
+		assert(llong(newIsDel.size() - newDelcnt) == store->numDataRows());
 		return store;
 	}
 	if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
@@ -1326,7 +1326,7 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 		if (schema.m_dictZipSampleRatio > FLT_EPSILON || avgLen > 100) {
 			StoreIteratorPtr iter = colgroup.ensureStoreIterForward(ctx);
 			auto store = buildDictZipStore(schema, tmpSegDir, *iter, isDel, &input->m_isPurged);
-			assert(newIsDel.size() - newDelcnt == store->numDataRows());
+			assert(llong(newIsDel.size() - newDelcnt) == store->numDataRows());
 			return store;
 		}
 	}
@@ -1387,7 +1387,7 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 		parts->addpart(this->buildStore(schema, strVec));
 	}
 	auto store = parts->finishParts();
-	assert(newIsDel.size() - newDelcnt == store->numDataRows());
+	assert(llong(newIsDel.size() - newDelcnt) == store->numDataRows());
 	return store;
 }
 
