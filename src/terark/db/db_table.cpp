@@ -1557,6 +1557,7 @@ DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 			, "id=%lld is large/equal than rows=%lld"
 			, id, m_rowNumVec.back());
 	}
+	ctx->trySyncSegCtxNoLock(this);
 	size_t j = upper_bound_0(m_rowNumVec.data(), m_rowNumVec.size(), id);
 	assert(j > 0);
 	assert(j < m_rowNumVec.size());
