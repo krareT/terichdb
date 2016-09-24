@@ -129,17 +129,17 @@ llong FixedLenKeyIndex::dataStorageSize() const {
 }
 
 llong FixedLenKeyIndex::dataInflateSize() const {
-	return m_fixedLen * m_keys.size();
+	return m_keys.size();
 }
 
 llong FixedLenKeyIndex::numDataRows() const {
-	return m_keys.size();
+	return m_index.size();
 }
 
 void FixedLenKeyIndex::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
 	assert(id >= 0);
 	size_t idx = size_t(id);
-	assert(idx < m_keys.size());
+	assert(idx < m_index.size());
 	size_t fixlen = m_fixedLen;
 	const byte* dataPtr = m_keys.data() + fixlen * idx;
 	size_t oldsize = val->size();
@@ -182,7 +182,7 @@ void FixedLenKeyIndex::build(const Schema& schema, SortableStrVec& strVec) {
 	});
 	m_fixedLen = fixlen;
 	m_uniqKeys = 0;
-	for(size_t i = 0; i < m_keys.size(); ) {
+	for(size_t i = 0; i < rows; ) {
 		size_t j = i;
 		int cmp = 0;
 		do {
