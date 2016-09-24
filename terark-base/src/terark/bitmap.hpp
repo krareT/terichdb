@@ -251,6 +251,7 @@ protected:
     static const size_t AllocUnitBits = 64;
 
 	void push_back_slow_path(bool val);
+	void ensure_set1_slow_path(size_t i);
 
 public:
 	static size_t align_bits(size_t nbits) { return (nbits+WordBits-1) & ~(WordBits-1); }
@@ -339,6 +340,21 @@ public:
         assert(i < m_size);
 		terark_bit_set1(m_words, i);
     }
+	void ensure_set(size_t i, bool val) {
+		val ? ensure_set1(i) : ensure_set0(i);
+	}
+	void ensure_set0(size_t i) {
+		if (terark_likely(i < m_size))
+			terark_bit_set0(m_words, i);
+		else
+			resize(i+1);
+	}
+	void ensure_set1(size_t i) {
+		if (terark_likely(i < m_size))
+			terark_bit_set1(m_words, i);
+		else
+			ensure_set1_slow_path(i);
+	}
 	void set0(size_t first, size_t num);
 	void set1(size_t first, size_t num);
 	void set (size_t first, size_t num, bool val);

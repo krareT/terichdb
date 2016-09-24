@@ -12,6 +12,11 @@ void febitvec::push_back_slow_path(bool val) {
 	m_words[m_size / WordBits] = val ? 1 : 0;
 }
 
+void febitvec::ensure_set1_slow_path(size_t i) {
+	resize(i+1);
+	terark_bit_set1(m_words, i);
+}
+
 febitvec::febitvec(size_t bits, bool val) {
 	risk_release_ownership();
 	resize(bits, val);

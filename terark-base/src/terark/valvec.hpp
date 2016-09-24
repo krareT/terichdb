@@ -373,6 +373,15 @@ public:
         c = min_cap;
     }
 
+	T& ensure_set(size_t i, const T& x) {
+		if (i >= n) {
+			resize(i+1);
+		}
+		T* beg = p; // load p into register
+		beg[i] = x;
+		return beg[i];
+	}
+
     void shrink_to_fit() {
         assert(n <= c);
         if (n == c)
@@ -1318,7 +1327,7 @@ lower_bound_ex_0(RanIt a, size_t n, const Key& key, KeyExtractor keyEx, Comp com
 }
 template<class Container, class Key, class KeyExtractor>
 size_t
-lower_bound_ex_a(const Container& a, KeyExtractor keyEx, const Key& key) {
+lower_bound_ex_a(const Container& a, const Key& key, KeyExtractor keyEx) {
 	typedef typename Container::const_iterator RanIt;
 	return lower_bound_ex_n<RanIt, Key, KeyExtractor>(a.begin(), 0, a.size(), key, keyEx);
 }
@@ -1489,6 +1498,14 @@ void sort_a(Container& a) {
 template<class T, size_t N>
 void sort_a(T (&a)[N]) {
 	std::sort(a, a+N);
+}
+template<class Container, class Comp>
+void sort_a(Container& a, Comp comp) {
+	std::sort(a.begin(), a.end(), comp);
+}
+template<class T, size_t N, class Comp>
+void sort_a(T (&a)[N], Comp comp) {
+	std::sort(a, a+N, comp);
 }
 
 template<class RanIt>
