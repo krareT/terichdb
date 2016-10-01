@@ -127,7 +127,8 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 								  const febitvec* isPurged) {
 	TERARK_RT_assert(schema.m_dictZipSampleRatio >= 0, std::invalid_argument);
 	std::unique_ptr<DictZipBlobStore::ZipBuilder>
-	builder(DictZipBlobStore::createZipBuilder(schema.m_checksumLevel));
+	builder(DictZipBlobStore::createZipBuilder(
+		schema.m_checksumLevel, schema.m_dictZipUseSuffixArrayLocalMatch));
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
 					   ? schema.m_dictZipSampleRatio : 0.05;
 	{

@@ -841,11 +841,8 @@ ReadonlySegment::compressMultipleColgroups(ReadableSegment* input, DbContext* ct
 			m_colgroups[i] = tmpStore;
 			continue;
 		}
-		// dictZipLocalMatch is true by default
-		// dictZipLocalMatch == false is just for experiment
-		// dictZipLocalMatch should always be true in production
 		// dictZipSampleRatio < 0 indicate don't use dictZip
-		if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
+		if (schema.m_dictZipSampleRatio >= 0.0) {
 			double sRatio = schema.m_dictZipSampleRatio;
 			double avgLen = double(tmpStore->dataInflateSize()) / newRowNum;
 			if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
@@ -1321,7 +1318,7 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 		assert(llong(newIsDel.size() - newDelcnt) == store->numDataRows());
 		return store;
 	}
-	if (schema.m_dictZipLocalMatch && schema.m_dictZipSampleRatio >= 0.0) {
+	if (schema.m_dictZipSampleRatio >= 0.0) {
 		double avgLen = 1.0 * colgroup.dataInflateSize() / colgroup.numDataRows();
 		if (schema.m_dictZipSampleRatio > FLT_EPSILON || avgLen > 100) {
 			StoreIteratorPtr iter = colgroup.ensureStoreIterForward(ctx);

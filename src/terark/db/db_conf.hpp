@@ -287,7 +287,7 @@ namespace terark { namespace db {
 		bool   m_needEncodeToLexByteComparable : 1;
 		bool   m_canEncodeToLexByteComparable  : 1;
 		bool   m_useFastZip : 1;
-		bool   m_dictZipLocalMatch : 1;
+		bool   m_dictZipUseSuffixArrayLocalMatch : 1;
 		bool   m_isInplaceUpdatable: 1;
 		bool   m_enableLinearScan  : 1;
 		bool   m_mmapPopulate : 1;

@@ -193,7 +193,7 @@ Schema::Schema() {
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_useFastZip = false;
-	m_dictZipLocalMatch = true;
+	m_dictZipUseSuffixArrayLocalMatch = false;
 	m_isInplaceUpdatable = false;
 	m_enableLinearScan = false;
 	m_mmapPopulate = false;
@@ -2182,7 +2182,8 @@ static void
 parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 	schema.m_isInplaceUpdatable = getJsonValue(js, "inplaceUpdatable", false);
 	schema.m_dictZipSampleRatio = getJsonValue(js, "dictZipSampleRatio", float(0.0));
-	schema.m_dictZipLocalMatch  = getJsonValue(js, "dictZipLocalMatch", true);
+	schema.m_dictZipUseSuffixArrayLocalMatch =
+		getJsonValue(js, "dictZipUseSuffixArrayLocalMatch", false);
 	schema.m_nltDelims  = getJsonValue(js, "nltDelims", std::string());
 	schema.m_maxFragLen = getJsonValue(js, "maxFragLen", 0);
 	schema.m_minFragLen = getJsonValue(js, "minFragLen", 0);
