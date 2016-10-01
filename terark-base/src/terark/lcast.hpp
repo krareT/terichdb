@@ -123,6 +123,10 @@ TERARK_DLL_EXPORT size_t hex_decode(const char* hex, size_t hexlen, void* databu
 
 ///@note size of hexbuf must at least (2*datalen)
 TERARK_DLL_EXPORT void hex_encode(const void* data, size_t datalen, char* hexbuf);
+inline void hex_encode(fstring data, char* hexbuf) { hex_encode(data.data(), data.size(), hexbuf); }
+
+TERARK_DLL_EXPORT std::string hex_encode(const void* data, size_t datalen);
+inline std::string hex_encode(fstring data) { return hex_encode(data.data(), data.size()); }
 
 } // namespace terark
 

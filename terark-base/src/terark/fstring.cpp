@@ -185,8 +185,7 @@ bool getEnvBool(const char* envName, bool Default) {
 long getEnvLong(const char* envName, long Default) {
 	if (const char* env = getenv(envName)) {
 		int base = 0; // env can be oct, dec, hex
-		if (strtol(env, NULL, base))
-			return true;
+		return strtol(env, NULL, base);
 	}
 	return Default;
 }

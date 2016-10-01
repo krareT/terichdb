@@ -282,5 +282,12 @@ void hex_encode(const void* data, size_t datalen, char* hexbuf) {
 	}
 }
 
+TERARK_DLL_EXPORT
+std::string hex_encode(const void* data, size_t datalen) {
+	std::string str(datalen*2, '\0');
+	hex_encode(data, datalen, &str[0]);
+	return str;
+}
+
 } // namespace terark
 
