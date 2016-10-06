@@ -19,6 +19,10 @@
 #include <re2/re2.h>
 #endif
 
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
+#include <terark/fast_zip_blob_store.hpp>
+#endif
+
 namespace terark { namespace db {
 
 /*
@@ -193,6 +197,9 @@ Schema::Schema() {
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_useFastZip = false;
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
+	m_dictZipEntropyType = byte(DictZipBlobStore::Options::kNoEntropy);
+#endif
 	m_dictZipUseSuffixArrayLocalMatch = false;
 	m_isInplaceUpdatable = false;
 	m_enableLinearScan = false;
@@ -2178,10 +2185,41 @@ Int limitInBound(Int Val, Int Min, Int Max) {
 	return Val;
 }
 
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
+class EntropyTypeNameMap {
+	hash_strmap<DictZipBlobStore::Options::EntropyAlgo> map;
+	typedef DictZipBlobStore::Options ns;
+public:
+	EntropyTypeNameMap() {
+		map.insert_i("none"   , ns::kNoEntropy);
+		map.insert_i("None"   , ns::kNoEntropy);
+		map.insert_i("huff"   , ns::kHuffman);
+		map.insert_i("Huff"   , ns::kHuffman);
+		map.insert_i("huffman", ns::kHuffman);
+		map.insert_i("Huffman", ns::kHuffman);
+		map.insert_i("fse"    , ns::kFSE);
+		map.insert_i("FSE"    , ns::kFSE);
+		map.insert_i("FiniteStateEntropy", ns::kFSE);
+	}
+	DictZipBlobStore::Options::EntropyAlgo get(fstring name) const {
+		size_t f = map.find_i(name);
+		if (f < map.end_i()) {
+			return map.val(f);
+		}
+		return ns::kNoEntropy;
+	}
+};
+static EntropyTypeNameMap g_strToEntropyType;
+#endif
+
 static void
 parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 	schema.m_isInplaceUpdatable = getJsonValue(js, "inplaceUpdatable", false);
 	schema.m_dictZipSampleRatio = getJsonValue(js, "dictZipSampleRatio", float(0.0));
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
+	schema.m_dictZipEntropyType = g_strToEntropyType.get(
+		getJsonValue(js, "dictZipEntropyType", std::string("none")));
+#endif
 	schema.m_dictZipUseSuffixArrayLocalMatch =
 		getJsonValue(js, "dictZipUseSuffixArrayLocalMatch", false);
 	schema.m_nltDelims  = getJsonValue(js, "nltDelims", std::string());

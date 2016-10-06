@@ -1,6 +1,5 @@
 #include "nlt_store.hpp"
 #include <terark/int_vector.hpp>
-#include <terark/fast_zip_blob_store.hpp>
 #include <typeinfo>
 #include <float.h>
 #include <mutex>
@@ -90,9 +89,8 @@ BlobStore* nltBuild(const Schema& schema, SortableStrVec& strVec) {
 
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	if (schema.m_dictZipSampleRatio > 0) {
-		std::unique_ptr<DictZipBlobStore> zds(new DictZipBlobStore());
-		zds->build_none_local_match(strVec, schema.m_dictZipSampleRatio);
-		m_store.reset(zds.release());
+		m_store.reset(DictZipBlobStore::build_none_local_match(
+			strVec, schema.m_dictZipSampleRatio));
 	}
 	else if (schema.m_useFastZip) {
 		std::unique_ptr<FastZipBlobStore> fzds(new FastZipBlobStore());
@@ -120,6 +118,17 @@ void emptyCheckProtect(size_t sampleLenSum, fstring rec,
 	}
 }
 
+std::unique_ptr<DictZipBlobStore::ZipBuilder>
+createDictZipBlobStoreBuilder(const Schema& schema) {
+	typedef DictZipBlobStore::Options::EntropyAlgo EntropyAlgo;
+	DictZipBlobStore::Options opt;
+	opt.checksumLevel = schema.m_checksumLevel;
+	opt.entropyAlgo = EntropyAlgo(schema.m_dictZipEntropyType);
+	opt.useSuffixArrayLocalMatch = schema.m_dictZipUseSuffixArrayLocalMatch;
+	return std::unique_ptr<DictZipBlobStore::ZipBuilder>
+			(DictZipBlobStore::createZipBuilder(opt));
+}
+
 void
 NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 								  StoreIterator& iter,
@@ -127,8 +136,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 								  const febitvec* isPurged) {
 	TERARK_RT_assert(schema.m_dictZipSampleRatio >= 0, std::invalid_argument);
 	std::unique_ptr<DictZipBlobStore::ZipBuilder>
-	builder(DictZipBlobStore::createZipBuilder(
-		schema.m_checksumLevel, schema.m_dictZipUseSuffixArrayLocalMatch));
+	builder(createDictZipBlobStoreBuilder(schema));
 	double sampleRatio = schema.m_dictZipSampleRatio > FLT_EPSILON
 					   ? schema.m_dictZipSampleRatio : 0.05;
 	{

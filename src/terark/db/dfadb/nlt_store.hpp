@@ -2,6 +2,7 @@
 
 #include <terark/db/db_index.hpp>
 #include <terark/fsa/nest_louds_trie.hpp>
+#include <terark/fast_zip_blob_store.hpp>
 
 namespace terark {
 //	class Nest
@@ -32,5 +33,9 @@ protected:
 	const Schema& m_schema;
 	std::unique_ptr<BlobStore> m_store;
 };
+
+std::unique_ptr<DictZipBlobStore::ZipBuilder>
+createDictZipBlobStoreBuilder(const Schema& schema);
+
 
 }}} // namespace terark::db::dfadb
