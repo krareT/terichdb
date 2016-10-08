@@ -2524,6 +2524,7 @@ class TableIndexIter : public IndexIterator {
 	}
 
 	size_t syncSegPtr() {
+		m_ctx->trySyncSegCtxSpeculativeLock(m_tab.get());
 		if (m_oldsegArrayUpdateSeq == m_tab->m_segArrayUpdateSeq) {
 			return 0;
 		}
