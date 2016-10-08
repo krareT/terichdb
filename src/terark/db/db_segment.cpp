@@ -2122,6 +2122,7 @@ public:
 		}
 		if (m_wrtIter->increment(id, &m_wrtBuf)) {
 			val->erase_all();
+			m_cols1.erase_all();
 			m_wrtSeg->getCombineAppend(*id, val, m_wrtBuf, m_cols1, m_cols2);
 			return true;
 		}
