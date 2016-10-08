@@ -111,7 +111,7 @@ std::mutex& DictZip_reduceMemMutex() {
 void emptyCheckProtect(size_t sampleLenSum, fstring rec,
 					   DictZipBlobStore::ZipBuilder& builder) {
 	if (0 == sampleLenSum) {
-		if (rec.empty())
+		if (rec.empty() || rec.size() >= 10*1024*1024)
 			builder.addSample("Hello World!"); // for fallback
 		else
 			builder.addSample(rec);
