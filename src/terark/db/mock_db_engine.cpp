@@ -843,6 +843,8 @@ void MockWritableIndex<Key>::clear() {
 }
 
 ///////////////////////////////////////////////////////////////////////
+TERARK_DB_REGISTER_SEGMENT(MockReadonlySegment);
+
 MockReadonlySegment::MockReadonlySegment() {
 }
 MockReadonlySegment::~MockReadonlySegment() {
@@ -913,8 +915,14 @@ buildDictZipStore(const Schema& schema, PathRef segDir, StoreIterator& iter,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+TERARK_DB_REGISTER_SEGMENT(MockWritableSegment);
+
 MockWritableSegment::MockWritableSegment(PathRef dir) {
 	m_segDir = dir;
+	m_wrtStore = new MockWritableStore();
+	m_hasLockFreePointSearch = true;
+}
+MockWritableSegment::MockWritableSegment() {
 	m_wrtStore = new MockWritableStore();
 	m_hasLockFreePointSearch = true;
 }
@@ -1071,32 +1079,6 @@ MockDbContext::~MockDbContext() {
 
 DbContext* MockDbTable::createDbContextNoLock() const {
 	return new MockDbContext(this);
-}
-
-ReadonlySegment*
-MockDbTable::createReadonlySegment(PathRef dir) const {
-	std::unique_ptr<MockReadonlySegment> seg(new MockReadonlySegment());
-	return seg.release();
-}
-
-WritableSegment*
-MockDbTable::createWritableSegment(PathRef dir) const {
-	std::unique_ptr<MockWritableSegment> seg(new MockWritableSegment(dir));
-	return seg.release();
-}
-
-WritableSegment*
-MockDbTable::openWritableSegment(PathRef dir) const {
-	auto isDelPath = dir / "IsDel";
-	if (boost::filesystem::exists(isDelPath)) {
-		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
-		seg->m_schema = this->m_schema;
-		seg->load(dir);
-		return seg.release();
-	}
-	else {
-		return myCreateWritableSegment(dir);
-	}
 }
 
 TERARK_DB_REGISTER_TABLE_CLASS(MockDbTable);

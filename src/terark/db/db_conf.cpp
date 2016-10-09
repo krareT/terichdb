@@ -2561,6 +2561,8 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
 					);
 	m_tableClass = getJsonValue(meta, "TableClass", std::string("DfaDbTable"));
+	m_writableSegmentClass = getJsonValue(meta, "WritableSegmentClass", std::string("WtWritableSegment"));
+	m_readonlySegmentClass = getJsonValue(meta, "ReadonlySegmentClass", std::string("DfaDbReadonlySegment"));
 	const bool checkMongoType = getJsonValue(meta, "CheckMongoType", false);
 	const bool checkMysqlType = getJsonValue(meta, "CheckMysqlType", false);
 	const json& rowSchema = meta["RowSchema"];

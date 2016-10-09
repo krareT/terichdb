@@ -301,12 +301,9 @@ protected:
 	void removeStaleDir(PathRef dir, size_t inUseMergeSeq) const;
 	void discoverMergeDir(PathRef dir);
 
-	virtual ReadonlySegment* createReadonlySegment(PathRef segDir) const = 0;
-	virtual WritableSegment* createWritableSegment(PathRef segDir) const = 0;
-	virtual WritableSegment* openWritableSegment(PathRef segDir) const = 0;
-
 	ReadonlySegment* myCreateReadonlySegment(PathRef segDir) const;
 	WritableSegment* myCreateWritableSegment(PathRef segDir) const;
+	WritableSegment* openWritableSegment(PathRef segDir) const;
 
 	bool checkPurgeDeleteNoLock(const ReadableSegment* seg);
 	bool tryAsyncPurgeDeleteInLock(const ReadableSegment* seg);

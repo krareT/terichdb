@@ -1156,35 +1156,46 @@ void DbTable::doCreateNewSegmentInLock() {
 
 ReadonlySegment*
 DbTable::myCreateReadonlySegment(PathRef segDir) const {
-	std::unique_ptr<ReadonlySegment> seg(createReadonlySegment(segDir));
-	seg->m_segDir = segDir;
-	seg->m_schema = this->m_schema;
-	return seg.release();
+	fstring clazz = m_schema->m_readonlySegmentClass;
+	std::unique_ptr<ReadableSegment>
+	seg(ReadableSegment::createSegment(clazz, segDir, m_schema.get()));
+	if (auto rdseg = dynamic_cast<ReadonlySegment*>(seg.get())) {
+		seg.release();
+		return rdseg;
+	}
+	THROW_STD(invalid_argument, "bad ReadonlySegmentClass: %s", clazz.c_str());
 }
 
 WritableSegment*
 DbTable::myCreateWritableSegment(PathRef segDir) const {
 	fs::create_directories(segDir.c_str());
-	std::unique_ptr<WritableSegment> seg(createWritableSegment(segDir));
-	assert(seg);
-	seg->m_segDir = segDir;
-	seg->m_schema = this->m_schema;
-	if (seg->m_indices.empty()) {
-		seg->m_indices.resize(m_schema->getIndexNum());
-		for (size_t i = 0; i < seg->m_indices.size(); ++i) {
-			const Schema& schema = m_schema->getIndexSchema(i);
-			auto indexPath = segDir + "/index-" + schema.m_name;
-			seg->m_indices[i] = seg->createIndex(schema, indexPath);
-		}
+	fstring clazz = m_schema->m_writableSegmentClass;
+	std::unique_ptr<ReadableSegment>
+	seg(ReadableSegment::createSegment(clazz, segDir, m_schema.get()));
+	if (auto wrseg = dynamic_cast<WritableSegment*>(seg.get())) {
+		wrseg->initEmptySegment();
+		seg.release();
+		return wrseg;
 	}
-	if (!m_schema->m_updatableColgroups.empty()) {
-		seg->m_colgroups.resize(m_schema->getColgroupNum());
-		for (size_t colgroupId : m_schema->m_updatableColgroups) {
-			const Schema& schema = m_schema->getColgroupSchema(colgroupId);
-			seg->m_colgroups[colgroupId] = new FixedLenStore(segDir, schema);
+	THROW_STD(invalid_argument, "bad WritableSegmentClass: %s", clazz.c_str());
+}
+
+WritableSegment*
+DbTable::openWritableSegment(PathRef segDir) const {
+	fstring clazz = m_schema->m_writableSegmentClass;
+	std::unique_ptr<ReadableSegment>
+	seg(ReadableSegment::createSegment(clazz, segDir, m_schema.get()));
+	if (auto wrseg = dynamic_cast<WritableSegment*>(seg.get())) {
+		auto isDelPath = segDir / "IsDel";
+		if (boost::filesystem::exists(isDelPath)) {
+			wrseg->load(segDir);
+		} else {
+			wrseg->initEmptySegment();
 		}
+		seg.release();
+		return wrseg;
 	}
-	return seg.release();
+	THROW_STD(invalid_argument, "bad WritableSegmentClass: %s", clazz.c_str());
 }
 
 bool DbTable::exists(llong id) const {

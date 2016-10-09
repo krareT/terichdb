@@ -13,6 +13,8 @@ namespace terark { namespace db {
 
 namespace terark { namespace db { namespace wt {
 
+TERARK_DB_REGISTER_SEGMENT(WtWritableSegment);
+
 WtWritableSegment::WtWritableSegment() {
 	m_wtConn = NULL;
 	m_wrRowStore = NULL;

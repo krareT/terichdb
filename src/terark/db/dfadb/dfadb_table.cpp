@@ -1,5 +1,7 @@
 #include "dfadb_table.hpp"
 #include "dfadb_segment.hpp"
+#undef min
+#undef max
 #include <terark/fsa/create_regex_dfa.hpp>
 #include <terark/fsa/dense_dfa.hpp>
 #include <terark/io/FileStream.hpp>
@@ -10,10 +12,12 @@
 #include <terark/db/mock_db_engine.hpp>
 #include <terark/db/wiredtiger/wt_db_segment.hpp>
 #include <terark/db/dfadb/nlt_index.hpp>
-#include <boost/filesystem.hpp>
+#include <terark/fsa/fsa.hpp>
+#include <terark/int_vector.hpp>
+#include <terark/rank_select.hpp>
+#include <terark/fsa/nest_trie_dawg.hpp>
 
 namespace terark { namespace db { namespace dfadb {
-
 
 DfaDbContext::DfaDbContext(const DbTable* tab) : DbContext(tab) {
 }
@@ -22,53 +26,6 @@ DfaDbContext::~DfaDbContext() {
 
 DbContext* DfaDbTable::createDbContextNoLock() const {
 	return new DfaDbContext(this);
-}
-
-ReadonlySegment*
-DfaDbTable::createReadonlySegment(PathRef dir) const {
-	std::unique_ptr<DfaDbReadonlySegment> seg(new DfaDbReadonlySegment());
-	return seg.release();
-}
-
-WritableSegment*
-DfaDbTable::createWritableSegment(PathRef dir) const {
-	const char* dfaWritableSeg = getenv("TerarkDB_DfaWritableSegment");
-	if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock") == 0) {
-		std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
-		seg->m_schema = this->m_schema;
-		return seg.release();
-	}
-	else {
-		using terark::db::wt::WtWritableSegment;
-		std::unique_ptr<WtWritableSegment> seg(new WtWritableSegment());
-		seg->m_schema = this->m_schema;
-		seg->load(dir);
-		return seg.release();
-	}
-}
-
-WritableSegment*
-DfaDbTable::openWritableSegment(PathRef dir) const {
-	auto isDelPath = dir / "IsDel";
-	if (boost::filesystem::exists(isDelPath)) {
-		const char* dfaWritableSeg = getenv("TerarkDB_DfaWritableSegment");
-		if (dfaWritableSeg && strcasecmp(dfaWritableSeg, "mock") == 0) {
-			std::unique_ptr<WritableSegment> seg(new MockWritableSegment(dir));
-			seg->m_schema = this->m_schema;
-			seg->load(dir);
-			return seg.release();
-		}
-		else {
-			using terark::db::wt::WtWritableSegment;
-			std::unique_ptr<WtWritableSegment> seg(new WtWritableSegment());
-			seg->m_schema = this->m_schema;
-			seg->load(dir);
-			return seg.release();
-		}
-	}
-	else {
-		return myCreateWritableSegment(dir);
-	}
 }
 
 class AdapterRegexDFA : public DenseDFA_uint32_320 {
@@ -199,7 +156,6 @@ const {
 	std::unique_ptr<BaseDFA> regexDFA(create_regex_dfa(regexStr, regexOptions));
 	return indexMatchRegex(indexId, regexDFA.get(), recIdvec, ctx);
 }
-
 
 TERARK_DB_REGISTER_TABLE_CLASS(DfaDbTable);
 

@@ -512,7 +512,6 @@ namespace terark { namespace db {
 		SchemaSet();
 		~SchemaSet();
 		SchemaPtr m_uniqIndexFields;
-	//	gold_hash_set<SchemaPtr, Hash, Equal> m_nested;
 		gold_hash_tab<std::string, SchemaPtr, MyHashEqual, MyKeyExtractor> m_nested;
 		size_t m_flattenColumnNum;
 		size_t indexNum() const { return m_nested.end_i(); }
@@ -547,6 +546,8 @@ namespace terark { namespace db {
 		size_t   m_writeThrottleBytesPerSecond;
 		double   m_purgeDeleteThreshold;
 		std::string m_tableClass;
+		std::string m_writableSegmentClass;
+		std::string m_readonlySegmentClass;
 		bool     m_usePermanentRecordId;
 		bool     m_enableSnapshot;
 

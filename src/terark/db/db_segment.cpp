@@ -39,6 +39,39 @@ namespace terark { namespace db {
 
 namespace fs = boost::filesystem;
 
+typedef hash_strmap< std::function<ReadableSegment*(PathRef, SchemaConfig*)>
+					, fstring_func::hash_align
+					, fstring_func::equal_align
+					, ValueInline, SafeCopy
+					>
+		SegmentFactory;
+static	SegmentFactory& s_segmentFactory() {
+	static SegmentFactory instance;
+	return instance;
+}
+
+ReadableSegment::
+RegisterSegmentFactory::
+RegisterSegmentFactory(fstring clazz, const SegmentCreator& creator) {
+	SegmentFactory& factory = s_segmentFactory();
+	auto ib = factory.insert_i(clazz, creator);
+	assert(ib.second);
+	if (!ib.second) {
+		THROW_STD(invalid_argument, "duplicate segment class: %s", clazz.c_str());
+	}
+}
+
+ReadableSegment*
+ReadableSegment::createSegment(fstring clazz, PathRef segDir, SchemaConfig* sc) {
+	const SegmentFactory& factory = s_segmentFactory();
+	const size_t idx = factory.find_i(clazz);
+	if (idx < factory.end_i()) {
+		ReadableSegment* seg = factory.val(idx)(segDir, sc);
+		assert(seg);
+		return seg;
+	}
+	THROW_STD(invalid_argument, "unknown segment class: %s", clazz.c_str());
+}
 
 ReadableSegment::ReadableSegment() {
 	m_delcnt = 0;
@@ -1769,6 +1802,24 @@ const {
 		else {
 			SpinRwLock  lock(m_segMutex, false);
 			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
+		}
+	}
+}
+
+void WritableSegment::initEmptySegment() {
+	if (m_indices.empty()) {
+		m_indices.resize(m_schema->getIndexNum());
+		for (size_t i = 0; i < m_indices.size(); ++i) {
+			const Schema& schema = m_schema->getIndexSchema(i);
+			auto indexPath = m_segDir + "/index-" + schema.m_name;
+			m_indices[i] = createIndex(schema, indexPath);
+		}
+	}
+	if (!m_schema->m_updatableColgroups.empty()) {
+		m_colgroups.resize(m_schema->getColgroupNum());
+		for (size_t colgroupId : m_schema->m_updatableColgroups) {
+			const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+			m_colgroups[colgroupId] = new FixedLenStore(m_segDir, schema);
 		}
 	}
 }

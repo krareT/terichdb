@@ -138,6 +138,7 @@ protected:
 class TERARK_DB_DLL MockWritableSegment : public PlainWritableSegment {
 public:
 	MockWritableSegment(PathRef dir);
+	MockWritableSegment();
 	~MockWritableSegment();
 	std::mutex          m_mockTxnMutex;
 protected:
@@ -154,9 +155,6 @@ public:
 class TERARK_DB_DLL MockDbTable : public DbTable {
 public:
 	DbContext* createDbContextNoLock() const override;
-	ReadonlySegment* createReadonlySegment(PathRef dir) const override;
-	WritableSegment* createWritableSegment(PathRef dir) const override;
-	WritableSegment* openWritableSegment(PathRef dir) const override;
 };
 
 } } // namespace terark::db

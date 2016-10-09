@@ -21,6 +21,23 @@ typedef SpinRwMutex::scoped_lock  SpinRwLock;
 // A full-row is of one table, the table has multiple indices
 class TERARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
+	struct RegisterSegmentFactory {
+		typedef std::function<ReadableSegment*(PathRef, SchemaConfig*)> SegmentCreator;
+		RegisterSegmentFactory(fstring segmentClass, const SegmentCreator&);
+	};
+#define TERARK_DB_REGISTER_SEGMENT(SegmentClass) \
+	static ReadableSegment::RegisterSegmentFactory \
+	regSegment_##SegmentClass(#SegmentClass, \
+		[](PathRef segDir, SchemaConfig* sc) { \
+			std::unique_ptr<SegmentClass> seg(new SegmentClass()); \
+			seg->m_segDir = segDir; \
+			seg->m_schema = sc; \
+			return seg.release(); \
+		})
+
+	static ReadableSegment*
+	createSegment(fstring segmentClass, PathRef segDir, SchemaConfig*);
+
 	ReadableSegment();
 	~ReadableSegment();
 	virtual class ColgroupSegment* getColgroupSegment() const;
@@ -32,7 +49,6 @@ public:
 	virtual class PlainWritableSegment* getPlainWritableSegment() const;
 	virtual llong totalStorageSize() const = 0;
 	virtual llong numDataRows() const override final;
-
 
 	// Index can use different implementation for different
 	// index schema and index content features
@@ -328,6 +344,8 @@ public:
 	// Index can use different implementation for different
 	// index schema and index content features
 	virtual ReadableIndex* createIndex(const Schema&, PathRef path) const = 0;
+
+	virtual void initEmptySegment();
 
 	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 								fstring key, valvec<llong>* recIdvec,

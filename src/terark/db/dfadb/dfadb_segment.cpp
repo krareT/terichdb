@@ -12,6 +12,8 @@
 
 namespace terark { namespace db { namespace dfadb {
 
+TERARK_DB_REGISTER_SEGMENT(DfaDbReadonlySegment);
+
 DfaDbReadonlySegment::DfaDbReadonlySegment() {
 }
 DfaDbReadonlySegment::~DfaDbReadonlySegment() {
