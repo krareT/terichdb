@@ -228,7 +228,7 @@ public:
 };
 typedef boost::intrusive_ptr<ReadonlySegment> ReadonlySegmentPtr;
 
-class DbTransaction : boost::noncopyable {
+class TERARK_DB_DLL DbTransaction : boost::noncopyable {
 public:
 	enum Status { started, committed, rollbacked } m_status;
 	///@{ just for BatchWriter
@@ -299,7 +299,7 @@ public:
 	const std::string& strError() const { return m_txn->strError(); }
 	const char* szError() const { return m_txn->strError().c_str(); }
 };
-class DefaultRollbackTransaction : public TransactionGuard {
+class TERARK_DB_DLL DefaultRollbackTransaction : public TransactionGuard {
 public:
 	explicit
 	DefaultRollbackTransaction(DbTransaction* txn) : TransactionGuard(txn) {}

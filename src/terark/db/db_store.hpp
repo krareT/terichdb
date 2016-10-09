@@ -36,7 +36,7 @@ public:
 typedef boost::intrusive_ptr<class Permanentable> PermanentablePtr;
 typedef boost::intrusive_ptr<class ReadableStore> ReadableStorePtr;
 
-class StoreIterator : public RefCounter {
+class TERARK_DB_DLL StoreIterator : public RefCounter {
 protected:
 	ReadableStorePtr m_store;
 public:
