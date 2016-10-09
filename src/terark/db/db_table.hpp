@@ -73,7 +73,7 @@ public:
 	DbTable();
 	~DbTable();
 
-	struct RegisterTableClass {
+	struct TERARK_DB_DLL RegisterTableClass {
 		RegisterTableClass(fstring clazz, const std::function<DbTable*()>& f);
 	};
 #define TERARK_DB_REGISTER_TABLE_CLASS(TableClass) \

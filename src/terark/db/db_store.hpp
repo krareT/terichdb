@@ -58,7 +58,7 @@ class TERARK_DB_DLL ReadableStore : virtual public Permanentable {
 protected:
 	byte_t* m_recordsBasePtr;
 public:
-	struct RegisterStoreFactory {
+	struct TERARK_DB_DLL RegisterStoreFactory {
 		typedef std::function<ReadableStore*(const Schema&)> StoreFactory;
 		RegisterStoreFactory(const char* fnameSuffix, const StoreFactory&);
 	};
