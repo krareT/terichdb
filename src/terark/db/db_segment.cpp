@@ -519,7 +519,12 @@ ColgroupWritableSegment::selectColumns(llong recId,
 const {
 	assert(recId >= 0);
 	assert(m_isPurged.empty());
-	return selectColumnsByPhysicId(recId, colsId, colsNum, colsData, ctx);
+	if (m_isFreezed) {
+		return selectColumnsByPhysicId(recId, colsId, colsNum, colsData, ctx);
+	} else {
+		SpinRwLock lock(m_segMutex, false);
+		return selectColumnsByPhysicId(recId, colsId, colsNum, colsData, ctx);
+	}
 }
 
 void
@@ -566,7 +571,12 @@ ColgroupWritableSegment::selectOneColumn(llong recId, size_t columnId,
 const {
 	assert(recId >= 0);
 	assert(m_isPurged.empty());
-	selectOneColumnByPhysicId(recId, columnId, colsData, ctx);
+	if (m_isFreezed) {
+		selectOneColumnByPhysicId(recId, columnId, colsData, ctx);
+	} else {
+		SpinRwLock lock(m_segMutex, false);
+		selectOneColumnByPhysicId(recId, columnId, colsData, ctx);
+	}
 }
 
 void
@@ -604,7 +614,12 @@ void ColgroupWritableSegment::selectColgroups(llong recId,
 						valvec<byte>* cgDataVec, DbContext* ctx) const {
 	assert(recId >= 0);
 	assert(m_isPurged.empty());
-	selectColgroupsByPhysicId(recId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+	if (m_isFreezed) {
+		selectColgroupsByPhysicId(recId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+	} else {
+		SpinRwLock lock(m_segMutex, false);
+		selectColgroupsByPhysicId(recId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+	}
 }
 
 void ColgroupSegment::selectColgroupsByPhysicId(llong physicId,
