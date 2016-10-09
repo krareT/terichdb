@@ -19,7 +19,7 @@
 #include <re2/re2.h>
 #endif
 
-#if !defined(TERARK_DB_SCHEMA_COMPILER)
+#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
 #include <terark/fast_zip_blob_store.hpp>
 #endif
 
@@ -197,7 +197,7 @@ Schema::Schema() {
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_useFastZip = false;
-#if !defined(TERARK_DB_SCHEMA_COMPILER)
+#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
 	m_dictZipEntropyType = byte(DictZipBlobStore::Options::kNoEntropy);
 #endif
 	m_dictZipUseSuffixArrayLocalMatch = false;
@@ -2185,7 +2185,7 @@ Int limitInBound(Int Val, Int Min, Int Max) {
 	return Val;
 }
 
-#if !defined(TERARK_DB_SCHEMA_COMPILER)
+#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
 class EntropyTypeNameMap {
 	hash_strmap<DictZipBlobStore::Options::EntropyAlgo> map;
 	typedef DictZipBlobStore::Options ns;
@@ -2216,7 +2216,7 @@ static void
 parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 	schema.m_isInplaceUpdatable = getJsonValue(js, "inplaceUpdatable", false);
 	schema.m_dictZipSampleRatio = getJsonValue(js, "dictZipSampleRatio", float(0.0));
-#if !defined(TERARK_DB_SCHEMA_COMPILER)
+#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
 	schema.m_dictZipEntropyType = g_strToEntropyType.get(
 		getJsonValue(js, "dictZipEntropyType", std::string("none")));
 #endif

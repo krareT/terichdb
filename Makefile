@@ -108,8 +108,6 @@ override CXXFLAGS += ${COMMON_C_FLAGS}
 #$(error ${CXXFLAGS} "----" ${COMMON_C_FLAGS})
 
 DEFS := -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE
-override CFLAGS   += ${DEFS}
-override CXXFLAGS += ${DEFS}
 
 override INCS := ${TERARK_INC} ${INCS}
 
@@ -190,6 +188,7 @@ ifeq (1,${WITH_DFA_DB})
   override INCS += -I../terark/src
   TerarkDB_lib := terark-db
 else
+  override DEFS += -DTERARK_DB_NO_DFADB
   override INCS += -Iterark-base/src
 #  zip_src := \
 #    terark-base/src/terark/io/BzipStream.cpp \
@@ -227,6 +226,9 @@ static_LeveldbApi_r := lib/lib${LeveldbApi_lib}-${COMPILER}-r.a
 ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} TerarkDB LeveldbApi
 DBG_TARGETS = ${MAYBE_DBB_DBG} ${TerarkDB_d}
 RLS_TARGETS = ${MAYBE_DBB_RLS} ${TerarkDB_r}
+
+override CFLAGS   += ${DEFS}
+override CXXFLAGS += ${DEFS}
 
 .PHONY : default all TerarkDB LeveldbApi
 
