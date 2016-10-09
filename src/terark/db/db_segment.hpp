@@ -21,7 +21,7 @@ typedef SpinRwMutex::scoped_lock  SpinRwLock;
 // A full-row is of one table, the table has multiple indices
 class TERARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
-	struct RegisterSegmentFactory {
+	struct TERARK_DB_DLL RegisterSegmentFactory {
 		typedef std::function<ReadableSegment*(PathRef, SchemaConfig*)> SegmentCreator;
 		RegisterSegmentFactory(fstring segmentClass, const SegmentCreator&);
 	};
