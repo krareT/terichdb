@@ -22,18 +22,12 @@ typedef SpinRwMutex::scoped_lock  SpinRwLock;
 class TERARK_DB_DLL ReadableSegment : public ReadableStore {
 public:
 	struct TERARK_DB_DLL RegisterSegmentFactory {
-		typedef std::function<ReadableSegment*(PathRef, SchemaConfig*)> SegmentCreator;
+		typedef std::function<ReadableSegment*()> SegmentCreator;
 		RegisterSegmentFactory(fstring segmentClass, const SegmentCreator&);
 	};
 #define TERARK_DB_REGISTER_SEGMENT(SegmentClass) \
 	static ReadableSegment::RegisterSegmentFactory \
-	regSegment_##SegmentClass(#SegmentClass, \
-		[](PathRef segDir, SchemaConfig* sc) { \
-			std::unique_ptr<SegmentClass> seg(new SegmentClass()); \
-			seg->m_segDir = segDir; \
-			seg->m_schema = sc; \
-			return seg.release(); \
-		})
+	regSegment_##SegmentClass(#SegmentClass, [](){return new SegmentClass();})
 
 	static ReadableSegment*
 	createSegment(fstring segmentClass, PathRef segDir, SchemaConfig*);

@@ -39,7 +39,7 @@ namespace terark { namespace db {
 
 namespace fs = boost::filesystem;
 
-typedef hash_strmap< std::function<ReadableSegment*(PathRef, SchemaConfig*)>
+typedef hash_strmap< std::function<ReadableSegment*()>
 					, fstring_func::hash_align
 					, fstring_func::equal_align
 					, ValueInline, SafeCopy
@@ -66,8 +66,10 @@ ReadableSegment::createSegment(fstring clazz, PathRef segDir, SchemaConfig* sc) 
 	const SegmentFactory& factory = s_segmentFactory();
 	const size_t idx = factory.find_i(clazz);
 	if (idx < factory.end_i()) {
-		ReadableSegment* seg = factory.val(idx)(segDir, sc);
+		ReadableSegment* seg = factory.val(idx)();
 		assert(seg);
+		seg->m_segDir = segDir;
+		seg->m_schema = sc;
 		return seg;
 	}
 	THROW_STD(invalid_argument, "unknown segment class: %s", clazz.c_str());
