@@ -513,6 +513,16 @@ const {
 }
 
 void
+ColgroupWritableSegment::selectColumns(llong recId,
+							   const size_t* colsId, size_t colsNum,
+							   valvec<byte>* colsData, DbContext* ctx)
+const {
+	assert(recId >= 0);
+	assert(m_isPurged.empty());
+	return selectColumnsByPhysicId(recId, colsId, colsNum, colsData, ctx);
+}
+
+void
 ColgroupSegment::selectColumnsByPhysicId(llong physicId,
 							   const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext* ctx)
@@ -551,6 +561,15 @@ const {
 }
 
 void
+ColgroupWritableSegment::selectOneColumn(llong recId, size_t columnId,
+								 valvec<byte>* colsData, DbContext* ctx)
+const {
+	assert(recId >= 0);
+	assert(m_isPurged.empty());
+	selectOneColumnByPhysicId(recId, columnId, colsData, ctx);
+}
+
+void
 ColgroupSegment::selectOneColumnByPhysicId(llong physicId, size_t columnId,
 								 valvec<byte>* colsData, DbContext* ctx)
 const {
@@ -578,6 +597,14 @@ void ReadonlySegment::selectColgroups(llong recId,
 	assert(recId >= 0);
 	llong physicId = getPhysicId(size_t(recId));
 	selectColgroupsByPhysicId(physicId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+}
+
+void ColgroupWritableSegment::selectColgroups(llong recId,
+						const size_t* cgIdvec, size_t cgIdvecSize,
+						valvec<byte>* cgDataVec, DbContext* ctx) const {
+	assert(recId >= 0);
+	assert(m_isPurged.empty());
+	selectColgroupsByPhysicId(recId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
 }
 
 void ColgroupSegment::selectColgroupsByPhysicId(llong physicId,

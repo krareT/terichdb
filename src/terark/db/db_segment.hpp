@@ -418,6 +418,14 @@ protected:
 
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
+
+	void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
+					   valvec<byte>* colsData, DbContext*) const override;
+	void selectOneColumn(llong recId, size_t columnId,
+						 valvec<byte>* colsData, DbContext*) const override;
+
+	void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
+						 valvec<byte>* cgDataVec, DbContext*) const override;
 };
 typedef boost::intrusive_ptr<ColgroupWritableSegment> SmartWritableSegmentPtr;
 
