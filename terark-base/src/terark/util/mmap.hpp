@@ -2,6 +2,7 @@
 #define __terark_util_mmap_hpp__
 
 #include <stddef.h>
+#include <utility>
 #include "../config.hpp"
 
 namespace terark {
@@ -44,6 +45,11 @@ public:
 						   bool writable = false,
 						   bool populate = false) {
 		base = mmap_load(fname, &size, writable, populate);
+	}
+
+	void swap(MmapWholeFile& y) {
+		std::swap(base, y.base);
+		std::swap(size, y.size);
 	}
 };
 

@@ -302,7 +302,7 @@ public:
     template<class AnyIter>
 	typename boost::enable_if<is_iterator<AnyIter>, void>::type
     assign(AnyIter first, AnyIter last) {
-		assign_aux(first, last, typename AnyIter::iterator_category());
+		assign_aux(first, last, typename std::iterator_traits<AnyIter>::iterator_category());
     }
     template<class InputIter>
 	typename boost::enable_if<is_iterator<InputIter>, void>::type
