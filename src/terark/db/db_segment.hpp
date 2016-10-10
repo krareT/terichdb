@@ -337,9 +337,10 @@ public:
 
 	// Index can use different implementation for different
 	// index schema and index content features
-	virtual ReadableIndex* createIndex(const Schema&, PathRef path) const = 0;
+	virtual ReadableIndex* createIndex(const Schema&, PathRef segDir) const = 0;
+	virtual ReadableStore* createStore(const Schema&, PathRef segDir) const = 0;
 
-	virtual void initEmptySegment();
+	virtual void initEmptySegment() = 0;
 
 	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 								fstring key, valvec<llong>* recIdvec,
@@ -365,6 +366,9 @@ public:
 
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
+
+	ReadableStore* createStore(const Schema&, PathRef segDir) const override;
+	void initEmptySegment() override;
 
 	void getValueAppend(llong recId, valvec<byte>* val, DbContext*) const override;
 
@@ -406,6 +410,8 @@ public:
 protected:
 	~ColgroupWritableSegment();
 	ColgroupSegment* getColgroupSegment() const override;
+
+	void initEmptySegment() override;
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;

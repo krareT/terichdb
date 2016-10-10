@@ -1850,13 +1850,12 @@ const {
 	}
 }
 
-void WritableSegment::initEmptySegment() {
+void PlainWritableSegment::initEmptySegment() {
 	if (m_indices.empty()) {
 		m_indices.resize(m_schema->getIndexNum());
 		for (size_t i = 0; i < m_indices.size(); ++i) {
 			const Schema& schema = m_schema->getIndexSchema(i);
-			auto indexPath = m_segDir + "/index-" + schema.m_name;
-			m_indices[i] = createIndex(schema, indexPath);
+			m_indices[i] = createIndex(schema, m_segDir);
 		}
 	}
 	if (!m_schema->m_updatableColgroups.empty()) {
@@ -2264,6 +2263,11 @@ PlainWritableSegment::createStoreIterBackward(DbContext* ctx) const {
 	}
 }
 
+ReadableStore*
+PlainWritableSegment::createStore(const Schema&, PathRef segDir) const {
+	return nullptr;
+}
+
 //static void splitRowToWrt
 
 llong PlainWritableSegment::append(fstring row, DbContext* ctx) {
@@ -2346,6 +2350,28 @@ void WritableSegment::delmarkSet0(llong subId) {
 ///////////////////////////////////////////////////////////////////////////////
 
 ColgroupWritableSegment::~ColgroupWritableSegment() {
+}
+
+void ColgroupWritableSegment::initEmptySegment() {
+	size_t const indices_size = m_schema->getIndexNum();
+	size_t const colgroups_size = m_schema->getColgroupNum();
+	m_indices.resize(indices_size);
+	m_colgroups.resize(colgroups_size);
+	for(size_t i = 0; i < indices_size; ++i) {
+		const Schema& schema = m_schema->getIndexSchema(i);
+		m_indices[i] = createIndex(schema, m_segDir);
+		auto store = m_indices[i]->getReadableStore();
+		assert(store);
+		m_colgroups[i] = store;
+	}
+	for(size_t i = indices_size; i < colgroups_size; ++i) {
+		const Schema& schema = m_schema->getColgroupSchema(i);
+		if (schema.m_isInplaceUpdatable) {
+			m_colgroups[i] = new FixedLenStore(m_segDir, schema);
+		} else {
+			m_colgroups[i] = createStore(schema, m_segDir);
+		}
+	}
 }
 
 void ColgroupWritableSegment::saveRecordStore(PathRef dir) const {

@@ -2,7 +2,11 @@
 
 set -x
 
-TarBall=terark-db-win-x64
+if [ -z "$build" ]; then
+	build=Release
+fi
+
+TarBall=terark-db-win-x64-$build
 rm -rf ${TarBall}
 mkdir -p ${TarBall}/api
 mkdir -p ${TarBall}/bin
@@ -12,11 +16,12 @@ mkdir -p ${TarBall}/include/terark/io
 mkdir -p ${TarBall}/include/terark/thread
 mkdir -p ${TarBall}/include/terark/util
 
-cp x64/Release/terark*.dll                   ${TarBall}/lib
-cp x64/Release/terark*.lib                   ${TarBall}/lib
-#cp ../../../terark/vs2015/terark-fsa/x64/Release/*.dll  ${TarBall}/lib
-#cp ../../../terark/vs2015/terark-fsa/x64/Release/*.lib  ${TarBall}/lib
-cp x64/Release/terark-db-schema-compile.exe  ${TarBall}/bin
+cp x64/$build/terark*.dll                   ${TarBall}/lib
+cp x64/$build/terark*.lib                   ${TarBall}/lib
+cp x64/$build/terark*.pdb                   ${TarBall}/lib
+#cp ../../../terark/vs2015/terark-fsa/x64/$build/*.dll  ${TarBall}/lib
+#cp ../../../terark/vs2015/terark-fsa/x64/$build/*.lib  ${TarBall}/lib
+cp x64/$build/terark-db-schema-compile.exe  ${TarBall}/bin
 cp -r ../../api/leveldb/leveldb/include      ${TarBall}/api
 cp ../../src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 cp ../../src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
