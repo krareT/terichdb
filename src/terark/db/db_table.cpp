@@ -1803,6 +1803,8 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 	const llong snapshotVersion = this->m_rowNum - 1;
 	assert(snapshotVersion >= id);
 	MyRwLock lock(m_rwMutex, false);
+	ctx->ensureTransactionNoLock();
+	ctx->trySyncSegCtxNoLock(this);
 	DebugCheckRowNumVecNoLock(this);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
 	assert(id < m_rowNum);
