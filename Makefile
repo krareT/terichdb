@@ -213,6 +213,7 @@ else
 endif
 LIB_TERARK_D := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-d
 LIB_TERARK_R := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-r
+override INCS := ${LIB_TERARK_INC} ${INCS}
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core
@@ -276,7 +277,6 @@ endif
 ${TerarkDB_d} : override LIBS := ${LIB_TERARK_D} ${LIBS} -ltbb
 ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 
-DfaDB : override INCS := ${LIB_TERARK_INC} ${INCS}
 ${DfaDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_R} ${LIBS} -ltbb
 
