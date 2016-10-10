@@ -1874,6 +1874,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	assert(mySegIdx < ctx->m_segCtx.size());
 	assert(ctx->getSegmentPtr(mySegIdx) == this);
 	assert(m_isPurged.empty());
+	assert(!m_hasLockFreePointSearch);
 	IndexIterator* iter = ctx->getIndexIterNoLock(mySegIdx, indexId);
 	llong recId = -1;
 	int cmp = iter->seekLowerBound(key, &recId, &ctx->key2);
