@@ -13,19 +13,18 @@ public:
 	WtWritableSegment();
 	~WtWritableSegment();
 
+protected:
 	void init(PathRef segDir);
 
-protected:
-	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
-	ReadableIndex* openIndex(const Schema&, PathRef path) const override;
+	ReadableIndex* createIndex(const Schema&, PathRef segDir) const override;
+	ReadableIndex* openIndex(const Schema&, PathRef segDir) const override;
 
-	WT_CONNECTION* m_wtConn;
-	WritableStore* m_wrRowStore;
-
-public:
+	void initEmptySegment() override;
 	void load(PathRef path) override;
 	void save(PathRef path) const override;
 
+	WT_CONNECTION* m_wtConn;
+	WritableStore* m_wrRowStore;
 	size_t m_cacheSize;
 };
 

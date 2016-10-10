@@ -2263,11 +2263,6 @@ PlainWritableSegment::createStoreIterBackward(DbContext* ctx) const {
 	}
 }
 
-ReadableStore*
-PlainWritableSegment::createStore(const Schema&, PathRef segDir) const {
-	return nullptr;
-}
-
 //static void splitRowToWrt
 
 llong PlainWritableSegment::append(fstring row, DbContext* ctx) {

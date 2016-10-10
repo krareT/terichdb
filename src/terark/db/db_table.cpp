@@ -1159,7 +1159,7 @@ DbTable::myCreateReadonlySegment(PathRef segDir) const {
 	fstring clazz = m_schema->m_readonlySegmentClass;
 	std::unique_ptr<ReadableSegment>
 	seg(ReadableSegment::createSegment(clazz, segDir, m_schema.get()));
-	if (auto rdseg = dynamic_cast<ReadonlySegment*>(seg.get())) {
+	if (auto rdseg = seg->getReadonlySegment()) {
 		seg.release();
 		return rdseg;
 	}
@@ -1172,7 +1172,7 @@ DbTable::myCreateWritableSegment(PathRef segDir) const {
 	fstring clazz = m_schema->m_writableSegmentClass;
 	std::unique_ptr<ReadableSegment>
 	seg(ReadableSegment::createSegment(clazz, segDir, m_schema.get()));
-	if (auto wrseg = dynamic_cast<WritableSegment*>(seg.get())) {
+	if (auto wrseg = seg->getWritableSegment()) {
 		wrseg->initEmptySegment();
 		seg.release();
 		return wrseg;
@@ -1185,7 +1185,7 @@ DbTable::openWritableSegment(PathRef segDir) const {
 	fstring clazz = m_schema->m_writableSegmentClass;
 	std::unique_ptr<ReadableSegment>
 	seg(ReadableSegment::createSegment(clazz, segDir, m_schema.get()));
-	if (auto wrseg = dynamic_cast<WritableSegment*>(seg.get())) {
+	if (auto wrseg = seg->getWritableSegment()) {
 		auto isDelPath = segDir / "IsDel";
 		if (boost::filesystem::exists(isDelPath)) {
 			wrseg->load(segDir);

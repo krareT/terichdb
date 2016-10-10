@@ -104,6 +104,12 @@ WtWritableSegment::openIndex(const Schema& schema, PathRef segDir) const {
 	return new WtWritableIndex(schema, m_wtConn);
 }
 
+void WtWritableSegment::initEmptySegment() {
+	assert(!m_segDir.empty());
+	init(m_segDir);
+	PlainWritableSegment::initEmptySegment();
+}
+
 void WtWritableSegment::load(PathRef path) {
 	init(path);
 	if (boost::filesystem::exists(path / "IsDel")) {
