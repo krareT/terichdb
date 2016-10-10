@@ -278,7 +278,7 @@ ${TerarkDB_d} : override LIBS := ${LIB_TERARK_D} ${LIBS} -ltbb
 ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 
 ${DfaDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
-${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_R} ${LIBS} -ltbb
+${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 
 ${LeveldbApi_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${LeveldbApi_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
@@ -292,6 +292,8 @@ ${TerarkDB_r} : $(call objs,TerarkDB,r)
 ${static_TerarkDB_d} : $(call objs,TerarkDB,d)
 ${static_TerarkDB_r} : $(call objs,TerarkDB,r)
 
+${DfaDB_d} : $(call objs,DfaDB,d)
+${DfaDB_r} : $(call objs,DfaDB,r)
 ${static_DfaDB_d} : $(call objs,DfaDB,d)
 ${static_DfaDB_r} : $(call objs,DfaDB,r)
 
