@@ -1,5 +1,5 @@
 DBG_FLAGS ?= -g3 -D_DEBUG
-RLS_FLAGS ?= -O3 -DNDEBUG
+RLS_FLAGS ?= -O3 -DNDEBUG -g3
 WITH_BMI2 ?= $(shell ./cpu_has_bmi2.sh)
 
 ifeq "$(origin LD)" "default"
@@ -274,7 +274,7 @@ ${static_LeveldbApi_r} : $(call objs,LeveldbApi,r)
 
 TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
 .PHONY : pkg
-pkg: ${TerarkDB_d} ${TerarkDB_r}
+pkg: ${TerarkDB_d} ${TerarkDB_r} ${LeveldbApi_d} ${LeveldbApi_r}
 	rm -rf ${TarBall}
 	mkdir -p ${TarBall}/lib
 	mkdir -p ${TarBall}/bin
