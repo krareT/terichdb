@@ -24,6 +24,7 @@ ifneq "${err}" "0"
 endif
 
 TERARK_INC := -Isrc
+LIB_TERARK_DIR ?= ../terark/lib
 
 include ${BUILD_ROOT}/env.mk
 
@@ -172,6 +173,8 @@ endif
 TerarkDB_src := $(wildcard src/terark/db/*.cpp)
 TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 
+DfaDB_src := $(wildcard src/terark/db/dfadb/*.cpp)
+
 LeveldbApi_src =
 LeveldbApi_src += $(wildcard api/leveldb/leveldb_terark.cc)
 LeveldbApi_src += $(wildcard api/leveldb/leveldb/db/*.cc)
@@ -183,13 +186,22 @@ LeveldbApi_src += api/leveldb/leveldb/util/logging.cc
 LeveldbApi_src += api/leveldb/leveldb/util/options.cc
 LeveldbApi_src += api/leveldb/leveldb/util/status.cc
 
-ifeq (1,${WITH_DFA_DB})
-  TerarkDB_src += $(wildcard src/terark/db/dfadb/*.cpp)
-  override INCS += -I../terark/src
-  TerarkDB_lib := terark-db
+TerarkDB_lib := terark-db
+DfaDB_lib := terark-db-dfadb
+
+ifeq (DfaDB,${DFADB_TARGET})
+  LIB_TERARK_DIR = ../terark/lib
+  LIB_TERARK_INC = -I../terark/src
 else
-  override DEFS += -DTERARK_DB_NO_DFADB
-  override INCS += -Iterark-base/src
+  ifeq (,${LIB_TERARK_DIR})
+    $(error LIB_TERARK_DIR must be defined when compiling without DfaDB)
+  endif
+  ifeq (,${DFADB_TARGET})
+    DFADB_TARGET=
+  else
+    $(error DFADB_TARGET must be empty or DfaDB)
+  endif
+  LIB_TERARK_INC += -Iterark-base/src
 #  zip_src := \
 #    terark-base/src/terark/io/BzipStream.cpp \
 #  terark-base/src/terark/io/GzipStream.cpp
@@ -198,10 +210,9 @@ else
 #  TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)
 #  TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
 #  TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
-  TerarkDB_lib := terark-db-no-dfadb
 endif
-LIB_TERARK_D := -L../terark/lib -lterark-fsa_all-${COMPILER}-d
-LIB_TERARK_R := -L../terark/lib -lterark-fsa_all-${COMPILER}-r
+LIB_TERARK_D := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-d
+LIB_TERARK_R := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-r
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core
@@ -214,6 +225,13 @@ TerarkDB_d := lib/lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX}
 TerarkDB_r := lib/lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX}
 static_TerarkDB_d := lib/lib${TerarkDB_lib}-${COMPILER}-d.a
 static_TerarkDB_r := lib/lib${TerarkDB_lib}-${COMPILER}-r.a
+
+DfaDB_d_o := $(call objs,DfaDB,d)
+DfaDB_r_o := $(call objs,DfaDB,r)
+DfaDB_d := lib/lib${DfaDB_lib}-${COMPILER}-d${DLL_SUFFIX}
+DfaDB_r := lib/lib${DfaDB_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_DfaDB_d := lib/lib${DfaDB_lib}-${COMPILER}-d.a
+static_DfaDB_r := lib/lib${DfaDB_lib}-${COMPILER}-r.a
 
 LeveldbApi_lib := terark-db-leveldb-api
 LeveldbApi_d_o := $(call objs,LeveldbApi,d)
@@ -232,14 +250,17 @@ override CXXFLAGS += ${DEFS}
 
 .PHONY : default all TerarkDB LeveldbApi
 
-default : TerarkDB LeveldbApi
+default : TerarkDB LeveldbApi ${DFADB_TARGET}
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
+DfaDB: ${DfaDB_d} ${DfaDB_r} ${static_DfaDB_d} ${static_DfaDB_r}
 LeveldbApi: ${LeveldbApi_d} ${LeveldbApi_r} ${static_LeveldbApi_d} ${static_LeveldbApi_r}
 ${LeveldbApi_d}: ${TerarkDB_d}
 ${LeveldbApi_r}: ${TerarkDB_r}
+${DfaDB_d}: ${TerarkDB_d}
+${DfaDB_r}: ${TerarkDB_r}
 
-allsrc = ${TerarkDB_src} ${LeveldbApi_src}
+allsrc = ${TerarkDB_src} ${DfaDB_src} ${LeveldbApi_src}
 alldep = $(addprefix ${rdir}/, $(addsuffix .dep, $(basename ${allsrc}))) \
          $(addprefix ${ddir}/, $(addsuffix .dep, $(basename ${allsrc})))
 
@@ -255,6 +276,10 @@ endif
 ${TerarkDB_d} : override LIBS := ${LIB_TERARK_D} ${LIBS} -ltbb
 ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 
+DfaDB : override INCS := ${LIB_TERARK_INC} ${INCS}
+${DfaDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
+${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_R} ${LIBS} -ltbb
+
 ${LeveldbApi_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${LeveldbApi_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 ${LeveldbApi_d} : ${TerarkDB_d}
@@ -266,6 +291,9 @@ ${TerarkDB_d} : $(call objs,TerarkDB,d)
 ${TerarkDB_r} : $(call objs,TerarkDB,r)
 ${static_TerarkDB_d} : $(call objs,TerarkDB,d)
 ${static_TerarkDB_r} : $(call objs,TerarkDB,r)
+
+${static_DfaDB_d} : $(call objs,DfaDB,d)
+${static_DfaDB_r} : $(call objs,DfaDB,r)
 
 ${LeveldbApi_d} : $(call objs,LeveldbApi,d)
 ${LeveldbApi_r} : $(call objs,LeveldbApi,r)
@@ -375,11 +403,11 @@ leveldb_test: ${ddir}/api/leveldb/leveldb_test.exe
 
 ${ddir}/%.exe: ${ddir}/%.o
 	@echo Linking ... $@
-	${LD} ${LDFLAGS} -o $@ $< -Llib -lterark-db-${COMPILER}-d -L../terark/lib -lterark-fsa_all-${COMPILER}-d ${LIBS}
+	${LD} ${LDFLAGS} -o $@ $< -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS}
 
 ${rdir}/%.exe: ${ddir}/%.o
 	@echo Linking ... $@
-	${LD} ${LDFLAGS} -o $@ $< -Llib -lterark-db-${COMPILER}-r -L../terark/lib -lterark-fsa_all-${COMPILER}-r ${LIBS}
+	${LD} ${LDFLAGS} -o $@ $< -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS}
 
 ${ddir}/%.o: %.cpp
 	@echo file: $< "->" $@
