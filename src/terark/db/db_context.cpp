@@ -256,7 +256,7 @@ void DbContext::ensureTransactionNoLock() {
 			m_transaction.reset();
 		}
 		if (new_wrseg) {
-			m_transaction.reset(new_wrseg->createTransaction());
+			m_transaction.reset(new_wrseg->createTransaction(this));
 		}
 		m_wrSegPtr = new_wrseg;
 	}

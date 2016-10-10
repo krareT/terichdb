@@ -489,7 +489,7 @@ public:
 	ColumnVec    m_cols2;
 };
 
-DbTransaction* WtWritableSegment::createTransaction() {
+DbTransaction* WtWritableSegment::createTransaction(DbContext*) {
 	return new WtDbTransaction(this);
 }
 

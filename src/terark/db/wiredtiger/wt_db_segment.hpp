@@ -8,7 +8,7 @@ namespace terark { namespace db { namespace wt {
 class TERARK_DB_DLL WtWritableSegment : public PlainWritableSegment {
 public:
 	class WtDbTransaction; friend class WtDbTransaction;
-	DbTransaction* createTransaction() override;
+	DbTransaction* createTransaction(DbContext*) override;
 
 	WtWritableSegment();
 	~WtWritableSegment();

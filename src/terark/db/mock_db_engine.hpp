@@ -142,7 +142,7 @@ public:
 	~MockWritableSegment();
 	std::mutex          m_mockTxnMutex;
 protected:
-	DbTransaction* createTransaction();
+	DbTransaction* createTransaction(DbContext*);
 	ReadableIndex* createIndex(const Schema&, PathRef path) const override;
 	ReadableIndex* openIndex(const Schema&, PathRef) const override;
 };

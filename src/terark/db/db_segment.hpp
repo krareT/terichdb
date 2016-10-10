@@ -320,7 +320,7 @@ public:
 // should implement PlainWritableSegment or ColgroupWritableSegment
 class TERARK_DB_DLL WritableSegment : public ColgroupSegment, public WritableStore {
 public:
-	virtual DbTransaction* createTransaction() = 0;
+	virtual DbTransaction* createTransaction(DbContext*) = 0;
 
 	WritableSegment();
 	~WritableSegment();
