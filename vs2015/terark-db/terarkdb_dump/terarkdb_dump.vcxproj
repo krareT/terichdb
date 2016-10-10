@@ -170,6 +170,9 @@
     <ProjectReference Include="..\mongo-terarkdb\mongo-terarkdb.vcxproj">
       <Project>{dd4cc6f3-7d80-4531-86aa-88a4c710522b}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\terark-db-dfadb\terark-db-dfadb.vcxproj">
+      <Project>{9271644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\terark-db\terark-db.vcxproj">
       <Project>{9261644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
     </ProjectReference>

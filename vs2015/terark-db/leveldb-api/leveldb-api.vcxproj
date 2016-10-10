@@ -199,6 +199,9 @@
     <ProjectReference Include="..\..\..\..\terark\vs2015\terark-fsa\terark-fsa\terark-fsa.vcxproj">
       <Project>{c5ecd2a1-c18e-4c04-b2fa-c5c6f206f5ae}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\terark-db-dfadb\terark-db-dfadb.vcxproj">
+      <Project>{9271644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\terark-db\terark-db.vcxproj">
       <Project>{9261644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
     </ProjectReference>

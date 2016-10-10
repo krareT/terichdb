@@ -25,12 +25,6 @@
     <Filter Include="Source Files\terark\db">
       <UniqueIdentifier>{63670d04-8922-42d1-af12-dee2f8216179}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\terark\db\dfadb">
-      <UniqueIdentifier>{1d57f46c-a5d8-4e33-bcbd-0e7672f538d4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\terark\db\dfadb">
-      <UniqueIdentifier>{b3e152ed-9c13-4179-a49d-def608127e08}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\terark\db\wiredtiger">
       <UniqueIdentifier>{049bcc4e-ec4b-4eda-8574-9254215d2fc2}</UniqueIdentifier>
     </Filter>
@@ -84,20 +78,8 @@
     <ClInclude Include="..\..\..\src\terark\db\db_context.hpp">
       <Filter>Header Files\terark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_index.hpp">
-      <Filter>Header Files\terark\db\dfadb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_store.hpp">
-      <Filter>Header Files\terark\db\dfadb</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_segment.hpp">
-      <Filter>Header Files\terark\db\dfadb</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\src\terark\db\intkey_index.hpp">
       <Filter>Header Files\terark\db</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_table.hpp">
-      <Filter>Header Files\terark\db\dfadb</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.hpp">
       <Filter>Header Files\terark\db\wiredtiger</Filter>
@@ -167,20 +149,8 @@
     <ClCompile Include="..\..\..\src\terark\db\db_context.cpp">
       <Filter>Source Files\terark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_index.cpp">
-      <Filter>Source Files\terark\db\dfadb</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_store.cpp">
-      <Filter>Source Files\terark\db\dfadb</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_segment.cpp">
-      <Filter>Source Files\terark\db\dfadb</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\intkey_index.cpp">
       <Filter>Source Files\terark\db</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_table.cpp">
-      <Filter>Source Files\terark\db\dfadb</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.cpp">
       <Filter>Source Files\terark\db\wiredtiger</Filter>

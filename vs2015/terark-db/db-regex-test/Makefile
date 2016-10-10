@@ -2,7 +2,7 @@
 TERARK_HOME := ../../../../terark
 #SRCS := $(wildcard *.cpp)
 #LIBS := -L../../../lib -lterark-db-${COMPILER_LAZY}-r
-LIBS = -L../../../lib -lterark-db-${COMPILER_LAZY}-r -lboost_filesystem -lboost_date_time -lboost_system
+LIBS = -L../../../lib -lterark-db-dfadb-${COMPILER_LAZY}-r -lterark-db-${COMPILER_LAZY}-r -lboost_filesystem -lboost_date_time -lboost_system
 INCS = -I../../../src
 CHECK_TERARK_FSA_LIB_UPDATE := 0
 
