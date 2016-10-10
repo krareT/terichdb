@@ -171,7 +171,7 @@ void FixedLenStore::update(llong id, fstring row, DbContext* ctx) {
 void FixedLenStore::remove(llong id, DbContext*) {
 	Header* h = m_mmapBase;
 	assert(id >= 0);
-	assert(id < llong());
+	assert(id < llong(h->rows));
 	assert(h->rows > 0);
 	if (id == llong(h->rows)-1) {
 		h->rows--;
