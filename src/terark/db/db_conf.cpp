@@ -19,11 +19,14 @@
 #include <re2/re2.h>
 #endif
 
-#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
-#include <terark/fast_zip_blob_store.hpp>
-#endif
-
 namespace terark { namespace db {
+
+// copy of DictZipBlobStore::Options::EntropyAlgo
+enum class DictZipEntropyAlgo : byte_t {
+	kNoEntropy,
+	kHuffman,
+	kFSE,
+};
 
 /*
 ColumnMeta::ColumnMeta() {
@@ -197,8 +200,8 @@ Schema::Schema() {
 	m_canEncodeToLexByteComparable = false;
 	m_needEncodeToLexByteComparable = false;
 	m_useFastZip = false;
-#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
-	m_dictZipEntropyType = byte(DictZipBlobStore::Options::kNoEntropy);
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
+	m_dictZipEntropyType = byte(DictZipEntropyAlgo::kNoEntropy);
 #endif
 	m_dictZipUseSuffixArrayLocalMatch = false;
 	m_isInplaceUpdatable = false;
@@ -2185,28 +2188,27 @@ Int limitInBound(Int Val, Int Min, Int Max) {
 	return Val;
 }
 
-#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
 class EntropyTypeNameMap {
-	hash_strmap<DictZipBlobStore::Options::EntropyAlgo> map;
-	typedef DictZipBlobStore::Options ns;
+	hash_strmap<DictZipEntropyAlgo> map;
 public:
 	EntropyTypeNameMap() {
-		map.insert_i("none"   , ns::kNoEntropy);
-		map.insert_i("None"   , ns::kNoEntropy);
-		map.insert_i("huff"   , ns::kHuffman);
-		map.insert_i("Huff"   , ns::kHuffman);
-		map.insert_i("huffman", ns::kHuffman);
-		map.insert_i("Huffman", ns::kHuffman);
-		map.insert_i("fse"    , ns::kFSE);
-		map.insert_i("FSE"    , ns::kFSE);
-		map.insert_i("FiniteStateEntropy", ns::kFSE);
+		map.insert_i("none"   , DictZipEntropyAlgo::kNoEntropy);
+		map.insert_i("None"   , DictZipEntropyAlgo::kNoEntropy);
+		map.insert_i("huff"   , DictZipEntropyAlgo::kHuffman);
+		map.insert_i("Huff"   , DictZipEntropyAlgo::kHuffman);
+		map.insert_i("huffman", DictZipEntropyAlgo::kHuffman);
+		map.insert_i("Huffman", DictZipEntropyAlgo::kHuffman);
+		map.insert_i("fse"    , DictZipEntropyAlgo::kFSE);
+		map.insert_i("FSE"    , DictZipEntropyAlgo::kFSE);
+		map.insert_i("FiniteStateEntropy", DictZipEntropyAlgo::kFSE);
 	}
-	DictZipBlobStore::Options::EntropyAlgo get(fstring name) const {
+	DictZipEntropyAlgo get(fstring name) const {
 		size_t f = map.find_i(name);
 		if (f < map.end_i()) {
 			return map.val(f);
 		}
-		return ns::kNoEntropy;
+		return DictZipEntropyAlgo::kNoEntropy;
 	}
 };
 static EntropyTypeNameMap g_strToEntropyType;
@@ -2216,8 +2218,8 @@ static void
 parseJsonColgroup(Schema& schema, const terark::json& js, int sufarrMinFreq) {
 	schema.m_isInplaceUpdatable = getJsonValue(js, "inplaceUpdatable", false);
 	schema.m_dictZipSampleRatio = getJsonValue(js, "dictZipSampleRatio", float(0.0));
-#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
-	schema.m_dictZipEntropyType = g_strToEntropyType.get(
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
+	schema.m_dictZipEntropyType = (byte)g_strToEntropyType.get(
 		getJsonValue(js, "dictZipEntropyType", std::string("none")));
 #endif
 	schema.m_dictZipUseSuffixArrayLocalMatch =

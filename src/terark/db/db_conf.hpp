@@ -279,9 +279,7 @@ namespace terark { namespace db {
 		int    m_checksumLevel;
 		float  m_dictZipSampleRatio;
 		byte   m_nltNestLevel;
-#if !defined(TERARK_DB_SCHEMA_COMPILER) && !defined(TERARK_DB_NO_DFADB)
 		byte   m_dictZipEntropyType; // DictBlobStore::EntropyAlgo
-#endif
 		bool   m_isCompiled: 1;
 		bool   m_isOrdered : 1; // just for index schema
 //		bool   m_isPrimary : 1;
