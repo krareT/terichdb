@@ -17,6 +17,6 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 	return TRUE;
 }
 
-extern "C" void __declspec(dllexport) trbdb()
+extern "C" void __declspec(dllexport) terark_db_trbdb()
 {
 }
