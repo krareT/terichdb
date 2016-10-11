@@ -1,6 +1,6 @@
 DBG_FLAGS ?= -g3 -D_DEBUG
 RLS_FLAGS ?= -O3 -DNDEBUG -g3
-WITH_BMI2 ?= $(shell ./cpu_has_bmi2.sh)
+WITH_BMI2 ?= $(shell bash ./cpu_has_bmi2.sh)
 
 ifeq "$(origin LD)" "default"
   LD := ${CXX}
@@ -124,7 +124,6 @@ endif
 
 LIBBOOST ?= \
 	  -lboost_filesystem${BOOST_SUFFIX} \
-	  -lboost_date_time${BOOST_SUFFIX} \
 	  -lboost_system${BOOST_SUFFIX}
 
 ifeq "1" "0"
