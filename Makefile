@@ -170,7 +170,6 @@ ifeq (, ${prefix})
 endif
 
 TerarkDB_src := $(wildcard src/terark/db/*.cpp)
-TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 
 DfaDB_src := $(wildcard src/terark/db/dfadb/*.cpp)
 TrbDB_src := $(wildcard src/terark/db/trbdb/*.cpp)
@@ -266,9 +265,9 @@ RLS_TARGETS = ${MAYBE_DBB_RLS} ${TerarkDB_r}
 override CFLAGS   += ${DEFS}
 override CXXFLAGS += ${DEFS}
 
-.PHONY : default all TerarkDB LeveldbApi
+.PHONY : default all TerarkDB LeveldbApi DfaDB TrbDB Tiger
 
-default : TerarkDB LeveldbApi ${DFADB_TARGET}
+default : TerarkDB LeveldbApi ${DFADB_TARGET} TrbDB Tiger
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
 DfaDB: ${DfaDB_d} ${DfaDB_r} ${static_DfaDB_d} ${static_DfaDB_r}
