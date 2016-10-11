@@ -25,12 +25,6 @@
     <Filter Include="Source Files\terark\db">
       <UniqueIdentifier>{63670d04-8922-42d1-af12-dee2f8216179}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\terark\db\wiredtiger">
-      <UniqueIdentifier>{049bcc4e-ec4b-4eda-8574-9254215d2fc2}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\terark\db\wiredtiger">
-      <UniqueIdentifier>{9ccc3533-34cb-4a28-ac27-33b20ca154f4}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Header Files\nlohmann">
       <UniqueIdentifier>{63c92b33-47f6-4eef-a698-02c8ec25e05a}</UniqueIdentifier>
     </Filter>
@@ -81,12 +75,6 @@
     <ClInclude Include="..\..\..\src\terark\db\intkey_index.hpp">
       <Filter>Header Files\terark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.hpp">
-      <Filter>Header Files\terark\db\wiredtiger</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.hpp">
-      <Filter>Header Files\terark\db\wiredtiger</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\src\nlohmann\json.hpp">
       <Filter>Header Files\nlohmann</Filter>
     </ClInclude>
@@ -98,12 +86,6 @@
     </ClInclude>
     <ClInclude Include="..\..\..\src\terark\db\fixed_len_store.hpp">
       <Filter>Header Files\terark\db</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.hpp">
-      <Filter>Header Files\terark\db\wiredtiger</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.hpp">
-      <Filter>Header Files\terark\db\wiredtiger</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\terark\db\appendonly.hpp">
       <Filter>Header Files\terark\db</Filter>
@@ -152,12 +134,6 @@
     <ClCompile Include="..\..\..\src\terark\db\intkey_index.cpp">
       <Filter>Source Files\terark\db</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.cpp">
-      <Filter>Source Files\terark\db\wiredtiger</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.cpp">
-      <Filter>Source Files\terark\db\wiredtiger</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\zip_int_store.cpp">
       <Filter>Source Files\terark\db</Filter>
     </ClCompile>
@@ -166,12 +142,6 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\fixed_len_store.cpp">
       <Filter>Source Files\terark\db</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.cpp">
-      <Filter>Source Files\terark\db\wiredtiger</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.cpp">
-      <Filter>Source Files\terark\db\wiredtiger</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\appendonly.cpp">
       <Filter>Source Files\terark\db</Filter>

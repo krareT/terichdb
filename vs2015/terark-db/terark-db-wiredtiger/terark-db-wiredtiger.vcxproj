@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{9271644E-D0AD-43C5-AD8F-280B92F26B4D}</ProjectGuid>
+    <ProjectGuid>{9271A46E-20AD-4BC5-3D8F-286BBBF26B49}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>terarkdb</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
@@ -123,7 +123,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>tbb_debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>tbb_debug.lib;wiredtiger.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -164,25 +164,25 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>tbb.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>tbb.lib;wiredtiger.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_segment.hpp" />
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_table.hpp" />
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_index.hpp" />
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_store.hpp" />
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.hpp" />
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.hpp" />
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.hpp" />
+    <ClInclude Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.hpp" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_segment.cpp" />
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_table.cpp" />
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_index.cpp" />
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_store.cpp" />
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_context.cpp" />
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_index.cpp" />
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_segment.cpp" />
+    <ClCompile Include="..\..\..\src\terark\db\wiredtiger\wt_db_store.cpp" />
     <ClCompile Include="dllmain.cpp">
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
