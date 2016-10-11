@@ -145,7 +145,6 @@ endif
 #LIBS += -ldl
 #LIBS += -lpthread
 override LIBS += ${LIBBOOST}
-override LIBS += -lwiredtiger
 
 #extf = -pie
 extf = -fno-stack-protector
@@ -174,6 +173,8 @@ TerarkDB_src := $(wildcard src/terark/db/*.cpp)
 TerarkDB_src += $(wildcard src/terark/db/wiredtiger/*.cpp)
 
 DfaDB_src := $(wildcard src/terark/db/dfadb/*.cpp)
+TrbDB_src := $(wildcard src/terark/db/trbdb/*.cpp)
+Tiger_src := $(wildcard src/terark/db/wiredtiger/*.cpp)
 
 LeveldbApi_src =
 LeveldbApi_src += $(wildcard api/leveldb/leveldb_terark.cc)
@@ -188,6 +189,8 @@ LeveldbApi_src += api/leveldb/leveldb/util/status.cc
 
 TerarkDB_lib := terark-db
 DfaDB_lib := terark-db-dfadb
+TrbDB_lib := terark-db-trbdb
+Tiger_lib := terark-db-wiredtiger
 
 ifeq (DfaDB,${DFADB_TARGET})
   LIB_TERARK_DIR = ../terark/lib
@@ -234,6 +237,20 @@ DfaDB_r := lib/lib${DfaDB_lib}-${COMPILER}-r${DLL_SUFFIX}
 static_DfaDB_d := lib/lib${DfaDB_lib}-${COMPILER}-d.a
 static_DfaDB_r := lib/lib${DfaDB_lib}-${COMPILER}-r.a
 
+TrbDB_d_o := $(call objs,TrbDB,d)
+TrbDB_r_o := $(call objs,TrbDB,r)
+TrbDB_d := lib/lib${TrbDB_lib}-${COMPILER}-d${DLL_SUFFIX}
+TrbDB_r := lib/lib${TrbDB_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_TrbDB_d := lib/lib${TrbDB_lib}-${COMPILER}-d.a
+static_TrbDB_r := lib/lib${TrbDB_lib}-${COMPILER}-r.a
+
+Tiger_d_o := $(call objs,Tiger,d)
+Tiger_r_o := $(call objs,Tiger,r)
+Tiger_d := lib/lib${Tiger_lib}-${COMPILER}-d${DLL_SUFFIX}
+Tiger_r := lib/lib${Tiger_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_Tiger_d := lib/lib${Tiger_lib}-${COMPILER}-d.a
+static_Tiger_r := lib/lib${Tiger_lib}-${COMPILER}-r.a
+
 LeveldbApi_lib := terark-db-leveldb-api
 LeveldbApi_d_o := $(call objs,LeveldbApi,d)
 LeveldbApi_r_o := $(call objs,LeveldbApi,r)
@@ -255,13 +272,19 @@ default : TerarkDB LeveldbApi ${DFADB_TARGET}
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
 DfaDB: ${DfaDB_d} ${DfaDB_r} ${static_DfaDB_d} ${static_DfaDB_r}
+TrbDB: ${TrbDB_d} ${TrbDB_r} ${static_TrbDB_d} ${static_TrbDB_r}
+Tiger: ${Tiger_d} ${Tiger_r} ${static_Tiger_d} ${static_Tiger_r}
 LeveldbApi: ${LeveldbApi_d} ${LeveldbApi_r} ${static_LeveldbApi_d} ${static_LeveldbApi_r}
 ${LeveldbApi_d}: ${TerarkDB_d}
 ${LeveldbApi_r}: ${TerarkDB_r}
 ${DfaDB_d}: ${TerarkDB_d}
 ${DfaDB_r}: ${TerarkDB_r}
+${TrbDB_d}: ${TerarkDB_d}
+${TrbDB_r}: ${TerarkDB_r}
+${Tiger_d}: ${TerarkDB_d}
+${Tiger_r}: ${TerarkDB_r}
 
-allsrc = ${TerarkDB_src} ${DfaDB_src} ${LeveldbApi_src}
+allsrc = ${TerarkDB_src} ${DfaDB_src} ${TrbDB_src} ${Tiger_src} ${LeveldbApi_src}
 alldep = $(addprefix ${rdir}/, $(addsuffix .dep, $(basename ${allsrc}))) \
          $(addprefix ${ddir}/, $(addsuffix .dep, $(basename ${allsrc})))
 
@@ -280,6 +303,9 @@ ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 ${DfaDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 
+${Tiger_d} : override LIBS += -lwiredtiger
+${Tiger_r} : override LIBS += -lwiredtiger
+
 ${LeveldbApi_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${LeveldbApi_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 ${LeveldbApi_d} : ${TerarkDB_d}
@@ -296,6 +322,16 @@ ${DfaDB_d} : $(call objs,DfaDB,d)
 ${DfaDB_r} : $(call objs,DfaDB,r)
 ${static_DfaDB_d} : $(call objs,DfaDB,d)
 ${static_DfaDB_r} : $(call objs,DfaDB,r)
+
+${TrbDB_d} : $(call objs,TrbDB,d)
+${TrbDB_r} : $(call objs,TrbDB,r)
+${static_TrbDB_d} : $(call objs,TrbDB,d)
+${static_TrbDB_r} : $(call objs,TrbDB,r)
+
+${Tiger_d} : $(call objs,Tiger,d)
+${Tiger_r} : $(call objs,Tiger,r)
+${static_Tiger_d} : $(call objs,Tiger,d)
+${static_Tiger_r} : $(call objs,Tiger,r)
 
 ${LeveldbApi_d} : $(call objs,LeveldbApi,d)
 ${LeveldbApi_r} : $(call objs,LeveldbApi,r)
