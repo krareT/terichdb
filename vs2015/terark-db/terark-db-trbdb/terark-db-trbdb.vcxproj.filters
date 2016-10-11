@@ -42,16 +42,16 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_context.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_context.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
-    <ClInclude Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_index.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_index.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
-    <ClInclude Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_segment.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_segment.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
-    <ClInclude Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_store.hpp">
+    <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_store.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
   </ItemGroup>
@@ -62,16 +62,16 @@
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_segment.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\trbdb\trb_db_context.cpp">
       <Filter>Source Files\terark\db\trbdb</Filter>
     </ClCompile>
-    <ClCompile Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_store.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\trbdb\trb_db_index.cpp">
       <Filter>Source Files\terark\db\trbdb</Filter>
     </ClCompile>
-    <ClCompile Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_context.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\trbdb\trb_db_segment.cpp">
       <Filter>Source Files\terark\db\trbdb</Filter>
     </ClCompile>
-    <ClCompile Include="Y:\Documents\git\terark-db\src\terark\db\trbdb\trb_db_index.cpp">
+    <ClCompile Include="..\..\..\src\terark\db\trbdb\trb_db_store.cpp">
       <Filter>Source Files\terark\db\trbdb</Filter>
     </ClCompile>
   </ItemGroup>

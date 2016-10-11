@@ -5,7 +5,6 @@
 #include <terark/db/fixed_len_store.hpp>
 #include <terark/num_to_str.hpp>
 #include <boost/scope_exit.hpp>
-#include <terark/db/mock_db_engine.hpp>
 
 #undef min
 #undef max

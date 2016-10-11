@@ -162,6 +162,9 @@
     <ProjectReference Include="..\terark-db-dfadb\terark-db-dfadb.vcxproj">
       <Project>{9271644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\terark-db-trbdb\terark-db-trbdb.vcxproj">
+      <Project>{9271a44e-20ad-4bc5-3d8f-286bbbf26b49}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\terark-db\terark-db.vcxproj">
       <Project>{9261644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
     </ProjectReference>

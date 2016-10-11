@@ -31,7 +31,8 @@
 	},
 	"CompressingWorkMemSize" : "10K",
   "MaxWritingSegmentSize": "20K",
-  "//TableClass" : "MockDbTable",
+  "//TableClass": "MockDbTable",
+  "WritableSegmentClass": "TrbColgroupSegment",
 	"TableIndex" : [
 		{ "fields": "id"  , "ordered" : true, "unique" : true },
 		{ "fields": "str0", "ordered" : true },
