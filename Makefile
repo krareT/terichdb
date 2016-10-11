@@ -266,7 +266,8 @@ override CXXFLAGS += ${DEFS}
 
 .PHONY : default all TerarkDB LeveldbApi DfaDB TrbDB Tiger
 
-default : TerarkDB LeveldbApi ${DFADB_TARGET} TrbDB Tiger
+#default : TerarkDB LeveldbApi ${DFADB_TARGET} TrbDB Tiger
+default : TerarkDB LeveldbApi ${DFADB_TARGET} Tiger
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
 DfaDB: ${DfaDB_d} ${DfaDB_r} ${static_DfaDB_d} ${static_DfaDB_r}
@@ -301,8 +302,8 @@ ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 ${DfaDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 
-${Tiger_d} : override LIBS += -lwiredtiger
-${Tiger_r} : override LIBS += -lwiredtiger
+${Tiger_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb -lwiredtiger
+${Tiger_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb -lwiredtiger
 
 ${LeveldbApi_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${LeveldbApi_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
@@ -348,17 +349,24 @@ pkg: ${TerarkDB_d} ${TerarkDB_r} ${LeveldbApi_d} ${LeveldbApi_r}
 	mkdir -p ${TarBall}/include/terark/util
 	mkdir -p ${TarBall}/api/leveldb
 ifeq (${PKG_WITH_DBG},1)
-	cp    ../terark/lib/libterark-fsa_all-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
-	ln -s libterark-fsa_all-${COMPILER}-d${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-d${DLL_SUFFIX}
-	cp    ${TerarkDB_d} ${TarBall}/lib
-	ln -s lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-d${DLL_SUFFIX}
+	#cp -Ppa ../terark/lib/libterark-fsa_all-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/lib/libterark-fsa_all{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	#ln -s libterark-fsa_all-${COMPILER}-d${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-d${DLL_SUFFIX}
+	#cp -Ppa ${TerarkDB_d} ${TarBall}/lib
+	cp -Ppa lib/lib${TerarkDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa lib/lib${DfaDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	-cp -Ppa lib/lib${TrbDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa lib/lib${Tiger_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	#ln -s lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-d${DLL_SUFFIX}
 endif
 	rm -rf vs2015/terark-db/terark-db-schema-compile/{rls,dbg,build}
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
-	cp    ${TerarkDB_r} ${TarBall}/lib
-	cp    ${LeveldbApi_r} ${TarBall}/lib
-	cp    ../terark/lib/libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/lib/libterark-fsa_all{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa lib/lib${TerarkDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa lib/lib${DfaDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	-cp -Ppa lib/lib${TrbDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa lib/lib${Tiger_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
 	cp    src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 	cp    src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
 	cp    src/terark/db/db_index.hpp          ${TarBall}/include/terark/db
@@ -384,9 +392,9 @@ ifeq (${PKG_WITH_DEP},1)
 	cp -r /opt/lib/libboost_date_time*${DLL_SUFFIX}*   ${TarBall}/lib/
 	cp -r /opt/lib/libboost_system*${DLL_SUFFIX}*      ${TarBall}/lib/
 endif
-	ln -s lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-r${DLL_SUFFIX}
-	ln -s lib${LeveldbApi_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${LeveldbApi_lib}-r${DLL_SUFFIX}
-	ln -s libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-r${DLL_SUFFIX}
+	#ln -s lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${TerarkDB_lib}-r${DLL_SUFFIX}
+	#ln -s lib${LeveldbApi_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib/lib${LeveldbApi_lib}-r${DLL_SUFFIX}
+	#ln -s libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX}  ${TarBall}/lib/libterark-fsa_all-r${DLL_SUFFIX}
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
 	tar czf ${TarBall}.tgz ${TarBall}
