@@ -10,7 +10,6 @@
 #include <terark/util/mmap.hpp>
 #include <terark/db/appendonly.hpp>
 #include <terark/db/mock_db_engine.hpp>
-#include <terark/db/wiredtiger/wt_db_segment.hpp>
 #include <terark/db/dfadb/nlt_index.hpp>
 #include <terark/fsa/fsa.hpp>
 #include <terark/int_vector.hpp>

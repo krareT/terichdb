@@ -2270,7 +2270,7 @@ static bool string_equal_nocase(fstring x, fstring y) {
 #endif
 }
 
-llong parseSizeValue(fstring str) {
+TERARK_DB_DLL llong parseSizeValue(fstring str) {
 	char* endp = NULL;
 	llong val = strtoll(str.c_str(), &endp, 10);
 	while (*endp && !isalpha(byte(*endp))) {

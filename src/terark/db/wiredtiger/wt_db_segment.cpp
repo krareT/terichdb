@@ -8,7 +8,7 @@
 #undef max
 
 namespace terark { namespace db {
-	llong parseSizeValue(fstring str); // defined in db_conf.cpp
+	TERARK_DB_DLL llong parseSizeValue(fstring str); // defined in db_conf.cpp
 }}
 
 namespace terark { namespace db { namespace wt {
