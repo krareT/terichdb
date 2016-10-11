@@ -115,8 +115,8 @@ public:
 
 
 TrbWritableStore::TrbWritableStore(PathRef fpath)
-    : m_fp(fixFilePath(fpath).c_str(), "wb")
-    , m_data(256)
+    : m_data(256)
+    , m_fp(fixFilePath(fpath).c_str(), "wb")
 {
     m_fp.disbuf();
     NativeDataInput<InputBuffer> in; in.attach(&m_fp);

@@ -100,20 +100,12 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         }
         bool operator()(size_type left, size_type right) const
         {
-            auto left_key = storage.key(left);
-            auto right_key = storage.key(right);
-            if(left_key < right_key)
-            {
-                return true;
-            }
-            else if(right_key < left_key)
-            {
-                return false;
-            }
-            else
+            int c = fstring_func::compare3()(storage.key(left), storage.key(right));
+            if(c == 0)
             {
                 return left > right;
             }
+            return c < 0;
         }
         bool operator()(fstring const &left, size_type right) const
         {
@@ -122,6 +114,31 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         bool operator()(size_type left, fstring const &right) const
         {
             return storage.key(left) < right;
+        }
+        int compare(fstring left, fstring right) const
+        {
+            return fstring_func::compare3()(left, right);
+        }
+        int compare(size_type left, size_type right) const
+        {
+            int c = fstring_func::compare3()(storage.key(left), storage.key(right));
+            if(c == 0)
+            {
+                if(left == right)
+                {
+                    return 0;
+                }
+                return left > right ? -1 : 1;
+            }
+            return c;
+        }
+        int compare(fstring const &left, size_type right) const
+        {
+            return fstring_func::compare3()(left, storage.key(right));
+        }
+        int compare(size_type left, fstring const &right) const
+        {
+            return fstring_func::compare3()(storage.key(left), right);
         }
         Storage const &storage;
     };
@@ -244,7 +261,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         {
             byte const *ptr;
             load_var_uint32(data.at<data_object>(index[i].offset).data, &ptr);
-            return end_ptr;
+            return ptr;
         }
         size_type key_len(size_type i) const
         {
@@ -282,6 +299,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                                                       Compare{*this}
                 );
             }
+            assert(node(i).is_empty());
             byte len_data[8];
             byte *end_ptr = save_var_uint32(len_data, uint32_t(d.size()));
             size_type len_len = size_type(end_ptr - len_data);
@@ -295,23 +313,6 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                                     mutable_deref_node(*this),
                                     i
             );
-            size_type c;
-            if(false
-               || (
-                   i != root.get_most_left(const_deref_node(*this))
-                   &&
-                   !Compare{*this}(c = threaded_rb_tree_move_prev(i, const_deref_node(*this)), i)
-                   )
-               || (
-                   i != root.get_most_right(const_deref_node(*this))
-                   &&
-                   !Compare{*this}(i, c = threaded_rb_tree_move_next(i, const_deref_node(*this)))
-                   )
-               )
-            {
-                data.sfree(index[i].offset, dst_len);
-                index[i].offset = index[c].offset;
-            }
             total += d.size();
             return true;
         }
@@ -488,16 +489,19 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             if(terark_unlikely(node(i).is_used()))
             {
                 remove<Compare>(i);
-                threaded_rb_tree_find_path_for_unique(root,
-                                                      stack,
-                                                      const_deref_node(*this),
-                                                      d,
-                                                      deref_key(*this),
-                                                      Compare{*this}
+                std::memcpy(data.data() + i * key_length, d.data(), d.size());
+                threaded_rb_tree_find_path_for_multi(root,
+                                                     stack,
+                                                     const_deref_node(*this),
+                                                     i,
+                                                     Compare{*this}
                 );
             }
+            else
+            {
+                std::memcpy(data.data() + i * key_length, d.data(), d.size());
+            }
             assert(node(i).is_empty());
-            std::memcpy(data.data() + i * key_length, d.data(), d.size());
             threaded_rb_tree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
@@ -640,20 +644,23 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             {
                 index.resize((i + 1) * element_length, 0xFFU);
             }
+            element_type *ptr = reinterpret_cast<element_type *>(index.data() + i * element_length);
             if(terark_unlikely(node(i).is_used()))
             {
                 remove<Compare>(i);
-                threaded_rb_tree_find_path_for_unique(root,
-                                                      stack,
-                                                      const_deref_node(*this),
-                                                      d,
-                                                      deref_key(*this),
-                                                      Compare{*this}
+                std::memcpy(ptr->data, d.data(), d.size());
+                threaded_rb_tree_find_path_for_multi(root,
+                                                     stack,
+                                                     const_deref_node(*this),
+                                                     i,
+                                                     Compare{*this}
                 );
             }
+            else
+            {
+                std::memcpy(ptr->data, d.data(), d.size());
+            }
             assert(node(i).is_empty());
-            element_type *ptr = reinterpret_cast<element_type *>(index.data() + i * element_length);
-            std::memcpy(ptr->data, d.data(), d.size());
             threaded_rb_tree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
@@ -732,8 +739,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     };
 
     typedef typename std::conditional<Fixed::value
-        || std::is_floating_point<Key>::value
-        || std::is_integral<Key>::value
+        || std::is_arithmetic<Key>::value
         , std::true_type
         , std::false_type
     >::type fixed_type;
@@ -745,9 +751,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         , fixed_storage_type
         >::type
     >::type storage_type;
-    typedef typename std::conditional<false
-        || std::is_floating_point<Key>::value
-        || std::is_integral<Key>::value
+    typedef typename std::conditional<
+        std::is_arithmetic<Key>::value
         , numeric_key_compare_type<storage_type>
         , normal_key_compare_type<storage_type>
     >::type key_compare_type;
@@ -766,8 +771,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
 
 public:
     explicit TrbWritableIndexTemplate(PathRef fpath, size_type fixedLen, bool isUnique)
-        : m_fp(fixFilePath(fpath).c_str(), "wb")
-        , m_storage(fixedLen)
+        : m_storage(fixedLen)
+        , m_fp(fixFilePath(fpath).c_str(), "wb")
     {
         ReadableIndex::m_isUnique = isUnique;
 
@@ -790,7 +795,7 @@ public:
                 if((index_remove_replace & 0xC0000000U) == 0)
                 {
                     in >> key;
-                    m_storage.store_cover<key_compare_type>(index_remove_replace, key);
+                    m_storage.template store_cover<key_compare_type>(index_remove_replace, key);
                 }
                 else if(index_remove_replace & 0x40000000U)
                 {
@@ -801,13 +806,13 @@ public:
                     }
                     //TODO check replace exists !!!
                     fstring move_key = m_storage.key(replace);
-                    m_storage.store_cover<key_compare_type>(index_remove_replace & 0x3FFFFFFFU, move_key);
-                    m_storage.remove<key_compare_type>(replace);
+                    m_storage.template store_cover<key_compare_type>(index_remove_replace & 0x3FFFFFFFU, move_key);
+                    m_storage.template remove<key_compare_type>(replace);
                 }
                 else if(index_remove_replace & 0x80000000U)
                 {
                     //TODO check index exists !!!
-                    m_storage.remove<key_compare_type>(index_remove_replace & 0x3FFFFFFFU);
+                    m_storage.template remove<key_compare_type>(index_remove_replace & 0x3FFFFFFFU);
                 }
                 else
                 {
@@ -824,69 +829,67 @@ public:
     void save(PathRef) const override
     {
         //nothing todo ...
-        assert(false);
     }
     void load(PathRef) override
     {
         //nothing todo ...
-        assert(false);
     }
 
-    IndexIterator* ReadableIndex::createIndexIterForward(DbContext*) const override
+    IndexIterator* createIndexIterForward(DbContext*) const override
     {
         return new TrbIndexIterForward<Key, Fixed>(this, ReadableIndex::m_isUnique);
     }
-    IndexIterator* ReadableIndex::createIndexIterBackward(DbContext*) const override
+    IndexIterator* createIndexIterBackward(DbContext*) const override
     {
         return new TrbIndexIterBackward<Key, Fixed>(this, ReadableIndex::m_isUnique);
     }
 
-    llong ReadableIndex::indexStorageSize() const override
+    llong indexStorageSize() const override
     {
         return m_storage.memory_size();
     }
 
-    bool WritableIndex::remove(fstring key, llong id, DbContext*) override
+    bool remove(fstring key, llong id, DbContext*) override
     {
         assert(m_storage.key(id) == key);
-        m_storage.remove<key_compare_type>(id);
+        m_storage.template remove<key_compare_type>(id);
         m_out << (uint32_t(id) | 0x80000000U);
         m_out.flush();
         return true;
     }
-    bool WritableIndex::insert(fstring key, llong id, DbContext*) override
+    bool insert(fstring key, llong id, DbContext*) override
     {
         if(m_isUnique)
         {
-            if(!m_storage.store_check<key_compare_type>(id, key))
+            if(!m_storage.template store_check<key_compare_type>(id, key))
             {
                 return false;
             }
         }
         else
         {
-            m_storage.store_cover<key_compare_type>(id, key);
+            m_storage.template store_cover<key_compare_type>(id, key);
         }
         m_out << uint32_t(id) << key;
         m_out.flush();
         return true;
     }
-    bool WritableIndex::replace(fstring key, llong oldId, llong newId, DbContext*) override
+    bool replace(fstring key, llong oldId, llong newId, DbContext*) override
     {
         assert(key == m_storage.key(oldId));
-        m_storage.store_cover<key_compare_type>(newId, key);
-        m_storage.remove<key_compare_type>(oldId);
+        m_storage.template store_cover<key_compare_type>(newId, key);
+        m_storage.template remove<key_compare_type>(oldId);
         m_out << uint32_t(newId) << uint32_t(oldId);
         m_out.flush();
         return true;
     }
 
-    void WritableIndex::clear() override
+    void clear() override
     {
         m_storage.clear();
     }
 
-    void ReadableIndex::searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override
+    void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override
     {
         size_type lower, upper;
         threaded_rb_tree_equal_range(m_storage.root,
@@ -905,73 +908,73 @@ public:
     }
 
 
-    llong ReadableStore::dataStorageSize() const override
+    llong dataStorageSize() const override
     {
         return m_storage.memory_size();
     }
-    llong ReadableStore::dataInflateSize() const override
+    llong dataInflateSize() const override
     {
         return m_storage.total_length();
     }
-    llong ReadableStore::numDataRows() const override
+    llong numDataRows() const override
     {
         return m_storage.max_index();
     }
-    void ReadableStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const override
+    void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override
     {
         fstring key = m_storage.key(size_t(id));
         val->append(key.begin(), key.end());
     }
 
-    StoreIterator* ReadableStore::createStoreIterForward(DbContext*) const override
+    StoreIterator* createStoreIterForward(DbContext*) const override
     {
         return new TrbIndexStoreIterForward<Key, Fixed>(this);
     }
-    StoreIterator* ReadableStore::createStoreIterBackward(DbContext*) const override
+    StoreIterator* createStoreIterBackward(DbContext*) const override
     {
         return new TrbIndexStoreIterBackward<Key, Fixed>(this);
     }
 
-    llong WritableStore::append(fstring row, DbContext*) override
+    llong append(fstring row, DbContext*) override
     {
         size_t id = m_storage.max_index();
         if(m_isUnique)
         {
-            bool success = m_storage.store_check<key_compare_type>(id, row);
+            bool success = m_storage.template store_check<key_compare_type>(id, row);
             assert(success);
             (void)success;
         }
         else
         {
-            m_storage.store_cover<key_compare_type>(id, row);
+            m_storage.template store_cover<key_compare_type>(id, row);
         }
         m_out << uint32_t(id) << row;
         m_out.flush();
         return llong(id);
     }
-    void WritableStore::update(llong id, fstring row, DbContext*) override
+    void update(llong id, fstring row, DbContext*) override
     {
         if(m_isUnique)
         {
-            bool success = m_storage.store_check<key_compare_type>(id, row);
+            bool success = m_storage.template store_check<key_compare_type>(id, row);
             assert(success);
             (void)success;
         }
         else
         {
-            m_storage.store_cover<key_compare_type>(id, row);
+            m_storage.template store_cover<key_compare_type>(id, row);
         }
         m_out << uint32_t(id) << row;
         m_out.flush();
     }
-    void WritableStore::remove(llong id, DbContext*) override
+    void remove(llong id, DbContext*) override
     {
-        m_storage.remove<key_compare_type>(id);
+        m_storage.template remove<key_compare_type>(id);
         m_out << (uint32_t(id) | 0x80000000U);
         m_out.flush();
     }
 
-    void AppendableStore::shrinkToFit() override
+    void shrinkToFit() override
     {
         m_storage.shrink_to_fit();
     }
@@ -1047,7 +1050,7 @@ public:
                                              owner_t::const_deref_node(o->m_storage),
                                              key,
                                              owner_t::deref_key(o->m_storage),
-                                             owner_t::key_compare_type{o->m_storage}
+                                             typename owner_t::key_compare_type{o->m_storage}
         );
         if(where != owner_t::node_type::nil_sentinel)
         {
@@ -1055,7 +1058,7 @@ public:
             *id = where;
             retKey->assign(storage_key.begin(), storage_key.end());
             where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
-            if(owner_t::key_compare_type{o->m_storage}(storage_key, key))
+            if(typename owner_t::key_compare_type{o->m_storage}(storage_key, key))
             {
                 return 1;
             }
@@ -1073,7 +1076,7 @@ public:
                                              owner_t::const_deref_node(o->m_storage),
                                              key,
                                              owner_t::deref_key(o->m_storage),
-                                             owner_t::key_compare_type{o->m_storage}
+                                             typename owner_t::key_compare_type{o->m_storage}
         );
         if(where != owner_t::node_type::nil_sentinel)
         {
@@ -1132,7 +1135,7 @@ public:
                                                      owner_t::const_deref_node(o->m_storage),
                                                      key,
                                                      owner_t::deref_key(o->m_storage),
-                                                     owner_t::key_compare_type{o->m_storage}
+                                                     typename owner_t::key_compare_type{o->m_storage}
         );
         if(where != owner_t::node_type::nil_sentinel)
         {
@@ -1140,7 +1143,7 @@ public:
             *id = where;
             retKey->assign(storage_key.begin(), storage_key.end());
             where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
-            if(owner_t::key_compare_type{o->m_storage}(key, storage_key))
+            if(typename owner_t::key_compare_type{o->m_storage}(key, storage_key))
             {
                 return 1;
             }
@@ -1158,7 +1161,7 @@ public:
                                                      owner_t::const_deref_node(o->m_storage),
                                                      key,
                                                      owner_t::deref_key(o->m_storage),
-                                                     owner_t::key_compare_type{o->m_storage}
+                                                     typename owner_t::key_compare_type{o->m_storage}
         );
         if(where != owner_t::node_type::nil_sentinel)
         {
@@ -1277,7 +1280,7 @@ TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema, PathRef fp
     {
         ColumnMeta cm = schema.getColumnMeta(0);
 #define CASE_COL_TYPE(Enum, Type) \
-		case ColumnType::Enum: return new TrbWritableIndexTemplate<Type, std::false_type>(fpath, schema.getFixedRowLen(), schema.m_isUnique);
+    case ColumnType::Enum: return new TrbWritableIndexTemplate<Type, std::false_type>(fpath, schema.getFixedRowLen(), schema.m_isUnique);
         //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         switch(cm.type)
         {
