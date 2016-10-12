@@ -1070,17 +1070,4 @@ MockWritableSegment::createIndex(const Schema& schema, PathRef) const {
 	return new MockWritableIndex<std::string>(schema.m_isUnique);
 }
 
-///////////////////////////////////////////////////////////////////////////
-
-MockDbContext::MockDbContext(const DbTable* tab) : DbContext(tab) {
-}
-MockDbContext::~MockDbContext() {
-}
-
-DbContext* MockDbTable::createDbContextNoLock() const {
-	return new MockDbContext(this);
-}
-
-TERARK_DB_REGISTER_TABLE_CLASS(MockDbTable);
-
 } } // namespace terark::db

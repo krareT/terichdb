@@ -51,9 +51,6 @@
     <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_segment.hpp">
       <Filter>Header Files\terark\db\dfadb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_table.hpp">
-      <Filter>Header Files\terark\db\dfadb</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -69,9 +66,6 @@
       <Filter>Source Files\terark\db\dfadb</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_segment.cpp">
-      <Filter>Source Files\terark\db\dfadb</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_table.cpp">
       <Filter>Source Files\terark\db\dfadb</Filter>
     </ClCompile>
   </ItemGroup>

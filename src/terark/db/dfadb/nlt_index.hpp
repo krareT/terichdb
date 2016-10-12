@@ -39,7 +39,7 @@ public:
 	void load(PathRef path) override;
 	void save(PathRef path) const override;
 
-	bool matchRegexAppend(BaseDFA* regexDFA, valvec<llong>* recIdvec, DbContext*) const;
+	bool matchRegexAppend(RegexForIndex* regex, valvec<llong>* recIdvec, DbContext*) const override;
 
 protected:
 	struct FileHeader;

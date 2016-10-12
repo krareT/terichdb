@@ -3,6 +3,31 @@
 
 namespace terark { namespace db {
 
+RegexForIndex::RegexForIndex() {}
+RegexForIndex::~RegexForIndex() {}
+
+static hash_strmap<RegexForIndex::Factory>& g_getFactroyMap() {
+	static hash_strmap<RegexForIndex::Factory> map;
+	return map;
+}
+RegexForIndex::
+RegisterFactory::RegisterFactory(fstring clazz, Factory factory) {
+	auto& map = g_getFactroyMap();
+	auto ib = map.insert_i(clazz, factory);
+	if (!ib.second) {
+		THROW_STD(invalid_argument, "duplicate class: %s", clazz.c_str());
+	}
+}
+RegexForIndex*
+RegexForIndex::create(fstring clazz, fstring regex, fstring opt) {
+	auto& map = g_getFactroyMap();
+	size_t idx = map.find_i(clazz);
+	if  (idx >= map.end_i()) {
+		THROW_STD(invalid_argument, "not found class: %s", clazz.c_str());
+	}
+	return map.val(idx)(regex, opt);
+}
+
 ReadableIndex::ReadableIndex()
   : m_isOrdered(false)
   , m_isUnique(false)
@@ -23,6 +48,13 @@ IndexIterator* ReadableIndex::createIndexIterBackward(DbContext*) const {
 	// unordered index is not required to implement this method
 	assert(m_isOrdered);
 	return nullptr;
+}
+
+bool ReadableIndex::matchRegexAppend(RegexForIndex* regex,
+									 valvec<llong>* recIdvec, DbContext*)
+const {
+	// not supported
+	return false;
 }
 
 void ReadableIndex::encodeIndexKey(const Schema& schema, valvec<byte>& key) const {

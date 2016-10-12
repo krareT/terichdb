@@ -41,6 +41,28 @@ public:
 };
 typedef boost::intrusive_ptr<IndexIterator> IndexIteratorPtr;
 
+class TERARK_DB_DLL RegexForIndex : public RefCounter {
+	TERARK_DB_NON_COPYABLE_CLASS(RegexForIndex);
+public:
+	typedef RegexForIndex* (*Factory)(fstring regex, fstring opt);
+	struct TERARK_DB_DLL RegisterFactory {
+		RegisterFactory(fstring clazz, Factory);
+	};
+#define REGISTER_RegexForIndex_Ex(name, clazz) \
+	static RegexForIndex::RegisterFactory s_reg##name(#name, \
+		[](fstring regex, fstring opt) -> RegexForIndex* { \
+			return new clazz(regex, opt); \
+		})
+#define REGISTER_RegexForIndex(clazz) REGISTER_RegexForIndex_Ex(clazz, clazz)
+
+	RegexForIndex();
+	virtual ~RegexForIndex();
+	virtual bool matchText(fstring text) = 0;
+	static
+	RegexForIndex* create(fstring clazz, fstring regex, fstring opt);
+};
+typedef boost::intrusive_ptr<RegexForIndex> RegexForIndexPtr;
+
 class TERARK_DB_DLL ReadableIndex : virtual public Permanentable {
 	TERARK_DB_NON_COPYABLE_CLASS(ReadableIndex);
 protected:
@@ -63,6 +85,8 @@ public:
 	}
 	virtual void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const = 0;
 	///@}
+
+	virtual bool matchRegexAppend(RegexForIndex* regex, valvec<llong>* recIdvec, DbContext*) const;
 
 	///@{ ordered index only
 	virtual void encodeIndexKey(const Schema&, valvec<byte>& key) const;

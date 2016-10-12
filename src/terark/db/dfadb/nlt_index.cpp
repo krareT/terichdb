@@ -1,8 +1,16 @@
 #include "nlt_index.hpp"
-#include "dfadb_table.hpp"
 #include <terark/io/FileStream.hpp>
 #include <terark/io/DataIO.hpp>
 #include <terark/util/mmap.hpp>
+
+#undef min
+#undef max
+#include <terark/fsa/create_regex_dfa.hpp>
+#include <terark/fsa/dense_dfa.hpp>
+#include <terark/num_to_str.hpp>
+#include <terark/int_vector.hpp>
+#include <terark/rank_select.hpp>
+#include <terark/fsa/nest_trie_dawg.hpp>
 
 namespace terark { namespace db { namespace dfadb {
 
@@ -608,11 +616,42 @@ IndexIterator* NestLoudsTrieIndex::createIndexIterBackward(DbContext*) const {
 		return new DupableIndexIterBackward(this);
 }
 
-bool NestLoudsTrieIndex::matchRegexAppend(BaseDFA* regexDFA,
+class AdapterRegexDFA : public DenseDFA_uint32_320 {
+public:
+	typedef AdapterRegexDFA MyType;
+#include <terark/fsa/ppi/match_path.hpp>
+};
+class DfaDB_RegexForIndex : public RegexForIndex {
+public:
+	DfaDB_RegexForIndex(fstring regex, fstring opt) {
+		std::unique_ptr<BaseDFA> baseDfa(create_regex_dfa(regex, opt));
+		auto dd = dynamic_cast<DenseDFA_uint32_320*>(baseDfa.get());
+		if (!dd) {
+			assert(false);
+			THROW_STD(logic_error,
+				"create_regex_dfa must returns a DenseDFA_uint32_320");
+		}
+		m_dfa.reset(static_cast<AdapterRegexDFA*>(dd));
+		baseDfa.release();
+	}
+	bool matchText(fstring text) override {
+		return m_dfa->first_mismatch_pos(text) == text.size();
+	}
+	std::unique_ptr<AdapterRegexDFA> m_dfa;
+};
+REGISTER_RegexForIndex(DfaDB_RegexForIndex);
+REGISTER_RegexForIndex_Ex(DfaDB, DfaDB_RegexForIndex);
+
+bool NestLoudsTrieIndex::matchRegexAppend(RegexForIndex* regex,
 										  valvec<llong>* recIdvec,
 										  DbContext* ctx) const {
+	assert(NULL != regex);
+	auto myRegex = dynamic_cast<DfaDB_RegexForIndex*>(regex);
+	if (!myRegex) {
+		THROW_STD(invalid_argument, "regex is not a DfaDB_RegexForIndex");
+	}
 	valvec<size_t> matchStates;
-	if (!m_dfa->match_dfa(initial_state, *regexDFA,
+	if (!m_dfa->match_dfa(initial_state, *myRegex->m_dfa,
 						  &matchStates, ctx->regexMatchMemLimit)) {
 		return false;
 	}

@@ -172,7 +172,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_segment.hpp" />
-    <ClInclude Include="..\..\..\src\terark\db\dfadb\dfadb_table.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_index.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\dfadb\nlt_store.hpp" />
     <ClInclude Include="stdafx.h" />
@@ -180,7 +179,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_segment.cpp" />
-    <ClCompile Include="..\..\..\src\terark\db\dfadb\dfadb_table.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_index.cpp" />
     <ClCompile Include="..\..\..\src\terark\db\dfadb\nlt_store.cpp" />
     <ClCompile Include="dllmain.cpp">

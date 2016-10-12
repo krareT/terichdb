@@ -73,15 +73,6 @@ public:
 	DbTable();
 	~DbTable();
 
-	struct TERARK_DB_DLL RegisterTableClass {
-		RegisterTableClass(fstring clazz, const std::function<DbTable*()>& f);
-	};
-#define TERARK_DB_REGISTER_TABLE_CLASS(TableClass) \
-	static DbTable::RegisterTableClass \
-		regTable_##TableClass(#TableClass, [](){ return new TableClass(); });
-
-	static DbTable* createTable(fstring tableClass);
-
 	static DbTable* open(PathRef dbPath);
 
 	void load(PathRef dir) override;
@@ -90,7 +81,7 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	DbContext* createDbContext() const;
-	virtual DbContext* createDbContextNoLock() const = 0;
+	virtual DbContext* createDbContextNoLock() const;
 
 	llong existingRows(DbContext* = NULL) const;
 
@@ -167,8 +158,7 @@ public:
 	void indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext*) const;
 	bool indexKeyExistsNoLock(size_t indexId, fstring key, DbContext*) const;
 
-	virtual	bool indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec, DbContext*) const;
-	virtual	bool indexMatchRegex(size_t indexId, fstring  regexStr, fstring regexOptions, valvec<llong>* recIdvec, DbContext*) const;
+	bool indexMatchRegex(size_t indexId, RegexForIndex*, valvec<llong>* recIdvec, DbContext*) const;
 
 	bool indexInsert(size_t indexId, fstring indexKey, llong id, DbContext*);
 	bool indexRemove(size_t indexId, fstring indexKey, llong id, DbContext*);
@@ -435,12 +425,8 @@ DbContext::indexKeyExistsNoLock(size_t indexId, fstring key) {
 	return m_tab->indexKeyExistsNoLock(indexId, key, this);
 }
 inline bool
-DbContext::indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec) {
-	return m_tab->indexMatchRegex(indexId, regexDFA, recIdvec, this);
-}
-inline bool
-DbContext::indexMatchRegex(size_t indexId, fstring  regexStr, fstring regexOptions, valvec<llong>* recIdvec) {
-	return m_tab->indexMatchRegex(indexId, regexStr, regexOptions, recIdvec, this);
+DbContext::indexMatchRegex(size_t indexId, RegexForIndex* regex, valvec<llong>* recIdvec) {
+	return m_tab->indexMatchRegex(indexId, regex, recIdvec, this);
 }
 
 inline void

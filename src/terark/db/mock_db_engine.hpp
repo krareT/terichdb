@@ -147,16 +147,6 @@ protected:
 	ReadableIndex* openIndex(const Schema&, PathRef) const override;
 };
 
-class TERARK_DB_DLL MockDbContext : public DbContext {
-public:
-	explicit MockDbContext(const DbTable* tab);
-	~MockDbContext();
-};
-class TERARK_DB_DLL MockDbTable : public DbTable {
-public:
-	DbContext* createDbContextNoLock() const override;
-};
-
 } } // namespace terark::db
 
 #endif // __terark_db_mock_db_index_hpp__

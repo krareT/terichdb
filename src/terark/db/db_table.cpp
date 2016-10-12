@@ -52,7 +52,7 @@ DbTable* DbTable::open(PathRef dbPath) {
 	fs::path jsonFile = dbPath / "dbmeta.json";
 	SchemaConfigPtr sconf = new SchemaConfig();
 	sconf->loadJsonFile(jsonFile.string());
-	std::unique_ptr<DbTable> tab(createTable(sconf->m_tableClass));
+	std::unique_ptr<DbTable> tab(new DbTable());
 	tab->m_schema = sconf;
 	tab->doLoad(dbPath);
 	return tab.release();
@@ -114,43 +114,6 @@ DbTable::~DbTable() {
 	TERARK_RT_assert(m_ctxListHead->m_prev == m_ctxListHead, std::logic_error);
 	delete m_ctxListHead;
 */
-}
-
-// msvc std::function is not memmovable, use SafeCopy
-typedef
-hash_strmap < std::function<DbTable*()>
-			, fstring_func::hash_align
-			, fstring_func::equal_align
-			, ValueInline, SafeCopy
-			>
-TableFactoryType;
-static TableFactoryType& s_getTableFactory() {
-	static TableFactoryType	instance;
-	return instance;
-}
-
-DbTable::RegisterTableClass::RegisterTableClass
-(fstring tableClass, const std::function<DbTable*()>& f)
-{
-	auto ib = s_getTableFactory().insert_i(tableClass, f);
-	assert(ib.second);
-	if (!ib.second) {
-		THROW_STD(invalid_argument, "duplicate suffix: %.*s",
-			tableClass.ilen(), tableClass.data());
-	}
-}
-
-DbTable* DbTable::createTable(fstring tableClass) {
-	auto& s_tableFactory = s_getTableFactory();
-	size_t idx = s_tableFactory.find_i(tableClass);
-	if (idx >= s_tableFactory.end_i()) {
-		THROW_STD(invalid_argument, "tableClass = '%.*s' is not registered",
-			tableClass.ilen(), tableClass.data());
-	}
-	const auto& factory = s_tableFactory.val(idx);
-	DbTable* table = factory();
-	assert(table);
-	return table;
 }
 
 static void tryReduceSymlink(PathRef segDir, PathRef mergeDir) {
@@ -1010,6 +973,10 @@ StoreIterator* DbTable::createStoreIterBackward(DbContext* ctx) const {
 DbContext* DbTable::createDbContext() const {
 	MyRwLock lock(m_rwMutex, false);
 	return this->createDbContextNoLock();
+}
+
+DbContext* DbTable::createDbContextNoLock() const {
+	return new DbContext(this);
 }
 
 llong DbTable::existingRows(DbContext* ctx) const {
@@ -2269,18 +2236,110 @@ const {
 // implemented in DfaDbTable
 ///@params recIdvec result of matched record id list
 bool
-DbTable::indexMatchRegex(size_t indexId, BaseDFA* regexDFA,
-								valvec<llong>* recIdvec, DbContext*)
+DbTable::indexMatchRegex(size_t indexId, RegexForIndex* regex,
+						 valvec<llong>* recIdvec, DbContext* ctx)
 const {
-	THROW_STD(invalid_argument, "Methed is not implemented");
-}
-
-bool
-DbTable::indexMatchRegex(size_t indexId,
-								fstring regexStr, fstring regexOpt,
-								valvec<llong>* recIdvec, DbContext*)
-const {
-	THROW_STD(invalid_argument, "Methed is not implemented");
+	if (indexId >= m_schema->getIndexNum()) {
+		THROW_STD(invalid_argument
+			, "invalid indexId=%zd is not less than indexNum=%zd"
+			, indexId, m_schema->getIndexNum());
+	}
+	const Schema& schema = m_schema->getIndexSchema(indexId);
+	if (schema.columnNum() > 1) {
+		THROW_STD(invalid_argument
+			, "can not MatchRegex on composite indexId=%zd indexName=%s"
+			, indexId, schema.m_name.c_str());
+	}
+	auto& colmeta = schema.getColumnMeta(0);
+	if (!colmeta.isString()) {
+		THROW_STD(invalid_argument
+			, "can not MatchRegex on non-string indexId=%zd indexName=%s"
+			, indexId, schema.m_name.c_str());
+	}
+	ctx->trySyncSegCtxSpeculativeLock(this);
+	recIdvec->erase_all();
+	for (size_t i = 0; i < ctx->m_segCtx.size(); ++i) {
+		auto seg = ctx->m_segCtx[i]->seg;
+		if (seg->getWritableStore()) {
+			if (seg->m_isDel.size() > 0) {
+			  fprintf(stderr
+				, "WARN: segment: %s is a writable segment, can not MatchRegex\n"
+				, getSegPath("wr", i).string().c_str());
+			}
+			continue;
+		}
+		auto index = seg->m_indices[indexId].get();
+		size_t oldsize = recIdvec->size();
+		const llong* deltime = nullptr;
+		const llong  baseId = ctx->m_rowNumVec[i];
+		llong snapshotVersion = ctx->m_mySnapshotVersion;
+		if (seg->m_deletionTime) {
+			assert(nullptr != m_schema->m_snapshotSchema);
+			deltime = (const llong*)(seg->m_deletionTime->getRecordsBasePtr());
+		}
+		if (index->matchRegexAppend(regex, recIdvec, ctx)) {
+			size_t i = oldsize;
+			for(size_t j = oldsize; j < recIdvec->size(); ++j) {
+				size_t subPhysicId = (*recIdvec)[j];
+				size_t subLogicId = seg->getLogicId(subPhysicId);
+				if (deltime) {
+					if (deltime[subPhysicId] > snapshotVersion)
+						(*recIdvec)[i++] = baseId + subLogicId;
+				}
+				else {
+					if (!seg->m_isDel[subLogicId])
+						(*recIdvec)[i++] = baseId + subLogicId;
+				}
+			}
+			recIdvec->risk_set_size(i);
+		}
+		else if (schema.m_enableLinearScan) {
+			fprintf(stderr
+				, "WARN: RegexForIndex match exceeded memory limit(%zd bytes) on index '%s' of segment: '%s', try linear scan...\n"
+				, ctx->regexMatchMemLimit
+				, schema.m_name.c_str(), seg->m_segDir.string().c_str());
+			valvec<byte> key;
+			size_t subPhysicId = 0;
+			size_t subLogicId = 0;
+			size_t subRowsNum = seg->m_isDel.size();
+			boost::intrusive_ptr<SeqReadAppendonlyStore>
+				seqStore(new SeqReadAppendonlyStore(seg->m_segDir, schema));
+			StoreIteratorPtr iter = seqStore->createStoreIterForward(ctx);
+			const bm_uint_t* isDel = seg->m_isDel.bldata();
+			const bm_uint_t* isPurged = seg->m_isPurged.bldata();
+			for (; subLogicId < subRowsNum; subLogicId++) {
+				if (!isPurged || !terark_bit_test(isPurged, subLogicId)) {
+					llong subCheckPhysicId = INT_MAX; // for fail fast
+					bool hasData = iter->increment(&subCheckPhysicId, &key);
+					TERARK_RT_assert(hasData, std::logic_error);
+					TERARK_RT_assert(size_t(subCheckPhysicId) == subPhysicId, std::logic_error);
+					if (deltime) {
+						if (deltime[subPhysicId] > snapshotVersion) {
+							if (regex->matchText(key)) {
+								recIdvec->push_back(baseId + subLogicId);
+							}
+						}
+					}
+					else {
+						if (!terark_bit_test(isDel, subLogicId)) {
+							if (regex->matchText(key)) {
+								recIdvec->push_back(baseId + subLogicId);
+							}
+						}
+					}
+					subPhysicId++;
+				}
+			}
+		}
+		else { // failed because exceeded memory limit
+			// should fallback to use linear scan?
+			fprintf(stderr
+				, "ERROR: RegexMatch exceeded memory limit(%zd bytes) on index '%s' of segment: '%s', and linear scan is not enabled, failed!\n"
+				, ctx->regexMatchMemLimit
+				, schema.m_name.c_str(), seg->m_segDir.string().c_str());
+		}
+	}
+	return true;
 }
 
 bool

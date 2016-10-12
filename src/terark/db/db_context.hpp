@@ -57,8 +57,7 @@ public:
 	void indexSearchExactNoLock(size_t indexId, fstring key, valvec<llong>* recIdvec);
 	bool indexKeyExistsNoLock(size_t indexId, fstring key);
 
-	bool indexMatchRegex(size_t indexId, BaseDFA* regexDFA, valvec<llong>* recIdvec);
-	bool indexMatchRegex(size_t indexId, fstring  regexStr, fstring regexOptions, valvec<llong>* recIdvec);
+	bool indexMatchRegex(size_t indexId, class RegexForIndex*, valvec<llong>* recIdvec);
 
 	void selectColumns(llong id, const valvec<size_t>& cols, valvec<byte>* colsData);
 	void selectColumns(llong id, const size_t* colsId, size_t colsNum, valvec<byte>* colsData);
