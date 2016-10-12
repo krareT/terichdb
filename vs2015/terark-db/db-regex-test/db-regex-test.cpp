@@ -10,7 +10,6 @@
 #include <terark/util/autoclose.hpp>
 #include <terark/util/linebuf.hpp>
 #include <terark/util/profiling.hpp>
-#include <terark/fsa/create_regex_dfa.hpp>
 
 using namespace terark;
 using namespace terark::db;
@@ -26,10 +25,9 @@ struct TestRow {
 		)
 };
 
-void doTest(terark::fstring tableClass, PathRef tableDir, const char* textKeyFile, const char* queryKeyFile) {
+void doTest(PathRef tableDir, const char* textKeyFile, const char* queryKeyFile) {
 	using namespace terark;
-	DbTablePtr tab = DbTable::createTable(tableClass);
-	tab->load(tableDir);
+	DbTablePtr tab = DbTable::open(tableDir);
 	DbContextPtr ctx(tab->createDbContext());
 	LineBuf		 line;
 	valvec<byte> recBuf;
@@ -77,7 +75,7 @@ void doTest(terark::fstring tableClass, PathRef tableDir, const char* textKeyFil
 			continue;
 		}
 		fstring regex(line);
-		std::unique_ptr<BaseDFA> regexDFA(create_regex_dfa(regex, "i"));
+		RegexForIndexPtr regexDFA(RegexForIndex::create("dfadb", regex, "i"));
 		llong t0 = pf.now();
 		tab->indexMatchRegex(0, &*regexDFA, &recIdvec, &*ctx);
 		tt += pf.now() - t0;
@@ -96,7 +94,7 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "usage: %s textKeyFile queryKeyFile\n", argv[0]);
 		return 1;
 	}
-	doTest("DfaDbTable", "dfadb", argv[1], argv[2]);
+	doTest("dfadb", argv[1], argv[2]);
 	DbTable::safeStopAndWaitForCompress();
     return 0;
 }

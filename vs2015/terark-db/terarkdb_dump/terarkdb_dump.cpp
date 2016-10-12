@@ -31,9 +31,8 @@ GetoptDone:
 	const char* dbdir = argv[optind + 0];
 	llong startId = strtoll(argv[optind + 1], NULL, 10);
 	llong cnt = strtoll(argv[optind + 2], NULL, 10);
-	terark::db::DbTablePtr tab = terark::db::DbTable::createTable("DfaDbTable");
+	terark::db::DbTablePtr tab = terark::db::DbTable::open(dbdir);
 	terark::db::DbContextPtr ctx = tab->createDbContext();
-	tab->load(dbdir);
 	terark::valvec<unsigned char> row;
 	size_t colnum = tab->rowSchema().columnNum();
 //	auto tabIndex = tab->createIndexIterForward("_id");
