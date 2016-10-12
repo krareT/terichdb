@@ -341,7 +341,10 @@ ${static_LeveldbApi_r} : $(call objs,LeveldbApi,r)
 
 TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
 .PHONY : pkg
-pkg: ${TerarkDB_d} ${TerarkDB_r} ${LeveldbApi_d} ${LeveldbApi_r}
+pkg: ${TarBall}.tgz
+
+${TarBall}.tgz : ${TerarkDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} \
+				 ${TerarkDB_r} ${LeveldbApi_r} ${DfaDB_r} ${TrbDB_r} ${Tiger_r}
 	rm -rf ${TarBall}
 	mkdir -p ${TarBall}/lib
 	mkdir -p ${TarBall}/bin
