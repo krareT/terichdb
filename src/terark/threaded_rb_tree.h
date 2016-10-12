@@ -390,7 +390,7 @@ struct threaded_rb_tree_stack_t
 
     static mask_type constexpr dir_bit_mask = node_type::flag_bit_mask;
 
-    size_t height;
+    std::size_t height;
     index_type stack[max_depth];
 
     bool is_left(std::size_t k) const
@@ -433,6 +433,27 @@ struct threaded_rb_tree_stack_t
     }
 };
 
+namespace threded_rb_tree_tools
+{
+    template<typename U, typename C, int (U::*)(C const &, C const &) const> struct check_comparator_1;
+    template<typename U, typename C> std::true_type check_comparator(check_comparator_1<U, C, &U::compare> *)
+    {
+        return std::true_type();
+    }
+    template<typename U, typename C, int (U::*)(C, C) const> struct check_comparator_2;
+    template<typename U, typename C> std::true_type check_comparator(check_comparator_2<U, C, &U::compare> *)
+    {
+        return std::true_type();
+    }
+    template<typename U, typename C> static std::false_type check_comparator(...)
+    {
+        return std::false_type();
+    }
+    template<typename U, typename C> struct has_compare : public decltype(check_comparator<U, C>(nullptr))
+    {
+    };
+}
+
 template<class root_t, class comparator_t, class deref_node_t, size_t max_depth>
 void threaded_rb_tree_find_path_for_multi(root_t &root,
                                           threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
@@ -468,6 +489,7 @@ void threaded_rb_tree_find_path_for_multi(root_t &root,
     }
 }
 
+
 template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t, size_t max_depth>
 bool threaded_rb_tree_find_path_for_unique(root_t &root,
                                            threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
@@ -475,6 +497,27 @@ bool threaded_rb_tree_find_path_for_unique(root_t &root,
                                            key_t const &key,
                                            deref_key_t deref_key,
                                            comparator_t comparator
+)
+{
+    typedef typename threded_rb_tree_tools::has_compare<comparator_t, key_t>::type comparator_3way;
+    return threaded_rb_tree_find_path_for_unique(root,
+                                                 stack,
+                                                 deref,
+                                                 key,
+                                                 deref_key,
+                                                 comparator,
+                                                 comparator_3way()
+    );
+}
+
+template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t, size_t max_depth>
+bool threaded_rb_tree_find_path_for_unique(root_t &root,
+                                           threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
+                                           deref_node_t deref,
+                                           key_t const &key,
+                                           deref_key_t deref_key,
+                                           comparator_t comparator,
+                                           std::false_type
 )
 {
     typedef typename root_t::node_type node_type;
@@ -509,12 +552,15 @@ bool threaded_rb_tree_find_path_for_unique(root_t &root,
     return false;
 }
 
-template<class root_t, class comparator_t, class deref_node_t, size_t max_depth>
-bool threaded_rb_tree_find_path_for_remove(root_t &root,
+
+template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t, size_t max_depth>
+bool threaded_rb_tree_find_path_for_unique(root_t &root,
                                            threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
                                            deref_node_t deref,
-                                           std::size_t index,
-                                           comparator_t comparator
+                                           key_t const &key,
+                                           deref_key_t deref_key,
+                                           comparator_t comparator,
+                                           std::true_type
 )
 {
     typedef typename root_t::node_type node_type;
@@ -523,10 +569,10 @@ bool threaded_rb_tree_find_path_for_remove(root_t &root,
     std::size_t p = root.root.root;
     while(p != node_type::nil_sentinel)
     {
-        bool is_left = comparator(index, p);
-        stack.push_index(p, is_left);
-        if(is_left)
+        int c = comparator.compare(key, deref_key(p));
+        if(c < 0)
         {
+            stack.push_index(p, true);
             if(deref(p).left_is_thread())
             {
                 return false;
@@ -535,7 +581,109 @@ bool threaded_rb_tree_find_path_for_remove(root_t &root,
         }
         else
         {
+            stack.push_index(p, false);
+            if(c == 0)
+            {
+                return true;
+            }
+            if(deref(p).right_is_thread())
+            {
+                return false;
+            }
+            p = deref(p).right_get_link();
+        }
+    }
+    return false;
+}
+
+template<class root_t, class comparator_t, class deref_node_t, size_t max_depth>
+bool threaded_rb_tree_find_path_for_remove(root_t &root,
+                                           threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
+                                           deref_node_t deref,
+                                           std::size_t index,
+                                           comparator_t comparator
+)
+{
+    typedef typename threded_rb_tree_tools::has_compare<comparator_t, std::size_t>::type comparator_3way;
+    return threaded_rb_tree_find_path_for_remove(root,
+                                                 stack,
+                                                 deref,
+                                                 index,
+                                                 comparator,
+                                                 comparator_3way()
+    );
+}
+
+template<class root_t, class comparator_t, class deref_node_t, size_t max_depth>
+bool threaded_rb_tree_find_path_for_remove(root_t &root,
+                                           threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
+                                           deref_node_t deref,
+                                           std::size_t index,
+                                           comparator_t comparator,
+                                           std::false_type
+)
+{
+    typedef typename root_t::node_type node_type;
+
+    stack.height = 0;
+    std::size_t p = root.root.root;
+    while(p != node_type::nil_sentinel)
+    {
+        if(comparator(index, p))
+        {
+            stack.push_index(p, true);
+            if(deref(p).left_is_thread())
+            {
+                return false;
+            }
+            p = deref(p).left_get_link();
+        }
+        else
+        {
+            stack.push_index(p, false);
             if(!comparator(p, index))
+            {
+                return true;
+            }
+            if(deref(p).right_is_thread())
+            {
+                return false;
+            }
+            p = deref(p).right_get_link();
+        }
+    }
+    return false;
+}
+
+template<class root_t, class comparator_t, class deref_node_t, size_t max_depth>
+bool threaded_rb_tree_find_path_for_remove(root_t &root,
+                                           threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
+                                           deref_node_t deref,
+                                           std::size_t index,
+                                           comparator_t comparator,
+                                           std::true_type
+)
+{
+    typedef typename root_t::node_type node_type;
+
+    stack.height = 0;
+    std::size_t p = root.root.root;
+    while(p != node_type::nil_sentinel)
+    {
+        int c = comparator.compare(index, p);
+        if(c < 0)
+        {
+            stack.push_index(p, true);
+            if(deref(p).left_is_thread())
+            {
+                return false;
+            }
+            p = deref(p).left_get_link();
+        }
+        else
+        {
+            stack.push_index(p, false);
+            if(c == 0)
             {
                 return true;
             }
@@ -583,6 +731,98 @@ std::size_t threaded_rb_tree_lower_bound(root_t &root,
     return w;
 }
 template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t>
+std::size_t threaded_rb_tree_equal_unique(root_t &root,
+                                          deref_node_t deref,
+                                          key_t const &key,
+                                          deref_key_t deref_key,
+                                          comparator_t comparator
+)
+{
+    typedef typename threded_rb_tree_tools::has_compare<comparator_t, std::size_t>::type comparator_3way;
+    return threaded_rb_tree_equal_unique(root,
+                                         deref,
+                                         key,
+                                         deref_key,
+                                         comparator,
+                                         comparator_3way()
+    );
+}
+template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t>
+std::size_t threaded_rb_tree_equal_unique(root_t &root,
+                                          deref_node_t deref,
+                                          key_t const &key,
+                                          deref_key_t deref_key,
+                                          comparator_t comparator,
+                                          std::false_type
+)
+{
+    typedef typename root_t::node_type node_type;
+
+    std::size_t p = root.root.root;
+    while(p != node_type::nil_sentinel)
+    {
+        if(comparator(deref_key(p), key))
+        {
+            if(deref(p).right_is_thread())
+            {
+                return node_type::nil_sentinel;
+            }
+            p = deref(p).right_get_link();
+        }
+        else
+        {
+            if(!comparator(key, deref_key(p)))
+            {
+                return p;
+            }
+            if(deref(p).left_is_thread())
+            {
+                return node_type::nil_sentinel;
+            }
+            p = deref(p).left_get_link();
+        }
+    }
+    return node_type::nil_sentinel;
+}
+template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t>
+std::size_t threaded_rb_tree_equal_unique(root_t &root,
+                                          deref_node_t deref,
+                                          key_t const &key,
+                                          deref_key_t deref_key,
+                                          comparator_t comparator,
+                                          std::true_type
+)
+{
+    typedef typename root_t::node_type node_type;
+
+    std::size_t p = root.root.root;
+    while(p != node_type::nil_sentinel)
+    {
+        int c = comparator.compare(deref_key(p), key);
+        if(c < 0)
+        {
+            if(deref(p).right_is_thread())
+            {
+                return node_type::nil_sentinel;
+            }
+            p = deref(p).right_get_link();
+        }
+        else
+        {
+            if(c == 0)
+            {
+                return p;
+            }
+            if(deref(p).left_is_thread())
+            {
+                return node_type::nil_sentinel;
+            }
+            p = deref(p).left_get_link();
+        }
+    }
+    return node_type::nil_sentinel;
+}
+template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t>
 std::size_t threaded_rb_tree_reverse_lower_bound(root_t &root,
                                                  deref_node_t deref,
                                                  key_t const &key,
@@ -595,7 +835,7 @@ std::size_t threaded_rb_tree_reverse_lower_bound(root_t &root,
     std::size_t p = root.root.root, w = node_type::nil_sentinel;
     while(p != node_type::nil_sentinel)
     {
-        if(comparator(deref_key(p), key))
+        if(comparator(key, deref_key(p)))
         {
             if(deref(p).left_is_thread())
             {
@@ -662,7 +902,7 @@ std::size_t threaded_rb_tree_reverse_upper_bound(root_t &root,
     std::size_t p = root.root.root, w = node_type::nil_sentinel;
     while(p != node_type::nil_sentinel)
     {
-        if(comparator(key, deref_key(p)))
+        if(comparator(deref_key(p), key))
         {
             w = p;
             if(deref(p).right_is_thread())
@@ -745,6 +985,67 @@ void threaded_rb_tree_equal_range(root_t &root,
     }
 }
 
+template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t>
+void threaded_rb_tree_reverse_equal_range(root_t &root,
+                                  deref_node_t deref,
+                                  key_t const &key,
+                                  deref_key_t deref_key,
+                                  comparator_t comparator,
+                                  std::size_t &lower,
+                                  std::size_t &upper
+                                  )
+{
+    typedef typename root_t::node_type node_type;
+    
+    std::size_t p = root.root.root;
+    lower = node_type::nil_sentinel;
+    upper = node_type::nil_sentinel;
+    while(p != node_type::nil_sentinel)
+    {
+        if(comparator(key, deref_key(p)))
+        {
+            if(deref(p).left_is_thread())
+            {
+                break;
+            }
+            p = deref(p).left_get_link();
+        }
+        else
+        {
+            if(upper == node_type::nil_sentinel && comparator(deref_key(p), key))
+            {
+                upper = p;
+            }
+            lower = p;
+            if(deref(p).right_is_thread())
+            {
+                break;
+            }
+            p = deref(p).right_get_link();
+        }
+    }
+    p = upper == node_type::nil_sentinel ? root.root.root : deref(upper).right_is_child() ? deref(upper).right_get_link() : node_type::nil_sentinel;
+    while(p != node_type::nil_sentinel)
+    {
+        if(comparator(deref_key(p), key))
+        {
+            upper = p;
+            if(deref(p).right_is_thread())
+            {
+                break;
+            }
+            p = deref(p).right_get_link();
+        }
+        else
+        {
+            if(deref(p).left_is_thread())
+            {
+                break;
+            }
+            p = deref(p).left_get_link();
+        }
+    }
+}
 template<class root_t, class dereference_t, size_t max_depth>
 void threaded_rb_tree_insert(root_t &root,
                              threaded_rb_tree_stack_t<typename root_t::node_type, max_depth> &stack,
@@ -1032,7 +1333,7 @@ void threaded_rb_tree_remove(root_t &root,
         else
         {
             std::size_t s;
-            size_t const j = stack.height - 1;
+            std::size_t const j = stack.height - 1;
             for(++k; ; )
             {
                 stack.update_index(k, r, true);
@@ -1967,28 +2268,60 @@ public:
 
     iterator find(key_type const &key)
     {
-        size_type where = threaded_rb_tree_lower_bound(root_,
-                                                       const_deref_node_t{&root_.container},
-                                                       key,
-                                                       deref_key_t{&root_.container},
-                                                       get_comparator_()
-        );
-        return (where == node_type::nil_sentinel || get_comparator_()(key, get_key_(where))) ?
-                iterator(this, node_type::nil_sentinel) :
-                iterator(this, where);
+        if(config_t::unique_type::value)
+        {
+            return iterator(this,
+                            threaded_rb_tree_equal_unique(root_,
+                                                          const_deref_node_t{&root_.container},
+                                                          key,
+                                                          deref_key_t{&root_.container},
+                                                          get_comparator_()
+                            )
+            );;
+        }
+        else
+        {
+            size_type where = threaded_rb_tree_lower_bound(root_,
+                                                           const_deref_node_t{&root_.container},
+                                                           key,
+                                                           deref_key_t{&root_.container},
+                                                           get_comparator_()
+            );
+            return iterator(this,
+                (where == node_type::nil_sentinel || get_comparator_()(key, get_key_(where)))
+                            ? node_type::nil_sentinel
+                            : where
+            );
+        }
     }
 
     const_iterator find(key_type const &key) const
     {
-        size_type where = threaded_rb_tree_lower_bound(root_,
-                                                       const_deref_node_t{&root_.container},
-                                                       key,
-                                                       deref_key_t{&root_.container},
-                                                       get_comparator_()
-        );
-        return (where == node_type::nil_sentinel || get_comparator_()(key, get_key_(where))) ?
-                const_iterator(this, node_type::nil_sentinel) :
-                const_iterator(this, where);
+        if(config_t::unique_type::value)
+        {
+            return const_iterator(this,
+                                  threaded_rb_tree_equal_unique(root_,
+                                                                const_deref_node_t{&root_.container},
+                                                                key,
+                                                                deref_key_t{&root_.container},
+                                                                get_comparator_()
+                                  )
+            );
+        }
+        else
+        {
+            size_type where = threaded_rb_tree_lower_bound(root_,
+                                                           const_deref_node_t{&root_.container},
+                                                           key,
+                                                           deref_key_t{&root_.container},
+                                                           get_comparator_()
+            );
+            return const_iterator(this,
+                (where == node_type::nil_sentinel || get_comparator_()(key, get_key_(where)))
+                                  ? node_type::nil_sentinel
+                                  : where
+            );
+        };
     }
 
     iterator erase(const_iterator where)
