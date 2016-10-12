@@ -641,6 +641,7 @@ public:
 };
 REGISTER_RegexForIndex(DfaDB_RegexForIndex);
 REGISTER_RegexForIndex_Ex(DfaDB, DfaDB_RegexForIndex);
+REGISTER_RegexForIndex_Ex(dfadb, DfaDB_RegexForIndex);
 
 bool NestLoudsTrieIndex::matchRegexAppend(RegexForIndex* regex,
 										  valvec<llong>* recIdvec,
