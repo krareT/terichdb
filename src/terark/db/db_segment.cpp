@@ -52,12 +52,17 @@ static	SegmentFactory& s_segmentFactory() {
 
 ReadableSegment::
 RegisterSegmentFactory::
-RegisterSegmentFactory(fstring clazz, const SegmentCreator& creator) {
+RegisterSegmentFactory(std::initializer_list<fstring> names, const SegmentCreator& creator) {
 	SegmentFactory& factory = s_segmentFactory();
-	auto ib = factory.insert_i(clazz, creator);
-	assert(ib.second);
-	if (!ib.second) {
-		THROW_STD(invalid_argument, "duplicate segment class: %s", clazz.c_str());
+	fstring clazz = *names.begin();
+	for (fstring name : names) {
+		auto ib = factory.insert_i(name, creator);
+		assert(ib.second);
+		if (!ib.second) {
+			THROW_STD(invalid_argument
+				, "duplicate segment name %s for class: %s"
+				, name.c_str(), clazz.c_str());
+		}
 	}
 }
 

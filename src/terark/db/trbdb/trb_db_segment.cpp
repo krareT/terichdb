@@ -12,7 +12,7 @@
 
 namespace terark { namespace db { namespace trbdb {
 
-TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment);
+TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment, "trbdb", "trb");
 
 class MutexLockTransaction : public DbTransaction
 {

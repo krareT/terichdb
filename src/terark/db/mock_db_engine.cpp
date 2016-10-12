@@ -843,7 +843,7 @@ void MockWritableIndex<Key>::clear() {
 }
 
 ///////////////////////////////////////////////////////////////////////
-TERARK_DB_REGISTER_SEGMENT(MockReadonlySegment);
+TERARK_DB_REGISTER_SEGMENT(MockReadonlySegment, "MockReadonly");
 
 MockReadonlySegment::MockReadonlySegment() {
 }
@@ -915,7 +915,7 @@ buildDictZipStore(const Schema& schema, PathRef segDir, StoreIterator& iter,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-TERARK_DB_REGISTER_SEGMENT(MockWritableSegment);
+TERARK_DB_REGISTER_SEGMENT(MockWritableSegment, "MockWritable");
 
 MockWritableSegment::MockWritableSegment(PathRef dir) {
 	m_segDir = dir;
