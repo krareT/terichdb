@@ -17,7 +17,7 @@ namespace fs = boost::filesystem;
 using namespace terark;
 using namespace terark::db;
 
-namespace terark { namespace db { namespace trb {
+namespace terark { namespace db { namespace trbdb {
 
 template<class Key, class Fixed>
 class TrbIndexIterForward;
@@ -1274,4 +1274,4 @@ TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema, PathRef fp
     }
 }
 
-}}} //namespace terark { namespace db { namespace trb {
+}}} //namespace terark { namespace db { namespace trbdb {
