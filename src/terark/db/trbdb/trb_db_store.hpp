@@ -10,7 +10,7 @@
 #include <terark/mempool.hpp>
 #include <terark/io/var_int.hpp>
 
-namespace terark { namespace db { namespace trb {
+namespace terark { namespace db { namespace trbdb {
 
 class TrbStoreIterForward;
 class TrbStoreIterBackward;

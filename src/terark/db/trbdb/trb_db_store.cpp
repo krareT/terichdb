@@ -14,7 +14,7 @@ namespace fs = boost::filesystem;
 using namespace terark;
 using namespace terark::db;
 
-namespace terark { namespace db { namespace trb {
+namespace terark { namespace db { namespace trbdb {
 
 class TrbStoreIterForward : public StoreIterator
 {
@@ -123,9 +123,6 @@ TrbWritableStore::TrbWritableStore(PathRef fpath)
     uint32_t index_remove;
     std::string key;
 
-
-
-
     try
     {
         while(true)
@@ -196,6 +193,7 @@ bool TrbWritableStore::removeItem(size_type i)
     byte const *ptr = m_data.at<data_object>(m_index[i]).data, *end_ptr;
     size_type len = load_var_uint32(ptr, &end_ptr);
     m_data.sfree(m_index[i], pool_type::align_to(end_ptr - ptr + len));
+    m_index[i] = 0x80000000U;
     return true;
 }
 
@@ -297,4 +295,4 @@ WritableStore *TrbWritableStore::getWritableStore()
     return this;
 }
 
-}}} //namespace terark { namespace db { namespace trb {
+}}} //namespace terark { namespace db { namespace trbdb {

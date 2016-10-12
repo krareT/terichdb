@@ -10,7 +10,7 @@
 #undef max
 
 
-namespace terark { namespace db { namespace trb {
+namespace terark { namespace db { namespace trbdb {
 
 TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment);
 
@@ -278,4 +278,4 @@ llong TrbColgroupSegment::totalStorageSize() const
     }
     return size;
 }
-}}} // namespace terark::db::trb
+}}} // namespace terark::db::trbdb

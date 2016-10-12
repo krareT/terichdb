@@ -4,7 +4,7 @@
 #include <terark/db/db_table.hpp>
 #include <terark/db/db_segment.hpp>
 
-namespace terark { namespace db { namespace trb {
+namespace terark { namespace db { namespace trbdb {
 
 class TERARK_DB_DLL TrbWritableIndex : public ReadableIndex, public WritableIndex, public ReadableStore, public WritableStore {
 public:

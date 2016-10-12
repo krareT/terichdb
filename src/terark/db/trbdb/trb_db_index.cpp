@@ -17,7 +17,7 @@ namespace fs = boost::filesystem;
 using namespace terark;
 using namespace terark::db;
 
-namespace terark { namespace db { namespace trb {
+namespace terark { namespace db { namespace trbdb {
 
 template<class Key, class Fixed>
 class TrbIndexIterForward;
@@ -107,14 +107,6 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             return c < 0;
         }
-        bool operator()(fstring const &left, size_type right) const
-        {
-            return left < storage.key(right);
-        }
-        bool operator()(size_type left, fstring const &right) const
-        {
-            return storage.key(left) < right;
-        }
         int compare(fstring left, fstring right) const
         {
             return fstring_func::compare3()(left, right);
@@ -131,14 +123,6 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 return left > right ? -1 : 1;
             }
             return c;
-        }
-        int compare(fstring const &left, size_type right) const
-        {
-            return fstring_func::compare3()(left, storage.key(right));
-        }
-        int compare(size_type left, fstring const &right) const
-        {
-            return fstring_func::compare3()(storage.key(left), right);
         }
         Storage const &storage;
     };
@@ -181,24 +165,6 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             {
                 return left > right;
             }
-        }
-        bool operator()(fstring const &left, size_type right) const
-        {
-            assert(reinterpret_cast<size_type>(storage.key_ptr(right)) % sizeof(Key) == 0);
-            assert(storage.key_len(right) == sizeof(Key));
-
-            auto right_key = *reinterpret_cast<Key const *>(storage.key_ptr(right));
-
-            return left < right_key;
-        }
-        bool operator()(size_type left, fstring const &right) const
-        {
-            assert(reinterpret_cast<size_type>(storage.key_ptr(left)) % sizeof(Key) == 0);
-            assert(storage.key_len(left) == sizeof(Key));
-
-            auto left_key = *reinterpret_cast<Key const *>(storage.key_ptr(left));
-
-            return left_key < right;
         }
         Storage const &storage;
     };
@@ -1308,4 +1274,4 @@ TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema, PathRef fp
     }
 }
 
-}}} //namespace terark { namespace db { namespace trb {
+}}} //namespace terark { namespace db { namespace trbdb {
