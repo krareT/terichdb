@@ -639,9 +639,7 @@ public:
 	}
 	std::unique_ptr<AdapterRegexDFA> m_dfa;
 };
-REGISTER_RegexForIndex(DfaDB_RegexForIndex);
-REGISTER_RegexForIndex_Ex(DfaDB, DfaDB_RegexForIndex);
-REGISTER_RegexForIndex_Ex(dfadb, DfaDB_RegexForIndex);
+REGISTER_RegexForIndex(DfaDB_RegexForIndex, "DfaDB", "dfadb");
 
 bool NestLoudsTrieIndex::matchRegexAppend(RegexForIndex* regex,
 										  valvec<llong>* recIdvec,

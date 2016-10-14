@@ -11,12 +11,18 @@ static hash_strmap<RegexForIndex::Factory>& g_getFactroyMap() {
 	return map;
 }
 RegexForIndex::
-RegisterFactory::RegisterFactory(fstring clazz, Factory factory) {
+RegisterFactory::RegisterFactory(std::initializer_list<fstring> names, Factory factory) {
 	auto& map = g_getFactroyMap();
-	auto ib = map.insert_i(clazz, factory);
-	if (!ib.second) {
-		THROW_STD(invalid_argument, "duplicate class: %s", clazz.c_str());
-	}
+    fstring clazz = *names.begin();
+    for (fstring name : names) {
+        auto ib = map.insert_i(name, factory);
+        assert(ib.second);
+        if (!ib.second) {
+            THROW_STD(invalid_argument
+                      , "duplicate name %s for class: %s"
+                      , name.c_str(), clazz.c_str());
+        }
+    }
 }
 RegexForIndex*
 RegexForIndex::create(fstring clazz, fstring regex, fstring opt) {

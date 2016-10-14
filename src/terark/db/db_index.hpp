@@ -46,14 +46,14 @@ class TERARK_DB_DLL RegexForIndex : public RefCounter {
 public:
 	typedef RegexForIndex* (*Factory)(fstring regex, fstring opt);
 	struct TERARK_DB_DLL RegisterFactory {
-		RegisterFactory(fstring clazz, Factory);
+		RegisterFactory(std::initializer_list<fstring> names, Factory);
 	};
-#define REGISTER_RegexForIndex_Ex(name, clazz) \
-	static RegexForIndex::RegisterFactory s_reg##name(#name, \
+#define REGISTER_RegexForIndex(Clazz, ...) \
+	static RegexForIndex::RegisterFactory \
+    s_reg##Clazz({#Clazz,##__VA_ARGS__}, \
 		[](fstring regex, fstring opt) -> RegexForIndex* { \
-			return new clazz(regex, opt); \
+			return new Clazz(regex, opt); \
 		})
-#define REGISTER_RegexForIndex(clazz) REGISTER_RegexForIndex_Ex(clazz, clazz)
 
 	RegexForIndex();
 	virtual ~RegexForIndex();
