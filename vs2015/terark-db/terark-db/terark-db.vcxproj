@@ -77,9 +77,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..\..\..\src;..\..\..\api\leveldb\;..\..\..\api\leveldb\leveldb\include;..\..\..\api\leveldb\leveldb;..\..\..\..\terark\src;..\..\..\..\terark\3rdparty\re2;..\..\..\..\boost-home;..\..\..\..\tbb\include;..\..\..\..\wiredtiger-2.8.0;..\..\..\..\mongo\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\wiredtiger-2.8.0;C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
-    <ExecutablePath>C:\osc\wiredtiger-2.8.0;$(ExecutablePath)</ExecutablePath>
+    <IncludePath>..\..\..\src;..\..\..\..\terark\src;..\..\..\..\terark\3rdparty\re2;..\..\..\..\boost-home;..\..\..\..\tbb\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>$(ExecutablePath)</ExecutablePath>
     <TargetName>$(ProjectName)-d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -90,9 +90,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\..\src;..\..\..\api\leveldb\;..\..\..\api\leveldb\leveldb\include;..\..\..\api\leveldb\leveldb;..\..\..\..\terark\src;..\..\..\..\terark\3rdparty\re2;..\..\..\..\boost-home;..\..\..\..\tbb\include;..\..\..\..\wiredtiger-2.8.0;..\..\..\..\mongo\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\wiredtiger-2.8.0;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
-    <ExecutablePath>C:\osc\wiredtiger-2.8.0;$(ExecutablePath)</ExecutablePath>
+    <IncludePath>..\..\..\src;..\..\..\..\terark\src;..\..\..\..\terark\3rdparty\re2;..\..\..\..\boost-home;..\..\..\..\tbb\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>$(ExecutablePath)</ExecutablePath>
     <TargetName>$(ProjectName)-r</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
