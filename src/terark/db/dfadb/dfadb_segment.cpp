@@ -51,9 +51,7 @@ const {
 	if (fixlen) {
 		patchStrVec(indexData, fixlen);
 	}
-	std::unique_ptr<NestLoudsTrieIndex> index(new NestLoudsTrieIndex(schema));
-	index->build(schema, indexData);
-	return index.release();
+	return new NestLoudsTrieIndex(schema, indexData);
 }
 
 ReadableStore*

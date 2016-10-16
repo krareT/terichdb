@@ -19,6 +19,11 @@ NestLoudsTrieIndex::NestLoudsTrieIndex(const Schema& schema) : m_schema(schema) 
 	m_idmapSize = 0;
 	m_dataInflateSize = 0;
 }
+NestLoudsTrieIndex::NestLoudsTrieIndex(const Schema& schema, SortableStrVec& strVec)
+  : NestLoudsTrieIndex(schema)
+{
+	build(strVec);
+}
 NestLoudsTrieIndex::~NestLoudsTrieIndex() {
 	if (m_idmapBase) {
 		m_idToKey.risk_release_ownership();
@@ -112,13 +117,13 @@ StoreIterator* NestLoudsTrieIndex::createStoreIterBackward(DbContext*) const {
 	return nullptr; // not needed
 }
 
-void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
+void NestLoudsTrieIndex::build(SortableStrVec& strVec) {
 	m_dataInflateSize = strVec.str_size();
 	TERARK_IF_DEBUG(SortableStrVec backup = strVec, ;);
 	const size_t rows = strVec.size();
 	NestLoudsTrieConfig conf;
 	conf.initFromEnv();
-	conf.nestLevel = schema.m_nltNestLevel;
+	conf.nestLevel = m_schema.m_nltNestLevel;
 	valvec<uint32_t> idToKey;
 	m_dfa.reset(new NestLoudsTrieDAWG_SE_512());
 	m_dfa->build_with_id(strVec, idToKey, conf);
@@ -187,7 +192,7 @@ void NestLoudsTrieIndex::build(const Schema& schema, SortableStrVec& strVec) {
 		size_t nth = std::find(recIdvec.begin(), recIdvec.end(), id)
 				   - recIdvec.begin();
 		assert(nth < recIdvec.size());
-		if (schema.m_isUnique && !this->m_isUnique) {
+		if (m_schema.m_isUnique && !this->m_isUnique) {
 			if (recIdvec.size() > 1) {
 				rec = rec; // for set break point
 			}
