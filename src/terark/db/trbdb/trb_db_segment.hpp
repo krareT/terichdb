@@ -1,6 +1,9 @@
 #pragma once
 
 #include <mutex>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/DataIO.hpp>
 #include <terark/db/db_segment.hpp>
 
 namespace terark { namespace db { namespace trbdb {
@@ -12,6 +15,8 @@ class TERARK_DB_DLL TrbColgroupSegment : public ColgroupWritableSegment {
 protected:
     friend class MutexLockTransaction;
     std::mutex  m_txnMutex;
+    mutable FileStream m_fp;
+    NativeDataOutput<OutputBuffer> m_out;
 
 public:
 	class TrbDbTransaction; friend class TrbDbTransaction;
@@ -24,6 +29,8 @@ public:
     void save(PathRef path) const override;
 
 protected:
+    static std::string fixFilePath(PathRef);
+
     ReadableIndex *openIndex(const Schema &, PathRef segDir) const override;
     ReadableIndex *createIndex(const Schema &, PathRef segDir) const override;
     ReadableStore *createStore(const Schema &, PathRef segDir) const override;

@@ -4,7 +4,12 @@
 #include "trb_db_context.hpp"
 #include <terark/db/fixed_len_store.hpp>
 #include <terark/num_to_str.hpp>
+#include <terark/util/crc.hpp>
 #include <boost/scope_exit.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/StreamBuffer.hpp>
+#include <terark/io/DataOutput.hpp>
+#include <terark/io/DataIO.hpp>
 
 #undef min
 #undef max
@@ -13,6 +18,57 @@
 namespace terark { namespace db { namespace trbdb {
 
 TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment, "trbdb", "trb");
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+enum class LogAction : unsigned char
+{
+    Store,      //Id, Data
+    Emplace,    //Id, Remove, Data
+    Modify,     //[Id, Remove]
+};
+
+struct CrcUpdate
+{
+    template<class T>
+    static uint32_t update(uint32_t c, ...)
+    {
+        static_assert(sizeof(T) != 0, "wtf ?");
+        return c;
+    }
+    template<class T>
+    static uint32_t update(uint32_t c, valvec<byte> &b, fstring v)
+    {
+        b.append(v.begin(), v.end());
+        return Crc32c_update(c, v.data(), v.size());
+    }
+    template<class T>
+    static uint32_t update(uint32_t c, valvec<byte> &b, valvec<byte> const &v)
+    {
+        b.append(v.begin(), v.end());
+        return Crc32c_update(c, v.data(), v.size());
+    }
+    template<class T, class = typename std::enable_if<std::is_arithmetic<T>::value>::type>
+    static uint32_t update(uint32_t c, valvec<byte> &b, T const &v)
+    {
+        byte const *v_ptr = reinterpret_cast<byte const *>(&v);
+        b.append(v_ptr, v_ptr + sizeof(T));
+        return Crc32c_update(c, &v, sizeof(T));
+    }
+};
+
+template<class ...args_t>
+void WriteLog(NativeDataOutput<OutputBuffer> &out, valvec<byte> &buffer, LogAction action, args_t const &...args)
+{
+    buffer.risk_set_size(0);
+    uint32_t crc;
+    std::initializer_list<uint32_t>{crc = CrcUpdate::update(0, buffer, uint8_t(action)), (crc = CrcUpdate::update<args_t>(crc, buffer, args))...};
+    out << crc << buffer;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 class MutexLockTransaction : public DbTransaction
 {
@@ -102,27 +158,143 @@ TrbColgroupSegment::TrbColgroupSegment()
 
 TrbColgroupSegment::~TrbColgroupSegment()
 {
+    if(m_fp.isOpen())
+    {
+        fclose(m_fp.detach());
+    }
 }
 
 void TrbColgroupSegment::load(PathRef path)
 {
+    FILE *f = fopen(fixFilePath(path).c_str(), "wb");
+    m_fp.attach(f);
+
+    m_fp.disbuf();
+    NativeDataInput<InputBuffer> in(&m_fp);
+    LogAction action;
+    uint32_t crc;
+    uint32_t index;
+    uint32_t remove;
+    valvec<byte> data;
+
+    valvec<byte> buf;
+    ColumnVec cols;
+
+    struct BadLog{};
+
+    try
+    {
+        size_t const colgroups_size = m_colgroups.size();
+        while(true)
+        {
+            in >> crc >> data;
+            if(crc != Crc32c_update(0, data.data(), data.size()))
+            {
+                //TODO crc32 check error !!!
+                throw BadLog();
+            }
+            assert(data.size() >= 1);
+            std::memcpy(&action, data.data(), 1);
+            switch(action)
+            {
+            case LogAction::Store:
+                assert(data.size() >= 5);
+                std::memcpy(&index, data.data() + 1, 4);
+                m_schema->m_rowSchema->parseRow({data.begin() + 5, data.end()}, &cols);
+                for(size_t i = 0; i < colgroups_size; ++i)
+                {
+                    auto &store = m_colgroups[i];
+                    auto &schema = m_schema->getColgroupSchema(i);
+                    schema.selectParent(cols, &buf);
+                    store->getWritableStore()->update(index, buf, nullptr); //TODO ... how to get context ?
+                }
+                break;
+            case LogAction::Emplace:
+                assert(data.size() >= 9);
+                std::memcpy(&index, data.data() + 1, 4);
+                std::memcpy(&remove, data.data() + 5, 4);
+                m_schema->m_rowSchema->parseRow({data.begin() + 9, data.end()}, &cols);
+                for(size_t i = 0; i < colgroups_size; ++i)
+                {
+                    auto &store = m_colgroups[i];
+                    auto &schema = m_schema->getColgroupSchema(i);
+                    schema.selectParent(cols, &buf);
+                    store->getWritableStore()->update(index, buf, nullptr); //TODO ... context & remove ...
+                }
+                break;
+            case LogAction::Modify:
+
+                break;
+            default:
+                //TODO WTF ??
+                throw BadLog();
+            }
+        }
+    }
+    catch(BadLog)
+    {
+    }
+    catch(EndOfFileException const &)
+    {
+    }
+
+    //try
+    //{
+    //    while(true)
+    //    {
+    //        // |   1  |  31 |
+    //        // |remove|index|
+    //        // index_remove_replace
+    //        //     if remove , remove item at index
+    //        //     otherwise , read key , insert or update key at index
+
+    //        in >> index_remove;
+    //        if((index_remove & 0x80000000) == 0)
+    //        {
+    //            in >> key;
+    //            storeItem(index_remove, key);
+    //        }
+    //        else
+    //        {
+    //            //TODO check index exists !!!
+    //            bool success = removeItem(index_remove & 0x7FFFFFFFU);
+    //            if(!success)
+    //            {
+    //                //TODO WTF ? bad storage file +1 ???
+    //            }
+    //        }
+    //    }
+    //}
+    //catch(EndOfFileException const &e)
+    //{
+    //    (void)e;//shut up !
+    //}
+    m_out.attach(&m_fp);
 }
 
 void TrbColgroupSegment::save(PathRef path) const
 {
+    m_fp.flush();
 }
 
-ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef segDir) const
+std::string TrbColgroupSegment::fixFilePath(PathRef path)
 {
-    return TrbWritableIndex::createIndex(schema, segDir / "index-" + schema.m_name);
+    return path.has_filename() && path.filename().string() == fstring("trb.log")
+        ? path.string()
+        : (path / "trb.log").string();
 }
-ReadableIndex *TrbColgroupSegment::createIndex(const Schema &schema, PathRef segDir) const
+
+ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef) const
 {
-    return TrbWritableIndex::createIndex(schema, segDir / "index-" + schema.m_name);
+    return TrbWritableIndex::createIndex(schema);
 }
-ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef segDir) const
+ReadableIndex *TrbColgroupSegment::createIndex(const Schema &schema, PathRef) const
 {
-    return new TrbWritableStore(segDir / "colgroup-" + schema.m_name);
+    return TrbWritableIndex::createIndex(schema);
+}
+ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef) const
+{
+    return new TrbWritableStore();
 }
 
 void TrbColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext *ctx) const
@@ -160,16 +332,24 @@ llong TrbColgroupSegment::append(fstring row, DbContext* ctx)
         }
     }
 #if _DEBUG && !defined(NDEBUG)
-    valvec<byte> check;
     for(size_t i = 0; i < m_indices.size(); ++i)
     {
         auto &store = m_colgroups[i];
         auto &schema = m_schema->getColgroupSchema(i);
         schema.selectParent(ctx->trbCols, &ctx->trbBuf);
-        store->getValue(ret, &check, ctx);
-        assert(check == ctx->trbBuf);
+        size_t size = ctx->trbBuf.size();
+        store->getValueAppend(ret, &ctx->trbBuf, ctx);
+        assert(size * 2 == ctx->trbBuf.size());
+        assert(ctx->trbBuf.size() % 2 == 0);
+        assert(std::mismatch(
+            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2,
+            ctx->trbBuf.end(),
+            ctx->trbBuf.begin(),
+            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2
+        ) == ctx->trbBuf.end());
     }
 #endif
+    WriteLog(m_out, ctx->trbBuf, LogAction::Store, uint32_t(ret), row);
     return ret;
 }
 
@@ -185,16 +365,25 @@ void TrbColgroupSegment::update(llong id, fstring row, DbContext* ctx)
         store->getUpdatableStore()->update(id, ctx->trbBuf, ctx);
     }
 #if _DEBUG && !defined(NDEBUG)
-    valvec<byte> check;
+
     for(size_t i = 0; i < m_indices.size(); ++i)
     {
         auto &store = m_colgroups[i];
         auto &schema = m_schema->getColgroupSchema(i);
         schema.selectParent(ctx->trbCols, &ctx->trbBuf);
-        store->getValue(id, &check, ctx);
-        assert(check == ctx->trbBuf);
+        size_t size = ctx->trbBuf.size();
+        store->getValueAppend(id, &ctx->trbBuf, ctx);
+        assert(size * 2 == ctx->trbBuf.size());
+        assert(ctx->trbBuf.size() % 2 == 0);
+        assert(std::mismatch(
+            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2,
+            ctx->trbBuf.end(),
+            ctx->trbBuf.begin(),
+            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2
+        ) == ctx->trbBuf.end());
     }
 #endif
+    WriteLog(m_out, ctx->trbBuf, LogAction::Store, uint32_t(id), row);
 }
 
 void TrbColgroupSegment::remove(llong id, DbContext* ctx)
@@ -205,6 +394,7 @@ void TrbColgroupSegment::remove(llong id, DbContext* ctx)
         auto &store = m_colgroups[i];
         store->getWritableStore()->remove(id, ctx);
     }
+    WriteLog(m_out, ctx->trbBuf, LogAction::Modify, uint32_t(id), uint32_t(0));
 }
 
 void TrbColgroupSegment::shrinkToFit()
@@ -278,4 +468,5 @@ llong TrbColgroupSegment::totalStorageSize() const
     }
     return size;
 }
+
 }}} // namespace terark::db::trbdb

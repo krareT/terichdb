@@ -114,47 +114,13 @@ public:
 };
 
 
-TrbWritableStore::TrbWritableStore(PathRef fpath)
+TrbWritableStore::TrbWritableStore()
     : m_data(256)
-    , m_fp(fixFilePath(fpath).c_str(), "wb")
 {
-    m_fp.disbuf();
-    NativeDataInput<InputBuffer> in; in.attach(&m_fp);
-    uint32_t index_remove;
-    std::string key;
+}
 
-    try
-    {
-        while(true)
-        {
-            // |   1  |  31 |
-            // |remove|index|
-            // index_remove_replace
-            //     if remove , remove item at index
-            //     otherwise , read key , insert or update key at index
-
-            in >> index_remove;
-            if((index_remove & 0x80000000) == 0)
-            {
-                in >> key;
-                storeItem(index_remove, key);
-            }
-            else
-            {
-                //TODO check index exists !!!
-                bool success = removeItem(index_remove & 0x7FFFFFFFU);
-                if(!success)
-                {
-                    //TODO WTF ? bad storage file +1 ???
-                }
-            }
-        }
-    }
-    catch(EndOfFileException const &e)
-    {
-        (void)e;//shut up !
-    }
-    m_out.attach(&m_fp);
+TrbWritableStore::~TrbWritableStore()
+{
 }
 
 fstring TrbWritableStore::readItem(size_type i) const
@@ -195,17 +161,6 @@ bool TrbWritableStore::removeItem(size_type i)
     m_data.sfree(m_index[i], pool_type::align_to(end_ptr - ptr + len));
     m_index[i] = 0x80000000U;
     return true;
-}
-
-std::string TrbWritableStore::fixFilePath(PathRef path)
-{
-    return fstring(path.string()).endsWith(".trb")
-        ? path.string()
-        : path.string() + ".trb";
-}
-
-TrbWritableStore::~TrbWritableStore()
-{
 }
 
 void TrbWritableStore::save(PathRef) const
@@ -255,23 +210,17 @@ llong TrbWritableStore::append(fstring row, DbContext *)
 {
     size_t id;
     storeItem(id = m_index.size(), row);
-    m_out << uint32_t(id) << row;
-    m_out.flush();
     return id;
 }
 
 void TrbWritableStore::update(llong id, fstring row, DbContext *)
 {
     storeItem(size_t(id), row);
-    m_out << uint32_t(id) << row;
-    m_out.flush();
 }
 
 void TrbWritableStore::remove(llong id, DbContext *)
 {
     removeItem(size_t(id));
-    m_out << (uint32_t(id) | 0x80000000U);
-    m_out.flush();
 }
 
 void TrbWritableStore::shrinkToFit()

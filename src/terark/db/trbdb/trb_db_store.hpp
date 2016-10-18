@@ -2,9 +2,6 @@
 
 #include <terark/db/db_table.hpp>
 #include <terark/util/fstrvec.hpp>
-#include <terark/io/FileStream.hpp>
-#include <terark/io/StreamBuffer.hpp>
-#include <terark/io/DataIO.hpp>
 #include <set>
 #include <tbb/mutex.h>
 #include <terark/mempool.hpp>
@@ -25,20 +22,16 @@ protected:
     };
     valvec<uint32_t> m_index;
     pool_type m_data;
-    FileStream m_fp;
-    NativeDataOutput<OutputBuffer> m_out;
 
     fstring readItem(size_type i) const;
     void storeItem(size_type i, fstring d);
     bool removeItem(size_type i);
 
-    static std::string fixFilePath(PathRef);
-
     friend class TrbStoreIterForward;
     friend class TrbStoreIterBackward;
 
 public:
-    TrbWritableStore(PathRef);
+    TrbWritableStore();
 	~TrbWritableStore();
 
 	void save(PathRef) const override;

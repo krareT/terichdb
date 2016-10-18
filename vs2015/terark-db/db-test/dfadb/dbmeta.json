@@ -2,10 +2,10 @@
 	"RowSchema": {
 		"columns" : {
 			"id"  : { "type" : "uint64" },
-			"fix" : { "type" : "fixed", "length" : 9 },
+			"fix" : { "type" : "fixed", "length" : 20 },
 			"fix2": {
 				"type": "fixed",
-				"length": 10,
+				"length": 20,
 				"colstore": {
 					"inplaceUpdatable": true
 				}
@@ -32,7 +32,7 @@
 	"CompressingWorkMemSize" : "10K",
   "MaxWritingSegmentSize": "20K",
   "//TableClass": "MockDbTable",
-  "//WritableSegmentClass": "TrbColgroupSegment",
+  "WritableSegmentClass": "TrbColgroupSegment",
 	"TableIndex" : [
 		{ "fields": "id"  , "ordered" : true, "unique" : true },
 		{ "fields": "str0", "ordered" : true },

@@ -1,9 +1,6 @@
 #include "trb_db_index.hpp"
 #include "trb_db_context.hpp"
 #include <terark/util/fstrvec.hpp>
-#include <terark/io/FileStream.hpp>
-#include <terark/io/StreamBuffer.hpp>
-#include <terark/io/DataIO.hpp>
 #include <terark/io/var_int.hpp>
 #include <type_traits>
 #include <tbb/mutex.h>
@@ -724,73 +721,12 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     >::type key_compare_type;
 
     storage_type m_storage;
-    FileStream m_fp;
-    NativeDataOutput<OutputBuffer> m_out;
-    mutable SpinRwMutex m_rwMutex;
-
-    static std::string fixFilePath(PathRef fpath)
-    {
-        return fstring(fpath.string()).endsWith(".trb")
-            ? fpath.string()
-            : fpath.string() + ".trb";
-    }
 
 public:
-    explicit TrbWritableIndexTemplate(PathRef fpath, size_type fixedLen, bool isUnique)
+    explicit TrbWritableIndexTemplate(size_type fixedLen, bool isUnique)
         : m_storage(fixedLen)
-        , m_fp(fixFilePath(fpath).c_str(), "wb")
     {
         ReadableIndex::m_isUnique = isUnique;
-
-        m_fp.disbuf();
-        NativeDataInput<InputBuffer> in(&m_fp);
-        uint32_t index_remove_replace, replace;
-        std::string key;
-        try
-        {
-            while(true)
-            {
-                // |   1  |   1   |  30 |
-                // |remove|replace|index|
-                // index_remove_replace
-                //     if replace , read another index , move the key at other to index
-                //     if remove , remove key at index
-                //     otherwise , read key , insert or update key at index
-
-                in >> index_remove_replace;
-                if((index_remove_replace & 0xC0000000U) == 0)
-                {
-                    in >> key;
-                    m_storage.template store_cover<key_compare_type>(index_remove_replace, key);
-                }
-                else if(index_remove_replace & 0x40000000U)
-                {
-                    in >> replace;
-                    if((replace & 0xC0000000U) != 0)
-                    {
-                        //TODO WTF ? bad storage file ???
-                    }
-                    //TODO check replace exists !!!
-                    fstring move_key = m_storage.key(replace);
-                    m_storage.template store_cover<key_compare_type>(index_remove_replace & 0x3FFFFFFFU, move_key);
-                    m_storage.template remove<key_compare_type>(replace);
-                }
-                else if(index_remove_replace & 0x80000000U)
-                {
-                    //TODO check index exists !!!
-                    m_storage.template remove<key_compare_type>(index_remove_replace & 0x3FFFFFFFU);
-                }
-                else
-                {
-                    //TODO WTF ? bad storage file +10086 ???
-                }
-            }
-        }
-        catch(EndOfFileException const &e)
-        {
-            (void)e;//shut up !
-        }
-        m_out.attach(&m_fp);
     }
     void save(PathRef) const override
     {
@@ -819,8 +755,6 @@ public:
     {
         assert(m_storage.key(id) == key);
         m_storage.template remove<key_compare_type>(id);
-        m_out << (uint32_t(id) | 0x80000000U);
-        m_out.flush();
         return true;
     }
     bool insert(fstring key, llong id, DbContext*) override
@@ -836,8 +770,6 @@ public:
         {
             m_storage.template store_cover<key_compare_type>(id, key);
         }
-        m_out << uint32_t(id) << key;
-        m_out.flush();
         return true;
     }
     bool replace(fstring key, llong oldId, llong newId, DbContext*) override
@@ -845,8 +777,6 @@ public:
         assert(key == m_storage.key(oldId));
         m_storage.template store_cover<key_compare_type>(newId, key);
         m_storage.template remove<key_compare_type>(oldId);
-        m_out << uint32_t(newId) << uint32_t(oldId);
-        m_out.flush();
         return true;
     }
 
@@ -914,8 +844,6 @@ public:
         {
             m_storage.template store_cover<key_compare_type>(id, row);
         }
-        m_out << uint32_t(id) << row;
-        m_out.flush();
         return llong(id);
     }
     void update(llong id, fstring row, DbContext*) override
@@ -930,14 +858,10 @@ public:
         {
             m_storage.template store_cover<key_compare_type>(id, row);
         }
-        m_out << uint32_t(id) << row;
-        m_out.flush();
     }
     void remove(llong id, DbContext*) override
     {
         m_storage.template remove<key_compare_type>(id);
-        m_out << (uint32_t(id) | 0x80000000U);
-        m_out.flush();
     }
 
     void shrinkToFit() override
@@ -1240,13 +1164,13 @@ public:
     }
 };
 
-TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema, PathRef fpath)
+TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema)
 {
     if(schema.columnNum() == 1)
     {
         ColumnMeta cm = schema.getColumnMeta(0);
 #define CASE_COL_TYPE(Enum, Type) \
-    case ColumnType::Enum: return new TrbWritableIndexTemplate<Type, std::false_type>(fpath, schema.getFixedRowLen(), schema.m_isUnique);
+    case ColumnType::Enum: return new TrbWritableIndexTemplate<Type, std::false_type>(schema.getFixedRowLen(), schema.m_isUnique);
         //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         switch(cm.type)
         {
@@ -1266,11 +1190,11 @@ TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema, PathRef fp
     }
     if(schema.getFixedRowLen() != 0)
     {
-        return new TrbWritableIndexTemplate<void, std::true_type>(fpath, schema.getFixedRowLen(), schema.m_isUnique);
+        return new TrbWritableIndexTemplate<void, std::true_type>(schema.getFixedRowLen(), schema.m_isUnique);
     }
     else
     {
-        return new TrbWritableIndexTemplate<void, std::false_type>(fpath, schema.getFixedRowLen(), schema.m_isUnique);
+        return new TrbWritableIndexTemplate<void, std::false_type>(schema.getFixedRowLen(), schema.m_isUnique);
     }
 }
 

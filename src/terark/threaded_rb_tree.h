@@ -445,7 +445,7 @@ namespace threded_rb_tree_tools
     {
         return std::true_type();
     }
-    template<typename U, typename C> static std::false_type check_comparator(...)
+    template<typename U, typename C> std::false_type check_comparator(...)
     {
         return std::false_type();
     }
