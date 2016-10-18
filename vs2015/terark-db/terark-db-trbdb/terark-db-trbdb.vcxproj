@@ -77,9 +77,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..\..\..\src;..\..\..\api\leveldb\;..\..\..\api\leveldb\leveldb\include;..\..\..\api\leveldb\leveldb;..\..\..\..\terark\src;..\..\..\..\terark\3rdparty\re2;..\..\..\..\boost-home;..\..\..\..\tbb\include;..\..\..\..\wiredtiger-2.8.0;..\..\..\..\mongo\src;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\src;..\..\..\..\terark\src;..\..\..\..\boost-home;..\..\..\..\tbb\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;C:\osc\terark-db\vs2015\terark-db\x64\Debug;$(LibraryPath)</LibraryPath>
-    <ExecutablePath>C:\osc\wiredtiger-2.8.0;$(ExecutablePath)</ExecutablePath>
+    <ExecutablePath>$(ExecutablePath)</ExecutablePath>
     <TargetName>$(ProjectName)-d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -90,9 +90,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\..\src;..\..\..\api\leveldb\;..\..\..\api\leveldb\leveldb\include;..\..\..\api\leveldb\leveldb;..\..\..\..\terark\src;..\..\..\..\terark\3rdparty\re2;..\..\..\..\boost-home;..\..\..\..\tbb\include;..\..\..\..\wiredtiger-2.8.0;..\..\..\..\mongo\src;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\osc\boost-home\stage\lib;C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\terark-db\vs2015\terark-db\x64\Release;$(LibraryPath)</LibraryPath>
-    <ExecutablePath>C:\osc\wiredtiger-2.8.0;$(ExecutablePath)</ExecutablePath>
+    <IncludePath>..\..\..\src;..\..\..\..\terark\src;..\..\..\..\boost-home;..\..\..\..\tbb\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\boost-home\stage\lib;C:\osc\terark-db\vs2015\terark-db\x64\Release;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>$(ExecutablePath)</ExecutablePath>
     <TargetName>$(ProjectName)-r</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -123,7 +123,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>tbb_debug.lib;terark-fsa-d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>terark-fsa-d.lib;tbb_debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -164,7 +164,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>tbb.lib;terark-fsa-r.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>terark-fsa-r.lib;tbb.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -200,6 +200,9 @@
     <ClCompile Include="..\..\..\src\terark\db\trbdb\trb_db_store.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\..\..\terark\vs2015\terark-fsa\terark-fsa\terark-fsa.vcxproj">
+      <Project>{c5ecd2a1-c18e-4c04-b2fa-c5c6f206f5ae}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\terark-db\terark-db.vcxproj">
       <Project>{9261644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
     </ProjectReference>

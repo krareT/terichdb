@@ -14,6 +14,7 @@ namespace terark { namespace db { namespace dfadb {
 class TERARK_DB_DLL NestLoudsTrieIndex : public ReadableIndex, public ReadableStore {
 public:
 	explicit NestLoudsTrieIndex(const Schema& schema);
+	NestLoudsTrieIndex(const Schema& schema, SortableStrVec& strVec);
 	~NestLoudsTrieIndex();
 
 	///@{ ordered and unordered index
@@ -35,13 +36,14 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	void build(const Schema& schema, SortableStrVec& strVec);
 	void load(PathRef path) override;
 	void save(PathRef path) const override;
 
 	bool matchRegexAppend(RegexForIndex* regex, valvec<llong>* recIdvec, DbContext*) const override;
 
 protected:
+	void build(SortableStrVec& strVec);
+
 	struct FileHeader;
 	std::unique_ptr<NestLoudsTrieDAWG_SE_512> m_dfa;
 	FileHeader* m_idmapBase;
