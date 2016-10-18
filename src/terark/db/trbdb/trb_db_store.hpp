@@ -31,7 +31,7 @@ protected:
     friend class TrbStoreIterBackward;
 
 public:
-    TrbWritableStore();
+    TrbWritableStore(Schema const &);
 	~TrbWritableStore();
 
 	void save(PathRef) const override;
@@ -56,5 +56,39 @@ public:
 	WritableStore* getWritableStore() override;
 };
 typedef boost::intrusive_ptr<TrbWritableStore> TrbWritableStorePtr;
+
+
+class TERARK_DB_DLL MemoryFixedLenStore : public ReadableStore, public WritableStore
+{
+protected:
+    size_t m_fixlen;
+    valvec<byte> m_data;
+
+public:
+    MemoryFixedLenStore(Schema const &);
+    ~MemoryFixedLenStore();
+
+    void save(PathRef) const override;
+    void load(PathRef) override;
+
+    llong dataStorageSize() const override;
+    llong dataInflateSize() const override;
+    llong numDataRows() const override;
+    void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+
+    StoreIterator* createStoreIterForward(DbContext*) const override;
+    StoreIterator* createStoreIterBackward(DbContext*) const override;
+
+    llong append(fstring row, DbContext*) override;
+    void  update(llong id, fstring row, DbContext*) override;
+    void  remove(llong id, DbContext*) override;
+
+    void shrinkToFit() override;
+
+    AppendableStore* getAppendableStore() override;
+    UpdatableStore* getUpdatableStore() override;
+    WritableStore* getWritableStore() override;
+};
+typedef boost::intrusive_ptr<MemoryFixedLenStore> MemoryFixedLenStorePtr;
 
 }}} // namespace terark::db::wt

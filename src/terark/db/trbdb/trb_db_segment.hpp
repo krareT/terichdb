@@ -30,6 +30,9 @@ public:
 
 protected:
     static std::string fixFilePath(PathRef);
+    void initIndicesColgroups();
+
+    void initEmptySegment() override;
 
     ReadableIndex *openIndex(const Schema &, PathRef segDir) const override;
     ReadableIndex *createIndex(const Schema &, PathRef segDir) const override;

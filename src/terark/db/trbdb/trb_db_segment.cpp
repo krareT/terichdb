@@ -166,8 +166,15 @@ TrbColgroupSegment::~TrbColgroupSegment()
 
 void TrbColgroupSegment::load(PathRef path)
 {
-    FILE *f = fopen(fixFilePath(path).c_str(), "wb");
+    assert(m_segDir == path);
+    FILE *f = fopen(fixFilePath(m_segDir).c_str(), "rb+");
+    if(f == nullptr)
+    {
+        assert(f != nullptr);
+    }
     m_fp.attach(f);
+
+    initIndicesColgroups();
 
     m_fp.disbuf();
     NativeDataInput<InputBuffer> in(&m_fp);
@@ -233,42 +240,12 @@ void TrbColgroupSegment::load(PathRef path)
     }
     catch(BadLog)
     {
+        //TODO ... BadLog BadLog BadLog
     }
     catch(EndOfFileException const &)
     {
     }
 
-    //try
-    //{
-    //    while(true)
-    //    {
-    //        // |   1  |  31 |
-    //        // |remove|index|
-    //        // index_remove_replace
-    //        //     if remove , remove item at index
-    //        //     otherwise , read key , insert or update key at index
-
-    //        in >> index_remove;
-    //        if((index_remove & 0x80000000) == 0)
-    //        {
-    //            in >> key;
-    //            storeItem(index_remove, key);
-    //        }
-    //        else
-    //        {
-    //            //TODO check index exists !!!
-    //            bool success = removeItem(index_remove & 0x7FFFFFFFU);
-    //            if(!success)
-    //            {
-    //                //TODO WTF ? bad storage file +1 ???
-    //            }
-    //        }
-    //    }
-    //}
-    //catch(EndOfFileException const &e)
-    //{
-    //    (void)e;//shut up !
-    //}
     m_out.attach(&m_fp);
 }
 
@@ -284,6 +261,39 @@ std::string TrbColgroupSegment::fixFilePath(PathRef path)
         : (path / "trb.log").string();
 }
 
+void TrbColgroupSegment::initIndicesColgroups()
+{
+    size_t const indices_size = m_schema->getIndexNum();
+    size_t const colgroups_size = m_schema->getColgroupNum();
+    m_indices.resize(indices_size);
+    m_colgroups.resize(colgroups_size);
+    for(size_t i = 0; i < indices_size; ++i)
+    {
+        const Schema& schema = m_schema->getIndexSchema(i);
+        m_indices[i] = createIndex(schema, m_segDir);
+        auto store = m_indices[i]->getReadableStore();
+        assert(store);
+        m_colgroups[i] = store;
+    }
+    for(size_t i = indices_size; i < colgroups_size; ++i)
+    {
+        const Schema& schema = m_schema->getColgroupSchema(i);
+        auto store = createStore(schema, m_segDir);
+        assert(store);
+        m_colgroups[i] = store;
+    }
+}
+
+void TrbColgroupSegment::initEmptySegment()
+{
+    //ColgroupWritableSegment::initEmptySegment();
+    initIndicesColgroups();
+
+    FILE *f = fopen(fixFilePath(m_segDir).c_str(), "wb");
+    m_fp.attach(f);
+    m_out.attach(&m_fp);
+}
+
 ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef) const
 {
     return TrbWritableIndex::createIndex(schema);
@@ -294,7 +304,14 @@ ReadableIndex *TrbColgroupSegment::createIndex(const Schema &schema, PathRef) co
 }
 ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef) const
 {
-    return new TrbWritableStore();
+    if(schema.getFixedRowLen() > 0)
+    {
+        return new MemoryFixedLenStore(schema);
+    }
+    else
+    {
+        return new TrbWritableStore(schema);
+    }
 }
 
 void TrbColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext *ctx) const
@@ -340,13 +357,11 @@ llong TrbColgroupSegment::append(fstring row, DbContext* ctx)
         size_t size = ctx->trbBuf.size();
         store->getValueAppend(ret, &ctx->trbBuf, ctx);
         assert(size * 2 == ctx->trbBuf.size());
-        assert(ctx->trbBuf.size() % 2 == 0);
         assert(std::mismatch(
             ctx->trbBuf.begin() + ctx->trbBuf.size() / 2,
             ctx->trbBuf.end(),
-            ctx->trbBuf.begin(),
-            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2
-        ) == ctx->trbBuf.end());
+            ctx->trbBuf.begin()
+        ).first == ctx->trbBuf.end());
     }
 #endif
     WriteLog(m_out, ctx->trbBuf, LogAction::Store, uint32_t(ret), row);
@@ -374,13 +389,11 @@ void TrbColgroupSegment::update(llong id, fstring row, DbContext* ctx)
         size_t size = ctx->trbBuf.size();
         store->getValueAppend(id, &ctx->trbBuf, ctx);
         assert(size * 2 == ctx->trbBuf.size());
-        assert(ctx->trbBuf.size() % 2 == 0);
         assert(std::mismatch(
             ctx->trbBuf.begin() + ctx->trbBuf.size() / 2,
             ctx->trbBuf.end(),
-            ctx->trbBuf.begin(),
-            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2
-        ) == ctx->trbBuf.end());
+            ctx->trbBuf.begin()
+        ).first == ctx->trbBuf.end());
     }
 #endif
     WriteLog(m_out, ctx->trbBuf, LogAction::Store, uint32_t(id), row);

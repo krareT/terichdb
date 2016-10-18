@@ -114,7 +114,7 @@ public:
 };
 
 
-TrbWritableStore::TrbWritableStore()
+TrbWritableStore::TrbWritableStore(Schema const &)
     : m_data(256)
 {
 }
@@ -240,6 +240,114 @@ UpdatableStore *TrbWritableStore::getUpdatableStore()
 }
 
 WritableStore *TrbWritableStore::getWritableStore()
+{
+    return this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+MemoryFixedLenStore::MemoryFixedLenStore(Schema const &schema)
+    : m_fixlen(schema.getFixedRowLen())
+    , m_data()
+{
+    m_recordsBasePtr = m_data.data();
+}
+MemoryFixedLenStore::~MemoryFixedLenStore()
+{
+}
+
+void MemoryFixedLenStore::save(PathRef) const
+{
+}
+
+void MemoryFixedLenStore::load(PathRef)
+{
+}
+
+llong MemoryFixedLenStore::dataStorageSize() const
+{
+    return m_data.used_mem_size() + sizeof m_fixlen;
+}
+
+llong MemoryFixedLenStore::dataInflateSize() const
+{
+    return m_data.used_mem_size();
+}
+
+llong MemoryFixedLenStore::numDataRows() const
+{
+    return m_data.size() / m_fixlen;
+}
+
+void MemoryFixedLenStore::getValueAppend(llong id, valvec<byte>* val, DbContext *) const
+{
+    size_t offset = size_t(id) * m_fixlen;
+    if(terark_unlikely(offset >= m_data.size()))
+    {
+        return;
+    }
+    val->append(m_data.data() + offset, m_data.data() + offset + m_fixlen);
+}
+
+StoreIterator *MemoryFixedLenStore::createStoreIterForward(DbContext *) const
+{
+    return nullptr;
+}
+
+StoreIterator *MemoryFixedLenStore::createStoreIterBackward(DbContext *) const
+{
+    return nullptr;
+}
+
+llong MemoryFixedLenStore::append(fstring row, DbContext *)
+{
+    assert(row.size() == m_fixlen);
+    assert(m_data.size() % m_fixlen == 0);
+    size_t size = m_data.size();
+    m_data.append(row.begin(), row.end());
+    m_recordsBasePtr = m_data.data();
+    return llong(size / m_fixlen);
+}
+
+void MemoryFixedLenStore::update(llong id, fstring row, DbContext *)
+{
+    assert(row.size() == m_fixlen);
+    size_t offset = size_t(id) * m_fixlen;
+    if(terark_likely(offset >= m_data.size()))
+    {
+        m_data.resize(offset + m_fixlen);
+        m_recordsBasePtr = m_data.data();
+    }
+    std::memcpy(m_data.data() + offset, row.data(), m_fixlen);
+}
+
+void MemoryFixedLenStore::remove(llong id, DbContext *)
+{
+    size_t offset = size_t(id) * m_fixlen;
+    if(terark_unlikely(offset + m_fixlen == m_data.size()))
+    {
+        m_data.risk_set_size(offset);
+    }
+}
+
+void MemoryFixedLenStore::shrinkToFit()
+{
+    m_data.shrink_to_fit();
+    m_recordsBasePtr = m_data.data();
+}
+
+AppendableStore *MemoryFixedLenStore::getAppendableStore()
+{
+    return this;
+}
+
+UpdatableStore *MemoryFixedLenStore::getUpdatableStore()
+{
+    return this;
+}
+
+WritableStore *MemoryFixedLenStore::getWritableStore()
 {
     return this;
 }
