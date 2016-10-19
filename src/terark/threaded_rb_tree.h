@@ -1978,6 +1978,9 @@ public:
 
         iterator base() const
         {
+			if (node_type::nil_sentinel == where) {
+				return tree->begin();
+			}
             return ++iterator(tree, where);
         }
 
@@ -2076,6 +2079,9 @@ public:
 
         const_iterator base() const
         {
+			if (node_type::nil_sentinel == where) {
+				return tree->begin();
+			}
             return ++const_iterator(tree, where);
         }
 
