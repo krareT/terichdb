@@ -1471,11 +1471,17 @@ class trb_hash_map : public threaded_rbtree_hash<threaded_rbtree_hash_map_config
 {
     typedef threaded_rbtree_hash<threaded_rbtree_hash_map_config_t<key_t, value_t, std::true_type, hasher_t, key_compare_t, allocator_t>> base_t;
 public:
-    using base_t::base_t;
-    
-    trb_hash_map() : base_t()
-    {
-    }
+    //template<class ...args_t>
+    //trb_hash_map(args_t &&...args) : base_t(std::forward<args_t>(args)...)
+    //{
+    //}
+
+    //using base_t::base_t;
+
+    //trb_hash_map() : base_t()
+    //{
+    //}
+
     typename base_t::mapped_type &operator[](typename base_t::key_type const &key)
     {
         typename base_t::offset_type offset = base_t::root_.size;

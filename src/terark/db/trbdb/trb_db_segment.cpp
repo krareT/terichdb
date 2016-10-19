@@ -11,6 +11,7 @@
 #include <terark/io/DataOutput.hpp>
 #include <terark/io/DataIO.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/optional.hpp>
 
 #undef min
 #undef max
@@ -76,7 +77,7 @@ TrbSegmentRWLock::~TrbSegmentRWLock()
 {
     for(auto pair : row_lock)
     {
-        delete pair.second;
+        delete pair.second.lock;
     }
     for(auto ptr : lock_pool)
     {
@@ -84,14 +85,60 @@ TrbSegmentRWLock::~TrbSegmentRWLock()
     }
 }
 
-TrbSegmentRWLock::scoped_lock::scoped_lock(TrbSegmentRWLock & lock, size_t id, bool write)
+TrbSegmentRWLock::scoped_lock::scoped_lock(TrbSegmentRWLock &m, size_t i, bool w)
+    : parent(&m)
+    , id(uint32_t(i))
+    , write(w)
 {
-    spin_lock_t::scoped_lock l(lock.g_lock);
-    auto ib = lock.row_lock.emplace(id, nullptr);
+    {
+        spin_lock_t::scoped_lock l(parent->g_lock);
+        auto ib = parent->row_lock.emplace(uint32_t(id), map_item{1, nullptr});
+        if(ib.second)
+        {
+            if(parent->lock_pool.empty())
+            {
+                ib.first->second.lock = lock = new rw_lock_t();
+            }
+            else
+            {
+                ib.first->second.lock = lock = parent->lock_pool.back();
+                parent->lock_pool.pop_back();
+            }
+        }
+        else
+        {
+            ++ib.first->second.count;
+            lock = ib.first->second.lock;
+        }
+    }
+    if(write)
+    {
+        lock->lock();
+    }
+    else
+    {
+        lock->lock_shared();
+    }
 }
 
 TrbSegmentRWLock::scoped_lock::~scoped_lock()
 {
+    if(write)
+    {
+        lock->unlock();
+    }
+    else
+    {
+        lock->unlock_shared();
+    }
+    spin_lock_t::scoped_lock l(parent->g_lock);
+    auto find = parent->row_lock.find(id);
+    assert(find != parent->row_lock.end());
+    if(--find->second.count == 0)
+    {
+        parent->lock_pool.emplace_back(lock);
+        parent->row_lock.erase(find);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,16 +197,13 @@ public:
     }
     void do_startTransaction() override
     {
-        m_seg->m_txnMutex.lock();
     }
     bool do_commit() override
     {
-        m_seg->m_txnMutex.unlock();
         return true;
     }
     void do_rollback() override
     {
-        m_seg->m_txnMutex.unlock();
     }
     const std::string& strError() const override
     {
@@ -352,56 +396,20 @@ void TrbColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
     }
     else
     {
-        //TODO lock ...
-		// when !m_isFreezed
-		// m_segMutex will be locked in ColgroupWritableSegment::indexSearchExactAppend
+        TrbSegmentRWLock::scoped_lock l(m_lock, indexId, false);
         ColgroupWritableSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
     }
 }
 
 llong TrbColgroupSegment::append(fstring row, DbContext* ctx)
 {
-    llong ret = -1;
-    m_schema->m_rowSchema->parseRow(row, &ctx->trbCols);
-    size_t const colgroups_size = m_colgroups.size();
-    for(size_t i = m_indices.size(); i < colgroups_size; ++i)
-    {
-        auto &store = m_colgroups[i];
-        auto &schema = m_schema->getColgroupSchema(i);
-        schema.selectParent(ctx->trbCols, &ctx->trbBuf);
-        llong id = store->getAppendableStore()->append(ctx->trbBuf, ctx);
-        if(ret == -1)
-        {
-            ret = id;
-        }
-        else
-        {
-            assert(ret == id);
-            //TODO check ???
-        }
-    }
-#if _DEBUG && !defined(NDEBUG)
-    for(size_t i = 0; i < m_indices.size(); ++i)
-    {
-        auto &store = m_colgroups[i];
-        auto &schema = m_schema->getColgroupSchema(i);
-        schema.selectParent(ctx->trbCols, &ctx->trbBuf);
-        size_t size = ctx->trbBuf.size();
-        store->getValueAppend(ret, &ctx->trbBuf, ctx);
-        assert(size * 2 == ctx->trbBuf.size());
-        assert(std::mismatch(
-            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2,
-            ctx->trbBuf.end(),
-            ctx->trbBuf.begin()
-        ).first == ctx->trbBuf.end());
-    }
-#endif
-    WriteLog(m_out, ctx->trbBuf, LogAction::Store, uint32_t(ret), row);
-    return ret;
+    assert(false);
+    return llong(-1);
 }
 
 void TrbColgroupSegment::update(llong id, fstring row, DbContext* ctx)
 {
+    TrbSegmentRWLock::scoped_lock l(m_lock, id);
     m_schema->m_rowSchema->parseRow(row, &ctx->trbCols);
     size_t const colgroups_size = m_colgroups.size();
     for(size_t i = m_indices.size(); i < colgroups_size; ++i)
@@ -433,6 +441,7 @@ void TrbColgroupSegment::update(llong id, fstring row, DbContext* ctx)
 
 void TrbColgroupSegment::remove(llong id, DbContext* ctx)
 {
+    TrbSegmentRWLock::scoped_lock l(m_lock, id);
     size_t const colgroups_size = m_colgroups.size();
     for(size_t i = m_indices.size(); i < colgroups_size; ++i)
     {
