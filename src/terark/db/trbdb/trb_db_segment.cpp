@@ -10,6 +10,7 @@
 #include <terark/io/StreamBuffer.hpp>
 #include <terark/io/DataOutput.hpp>
 #include <terark/io/DataIO.hpp>
+#include <boost/thread/mutex.hpp>
 
 #undef min
 #undef max
@@ -65,6 +66,32 @@ void WriteLog(NativeDataOutput<OutputBuffer> &out, valvec<byte> &buffer, LogActi
     uint32_t crc;
     std::initializer_list<uint32_t>{crc = CrcUpdate::update(0, buffer, uint8_t(action)), (crc = CrcUpdate::update<args_t>(crc, buffer, args))...};
     out << crc << buffer;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+
+TrbSegmentRWLock::~TrbSegmentRWLock()
+{
+    for(auto pair : row_lock)
+    {
+        delete pair.second;
+    }
+    for(auto ptr : lock_pool)
+    {
+        delete ptr;
+    }
+}
+
+TrbSegmentRWLock::scoped_lock::scoped_lock(TrbSegmentRWLock & lock, size_t id, bool write)
+{
+    spin_lock_t::scoped_lock l(lock.g_lock);
+    auto ib = lock.row_lock.emplace(id, nullptr);
+}
+
+TrbSegmentRWLock::scoped_lock::~scoped_lock()
+{
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,6 +171,9 @@ public:
     ColumnVec    m_cols2;
     std::string  m_strError;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 DbTransaction *TrbColgroupSegment::createTransaction(DbContext* ctx)
 {

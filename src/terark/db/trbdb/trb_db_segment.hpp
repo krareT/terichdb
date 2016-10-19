@@ -5,10 +5,37 @@
 #include <terark/io/StreamBuffer.hpp>
 #include <terark/io/DataIO.hpp>
 #include <terark/db/db_segment.hpp>
+#include <boost/thread/shared_mutex.hpp>
+#include <tbb/spin_mutex.h>
+#include <terark/threaded_rbtree_hash.h>
 
 namespace terark { namespace db { namespace trbdb {
 
 class TERARK_DB_DLL MutexLockTransaction;
+
+struct TrbSegmentRWLock : boost::noncopyable
+{
+private:
+    typedef boost::shared_mutex rw_lock_t;
+    typedef tbb::spin_mutex spin_lock_t;
+
+    trb_hash_map<uint32_t, rw_lock_t *> row_lock;
+    valvec<rw_lock_t *> lock_pool;
+    spin_lock_t g_lock;
+
+public:
+    ~TrbSegmentRWLock();
+
+    class scoped_lock
+    {
+    private:
+        bool write;
+
+    public:
+        scoped_lock(TrbSegmentRWLock &lock, size_t id, bool write = false);
+        ~scoped_lock();
+    };
+};
 
 class TERARK_DB_DLL TrbColgroupSegment : public ColgroupWritableSegment {
 
