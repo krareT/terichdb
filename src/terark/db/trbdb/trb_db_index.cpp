@@ -3,7 +3,7 @@
 #include <terark/util/fstrvec.hpp>
 #include <terark/io/var_int.hpp>
 #include <type_traits>
-#include <tbb/mutex.h>
+#include <tbb/spin_rw_mutex.h>
 #include <terark/threaded_rb_tree.h>
 #include <terark/mempool.hpp>
 #include <terark/lcast.hpp>
@@ -15,6 +15,8 @@ using namespace terark;
 using namespace terark::db;
 
 namespace terark { namespace db { namespace trbdb {
+
+typedef tbb::spin_rw_mutex TrbIndexRWLock;
 
 template<class Key, class Fixed>
 class TrbIndexIterForward;
@@ -87,10 +89,36 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     {
         return deref_key_t<Storage>{s};
     }
+    template<class Storage>
+    struct deref_pair_key_t
+    {
+        std::pair<fstring, size_type> operator()(size_type index) const
+        {
+            return
+            {
+                s.key(index), index
+            };
+        }
+        Storage const &s;
+    };
+    template<class Storage>
+    static deref_pair_key_t<Storage> deref_pair_key(Storage const &s)
+    {
+        return deref_pair_key_t<Storage>{s};
+    }
 
     template<class Storage>
     struct normal_key_compare_type
     {
+        bool operator()(std::pair<fstring, size_type> left, std::pair<fstring, size_type> right) const
+        {
+            int c = fstring_func::compare3()(left.first, right.first);
+            if(c == 0)
+            {
+                return left.second > right.second;
+            }
+            return c < 0;
+        }
         bool operator()(fstring left, fstring right) const
         {
             return left < right;
@@ -103,6 +131,19 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 return left > right;
             }
             return c < 0;
+        }
+        int compare(std::pair<fstring, size_type> left, std::pair<fstring, size_type> right) const
+        {
+            int c = fstring_func::compare3()(left.first, right.first);
+            if(c == 0)
+            {
+                if(left.second == right.second)
+                {
+                    return 0;
+                }
+                return left.second > right.second ? -1 : 1;
+            }
+            return c;
         }
         int compare(fstring left, fstring right) const
         {
@@ -126,6 +167,30 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     template<class Storage>
     struct numeric_key_compare_type
     {
+        bool operator()(std::pair<fstring, size_type> left, std::pair<fstring, size_type> right) const
+        {
+            assert(reinterpret_cast<size_type>(left.first.data()) % sizeof(Key) == 0);
+            assert(reinterpret_cast<size_type>(right.first.data()) % sizeof(Key) == 0);
+
+            assert(left.first.size() == sizeof(Key));
+            assert(right.first.size() == sizeof(Key));
+
+            auto left_key = *reinterpret_cast<Key const *>(left.first.data());
+            auto right_key = *reinterpret_cast<Key const *>(right.first.data());
+
+            if(left_key < right_key)
+            {
+                return true;
+            }
+            else if(right_key < left_key)
+            {
+                return false;
+            }
+            else
+            {
+                return left.second > right.second;
+            }
+        }
         bool operator()(fstring left, fstring right) const
         {
             assert(reinterpret_cast<size_type>(left.data()) % sizeof(Key) == 0);
@@ -721,12 +786,15 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     >::type key_compare_type;
 
     storage_type m_storage;
+    ReadableSegmentPtr m_seg;
+    mutable TrbIndexRWLock m_lock;
 
 public:
-    explicit TrbWritableIndexTemplate(size_type fixedLen, bool isUnique)
+    explicit TrbWritableIndexTemplate(size_type fixedLen, bool isUnique, ReadableSegment const *seg)
         : m_storage(fixedLen)
     {
         ReadableIndex::m_isUnique = isUnique;
+        m_seg.reset(const_cast<ReadableSegment *>(seg));
     }
     void save(PathRef) const override
     {
@@ -739,26 +807,29 @@ public:
 
     IndexIterator* createIndexIterForward(DbContext*) const override
     {
-        return new TrbIndexIterForward<Key, Fixed>(this, ReadableIndex::m_isUnique);
+        return new TrbIndexIterForward<Key, Fixed>(this, ReadableIndex::m_isUnique, m_seg);
     }
     IndexIterator* createIndexIterBackward(DbContext*) const override
     {
-        return new TrbIndexIterBackward<Key, Fixed>(this, ReadableIndex::m_isUnique);
+        return new TrbIndexIterBackward<Key, Fixed>(this, ReadableIndex::m_isUnique, m_seg);
     }
 
     llong indexStorageSize() const override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock, false);
         return m_storage.memory_size();
     }
 
     bool remove(fstring key, llong id, DbContext*) override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         assert(m_storage.key(id) == key);
         m_storage.template remove<key_compare_type>(id);
         return true;
     }
     bool insert(fstring key, llong id, DbContext*) override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         if(m_isUnique)
         {
             if(!m_storage.template store_check<key_compare_type>(id, key))
@@ -774,6 +845,7 @@ public:
     }
     bool replace(fstring key, llong oldId, llong newId, DbContext*) override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         assert(key == m_storage.key(oldId));
         m_storage.template store_cover<key_compare_type>(newId, key);
         m_storage.template remove<key_compare_type>(oldId);
@@ -782,11 +854,13 @@ public:
 
     void clear() override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         m_storage.clear();
     }
 
     void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock, false);
         size_type lower, upper;
         threaded_rb_tree_equal_range(m_storage.root,
                                      const_deref_node(m_storage),
@@ -806,33 +880,38 @@ public:
 
     llong dataStorageSize() const override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock, false);
         return m_storage.memory_size();
     }
     llong dataInflateSize() const override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock, false);
         return m_storage.total_length();
     }
     llong numDataRows() const override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock, false);
         return m_storage.max_index();
     }
     void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock, false);
         fstring key = m_storage.key(size_t(id));
         val->append(key.begin(), key.end());
     }
 
     StoreIterator* createStoreIterForward(DbContext*) const override
     {
-        return new TrbIndexStoreIterForward<Key, Fixed>(this);
+        return new TrbIndexStoreIterForward<Key, Fixed>(this, m_seg);
     }
     StoreIterator* createStoreIterBackward(DbContext*) const override
     {
-        return new TrbIndexStoreIterBackward<Key, Fixed>(this);
+        return new TrbIndexStoreIterBackward<Key, Fixed>(this, m_seg);
     }
 
     llong append(fstring row, DbContext*) override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         size_t id = m_storage.max_index();
         if(m_isUnique)
         {
@@ -848,6 +927,7 @@ public:
     }
     void update(llong id, fstring row, DbContext*) override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         if(m_isUnique)
         {
             bool success = m_storage.template store_check<key_compare_type>(id, row);
@@ -861,11 +941,13 @@ public:
     }
     void remove(llong id, DbContext*) override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         m_storage.template remove<key_compare_type>(id);
     }
 
     void shrinkToFit() override
     {
+        TrbIndexRWLock::scoped_lock l(m_lock);
         m_storage.shrink_to_fit();
     }
 
@@ -900,61 +982,142 @@ class TrbIndexIterForward : public IndexIterator
 {
     typedef TrbWritableIndexTemplate<Key, Fixed> owner_t;
     boost::intrusive_ptr<owner_t> owner;
+    ReadableSegmentPtr seg;
     size_t where;
+    valvec<byte> data;
 
-public:
-    TrbIndexIterForward(owner_t const *o, bool unique)
+protected:
+    void init()
     {
-        m_isUniqueInSchema = unique;
-        owner.reset(const_cast<owner_t *>(o));
-        where = o->m_storage.root.get_most_left(owner_t::const_deref_node(o->m_storage));
+        auto const *o = owner.get();
+        if(seg->m_isFreezed)
+        {
+            where = o->m_storage.root.get_most_left(owner_t::const_deref_node(o->m_storage));
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            where = o->m_storage.root.get_most_left(owner_t::const_deref_node(o->m_storage));
+            if(where != owner_t::node_type::nil_sentinel)
+            {
+                auto storage_key = o->m_storage.key(where);
+                data.assign(storage_key.begin(), storage_key.end());
+            }
+        }
     }
 
+public:
+    TrbIndexIterForward(owner_t const *o, bool u, ReadableSegmentPtr s)
+    {
+        m_isUniqueInSchema = u;
+        owner.reset(const_cast<owner_t *>(o));
+        seg = s;
+        init();
+    }
 
     void reset() override
     {
-        auto const *o = owner.get();
-        where = o->m_storage.root.get_most_left(owner_t::const_deref_node(o->m_storage));
+        init();
     }
     bool increment(llong* id, valvec<byte>* key) override
     {
         auto const *o = owner.get();
-        if(terark_likely(where != owner_t::node_type::nil_sentinel))
+        if(seg->m_isFreezed)
         {
-            auto storage_key = o->m_storage.key(where);
-            *id = where;
-            key->assign(storage_key.begin(), storage_key.end());
-            where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
-            return true;
+            if(terark_likely(where != owner_t::node_type::nil_sentinel))
+            {
+                if(o->m_storage.node(where).is_empty())
+                {
+                    where = threaded_rb_tree_lower_bound(o->m_storage.root,
+                                                         owner_t::const_deref_node(o->m_storage),
+                                                         std::make_pair(fstring(data), where),
+                                                         owner_t::deref_pair_key(o->m_storage),
+                                                         typename owner_t::key_compare_type{o->m_storage}
+                    );
+                }
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                key->assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                return true;
+            }
         }
         else
         {
-            return false;
+            if(terark_likely(where != owner_t::node_type::nil_sentinel))
+            {
+                TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+                if(o->m_storage.node(where).is_empty())
+                {
+                    where = threaded_rb_tree_lower_bound(o->m_storage.root,
+                                                         owner_t::const_deref_node(o->m_storage),
+                                                         std::make_pair(fstring(data), where),
+                                                         owner_t::deref_pair_key(o->m_storage),
+                                                         typename owner_t::key_compare_type{o->m_storage}
+                    );
+                }
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                key->assign(storage_key.begin(), storage_key.end());
+                data.assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                return true;
+            }
         }
+        return false;
     }
 
     int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override
     {
         auto const *o = owner.get();
-        where = threaded_rb_tree_lower_bound(o->m_storage.root,
-                                             owner_t::const_deref_node(o->m_storage),
-                                             key,
-                                             owner_t::deref_key(o->m_storage),
-                                             typename owner_t::key_compare_type{o->m_storage}
-        );
-        if(where != owner_t::node_type::nil_sentinel)
+        if(seg->m_isFreezed)
         {
-            auto storage_key = o->m_storage.key(where);
-            *id = where;
-            retKey->assign(storage_key.begin(), storage_key.end());
-            where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
-            if(typename owner_t::key_compare_type{o->m_storage}(storage_key, key))
+            where = threaded_rb_tree_lower_bound(o->m_storage.root,
+                                                 owner_t::const_deref_node(o->m_storage),
+                                                 key,
+                                                 owner_t::deref_key(o->m_storage),
+                                                 typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
             {
-                return 1;
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                if(typename owner_t::key_compare_type{o->m_storage}(storage_key, key))
+                {
+                    return 1;
+                }
+                else
+                {
+                    return 0;
+                }
             }
-            else
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            where = threaded_rb_tree_lower_bound(o->m_storage.root,
+                                                 owner_t::const_deref_node(o->m_storage),
+                                                 key,
+                                                 owner_t::deref_key(o->m_storage),
+                                                 typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
             {
-                return 0;
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                data.assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                if(typename owner_t::key_compare_type{o->m_storage}(storage_key, key))
+                {
+                    return 1;
+                }
+                else
+                {
+                    return 0;
+                }
             }
         }
         return -1;
@@ -962,19 +1125,41 @@ public:
     int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override
     {
         auto const *o = owner.get();
-        where = threaded_rb_tree_upper_bound(o->m_storage.root,
-                                             owner_t::const_deref_node(o->m_storage),
-                                             key,
-                                             owner_t::deref_key(o->m_storage),
-                                             typename owner_t::key_compare_type{o->m_storage}
-        );
-        if(where != owner_t::node_type::nil_sentinel)
+        if(seg->m_isFreezed)
         {
-            auto storage_key = o->m_storage.key(where);
-            *id = where;
-            retKey->assign(storage_key.begin(), storage_key.end());
-            where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
-            return 1;
+            where = threaded_rb_tree_upper_bound(o->m_storage.root,
+                                                 owner_t::const_deref_node(o->m_storage),
+                                                 key,
+                                                 owner_t::deref_key(o->m_storage),
+                                                 typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
+            {
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                return 1;
+            }
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            where = threaded_rb_tree_upper_bound(o->m_storage.root,
+                                                 owner_t::const_deref_node(o->m_storage),
+                                                 key,
+                                                 owner_t::deref_key(o->m_storage),
+                                                 typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
+            {
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                data.assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                return 1;
+            }
         }
         return -1;
     }
@@ -985,61 +1170,143 @@ class TrbIndexIterBackward : public IndexIterator
 {
     typedef TrbWritableIndexTemplate<Key, Fixed> owner_t;
     boost::intrusive_ptr<owner_t> owner;
+    ReadableSegmentPtr seg;
     size_t where;
+    valvec<byte> data;
+
+protected:
+    void init()
+    {
+        auto const *o = owner.get();
+        if(seg->m_isFreezed)
+        {
+            where = o->m_storage.root.get_most_right(owner_t::const_deref_node(o->m_storage));
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            where = o->m_storage.root.get_most_right(owner_t::const_deref_node(o->m_storage));
+            if(where != owner_t::node_type::nil_sentinel)
+            {
+                auto storage_key = o->m_storage.key(where);
+                data.assign(storage_key.begin(), storage_key.end());
+            }
+        }
+    }
 
 public:
-    TrbIndexIterBackward(owner_t const *o, bool unique)
+    TrbIndexIterBackward(owner_t const *o, bool u, ReadableSegmentPtr s)
     {
-        m_isUniqueInSchema = unique;
+        m_isUniqueInSchema = u;
         owner.reset(const_cast<owner_t *>(o));
-        where = o->m_storage.root.get_most_left(owner_t::const_deref_node(o->m_storage));
+        seg = s;
+        init();
     }
 
 
     void reset() override
     {
-        auto const *o = owner.get();
-        where = o->m_storage.root.get_most_left(owner_t::const_deref_node(o->m_storage));
+        init();
     }
     bool increment(llong* id, valvec<byte>* key) override
     {
         auto const *o = owner.get();
-        if(terark_likely(where != owner_t::node_type::nil_sentinel))
+        if(seg->m_isFreezed)
         {
-            auto storage_key = o->m_storage.key(where);
-            *id = where;
-            key->assign(storage_key.begin(), storage_key.end());
-            where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
-            return true;
+            if(terark_likely(where != owner_t::node_type::nil_sentinel))
+            {
+                if(o->m_storage.node(where).is_empty())
+                {
+                    where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+                                                                 owner_t::const_deref_node(o->m_storage),
+                                                                 std::make_pair(fstring(data), where),
+                                                                 owner_t::deref_pair_key(o->m_storage),
+                                                                 typename owner_t::key_compare_type{o->m_storage}
+                    );
+                }
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                key->assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                return true;
+            }
         }
         else
         {
-            return false;
+            if(terark_likely(where != owner_t::node_type::nil_sentinel))
+            {
+                TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+                if(o->m_storage.node(where).is_empty())
+                {
+                    where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+                                                                 owner_t::const_deref_node(o->m_storage),
+                                                                 std::make_pair(fstring(data), where),
+                                                                 owner_t::deref_pair_key(o->m_storage),
+                                                                 typename owner_t::key_compare_type{o->m_storage}
+                    );
+                }
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                key->assign(storage_key.begin(), storage_key.end());
+                data.assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                return true;
+            }
         }
+        return false;
     }
 
     int seekLowerBound(fstring key, llong* id, valvec<byte>* retKey) override
     {
         auto const *o = owner.get();
-        where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
-                                                     owner_t::const_deref_node(o->m_storage),
-                                                     key,
-                                                     owner_t::deref_key(o->m_storage),
-                                                     typename owner_t::key_compare_type{o->m_storage}
-        );
-        if(where != owner_t::node_type::nil_sentinel)
+        if(seg->m_isFreezed)
         {
-            auto storage_key = o->m_storage.key(where);
-            *id = where;
-            retKey->assign(storage_key.begin(), storage_key.end());
-            where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
-            if(typename owner_t::key_compare_type{o->m_storage}(key, storage_key))
+            where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+                                                         owner_t::const_deref_node(o->m_storage),
+                                                         key,
+                                                         owner_t::deref_key(o->m_storage),
+                                                         typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
             {
-                return 1;
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                if(typename owner_t::key_compare_type{o->m_storage}(key, storage_key))
+                {
+                    return 1;
+                }
+                else
+                {
+                    return 0;
+                }
             }
-            else
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+                                                         owner_t::const_deref_node(o->m_storage),
+                                                         key,
+                                                         owner_t::deref_key(o->m_storage),
+                                                         typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
             {
-                return 0;
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                data.assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                if(typename owner_t::key_compare_type{o->m_storage}(key, storage_key))
+                {
+                    return 1;
+                }
+                else
+                {
+                    return 0;
+                }
             }
         }
         return -1;
@@ -1047,19 +1314,41 @@ public:
     int seekUpperBound(fstring key, llong* id, valvec<byte>* retKey) override
     {
         auto const *o = owner.get();
-        where = threaded_rb_tree_reverse_upper_bound(o->m_storage.root,
-                                                     owner_t::const_deref_node(o->m_storage),
-                                                     key,
-                                                     owner_t::deref_key(o->m_storage),
-                                                     typename owner_t::key_compare_type{o->m_storage}
-        );
-        if(where != owner_t::node_type::nil_sentinel)
+        if(seg->m_isFreezed)
         {
-            auto storage_key = o->m_storage.key(where);
-            *id = where;
-            retKey->assign(storage_key.begin(), storage_key.end());
-            where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
-            return 1;
+            where = threaded_rb_tree_reverse_upper_bound(o->m_storage.root,
+                                                         owner_t::const_deref_node(o->m_storage),
+                                                         key,
+                                                         owner_t::deref_key(o->m_storage),
+                                                         typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
+            {
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                return 1;
+            }
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            where = threaded_rb_tree_reverse_upper_bound(o->m_storage.root,
+                                                         owner_t::const_deref_node(o->m_storage),
+                                                         key,
+                                                         owner_t::deref_key(o->m_storage),
+                                                         typename owner_t::key_compare_type{o->m_storage}
+            );
+            if(where != owner_t::node_type::nil_sentinel)
+            {
+                auto storage_key = o->m_storage.key(where);
+                *id = where;
+                retKey->assign(storage_key.begin(), storage_key.end());
+                data.assign(storage_key.begin(), storage_key.end());
+                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                return 1;
+            }
         }
         return -1;
     }
@@ -1069,26 +1358,47 @@ template<class Key, class Fixed>
 class TrbIndexStoreIterForward : public StoreIterator
 {
     typedef TrbWritableIndexTemplate<Key, Fixed> owner_t;
+    ReadableSegmentPtr m_seg;
     size_t m_where;
 public:
-    TrbIndexStoreIterForward(owner_t const *o)
+    TrbIndexStoreIterForward(owner_t const *o, ReadableSegmentPtr s)
     {
         m_store.reset(const_cast<owner_t *>(o));
+        m_seg = s;
         m_where = 0;
     }
     bool increment(llong* id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        size_t max = o->m_storage.max_index();
-        while(m_where < max)
+        if(m_seg->m_isFreezed)
         {
-            size_t k = m_where++;
-            if(o->m_storage.node(k).is_used())
+            size_t max = o->m_storage.max_index();
+            while(m_where < max)
             {
-                fstring key = o->m_storage.key(k);
-                *id = k;
-                val->assign(key.begin(), key.end());
-                return true;
+                size_t k = m_where++;
+                if(o->m_storage.node(k).is_used())
+                {
+                    fstring key = o->m_storage.key(k);
+                    *id = k;
+                    val->assign(key.begin(), key.end());
+                    return true;
+                }
+            }
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            size_t max = o->m_storage.max_index();
+            while(m_where < max)
+            {
+                size_t k = m_where++;
+                if(o->m_storage.node(k).is_used())
+                {
+                    fstring key = o->m_storage.key(k);
+                    *id = k;
+                    val->assign(key.begin(), key.end());
+                    return true;
+                }
             }
         }
         return false;
@@ -1096,16 +1406,34 @@ public:
     bool seekExact(llong id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        if(id < 0 || id >= llong(o->m_storage.max_index()))
+        if(m_seg->m_isFreezed)
         {
-            THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
-                      , id, o->m_storage.max_index());
+            if(id < 0 || id >= llong(o->m_storage.max_index()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_storage.max_index());
+            }
+            if(o->m_storage.node(id).is_used())
+            {
+                fstring key = o->m_storage.key(size_t(id));
+                val->assign(key.begin(), key.end());
+                return true;
+            }
         }
-        if(o->m_storage.node(id).is_used())
+        else
         {
-            fstring key = o->m_storage.key(size_t(id));
-            val->assign(key.begin(), key.end());
-            return true;
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            if(id < 0 || id >= llong(o->m_storage.max_index()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_storage.max_index());
+            }
+            if(o->m_storage.node(id).is_used())
+            {
+                fstring key = o->m_storage.key(size_t(id));
+                val->assign(key.begin(), key.end());
+                return true;
+            }
         }
         return false;
     }
@@ -1119,25 +1447,53 @@ template<class Key, class Fixed>
 class TrbIndexStoreIterBackward : public StoreIterator
 {
     typedef TrbWritableIndexTemplate<Key, Fixed> owner_t;
+    ReadableSegmentPtr m_seg;
     size_t m_where;
 public:
-    TrbIndexStoreIterBackward(owner_t const *o)
+    TrbIndexStoreIterBackward(owner_t const *o, ReadableSegmentPtr s)
     {
         m_store.reset(const_cast<owner_t *>(o));
-        m_where = o->m_storage.max_index();
+        m_seg = s;
+        if(m_seg->m_isFreezed)
+        {
+            m_where = o->m_storage.max_index();
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            m_where = o->m_storage.max_index();
+        }
     }
     bool increment(llong* id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        while(m_where > 0)
+        if(m_seg->m_isFreezed)
         {
-            size_t k = --m_where;
-            if(o->m_storage.node(k).is_used())
+            while(m_where > 0)
             {
-                fstring key = o->m_storage.key(k);
-                *id = k;
-                val->assign(key.begin(), key.end());
-                return true;
+                size_t k = --m_where;
+                if(o->m_storage.node(k).is_used())
+                {
+                    fstring key = o->m_storage.key(k);
+                    *id = k;
+                    val->assign(key.begin(), key.end());
+                    return true;
+                }
+            }
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            while(m_where > 0)
+            {
+                size_t k = --m_where;
+                if(o->m_storage.node(k).is_used())
+                {
+                    fstring key = o->m_storage.key(k);
+                    *id = k;
+                    val->assign(key.begin(), key.end());
+                    return true;
+                }
             }
         }
         return false;
@@ -1145,32 +1501,59 @@ public:
     bool seekExact(llong id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        if(id < 0 || id >= llong(o->m_storage.max_index()))
+        if(m_seg->m_isFreezed)
         {
-            THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
-                      , id, o->m_storage.max_index());
+            if(id < 0 || id >= llong(o->m_storage.max_index()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_storage.max_index());
+            }
+            if(o->m_storage.node(id).is_used())
+            {
+                fstring key = o->m_storage.key(size_t(id));
+                val->assign(key.begin(), key.end());
+                return true;
+            }
         }
-        if(o->m_storage.node(id).is_used())
+        else
         {
-            fstring key = o->m_storage.key(size_t(id));
-            val->assign(key.begin(), key.end());
-            return true;
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            if(id < 0 || id >= llong(o->m_storage.max_index()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_storage.max_index());
+            }
+            if(o->m_storage.node(id).is_used())
+            {
+                fstring key = o->m_storage.key(size_t(id));
+                val->assign(key.begin(), key.end());
+                return true;
+            }
         }
         return false;
     }
     void reset() override
     {
-        m_where = m_store->numDataRows();
+        auto const *o = static_cast<owner_t const *>(m_store.get());
+        if(m_seg->m_isFreezed)
+        {
+            m_where = o->m_storage.max_index();
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(o->m_lock, false);
+            m_where = o->m_storage.max_index();
+        }
     }
 };
 
-TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema)
+TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema, ReadableSegment const *seg)
 {
     if(schema.columnNum() == 1)
     {
         ColumnMeta cm = schema.getColumnMeta(0);
 #define CASE_COL_TYPE(Enum, Type) \
-    case ColumnType::Enum: return new TrbWritableIndexTemplate<Type, std::false_type>(schema.getFixedRowLen(), schema.m_isUnique);
+    case ColumnType::Enum: return new TrbWritableIndexTemplate<Type, std::false_type>(schema.getFixedRowLen(), schema.m_isUnique, seg);
         //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         switch(cm.type)
         {
@@ -1190,11 +1573,11 @@ TrbWritableIndex *TrbWritableIndex::createIndex(Schema const &schema)
     }
     if(schema.getFixedRowLen() != 0)
     {
-        return new TrbWritableIndexTemplate<void, std::true_type>(schema.getFixedRowLen(), schema.m_isUnique);
+        return new TrbWritableIndexTemplate<void, std::true_type>(schema.getFixedRowLen(), schema.m_isUnique, seg);
     }
     else
     {
-        return new TrbWritableIndexTemplate<void, std::false_type>(schema.getFixedRowLen(), schema.m_isUnique);
+        return new TrbWritableIndexTemplate<void, std::false_type>(schema.getFixedRowLen(), schema.m_isUnique, seg);
     }
 }
 

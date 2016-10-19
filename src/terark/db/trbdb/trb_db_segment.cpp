@@ -296,21 +296,21 @@ void TrbColgroupSegment::initEmptySegment()
 
 ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef) const
 {
-    return TrbWritableIndex::createIndex(schema);
+    return TrbWritableIndex::createIndex(schema, this);
 }
 ReadableIndex *TrbColgroupSegment::createIndex(const Schema &schema, PathRef) const
 {
-    return TrbWritableIndex::createIndex(schema);
+    return TrbWritableIndex::createIndex(schema, this);
 }
 ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef) const
 {
     if(schema.getFixedRowLen() > 0)
     {
-        return new MemoryFixedLenStore(schema);
+        return new MemoryFixedLenStore(schema, this);
     }
     else
     {
-        return new TrbWritableStore(schema);
+        return new TrbWritableStore(schema, this);
     }
 }
 

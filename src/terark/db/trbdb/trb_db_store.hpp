@@ -1,16 +1,20 @@
 #pragma once
 
 #include <terark/db/db_table.hpp>
+#include <terark/db/db_segment.hpp>
 #include <terark/util/fstrvec.hpp>
 #include <set>
-#include <tbb/mutex.h>
+#include <tbb/spin_rw_mutex.h>
 #include <terark/mempool.hpp>
+#include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <terark/io/var_int.hpp>
 
 namespace terark { namespace db { namespace trbdb {
 
 class TrbStoreIterForward;
 class TrbStoreIterBackward;
+
+typedef tbb::spin_rw_mutex TrbStoreRWLock;
 
 class TERARK_DB_DLL TrbWritableStore : public ReadableStore, public WritableStore {
 protected:
@@ -22,6 +26,8 @@ protected:
     };
     valvec<uint32_t> m_index;
     pool_type m_data;
+    ReadableSegmentPtr m_seg;
+    mutable TrbStoreRWLock m_lock;
 
     fstring readItem(size_type i) const;
     void storeItem(size_type i, fstring d);
@@ -31,7 +37,7 @@ protected:
     friend class TrbStoreIterBackward;
 
 public:
-    TrbWritableStore(Schema const &);
+    TrbWritableStore(Schema const &, ReadableSegment const *);
 	~TrbWritableStore();
 
 	void save(PathRef) const override;
@@ -65,7 +71,7 @@ protected:
     valvec<byte> m_data;
 
 public:
-    MemoryFixedLenStore(Schema const &);
+    MemoryFixedLenStore(Schema const &, ReadableSegment const *);
     ~MemoryFixedLenStore();
 
     void save(PathRef) const override;
