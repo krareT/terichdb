@@ -227,8 +227,12 @@ void ReadableSegment::load(PathRef segDir) {
 	this->openIndices(segDir);
 	this->loadRecordStore(segDir);
 	if (m_schema->m_snapshotSchema) {
-		m_deletionTime = new FixedLenStore(*m_schema->m_snapshotSchema);
 		fs::path fpath = segDir / "deletion-time.fixlen";
+		auto deltime = new FixedLenStore(*m_schema->m_snapshotSchema);
+		if (this->getReadonlySegment()) {
+			deltime->unneedsLock();
+		}
+		m_deletionTime = deltime;
 		m_deletionTime->load(fpath);
 		size_t physicRows = this->getPhysicRows();
 		if (size_t(m_deletionTime->numDataRows()) != physicRows) {
@@ -358,19 +362,25 @@ llong ColgroupSegment::totalStorageSize() const {
 	return m_totalStorageSize;
 }
 
-void ColgroupSegment::getValueAppend(llong id, valvec<byte>* val, DbContext* txn) const {
-	assert(txn != nullptr);
+void ReadonlySegment::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx) const {
+	assert(ctx != nullptr);
 	llong rows = m_isDel.size();
 	if (terark_unlikely(id < 0 || id >= rows)) {
 		THROW_STD(out_of_range, "invalid id=%lld, rows=%lld", id, rows);
 	}
-	getValueByLogicId(id, val, txn);
+	getValueByPhysicId(getPhysicId(id), val, ctx);
 }
 
 void
-ColgroupSegment::getValueByLogicId(size_t id, valvec<byte>* val, DbContext* ctx)
+ColgroupWritableSegment::getValueAppend(llong id, valvec<byte>* val, DbContext* ctx)
 const {
-	getValueByPhysicId(getPhysicId(id), val, ctx);
+	assert(ctx != nullptr);
+	assert(m_isPurged.empty());
+	llong rows = m_isDel.size();
+	if (terark_unlikely(id < 0 || id >= rows)) {
+		THROW_STD(out_of_range, "invalid id=%lld, rows=%lld", id, rows);
+	}
+	getValueByPhysicId(id, val, ctx);
 }
 
 void
@@ -421,7 +431,7 @@ const {
 }
 
 void
-ColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+ColgroupWritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 										fstring key, valvec<llong>* recIdvec,
 										DbContext* ctx) const {
 	assert(m_isPurged.empty());
@@ -432,20 +442,26 @@ ColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 		return;
 	}
 	size_t newsize = oldsize;
+	size_t recIdvecSize = recIdvec->size();
 	llong* recIdvecData = recIdvec->data();
+	SpinRwLock lock;
+	if (m_isFreezed) {
+		lock.acquire(m_segMutex, false);
+	}
 	if (m_deletionTime) {
 		auto deltime = (const llong*)m_deletionTime->getRecordsBasePtr();
 		auto snapshotVersion = ctx->m_mySnapshotVersion;
-		for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+		for(size_t k = oldsize; k < recIdvecSize; ++k) {
 			llong logicId = recIdvecData[k];
 			if (deltime[logicId] > snapshotVersion)
 				recIdvecData[newsize++] = logicId;
 		}
 	}
 	else {
-		for(size_t k = oldsize; k < recIdvec->size(); ++k) {
+		auto isDel = m_isDel.bldata();
+		for(size_t k = oldsize; k < recIdvecSize; ++k) {
 			llong logicId = recIdvecData[k];
-			if (!m_isDel[logicId])
+			if (!terark_bit_test(isDel, logicId))
 				recIdvecData[newsize++] = logicId;
 		}
 	}
@@ -657,7 +673,7 @@ public:
 			m_id++;
 		if (terark_likely(size_t(m_id) < rows)) {
 			*id = m_id++;
-			owner->getValueByLogicId(*id, val, m_ctx.get());
+			owner->getValue(*id, val, m_ctx.get());
 			return true;
 		}
 		return false;
@@ -669,7 +685,7 @@ public:
 		m_id = id + 1;
 		if (id < rows) {
 			// do not check m_isDel, always success!
-			owner->getValueByLogicId(id, val, m_ctx.get());
+			owner->getValue(id, val, m_ctx.get());
 			return true;
 		}
 		fprintf(stderr, "ERROR: %s: id = %lld, rows = %lld\n"
@@ -695,7 +711,7 @@ public:
 			 --m_id;
 		if (terark_likely(m_id > 0)) {
 			*id = --m_id;
-			owner->getValueByLogicId(*id, val, m_ctx.get());
+			owner->getValue(*id, val, m_ctx.get());
 			return true;
 		}
 		return false;
@@ -707,7 +723,7 @@ public:
 		if (id < rows) {
 			m_id = id; // is not (id-1)
 			// do not check m_isDel, always success!
-			owner->getValueByLogicId(id, val, m_ctx.get());
+			owner->getValue(id, val, m_ctx.get());
 			return true;
 		}
 		m_id = rows;
@@ -743,7 +759,9 @@ public:
 		for (size_t i = 0; i < cgNum; ++i) {
 			const Schema& schema = *schemaSet.m_nested.elem_at(i);
 			if (schema.getFixedRowLen()) {
-				m_readers[i] = new FixedLenStore(segDir, schema);
+				auto store = new FixedLenStore(segDir, schema);
+				store->unneedsLock();
+				m_readers[i] = store;
 			}
 			else {
 				m_readers[i] = new SeqReadAppendonlyStore(segDir, schema);
@@ -1382,6 +1400,7 @@ ReadonlySegment::purgeColgroup_s(size_t colgroupId,
 	const auto& colgroup = *input->m_colgroups[colgroupId];
 	if (schema.should_use_FixedLenStore()) {
 		FixedLenStorePtr store = new FixedLenStore(tmpSegDir, schema);
+		store->unneedsLock();
 		store->reserveRows(newIsDel.size() - newDelcnt);
 		llong physicId = 0;
 		const bm_uint_t* isPurged = input->m_isPurged.bldata();
@@ -1872,6 +1891,24 @@ void PlainWritableSegment::initEmptySegment() {
 	}
 }
 
+void PlainWritableSegment::markFrozen() {
+	for (size_t colgroupId : m_schema->m_updatableColgroups) {
+		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+		auto store = dynamic_cast<FixedLenStore*>(m_colgroups[colgroupId].get());
+		store->unneedsLock();
+	}
+	m_isFreezed = true;
+}
+void ColgroupWritableSegment::markFrozen() {
+	for (size_t cgId = 0; cgId < m_colgroups.size(); ++cgId) {
+		const Schema& schema = m_schema->getColgroupSchema(cgId);
+		auto store = dynamic_cast<FixedLenStore*>(m_colgroups[cgId].get());
+		if (store)
+			store->unneedsLock();
+	}
+	m_isFreezed = true;
+}
+
 void
 WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 										fstring key, valvec<llong>* recIdvec,
@@ -2019,14 +2056,13 @@ const {
 			size_t fixlen = schema->getFixedRowLen();
 			assert(fixlen > 0);
 			auto store = m_colgroups[colproj.colgroupId].get();
+#if !defined(NDEBUG)
 			assert(nullptr != store);
-			byte_t* basePtr = store->getRecordsBasePtr();
-			assert(nullptr != basePtr);
 			auto&  colmeta = schema->getColumnMeta(colproj.subColumnId);
-			auto   coldata = basePtr + fixlen * recId + colmeta.fixedOffset;
 			assert(colmeta.fixedLen > 0);
 			assert(colmeta.fixedEndOffset() <= fixlen);
-			colsData->append(coldata, colmeta.fixedLen);
+#endif
+			store->getValueAppend(recId, colsData, ctx);
 		}
 		else {
 			schema = sconf.m_wrtSchema.get();
@@ -2054,15 +2090,15 @@ const {
 	auto& schema = m_schema->getColgroupSchema(colproj.colgroupId);
 	if (schema.m_isInplaceUpdatable) {
 		auto store = m_colgroups[colproj.colgroupId].get();
+#if !defined(NDEBUG)
 		auto fixlen = schema.getFixedRowLen();
 		assert(nullptr != store);
 		assert(fixlen > 0);
 		const auto& colmeta = schema.getColumnMeta(colproj.subColumnId);
-		const byte* basePtr = store->getRecordsBasePtr();
-		const byte* coldata = basePtr + fixlen * recId + colmeta.fixedOffset;
 		assert(colmeta.fixedLen > 0);
 		assert(colmeta.fixedEndOffset() <= fixlen);
-		colsData->assign(coldata, colmeta.fixedLen);
+#endif
+		store->getValue(recId, colsData, ctx);
 	}
 	else {
 		const Schema& wrtSchema = *m_schema->m_wrtSchema;

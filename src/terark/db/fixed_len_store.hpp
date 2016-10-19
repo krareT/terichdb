@@ -4,6 +4,7 @@
 #include <terark/int_vector.hpp>
 #include <terark/rank_select.hpp>
 #include <terark/util/sortable_strvec.hpp>
+#include <terark/db/db_segment.hpp>
 
 namespace terark { namespace db {
 
@@ -45,6 +46,8 @@ public:
 
 	void deleteFiles() override;
 
+	void unneedsLock() { m_needsLock = false; }
+
 protected:
 	struct  Header;
 	Header* allocFileSize(ullong size);
@@ -53,6 +56,8 @@ protected:
 	size_t  m_fixlen;
 	std::string m_fpath;
 	const Schema& m_schema;
+	mutable SpinRwMutex m_mutex;
+	bool        m_needsLock;
 
 	std::pair<size_t, bool> searchLowerBound(fstring binkey) const;
 };
