@@ -1796,12 +1796,14 @@ public:
 
         bool operator == (iterator const &other) const
         {
-            return where == other.where && tree == other.tree;
+			assert(tree == other.tree);
+            return where == other.where;
         }
 
         bool operator != (iterator const &other) const
         {
-            return where != other.where || tree != other.tree;
+			assert(tree == other.tree);
+            return where != other.where;
         }
 
     private:
@@ -1877,12 +1879,14 @@ public:
 
         bool operator == (const_iterator const &other) const
         {
-            return where == other.where && tree == other.tree;
+			assert(tree == other.tree);
+            return where == other.where;
         }
 
         bool operator != (const_iterator const &other) const
         {
-            return where != other.where || tree != other.tree;
+			assert(tree == other.tree);
+            return where != other.where;
         }
 
     private:
@@ -1905,9 +1909,14 @@ public:
         {
         }
 
-        explicit reverse_iterator(iterator const &other) : tree(other.tree), where(other.where)
+        explicit reverse_iterator(iterator const &other) : tree(other.tree)
         {
-            ++*this;
+			if (other.where == node_type::nil_sentinel) {
+				where = other.tree->beg_i();
+			}
+			else {
+				where = other.tree->prev_i(other.where);
+			}
         }
 
         reverse_iterator(reverse_iterator const &) = default;
@@ -1957,12 +1966,14 @@ public:
 
         bool operator == (reverse_iterator const &other) const
         {
-            return where == other.where && tree == other.tree;
+			assert(tree == other.tree);
+            return where == other.where;
         }
 
         bool operator != (reverse_iterator const &other) const
         {
-            return where != other.where || tree != other.tree;
+			assert(tree == other.tree);
+            return where != other.where;
         }
 
         iterator base() const
@@ -1992,9 +2003,14 @@ public:
         {
         }
 
-        explicit const_reverse_iterator(const_iterator const &other) : tree(other.tree), where(other.where)
+        explicit const_reverse_iterator(const_iterator const &other) : tree(other.tree)
         {
-            ++*this;
+			if (other.where == node_type::nil_sentinel) {
+				where = other.tree->beg_i();
+			}
+			else {
+				where = other.tree->prev_i(other.where);
+			}
         }
 
         const_reverse_iterator(reverse_iterator const &other) : tree(other.tree), where(other.where)
@@ -2048,12 +2064,14 @@ public:
 
         bool operator == (const_reverse_iterator const &other) const
         {
-            return where == other.where && tree == other.tree;
+			assert(tree == other.tree);
+            return where == other.where;
         }
 
         bool operator != (const_reverse_iterator const &other) const
         {
-            return where != other.where || tree != other.tree;
+			assert(tree == other.tree);
+            return where != other.where;
         }
 
         const_iterator base() const

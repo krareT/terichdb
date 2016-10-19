@@ -54,6 +54,9 @@
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_store.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\threaded_rb_tree.h">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
