@@ -129,17 +129,10 @@ public:
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
-	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
-	void getValueByLogicId(size_t id, valvec<byte>* val, DbContext*) const;
 	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
-
-	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
-								fstring key, valvec<llong>* recIdvec,
-								DbContext*) const override;
 
 	void selectColumnsByPhysicId(llong recId, const size_t* colsId,
 				size_t colsNum, valvec<byte>* colsData, DbContext*) const;
@@ -183,6 +176,7 @@ public:
 	void convFrom(class DbTable*, size_t segIdx);
 	void purgeDeletedRecords(class DbTable*, size_t segIdx);
 
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 								fstring key, valvec<llong>* recIdvec,
 								DbContext*) const override;
@@ -340,6 +334,7 @@ public:
 	virtual ReadableIndex* createIndex(const Schema&, PathRef segDir) const = 0;
 
 	virtual void initEmptySegment() = 0;
+	virtual void markFrozen() = 0;
 
 	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 								fstring key, valvec<llong>* recIdvec,
@@ -367,6 +362,7 @@ public:
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
 	void initEmptySegment() override;
+	void markFrozen() override;
 
 	void getValueAppend(llong recId, valvec<byte>* val, DbContext*) const override;
 
@@ -411,6 +407,13 @@ protected:
 
 	virtual ReadableStore* createStore(const Schema&, PathRef segDir) const = 0;
 	void initEmptySegment() override;
+	void markFrozen() override;
+
+	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+
+	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
+								fstring key, valvec<llong>* recIdvec,
+								DbContext* ctx) const override;
 
 	void loadRecordStore(PathRef segDir) override;
 	void saveRecordStore(PathRef segDir) const override;

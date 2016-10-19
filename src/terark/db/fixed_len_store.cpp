@@ -34,10 +34,15 @@ struct FixedLenStore::Header {
 
 //std::string makeFilePath(PathRef segDir, const Schema& schema);
 
+#define ScopeLock(WriteLock) \
+	SpinRwLock lock; \
+    if (m_needsLock) lock.acquire(m_mutex, WriteLock)
+
 FixedLenStore::FixedLenStore(const Schema& schema) : m_schema(schema) {
 	m_mmapBase = nullptr;
 	m_mmapSize = 0;
 	m_fixlen = schema.getFixedRowLen();
+	m_needsLock = true;
 }
 FixedLenStore::FixedLenStore(PathRef segDir, const Schema& schema)
   : m_schema(schema) {
@@ -45,6 +50,7 @@ FixedLenStore::FixedLenStore(PathRef segDir, const Schema& schema)
 	m_mmapSize = 0;
 	m_fixlen = schema.getFixedRowLen();
 	m_fpath = (segDir / "colgroup-" + schema.m_name + ".fixlen").string();
+	m_needsLock = true;
 }
 
 FixedLenStore::~FixedLenStore() {
@@ -54,20 +60,24 @@ FixedLenStore::~FixedLenStore() {
 }
 
 llong FixedLenStore::dataInflateSize() const {
+	ScopeLock(false);
 	return NULL == m_mmapBase ? 0 : m_mmapBase->mem_size();
 }
 
 llong FixedLenStore::dataStorageSize() const {
+	ScopeLock(false);
 	return NULL == m_mmapBase ? 0 : m_mmapBase->mem_size();
 }
 
 llong FixedLenStore::numDataRows() const {
+	ScopeLock(false);
 	return NULL == m_mmapBase ? 0 : m_mmapBase->rows;
 }
 
 void FixedLenStore::getValueAppend(llong id, valvec<byte>* val, DbContext*) const {
 	assert(id >= 0);
 	assert(id < llong(m_mmapBase->rows));
+	ScopeLock(false);
 	const byte* dataPtr = m_mmapBase->get_data(id);
 	val->append(dataPtr, m_mmapBase->fixlen);
 }
@@ -94,6 +104,8 @@ void FixedLenStore::build(SortableStrVec& strVec) {
 	FileStream fp(m_fpath.c_str(), "wb");
 	fp.ensureWrite(&h, sizeof(h));
 	fp.ensureWrite(strVec.m_strpool.data(), strVec.m_strpool.size());
+	fp.close();
+	load(m_fpath);
 }
 
 void FixedLenStore::load(PathRef fpath) {
@@ -104,6 +116,7 @@ void FixedLenStore::load(PathRef fpath) {
 	assert(m_fixlen == m_mmapBase->fixlen);
 //	m_fixlen = m_mmapBase->fixlen;
 	m_recordsBasePtr = m_mmapBase->get_data(0);
+	m_fpath = fpath.string();
 }
 
 void FixedLenStore::openStore() {
@@ -136,6 +149,7 @@ static ullong const ChunkBytes = TERARK_IF_DEBUG(4*1024, 1*1024*1024);
 llong FixedLenStore::append(fstring row, DbContext*) {
 	assert(m_fixlen > 0);
 	TERARK_RT_assert(row.size() == m_fixlen, std::invalid_argument);
+	ScopeLock(true);
 	Header* h = m_mmapBase;
 	if (nullptr == h || h->rows == h->capacity) {
 		assert(m_mmapSize % ChunkBytes == 0);
@@ -146,6 +160,7 @@ llong FixedLenStore::append(fstring row, DbContext*) {
 }
 
 void FixedLenStore::update(llong id, fstring row, DbContext* ctx) {
+	ScopeLock(true);
 	Header* h = m_mmapBase;
 	assert(id >= 0);
 	TERARK_RT_assert(row.size() == m_fixlen, std::invalid_argument);
@@ -169,6 +184,7 @@ void FixedLenStore::update(llong id, fstring row, DbContext* ctx) {
 }
 
 void FixedLenStore::remove(llong id, DbContext*) {
+	ScopeLock(true);
 	Header* h = m_mmapBase;
 	assert(id >= 0);
 	assert(id < llong(h->rows));
@@ -179,6 +195,7 @@ void FixedLenStore::remove(llong id, DbContext*) {
 }
 
 void FixedLenStore::shrinkToFit() {
+	ScopeLock(true);
 	if (nullptr == m_mmapBase) {
 		return;
 	}
@@ -191,10 +208,12 @@ void FixedLenStore::shrinkToFit() {
 }
 
 void FixedLenStore::reserveRows(size_t rows) {
+	ScopeLock(true);
 	allocFileSize(sizeof(Header) + m_fixlen * rows);
 }
 
 void FixedLenStore::setNumRows(size_t rows) {
+	ScopeLock(true);
 	assert(nullptr != m_mmapBase);
 	assert(rows <= m_mmapBase->capacity);
 	m_mmapBase->rows = rows;

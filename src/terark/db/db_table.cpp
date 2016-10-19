@@ -362,8 +362,8 @@ void DbTable::doLoad(PathRef dir) {
 			THROW_STD(invalid_argument, "ERROR: missing segment: %s\n",
 				getSegPath("xx", i).string().c_str());
 		}
-		if (i < m_segments.size()-1 && m_segments[i]->getWritableStore()) {
-			m_segments[i]->m_isFreezed = true;
+		if (i < m_segments.size()-1 && m_segments[i]->getWritableSegment()) {
+			m_segments[i]->getWritableSegment()->markFrozen();
 			this->putToCompressionQueue(i);
 		}
 	}
@@ -1108,7 +1108,8 @@ void DbTable::doCreateNewSegmentInLock() {
 	putToFlushQueue(m_segments.size() - 1);
 	size_t newSegIdx = m_segments.size();
 	m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
-	oldwrseg->m_isFreezed = true;
+	oldwrseg->markFrozen();
+	assert(oldwrseg->m_isFreezed);
 	m_segments.push_back(m_wrSeg);
 	llong newMaxRowNum = m_rowNumVec.back();
 	m_rowNumVec.push_back(newMaxRowNum);
@@ -3466,6 +3467,7 @@ DbTable::MergeParam::
 mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	auto& schema = dseg->m_schema->getColgroupSchema(colgroupId);
 	FixedLenStorePtr dstStore = new FixedLenStore(dseg->m_segDir, schema);
+	dstStore->unneedsLock();
 	dstStore->reserveRows(m_newSegRows);
 	byte_t* newBasePtr = dstStore->getRecordsBasePtr();
 	size_t  newPhysicId = 0;
@@ -4132,8 +4134,8 @@ void DbTable::syncFinishWriting() {
 			wrseg->deleteSegment();
 			m_segments.pop_back();
 		}
-		else if (wrseg->getWritableStore() != nullptr) {
-			wrseg->m_isFreezed = true;
+		else if (wrseg->getWritableSegment() != nullptr) {
+			wrseg->getWritableSegment()->markFrozen();
 			putToFlushQueue(m_segments.size()-1);
 		}
 	}

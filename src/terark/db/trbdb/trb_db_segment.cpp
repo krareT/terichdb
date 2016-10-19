@@ -129,12 +129,14 @@ void TrbColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 {
     if(m_isFreezed)
     {
-        ColgroupSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
+        ColgroupWritableSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
     }
     else
     {
         //TODO lock ...
-        ColgroupSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
+		// when !m_isFreezed
+		// m_segMutex will be locked in ColgroupWritableSegment::indexSearchExactAppend
+        ColgroupWritableSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
     }
 }
 

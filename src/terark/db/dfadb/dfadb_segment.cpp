@@ -102,6 +102,7 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 	FixedLenStorePtr store;
 	if (valueSchema.should_use_FixedLenStore()) {
 		store = new FixedLenStore(tmpDir, valueSchema);
+		store->unneedsLock();
 	}
 	else if (valueSchema.m_dictZipSampleRatio >= 0.0) {
 		double sRatio = valueSchema.m_dictZipSampleRatio;
@@ -196,6 +197,7 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 	FixedLenStorePtr store;
 	if (valueSchema.should_use_FixedLenStore()) {
 		store = new FixedLenStore(tmpDir, valueSchema);
+		store->unneedsLock();
 	}
 	else if (valueSchema.m_dictZipSampleRatio >= 0.0) {
 		double sRatio = valueSchema.m_dictZipSampleRatio;
