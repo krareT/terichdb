@@ -149,9 +149,11 @@ class MutexLockTransaction : public DbTransaction
     const SchemaConfig& m_sconf;
     TrbColgroupSegment *m_seg;
     DbContext          *m_ctx;
+    boost::optional<TrbSegmentRWLock::scoped_lock> m_lock;
+
 public:
-    explicit
-        MutexLockTransaction(TrbColgroupSegment* seg, DbContext* ctx) : m_sconf(*seg->m_schema)
+    explicit MutexLockTransaction(TrbColgroupSegment* seg, DbContext* ctx)
+        : m_sconf(*seg->m_schema)
     {
         m_seg = seg;
         m_ctx = ctx;
@@ -159,51 +161,59 @@ public:
     ~MutexLockTransaction()
     {
     }
-    void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec)
-        override
+    void indexRemove(size_t indexId, fstring key) override
     {
         assert(started == m_status);
-        m_seg->m_indices[indexId]->searchExactAppend(key, recIdvec, m_ctx);
+        m_seg->m_indices[indexId]->getWritableIndex()->remove(key, m_recId, m_ctx);
     }
-    void indexRemove(size_t indexId, fstring key, llong recId) override
+    bool indexInsert(size_t indexId, fstring key) override
     {
         assert(started == m_status);
-        m_seg->m_indices[indexId]->getWritableIndex()->remove(key, recId, m_ctx);
+        return m_seg->m_indices[indexId]->getWritableIndex()->insert(key, m_recId, m_ctx);
     }
-    bool indexInsert(size_t indexId, fstring key, llong recId) override
+    void storeRemove() override
     {
         assert(started == m_status);
-        return m_seg->m_indices[indexId]->getWritableIndex()->insert(key, recId, m_ctx);
+        size_t const colgroups_size = m_seg->m_colgroups.size();
+        for(size_t i = m_seg->m_indices.size(); i < colgroups_size; ++i)
+        {
+            auto &store = m_seg->m_colgroups[i];
+            store->getWritableStore()->remove(m_recId, m_ctx);
+        }
+        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::Modify, uint32_t(m_recId), uint32_t(0));
     }
-    void indexUpsert(size_t indexId, fstring key, llong recId) override
+    void storeUpdate(fstring row) override
     {
         assert(started == m_status);
-        m_seg->m_indices[indexId]->getReadableStore()->getUpdatableStore()->update(recId, key, m_ctx);
+        m_sconf.m_rowSchema->parseRow(row, &m_ctx->trbCols);
+        size_t const colgroups_size = m_seg->m_colgroups.size();
+        for(size_t i = m_seg->m_indices.size(); i < colgroups_size; ++i)
+        {
+            auto &store = m_seg->m_colgroups[i];
+            auto &schema = m_sconf.getColgroupSchema(i);
+            schema.selectParent(m_ctx->trbCols, &m_ctx->trbBuf);
+            store->getUpdatableStore()->update(m_recId, m_ctx->trbBuf, m_ctx);
+        }
+        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::Store, uint32_t(m_recId), row);
     }
-    void storeRemove(llong recId) override
+    void storeGetRow(valvec<byte>* row) override
     {
         assert(started == m_status);
-        m_seg->remove(recId, m_ctx);
-    }
-    void storeUpsert(llong recId, fstring row) override
-    {
-        assert(started == m_status);
-        m_seg->update(recId, row, m_ctx);
-    }
-    void storeGetRow(llong recId, valvec<byte>* row) override
-    {
-        assert(started == m_status);
-        m_seg->getValue(recId, row, m_ctx);
+        row->risk_set_size(0);
+        m_seg->ColgroupWritableSegment::getValueAppend(m_recId, row, m_ctx);
     }
     void do_startTransaction() override
     {
+        m_lock.emplace(m_seg->m_lock, m_recId);
     }
     bool do_commit() override
     {
+        m_lock.reset();
         return true;
     }
     void do_rollback() override
     {
+        m_lock.reset();
     }
     const std::string& strError() const override
     {
@@ -401,6 +411,19 @@ void TrbColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
     }
 }
 
+void TrbColgroupSegment::getValueAppend(llong id, valvec<byte>* val, DbContext *ctx) const
+{
+    if(m_isFreezed)
+    {
+        ColgroupWritableSegment::getValueAppend(id, val, ctx);
+    }
+    else
+    {
+        TrbSegmentRWLock::scoped_lock l(m_lock, id, false);
+        ColgroupWritableSegment::getValueAppend(id, val, ctx);
+    }
+}
+
 llong TrbColgroupSegment::append(fstring row, DbContext* ctx)
 {
     assert(false);
@@ -409,46 +432,12 @@ llong TrbColgroupSegment::append(fstring row, DbContext* ctx)
 
 void TrbColgroupSegment::update(llong id, fstring row, DbContext* ctx)
 {
-    TrbSegmentRWLock::scoped_lock l(m_lock, id);
-    m_schema->m_rowSchema->parseRow(row, &ctx->trbCols);
-    size_t const colgroups_size = m_colgroups.size();
-    for(size_t i = m_indices.size(); i < colgroups_size; ++i)
-    {
-        auto &store = m_colgroups[i];
-        auto &schema = m_schema->getColgroupSchema(i);
-        schema.selectParent(ctx->trbCols, &ctx->trbBuf);
-        store->getUpdatableStore()->update(id, ctx->trbBuf, ctx);
-    }
-#if _DEBUG && !defined(NDEBUG)
-
-    for(size_t i = 0; i < m_indices.size(); ++i)
-    {
-        auto &store = m_colgroups[i];
-        auto &schema = m_schema->getColgroupSchema(i);
-        schema.selectParent(ctx->trbCols, &ctx->trbBuf);
-        size_t size = ctx->trbBuf.size();
-        store->getValueAppend(id, &ctx->trbBuf, ctx);
-        assert(size * 2 == ctx->trbBuf.size());
-        assert(std::mismatch(
-            ctx->trbBuf.begin() + ctx->trbBuf.size() / 2,
-            ctx->trbBuf.end(),
-            ctx->trbBuf.begin()
-        ).first == ctx->trbBuf.end());
-    }
-#endif
-    WriteLog(m_out, ctx->trbBuf, LogAction::Store, uint32_t(id), row);
+    assert(false);
 }
 
 void TrbColgroupSegment::remove(llong id, DbContext* ctx)
 {
-    TrbSegmentRWLock::scoped_lock l(m_lock, id);
-    size_t const colgroups_size = m_colgroups.size();
-    for(size_t i = m_indices.size(); i < colgroups_size; ++i)
-    {
-        auto &store = m_colgroups[i];
-        store->getWritableStore()->remove(id, ctx);
-    }
-    WriteLog(m_out, ctx->trbBuf, LogAction::Modify, uint32_t(id), uint32_t(0));
+    assert(false);
 }
 
 void TrbColgroupSegment::shrinkToFit()

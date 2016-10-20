@@ -270,14 +270,14 @@ public:
 		}
 #endif
 	}
-	bool indexInsert(size_t indexId, fstring key, llong recId) override {
+	bool indexInsert(size_t indexId, fstring key) override {
 		assert(started == m_status);
 		assert(indexId < m_indices.size());
 		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].insert;
-		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
+		WtWritableIndex::setKeyVal(schema, cur, key, m_recId, &item, &m_wrtBuf);
 		int err = cur->insert(cur);
 		m_sizeDiff += sizeof(llong) + key.size();
 		if (schema.m_isUnique) {
@@ -301,67 +301,14 @@ public:
 		}
 		return true;
 	}
-	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) override {
+	void indexRemove(size_t indexId, fstring key) override {
 		assert(started == m_status);
 		assert(indexId < m_indices.size());
 		WT_ITEM item;
 		WT_SESSION* ses = m_session.ses;
 		const Schema& schema = m_sconf.getIndexSchema(indexId);
 		WT_CURSOR* cur = m_indices[indexId].insert;
-		WtWritableIndex::setKeyVal(schema, cur, key, 0, &item, &m_wrtBuf);
-		recIdvec->erase_all();
-		if (schema.m_isUnique) {
-			int err = cur->search(cur);
-			BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
-			if (WT_NOTFOUND == err) {
-				return;
-			}
-			if (err) {
-				THROW_STD(invalid_argument
-					, "ERROR: wiredtiger search: %s", ses->strerror(ses, err));
-			}
-			llong recId = 0;
-			cur->get_value(cur, &recId);
-			recIdvec->push_back(recId);
-		}
-		else {
-			llong recId = -1;
-			cur->set_key(cur, &item, recId);
-			int cmp = 0;
-			int err = cur->search_near(cur, &cmp);
-			BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
-			if (WT_NOTFOUND == err) {
-				return;
-			}
-			if (err) {
-				THROW_STD(invalid_argument
-					, "ERROR: wiredtiger search_near: %s", ses->strerror(ses, err));
-			}
-			if (cmp >= 0) {
-				WtItem item2;
-				while (0 == err) {
-					llong id;
-					cur->get_key(cur, &item2, &id);
-					if (item2.size == item.size &&
-						memcmp(item2.data, item.data, item.size) == 0)
-					{
-						recIdvec->push_back(id);
-						err = cur->next(cur);
-					}
-					else break;
-				}
-			}
-		}
-		cur->reset(cur);
-	}
-	void indexRemove(size_t indexId, fstring key, llong recId) override {
-		assert(started == m_status);
-		assert(indexId < m_indices.size());
-		WT_ITEM item;
-		WT_SESSION* ses = m_session.ses;
-		const Schema& schema = m_sconf.getIndexSchema(indexId);
-		WT_CURSOR* cur = m_indices[indexId].insert;
-		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
+		WtWritableIndex::setKeyVal(schema, cur, key, m_recId, &item, &m_wrtBuf);
 		int err = cur->remove(cur);
 		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
 		if (WT_NOTFOUND == err) {
@@ -373,28 +320,11 @@ public:
 		}
 		m_sizeDiff -= sizeof(llong) + key.size();
 	}
-	void indexUpsert(size_t indexId, fstring key, llong recId) override {
-		assert(started == m_status);
-		assert(indexId < m_indices.size());
-		WtItem item;
-		WT_SESSION* ses = m_session.ses;
-		const Schema& schema = m_sconf.getIndexSchema(indexId);
-		WT_CURSOR* cur = m_indices[indexId].overwrite;
-		WtWritableIndex::setKeyVal(schema, cur, key, recId, &item, &m_wrtBuf);
-		int err = cur->insert(cur);
-		if (err) {
-			THROW_STD(invalid_argument
-				, "ERROR: wiredtiger upsert %s index: %s"
-				, schema.m_isUnique ? "unique" : "multi"
-				, ses->strerror(ses, err));
-		}
-		m_sizeDiff += sizeof(llong) + key.size();
-	}
-	void storeRemove(llong recId) override {
+	void storeRemove() override {
 		assert(started == m_status);
 		WT_SESSION* ses = m_session.ses;
 		WT_CURSOR* cur = m_store;
-		cur->set_key(cur, recId + 1); // recno = recId + 1
+		cur->set_key(cur, m_recId + 1); // recno = recId + 1
 		int err = cur->remove(cur);
 		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
 		if (WT_NOTFOUND == err) {
@@ -407,7 +337,7 @@ public:
 	//	don't know how many bytes of the record
 	//	m_sizeDiff += sizeof(llong) + key.size();
 	}
-	void storeUpsert(llong recId, fstring row) override {
+	void storeUpdate(fstring row) override {
 		assert(started == m_status);
 		WtItem item;
 		if (m_sconf.m_updatableColgroups.empty()) {
@@ -424,14 +354,14 @@ public:
 				assert(nullptr != store);
 				const Schema& schema = sconf.getColgroupSchema(colgroupId);
 				schema.selectParent(m_cols1, &m_wrtBuf);
-				store->update(recId, m_wrtBuf, NULL);
+				store->update(m_recId, m_wrtBuf, NULL);
 			}
 			sconf.m_wrtSchema->selectParent(m_cols1, &m_wrtBuf);
 			item.data = m_wrtBuf.data();
 			item.size = m_wrtBuf.size();
 		}
 		WT_CURSOR* cur = m_store;
-		cur->set_key(cur, recId+1); // recno = recId+1
+		cur->set_key(cur, m_recId + 1); // recno = recId+1
 		cur->set_value(cur, &item);
 		int err = cur->insert(cur);
 		if (err) {
@@ -449,20 +379,20 @@ public:
 //		std::string js2 = m_sconf.m_wrtSchema->toJsonStr(buf2);
 //		std::string js1 = m_sconf.m_wrtSchema->toJsonStr(m_wrtBuf);
 	}
-	void storeGetRow(llong recId, valvec<byte>* row) override {
+	void storeGetRow(valvec<byte>* row) override {
 		assert(started == m_status);
 		WT_SESSION* ses = m_session.ses;
 		WT_CURSOR* cur = m_store;
 		WtItem item;
 		BOOST_SCOPE_EXIT(cur) { cur->reset(cur); } BOOST_SCOPE_EXIT_END;
 		cur->reset(cur);
-		cur->set_key(cur, recId+1); // recno = recId+1
+		cur->set_key(cur, m_recId + 1); // recno = recId+1
 		int err = cur->search(cur);
 		if (err == WT_NOTFOUND) {
-			throw ReadUncommitedRecordException(m_seg->m_segDir.string(), -1, recId);
+			throw ReadUncommitedRecordException(m_seg->m_segDir.string(), -1, m_recId);
 		}
 		if (err) {
-			throw ReadRecordException(ses->strerror(ses, err), m_seg->m_segDir.string(), -1, recId);
+			throw ReadRecordException(ses->strerror(ses, err), m_seg->m_segDir.string(), -1, m_recId);
 		}
 		cur->get_value(cur, &item);
 		if (m_sconf.m_updatableColgroups.empty()) {
@@ -476,11 +406,11 @@ public:
 			m_wrtBuf.append(item.charData(), item.size);
 			const size_t ProtectCnt = 100;
 			if (seg->m_isFreezed || seg->m_isDel.unused() > ProtectCnt) {
-				seg->getCombineAppend(recId, row, m_wrtBuf, m_cols1, m_cols2);
+				seg->getCombineAppend(m_recId, row, m_wrtBuf, m_cols1, m_cols2);
 			}
 			else {
 				SpinRwLock  lock(seg->m_segMutex, false);
-				seg->getCombineAppend(recId, row, m_wrtBuf, m_cols1, m_cols2);
+				seg->getCombineAppend(m_recId, row, m_wrtBuf, m_cols1, m_cols2);
 			}
 		}
 	}

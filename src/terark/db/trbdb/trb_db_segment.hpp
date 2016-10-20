@@ -43,7 +43,7 @@ public:
         bool write;
 
     public:
-        scoped_lock(TrbSegmentRWLock &mutex, size_t id, bool write = false);
+        scoped_lock(TrbSegmentRWLock &mutex, size_t id, bool write = true);
         ~scoped_lock();
     };
 };
@@ -80,6 +80,8 @@ public:
     void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
                                 fstring key, valvec<llong>* recIdvec,
                                 DbContext*) const override;
+
+    void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 
     llong append(fstring, DbContext *) override;
     void remove(llong, DbContext *) override;

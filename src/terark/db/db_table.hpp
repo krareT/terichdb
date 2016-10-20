@@ -6,6 +6,9 @@
 #include <tbb/queuing_rw_mutex.h>
 //#include <tbb/spin_rw_mutex.h>
 #include <atomic>
+#undef min
+#undef max
+#include <terark/threaded_rbtree_hash.h>
 
 #if defined(TBB_VERSION_MAJOR)
 	#if TBB_VERSION_MAJOR * 1000 + TBB_VERSION_MINOR < 4004
@@ -47,10 +50,7 @@ class TERARK_DB_DLL BatchWriter {
 	DECLARE_NONE_COPYABLE_CLASS(BatchWriter);
 protected:
 	DbContextPtr     m_ctx;
-	WritableSegment* m_wrSeg; // for debug only
-	DbTransaction*   m_txn; // for debug only
-	llong overwriteExisting(fstring row);
-	llong upsertRowImpl(fstring row);
+
 public:
 	explicit BatchWriter(DbTable* tab, DbContext* ctx = NULL);
 	~BatchWriter();
@@ -273,7 +273,7 @@ protected:
 	void doCreateNewSegmentInLock();
 	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
 	llong insertRowDoInsert(fstring row, DbContext*);
-	llong insertRowDoInsertNoCommit(fstring row, DbContext*);
+	llong insertRowDoInsertNoCommit(llong subId, fstring row, DbContext*);
 	bool insertSyncIndex(llong subId, DbTransaction*, DbContext*);
 	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
 	bool updateWithSyncIndex(llong newSubId, fstring row, DbContext*);

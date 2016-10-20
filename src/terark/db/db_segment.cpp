@@ -1753,10 +1753,11 @@ DbTransaction::~DbTransaction() {
 DbTransaction::DbTransaction() {
 	m_status = committed;
 }
-void DbTransaction::startTransaction() {
+void DbTransaction::startTransaction(llong recId) {
 	assert(started != m_status);
 	do_startTransaction();
 	m_status = started;
+    m_recId = recId;
 }
 bool DbTransaction::commit() {
 	assert(started == m_status);
