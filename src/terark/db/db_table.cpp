@@ -671,12 +671,6 @@ BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 		m_ctx = ctx;
 		ctx->trySyncSegCtxNoLock(tab);
 		ctx->ensureTransactionNoLock();
-		auto txn = ctx->m_transaction.get();
-		txn->startTransaction();
-		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
-		assert(txn->m_appearOnCommit.size() == 0);
-		txn->m_removeOnCommit.erase_all(); // tolerate on release
-		txn->m_appearOnCommit.erase_all();
 	}
 	catch (const std::exception&) {
 		if (inprogressWritingCountInced) {
@@ -688,17 +682,7 @@ BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 
 BatchWriter::~BatchWriter() {
 	auto tab = m_ctx->m_tab;
-	auto txn = m_ctx->m_transaction.get();
-	assert(DbTransaction::started != txn->m_status);
-	if (DbTransaction::started == txn->m_status) {
-		// abort();
-		fprintf(stderr
-			, "ERROR: commit or rollback was not called for BatchWriter, rollback by default\n");
-		this->rollback();
-	}
 	tab->m_inprogressWritingCount -= 2;
-	txn->m_removeOnCommit.erase_all();
-	txn->m_appearOnCommit.erase_all();
 }
 
 //llong BatchWriter::overwriteExisting(fstring row) {
@@ -1483,7 +1467,8 @@ llong DbTable::upsertRow(fstring row, DbContext* ctx) {
 			, "ERROR: DbTable::upsertRow(%s) failed, sleep for %d'ms and auto retry\n"
 			, rowSchema().toJsonStr(row).c_str(), millisec
 			);
-		std::this_thread::sleep_for(std::chrono::milliseconds(millisec));
+		tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(millisec*0.001));
+	//	std::this_thread::sleep_for(std::chrono::milliseconds(millisec));
 	}
 	TERARK_THROW(NeedRetryException, "Insertion temporary failed, retry later");
 }
@@ -1855,7 +1840,8 @@ size_t DbTable::throttleWrite() {
 				 "WriteThrottleException: dbdir = " + m_dir.string();
 			throw WriteThrottleException(msg);
 		}
-		std::this_thread::sleep_for(std::chrono::microseconds(sleepMicrosec));
+		tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(sleepMicrosec*1e-6));
+	//	std::this_thread::sleep_for(std::chrono::microseconds(sleepMicrosec));
 		sleepMicrosec = sleepMicrosec*21/13; // fibonacci ratio
 	}
 	abort();
@@ -4172,7 +4158,8 @@ static void waitForBackgroundTasks(MyRwMutex& m_rwMutex, size_t& m_bgTaskNum) {
 				, "INFO: waitForBackgroundTasks: tasks = %zd, retry = %zd\n"
 				, bgTaskNum, retryNum);
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(0.1));
+	//	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 }
 
@@ -4185,7 +4172,8 @@ void DbTable::compact() {
 		DebugCheckRowNumVecNoLock(this);
 		if (m_isMerging) {
 			lock.release();
-			std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+			tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(1.0));
+		//	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 			llong t2 = pf.now();
 			if (pf.ms(t1, t2) > 10000) { // 10 seconds
 				fprintf(stderr, "INFO: wait for merging: %s, %f seconds\n"
@@ -4196,7 +4184,8 @@ void DbTable::compact() {
 		}
 		if (m_inprogressWritingCount > 0) {
 			lock.release();
-			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(0.05));
+		//	std::this_thread::sleep_for(std::chrono::milliseconds(50));
 			llong t2 = pf.now();
 			if (pf.ms(t1, t2) > 1000) { // 1 seconds
 				fprintf(stderr, "INFO: wait for inprogress writing: %s, %f seconds\n"

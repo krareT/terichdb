@@ -1935,7 +1935,6 @@ void PlainWritableSegment::initEmptySegment() {
 
 void PlainWritableSegment::markFrozen() {
 	for (size_t colgroupId : m_schema->m_updatableColgroups) {
-		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 		auto store = dynamic_cast<FixedLenStore*>(m_colgroups[colgroupId].get());
 		store->unneedsLock();
 	}
@@ -1943,7 +1942,6 @@ void PlainWritableSegment::markFrozen() {
 }
 void ColgroupWritableSegment::markFrozen() {
 	for (size_t cgId = 0; cgId < m_colgroups.size(); ++cgId) {
-		const Schema& schema = m_schema->getColgroupSchema(cgId);
 		auto store = dynamic_cast<FixedLenStore*>(m_colgroups[cgId].get());
 		if (store)
 			store->unneedsLock();
@@ -2095,10 +2093,10 @@ const {
 		auto schema = &sconf.getColgroupSchema(colproj.colgroupId);
 		if (schema->m_isInplaceUpdatable) {
 			assert(colproj.colgroupId >= sconf.getIndexNum());
-			size_t fixlen = schema->getFixedRowLen();
-			assert(fixlen > 0);
 			auto store = m_colgroups[colproj.colgroupId].get();
 #if !defined(NDEBUG)
+			size_t fixlen = schema->getFixedRowLen();
+			assert(fixlen > 0);
 			assert(nullptr != store);
 			auto&  colmeta = schema->getColumnMeta(colproj.subColumnId);
 			assert(colmeta.fixedLen > 0);

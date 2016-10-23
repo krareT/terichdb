@@ -360,7 +360,7 @@ ifeq (${PKG_WITH_DBG},1)
 	cp -Ppa lib/lib${TrbDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${Tiger_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
 endif
-	rm -rf vs2015/terark-db/terark-db-schema-compile/{rls,dbg,build}
+	#rm -rf vs2015/terark-db/terark-db-schema-compile/{rls,dbg,build}
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
 	cp -Ppa ../terark/lib/libterark-fsa_all{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
