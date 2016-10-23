@@ -2051,10 +2051,10 @@ const {
 		auto schema = &sconf.getColgroupSchema(colproj.colgroupId);
 		if (schema->m_isInplaceUpdatable) {
 			assert(colproj.colgroupId >= sconf.getIndexNum());
-			size_t fixlen = schema->getFixedRowLen();
-			assert(fixlen > 0);
 			auto store = m_colgroups[colproj.colgroupId].get();
 #if !defined(NDEBUG)
+			size_t fixlen = schema->getFixedRowLen();
+			assert(fixlen > 0);
 			assert(nullptr != store);
 			auto&  colmeta = schema->getColumnMeta(colproj.subColumnId);
 			assert(colmeta.fixedLen > 0);
