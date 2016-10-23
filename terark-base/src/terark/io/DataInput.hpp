@@ -254,7 +254,9 @@ public: \
 template<class StreamT>
 class LittleEndianDataInput : public StreamT {
 public:
-#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+#if (defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L) && \
+	(defined(__GNUC__) && __GNUC__ * 1000 + __GNUC_MINOR__ >= 4008) || \
+    defined(__cpp_inheriting_constructors) || \
 	defined(_MSC_VER) && _MSC_VER >= 1800
 	using StreamT::StreamT;
 #endif
@@ -280,7 +282,9 @@ typedef LittleEndianDataInput MyType;
 template<class StreamT>
 class BigEndianDataInput : public StreamT {
 public:
-#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+#if (defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L) && \
+	(defined(__GNUC__) && __GNUC__ * 1000 + __GNUC_MINOR__ >= 4008) || \
+    defined(__cpp_inheriting_constructors) || \
 	defined(_MSC_VER) && _MSC_VER >= 1800
 	using StreamT::StreamT;
 #endif
@@ -307,7 +311,9 @@ typedef BigEndianDataInput MyType;
 template<class StreamT>
 class LittleEndianNoVarIntInput : public StreamT {
 public:
-#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+#if (defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L) && \
+	(defined(__GNUC__) && __GNUC__ * 1000 + __GNUC_MINOR__ >= 4008) || \
+    defined(__cpp_inheriting_constructors) || \
 	defined(_MSC_VER) && _MSC_VER >= 1800
 	using StreamT::StreamT;
 #endif
@@ -333,7 +339,9 @@ typedef LittleEndianNoVarIntInput MyType;
 template<class StreamT>
 class BigEndianNoVarIntInput : public StreamT {
 public:
-#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+#if (defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L) && \
+	(defined(__GNUC__) && __GNUC__ * 1000 + __GNUC_MINOR__ >= 4008) || \
+    defined(__cpp_inheriting_constructors) || \
 	defined(_MSC_VER) && _MSC_VER >= 1800
 	using StreamT::StreamT;
 #endif
