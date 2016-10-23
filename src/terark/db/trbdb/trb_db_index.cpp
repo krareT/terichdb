@@ -743,7 +743,7 @@ public:
         ReadableIndex::m_isUnique = isUnique;
 
         m_fp.disbuf();
-        NativeDataInput<InputBuffer> in(&m_fp);
+        NativeDataInput<InputBuffer> in; in.attach(&m_fp);
         uint32_t index_remove_replace, replace;
         std::string key;
         try

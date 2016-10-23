@@ -155,7 +155,9 @@ typedef boost::intrusive_ptr<MultiPartStore> MultiPartStorePtr;
 #endif
 class TERARK_DB_DLL DbException : public std::logic_error {
 public:
-	using std::logic_error::logic_error;
+	template<class String>
+	DbException(const String& msg) : logic_error(msg) {}
+//	using std::logic_error::logic_error;
 };
 class TERARK_DB_DLL ReadRecordException : public DbException {
 public:
@@ -178,17 +180,23 @@ public:
 
 class TERARK_DB_DLL CommitException : public DbException {
 public:
-	using DbException::DbException;
+	template<class String>
+	CommitException(const String& msg) : DbException(msg) {}
+//	using DbException::DbException;
 };
 
 class TERARK_DB_DLL NeedRetryException : public DbException {
 public:
-	using DbException::DbException;
+	template<class String>
+	NeedRetryException(const String& msg) : DbException(msg) {}
+//	using DbException::DbException;
 };
 
 class TERARK_DB_DLL WriteThrottleException : public DbException {
 public:
-	using DbException::DbException;
+	template<class String>
+	WriteThrottleException(const String& msg) : DbException(msg) {}
+//	using DbException::DbException;
 };
 
 } } // namespace terark::db

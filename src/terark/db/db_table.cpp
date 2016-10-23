@@ -742,7 +742,8 @@ llong BatchWriter::upsertRow(fstring row) {
 		llong recId = upsertRowImpl(row);
 		if (recId >= 0)
 			return recId;
-		std::this_thread::yield();
+	//	std::this_thread::yield();
+		tbb::this_tbb_thread::yield();
 	}
 	TERARK_THROW(NeedRetryException, "Concurrent transaction conflict, retry again");
 }
@@ -1380,7 +1381,8 @@ llong DbTable::upsertRow(fstring row, DbContext* ctx) {
 			, "ERROR: DbTable::upsertRow(%s) failed, sleep for %d'ms and auto retry\n"
 			, rowSchema().toJsonStr(row).c_str(), millisec
 			);
-		std::this_thread::sleep_for(std::chrono::milliseconds(millisec));
+		tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(millisec*0.001));
+	//	std::this_thread::sleep_for(std::chrono::milliseconds(millisec));
 	}
 	TERARK_THROW(NeedRetryException, "Insertion temporary failed, retry later");
 }
@@ -1752,7 +1754,8 @@ size_t DbTable::throttleWrite() {
 				 "WriteThrottleException: dbdir = " + m_dir.string();
 			throw WriteThrottleException(msg);
 		}
-		std::this_thread::sleep_for(std::chrono::microseconds(sleepMicrosec));
+		tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(sleepMicrosec*1e-6));
+	//	std::this_thread::sleep_for(std::chrono::microseconds(sleepMicrosec));
 		sleepMicrosec = sleepMicrosec*21/13; // fibonacci ratio
 	}
 	abort();
@@ -4069,7 +4072,8 @@ static void waitForBackgroundTasks(MyRwMutex& m_rwMutex, size_t& m_bgTaskNum) {
 				, "INFO: waitForBackgroundTasks: tasks = %zd, retry = %zd\n"
 				, bgTaskNum, retryNum);
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(0.1));
+	//	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 }
 
@@ -4082,7 +4086,8 @@ void DbTable::compact() {
 		DebugCheckRowNumVecNoLock(this);
 		if (m_isMerging) {
 			lock.release();
-			std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+			tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(1.0));
+		//	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 			llong t2 = pf.now();
 			if (pf.ms(t1, t2) > 10000) { // 10 seconds
 				fprintf(stderr, "INFO: wait for merging: %s, %f seconds\n"
@@ -4093,7 +4098,8 @@ void DbTable::compact() {
 		}
 		if (m_inprogressWritingCount > 0) {
 			lock.release();
-			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(0.05));
+		//	std::this_thread::sleep_for(std::chrono::milliseconds(50));
 			llong t2 = pf.now();
 			if (pf.ms(t1, t2) > 1000) { // 1 seconds
 				fprintf(stderr, "INFO: wait for inprogress writing: %s, %f seconds\n"

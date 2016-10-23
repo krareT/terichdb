@@ -395,7 +395,7 @@ namespace terark { namespace db {
 				dio.ensureWrite(x.begin(), x.size());
 			}
 		public:
-			using valvec<byte_t>::valvec;
+		//	using valvec<byte_t>::valvec;
 		};
 
 		class TwoStrZero : public std::pair<std::string, std::string> {
@@ -408,7 +408,7 @@ namespace terark { namespace db {
 				dio & StrZero(x.first) & StrZero(x.second);
 			}
 		public:
-			using std::pair<std::string, std::string>::pair;
+		//	using std::pair<std::string, std::string>::pair;
 		};
 
 		template<class T> class CarBinPackReader {
