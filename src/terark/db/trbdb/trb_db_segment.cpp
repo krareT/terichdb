@@ -257,7 +257,7 @@ void TrbColgroupSegment::load(PathRef path)
     initIndicesColgroups();
 
     m_fp.disbuf();
-    NativeDataInput<InputBuffer> in(&m_fp);
+    NativeDataInput<InputBuffer> in; in.attach(&m_fp);
     LogAction action;
     uint32_t crc;
     uint32_t index;

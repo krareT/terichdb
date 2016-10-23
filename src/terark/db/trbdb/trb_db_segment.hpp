@@ -27,7 +27,7 @@ private:
     struct map_item
     {
         uint32_t id;
-        std::atomic_uint32_t count;
+        std::atomic<uint32_t> count;
         rw_lock_t lock;
     };
     trb_hash_map<uint32_t, map_item *> row_lock;
