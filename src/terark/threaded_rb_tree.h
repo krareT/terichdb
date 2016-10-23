@@ -2893,11 +2893,16 @@ class trb_map : public threaded_rb_tree_impl<threaded_rb_tree_default_map_config
     typedef threaded_rb_tree_default_map_config_t<key_t, value_t, comparator_t, index_t, std::true_type> config_t;
     typedef threaded_rb_tree_impl<config_t> base_t;
 public:
-    using base_t::base_t;
-
-    trb_map() : base_t()
+    template<class ...args_t>
+    trb_map(args_t &&...args) : base_t(std::forward<args_t>(args)...)
     {
     }
+    template<class ...args_t>
+    trb_map(std::initializer_list<typename base_t::value_type> il, args_t &&...args)
+        : base_t(il, std::forward<args_t>(args)...)
+    {
+    }
+    
     typename base_t::mapped_type &operator[](typename base_t::key_type const &key)
     {
         typename base_t::size_type offset = base_t::lwb_i(key);

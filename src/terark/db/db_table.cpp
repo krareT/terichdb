@@ -651,62 +651,54 @@ const char* BatchWriter::szError() const {
 // if ctx is NULL, will create a new DbContext for m_ctx
 BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 {
-//	assert(nullptr != tab);
-//	assert(nullptr == ctx || ctx->m_tab == tab);
-//	if (!tab->m_wrSeg) {
-//		THROW_STD(invalid_argument, "the writing segment is NULL: %s"
-//			, tab->m_dir.string().c_str());
-//	}
-//	const SchemaConfig& sconf = *tab->m_schema;
-//	if (sconf.m_uniqIndices.size() > 1) {
-//		THROW_STD(invalid_argument
-//			, "this table has %zd unique indices, "
-//				"must have at most one unique index for calling this method"
-//			, sconf.m_uniqIndices.size());
-//	}
-//	bool inprogressWritingCountInced = false;
-//	try {
-//		MyRwLock lock(tab->m_rwMutex, false);
-//		DebugCheckRowNumVecNoLock(tab);
-//		tab->maybeCreateNewSegment(lock);
-//		if (ctx == nullptr) {
-//			ctx = tab->createDbContextNoLock();
-//		}
-//		tab->m_inprogressWritingCount += 2;
-//		inprogressWritingCountInced = true;
-//		m_wrSeg = tab->m_wrSeg.get();
-//		m_ctx = ctx;
-//		ctx->trySyncSegCtxNoLock(tab);
-//		ctx->ensureTransactionNoLock();
-//		auto txn = ctx->m_transaction.get();
-//		m_txn = txn;
-//		txn->startTransaction();
-//		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
-//		assert(txn->m_appearOnCommit.size() == 0);
-//		txn->m_removeOnCommit.erase_all(); // tolerate on release
-//		txn->m_appearOnCommit.erase_all();
-//	}
-//	catch (const std::exception&) {
-//		if (inprogressWritingCountInced) {
-//			tab->m_inprogressWritingCount -= 2;
-//		}
-//		throw;
-//	}
+	assert(nullptr != tab);
+	assert(nullptr == ctx || ctx->m_tab == tab);
+    assert(ctx->syncIndex);
+	if (!tab->m_wrSeg) {
+		THROW_STD(invalid_argument, "the writing segment is NULL: %s"
+			, tab->m_dir.string().c_str());
+	}
+	bool inprogressWritingCountInced = false;
+	try {
+		MyRwLock lock(tab->m_rwMutex, false);
+		DebugCheckRowNumVecNoLock(tab);
+		tab->maybeCreateNewSegment(lock);
+		if (ctx == nullptr) {
+			ctx = tab->createDbContextNoLock();
+		}
+		tab->m_inprogressWritingCount += 2;
+		inprogressWritingCountInced = true;
+		m_ctx = ctx;
+		ctx->trySyncSegCtxNoLock(tab);
+		ctx->ensureTransactionNoLock();
+		auto txn = ctx->m_transaction.get();
+		txn->startTransaction();
+		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
+		assert(txn->m_appearOnCommit.size() == 0);
+		txn->m_removeOnCommit.erase_all(); // tolerate on release
+		txn->m_appearOnCommit.erase_all();
+	}
+	catch (const std::exception&) {
+		if (inprogressWritingCountInced) {
+			tab->m_inprogressWritingCount -= 2;
+		}
+		throw;
+	}
 }
 
 BatchWriter::~BatchWriter() {
-//	auto tab = m_ctx->m_tab;
-//	auto txn = m_ctx->m_transaction.get();
-//	assert(DbTransaction::started != txn->m_status);
-//	if (DbTransaction::started == txn->m_status) {
-//		// abort();
-//		fprintf(stderr
-//			, "ERROR: commit or rollback was not called for BatchWriter, rollback by default\n");
-//		this->rollback();
-//	}
-//	tab->m_inprogressWritingCount -= 2;
-//	txn->m_removeOnCommit.erase_all();
-//	txn->m_appearOnCommit.erase_all();
+	auto tab = m_ctx->m_tab;
+	auto txn = m_ctx->m_transaction.get();
+	assert(DbTransaction::started != txn->m_status);
+	if (DbTransaction::started == txn->m_status) {
+		// abort();
+		fprintf(stderr
+			, "ERROR: commit or rollback was not called for BatchWriter, rollback by default\n");
+		this->rollback();
+	}
+	tab->m_inprogressWritingCount -= 2;
+	txn->m_removeOnCommit.erase_all();
+	txn->m_appearOnCommit.erase_all();
 }
 
 //llong BatchWriter::overwriteExisting(fstring row) {
@@ -737,7 +729,108 @@ BatchWriter::~BatchWriter() {
 //	return baseId + subId;
 //}
 
+void terark::db::BatchWriter::searchIndex(size_t indexId, fstring key, valvec<llong>* recIdvec)
+{
+    if(indexId >= m_ctx->m_tab->m_schema->getIndexNum())
+    {
+        THROW_STD(invalid_argument, "invalid indexId = %zd, indexNum = %zd"
+                  , indexId, m_ctx->m_tab->m_schema->getIndexNum());
+    }
+    //const size_t ProtectCnt = 10;
+    recIdvec->risk_set_size(0);
+    size_t segNum = m_ctx->m_segCtx.size();
+    for(size_t segIndex = 0; segIndex < segNum; ++segIndex)
+    {
+        auto seg = m_ctx->m_segCtx[segIndex]->seg;
+        size_t oldsize = recIdvec->size();
+        size_t i = oldsize, j = oldsize;
+        seg->indexSearchExactInternalAppend(segIndex, indexId, key, recIdvec, m_ctx.get());
+        size_t n = recIdvec->size();
+        llong baseId = m_ctx->m_rowNumVec[segIndex];
+
+        if(seg->m_isFreezed/* || (n - i < ProtectCnt && seg->m_isDel.unused() > ProtectCnt)*/)
+        {
+            const bm_uint_t* isDel = seg->m_isDel.bldata();
+            for(; j < n; ++j)
+            {
+                intptr_t id = intptr_t(recIdvec->operator[](j));
+                if((recIdvec->operator[](i) = baseId + id) < m_snapshot)
+                {
+                    if(!terark_bit_test(isDel, id))
+                    {
+                        ++i;
+                    }
+                }
+                else
+                {
+                    if(m_table.find(recIdvec->operator[](i)) != m_table.end())
+                    {
+                        ++i;
+                    }
+                }
+            }
+        }
+        else
+        {
+            SpinRwLock lock(seg->m_segMutex, false);
+            const bm_uint_t* isDel = seg->m_isDel.bldata();
+            for(; j < n; ++j)
+            {
+                intptr_t id = intptr_t(recIdvec->operator[](j));
+                if((recIdvec->operator[](i) = baseId + id) < m_snapshot)
+                {
+                    if(!terark_bit_test(isDel, id))
+                    {
+                        ++i;
+                    }
+                }
+                else
+                {
+                    if(m_table.find(recIdvec->operator[](i)) != m_table.end())
+                    {
+                        ++i;
+                    }
+                }
+            }
+        }
+        recIdvec->risk_set_size(i);
+    }
+}
+
+llong terark::db::BatchWriter::insertRow(fstring row)
+{
+    //TODO no commit
+    llong subId = m_ctx->m_tab->allocInvisibleWrSubId_NoTabLock();
+    TransactionGuard txn(m_ctx->m_transaction.get(), subId);
+    llong recId = m_ctx->m_tab->insertRowDoInsertNoCommit(subId, row, m_ctx.get());
+    if(recId >= 0)
+    {
+        if(!txn.commit())
+        {
+            llong wrBaseId = m_ctx->m_tab->m_rowNumVec.end()[-2];
+            llong subId = recId - wrBaseId;
+            auto& ws = *m_ctx->m_tab->m_wrSeg;
+            TERARK_THROW(CommitException
+                         , "commit failed: %s, baseId=%lld, subId=%lld, seg = %s"
+                         , txn.szError(), wrBaseId, subId, ws.m_segDir.string().c_str());
+        }
+    }
+    else
+    {
+        txn.rollback();
+    }
+    return recId;
+}
+
 llong BatchWriter::upsertRow(fstring row) {
+    const SchemaConfig& sconf = *m_ctx->m_tab->m_schema;
+    if(sconf.m_uniqIndices.size() > 1)
+    {
+        THROW_STD(invalid_argument
+                  , "this table has %zd unique indices, "
+                  "must have at most one unique index for calling this method"
+                  , sconf.m_uniqIndices.size());
+    }
 //	for (size_t retry = 0; retry < 3; ++retry) {
 //		llong recId = upsertRowImpl(row);
 //		if (recId >= 0)
@@ -746,6 +839,11 @@ llong BatchWriter::upsertRow(fstring row) {
 //	}
 //	TERARK_THROW(NeedRetryException, "Concurrent transaction conflict, retry again");
     return -1;
+}
+
+llong terark::db::BatchWriter::updateRow(fstring row, llong recId)
+{
+    return llong();
 }
 
 //llong BatchWriter::upsertRowImpl(fstring row) {
@@ -883,6 +981,10 @@ void BatchWriter::removeRow(llong recId) {
 //		if (!seg->m_isDel[subId])
 //			txn->m_removeOnCommit.push_back(recId);
 //	}
+}
+
+void terark::db::BatchWriter::getRow(llong recId, valvec<byte>* rowData)
+{
 }
 
 bool BatchWriter::commit() {

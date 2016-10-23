@@ -49,7 +49,18 @@ typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 class TERARK_DB_DLL BatchWriter {
 	DECLARE_NONE_COPYABLE_CLASS(BatchWriter);
 protected:
-	DbContextPtr     m_ctx;
+    enum class Status
+    {
+	    started, committed, rollbacked
+    };
+    enum class Operation
+    {
+        inserted, deleted
+    };
+    trb_hash_map<llong, Operation> m_table;
+    DbContextPtr m_ctx;
+    Status m_status;
+    llong m_snapshot;
 
 public:
 	explicit BatchWriter(DbTable* tab, DbContext* ctx = NULL);
@@ -57,8 +68,14 @@ public:
 	DbContext* getCtx() const { return m_ctx.get(); }
 	const std::string& strError() const;
 	const char* szError() const;
-	llong upsertRow(fstring row);
+
+    void  searchIndex(size_t indexId, fstring key, valvec<llong>* recIdvec);
+    llong insertRow(fstring row);
+    llong upsertRow(fstring row);
+    llong updateRow(fstring row, llong recId);
 	void  removeRow(llong recId);
+    void  getRow(llong recId, valvec<byte>* rowData);
+
 	bool  commit();
 	void  rollback();
 };

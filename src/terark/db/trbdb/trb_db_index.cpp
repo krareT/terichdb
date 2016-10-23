@@ -786,7 +786,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     >::type key_compare_type;
 
     storage_type m_storage;
-    ReadableSegmentPtr m_seg;
+    ReadableSegment const *m_seg;
     mutable TrbIndexRWLock m_lock;
 
 public:
@@ -794,7 +794,7 @@ public:
         : m_storage(fixedLen)
     {
         ReadableIndex::m_isUnique = isUnique;
-        m_seg.reset(const_cast<ReadableSegment *>(seg));
+        m_seg = seg;
     }
     void save(PathRef) const override
     {
@@ -816,8 +816,15 @@ public:
 
     llong indexStorageSize() const override
     {
-        TrbIndexRWLock::scoped_lock l(m_lock, false);
-        return m_storage.memory_size();
+        if(m_seg->m_isFreezed)
+        {
+            return m_storage.memory_size();
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(m_lock, false);
+            return m_storage.memory_size();
+        }
     }
 
     bool remove(fstring key, llong id, DbContext*) override
@@ -860,44 +867,93 @@ public:
 
     void searchExactAppend(fstring key, valvec<llong>* recIdvec, DbContext*) const override
     {
-        TrbIndexRWLock::scoped_lock l(m_lock, false);
-        size_type lower, upper;
-        threaded_rb_tree_equal_range(m_storage.root,
-                                     const_deref_node(m_storage),
-                                     key,
-                                     deref_key(m_storage),
-                                     key_compare_type{m_storage},
-                                     lower,
-                                     upper
-        );
-        while(lower != upper)
+        if(m_seg->m_isFreezed)
         {
-            recIdvec->emplace_back(lower);
-            lower = threaded_rb_tree_move_next(lower, const_deref_node(m_storage));
+            size_type lower, upper;
+            threaded_rb_tree_equal_range(m_storage.root,
+                                         const_deref_node(m_storage),
+                                         key,
+                                         deref_key(m_storage),
+                                         key_compare_type{m_storage},
+                                         lower,
+                                         upper
+            );
+            while(lower != upper)
+            {
+                recIdvec->emplace_back(lower);
+                lower = threaded_rb_tree_move_next(lower, const_deref_node(m_storage));
+            }
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(m_lock, false);
+            size_type lower, upper;
+            threaded_rb_tree_equal_range(m_storage.root,
+                                         const_deref_node(m_storage),
+                                         key,
+                                         deref_key(m_storage),
+                                         key_compare_type{m_storage},
+                                         lower,
+                                         upper
+            );
+            while(lower != upper)
+            {
+                recIdvec->emplace_back(lower);
+                lower = threaded_rb_tree_move_next(lower, const_deref_node(m_storage));
+            }
         }
     }
 
 
     llong dataStorageSize() const override
     {
-        TrbIndexRWLock::scoped_lock l(m_lock, false);
-        return m_storage.memory_size();
+        if(m_seg->m_isFreezed)
+        {
+            return m_storage.memory_size();
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(m_lock, false);
+            return m_storage.memory_size();
+        }
     }
     llong dataInflateSize() const override
     {
-        TrbIndexRWLock::scoped_lock l(m_lock, false);
-        return m_storage.total_length();
+        if(m_seg->m_isFreezed)
+        {
+            return m_storage.total_length();
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(m_lock, false);
+            return m_storage.total_length();
+        }
     }
     llong numDataRows() const override
     {
-        TrbIndexRWLock::scoped_lock l(m_lock, false);
-        return m_storage.max_index();
+        if(m_seg->m_isFreezed)
+        {
+            return m_storage.max_index();
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(m_lock, false);
+            return m_storage.max_index();
+        }
     }
     void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override
     {
-        TrbIndexRWLock::scoped_lock l(m_lock, false);
-        fstring key = m_storage.key(size_t(id));
-        val->append(key.begin(), key.end());
+        if(m_seg->m_isFreezed)
+        {
+            fstring key = m_storage.key(size_t(id));
+            val->append(key.begin(), key.end());
+        }
+        else
+        {
+            TrbIndexRWLock::scoped_lock l(m_lock, false);
+            fstring key = m_storage.key(size_t(id));
+            val->append(key.begin(), key.end());
+        }
     }
 
     StoreIterator* createStoreIterForward(DbContext*) const override
@@ -1007,11 +1063,11 @@ protected:
     }
 
 public:
-    TrbIndexIterForward(owner_t const *o, bool u, ReadableSegmentPtr s)
+    TrbIndexIterForward(owner_t const *o, bool u, ReadableSegment const *s)
     {
         m_isUniqueInSchema = u;
         owner.reset(const_cast<owner_t *>(o));
-        seg = s;
+        seg.reset(const_cast<ReadableSegment *>(s));
         init();
     }
 
@@ -1195,11 +1251,11 @@ protected:
     }
 
 public:
-    TrbIndexIterBackward(owner_t const *o, bool u, ReadableSegmentPtr s)
+    TrbIndexIterBackward(owner_t const *o, bool u, ReadableSegment const *s)
     {
         m_isUniqueInSchema = u;
         owner.reset(const_cast<owner_t *>(o));
-        seg = s;
+        seg.reset(const_cast<ReadableSegment *>(s));
         init();
     }
 
@@ -1361,10 +1417,10 @@ class TrbIndexStoreIterForward : public StoreIterator
     ReadableSegmentPtr m_seg;
     size_t m_where;
 public:
-    TrbIndexStoreIterForward(owner_t const *o, ReadableSegmentPtr s)
+    TrbIndexStoreIterForward(owner_t const *o, ReadableSegment const *s)
     {
         m_store.reset(const_cast<owner_t *>(o));
-        m_seg = s;
+        m_seg.reset(const_cast<ReadableSegment *>(s));
         m_where = 0;
     }
     bool increment(llong* id, valvec<byte>* val) override
@@ -1450,10 +1506,10 @@ class TrbIndexStoreIterBackward : public StoreIterator
     ReadableSegmentPtr m_seg;
     size_t m_where;
 public:
-    TrbIndexStoreIterBackward(owner_t const *o, ReadableSegmentPtr s)
+    TrbIndexStoreIterBackward(owner_t const *o, ReadableSegment const *s)
     {
         m_store.reset(const_cast<owner_t *>(o));
-        m_seg = s;
+        m_seg.reset(const_cast<ReadableSegment *>(s));
         if(m_seg->m_isFreezed)
         {
             m_where = o->m_storage.max_index();

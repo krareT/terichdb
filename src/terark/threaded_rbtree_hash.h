@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cassert>
 #include <new>
+#include <cstring>
 
 namespace threaded_rbtree_hash_detail
 {
@@ -312,13 +313,11 @@ public:
         }
         bool operator == (const_iterator const &other) const
         {
-            assert(self == other.self);
-            return offset == other.offset;
+            return offset == other.offset && self == other.self;
         }
         bool operator != (const_iterator const &other) const
         {
-            assert(self == other.self);
-            return offset != other.offset;
+            return offset != other.offset || self != other.self;
         }
     protected:
         friend class threaded_rbtree_hash;
@@ -359,13 +358,11 @@ public:
         }
         bool operator == (local_iterator const &other) const
         {
-            assert(self == other.self);
-            return offset == other.offset;
+            return offset == other.offset && self == other.self;
         }
         bool operator != (local_iterator const &other) const
         {
-            assert(self == other.self);
-            return offset != other.offset;
+            return offset != other.offset || self != other.self;
         }
     protected:
         friend class threaded_rbtree_hash;
@@ -411,13 +408,11 @@ public:
         }
         bool operator == (const_local_iterator const &other) const
         {
-            assert(self == other.self);
-            return offset == other.offset;
+            return offset == other.offset && self == other.self;
         }
         bool operator != (const_local_iterator const &other) const
         {
-            assert(self == other.self);
-            return offset != other.offset;
+            return offset != other.offset || self != other.self;
         }
     protected:
         friend class threaded_rbtree_hash;
@@ -1471,17 +1466,16 @@ class trb_hash_map : public threaded_rbtree_hash<threaded_rbtree_hash_map_config
 {
     typedef threaded_rbtree_hash<threaded_rbtree_hash_map_config_t<key_t, value_t, std::true_type, hasher_t, key_compare_t, allocator_t>> base_t;
 public:
-    //template<class ...args_t>
-    //trb_hash_map(args_t &&...args) : base_t(std::forward<args_t>(args)...)
-    //{
-    //}
-
-    //using base_t::base_t;
-
-    //trb_hash_map() : base_t()
-    //{
-    //}
-
+    template<class ...args_t>
+    trb_hash_map(args_t &&...args) : base_t(std::forward<args_t>(args)...)
+    {
+    }
+    template<class ...args_t>
+    trb_hash_map(std::initializer_list<typename base_t::value_type> il, args_t &&...args)
+        : base_t(il, std::forward<args_t>(args)...)
+    {
+    }
+    
     typename base_t::mapped_type &operator[](typename base_t::key_type const &key)
     {
         typename base_t::offset_type offset = base_t::root_.size;

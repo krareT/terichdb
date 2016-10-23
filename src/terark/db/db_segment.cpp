@@ -192,6 +192,47 @@ void ReadableSegment::closeIsDel() {
 	}
 }
 
+void ReadableSegment::indexSearchExactInternalAppend(size_t mySegIdx,
+                                                     size_t indexId,
+                                                     fstring key,
+                                                     valvec<llong>* recIdvec,
+                                                     DbContext *ctx
+) const
+{
+    assert(indexId < m_indices.size());
+    assert(mySegIdx < ctx->m_segCtx.size());
+    assert(ctx->getSegmentPtr(mySegIdx) == this);
+    if(m_hasLockFreePointSearch)
+    {
+        return m_indices[indexId]->searchExactAppend(key, recIdvec, ctx);
+    }
+    else
+    {
+        IndexIterator *iter = ctx->getIndexIterNoLock(mySegIdx, indexId);
+        llong recId = -1;
+        int cmp = iter->seekLowerBound(key, &recId, &ctx->key2);
+        if(cmp == 0)
+        {
+            // now IndexIterator::m_isUniqueInSchema is just for this quick check
+            // faster than m_schema->getIndexSchema(indexId).m_isUnique
+            assert(iter->isUniqueInSchema() == m_schema->getIndexSchema(indexId).m_isUnique);
+            if(iter->isUniqueInSchema())
+            {
+                recIdvec->push_back(recId);
+            }
+            else
+            {
+                do
+                {
+                    recIdvec->push_back(recId);
+                }
+                while(iter->increment(&recId, &ctx->key2) && key == ctx->key2);
+            }
+        }
+        iter->reset();
+    }
+}
+
 void ReadableSegment::openIndices(PathRef segDir) {
 	if (!m_indices.empty()) {
 		THROW_STD(invalid_argument, "m_indices must be empty");
@@ -1946,7 +1987,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 			size_t i = oldsize, j = oldsize;
 			size_t n = recIdvec->size();
 			llong* p = recIdvec->data();
-			if (this->m_isFreezed || m_isDel.unused() > ProtectCnt) {
+			if (this->m_isFreezed || (n < ProtectCnt && m_isDel.unused() > ProtectCnt)) {
 				const bm_uint_t* isDel = m_isDel.bldata();
 				for (; j < n; ++j) {
 					intptr_t id = intptr_t(p[j]);

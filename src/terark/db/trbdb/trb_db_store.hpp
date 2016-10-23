@@ -26,7 +26,7 @@ protected:
     };
     valvec<uint32_t> m_index;
     pool_type m_data;
-    ReadableSegmentPtr m_seg;
+    ReadableSegment const *m_seg;
     mutable TrbStoreRWLock m_lock;
 
     fstring readItem(size_type i) const;

@@ -12,6 +12,7 @@
 #include <terark/io/DataIO.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/optional.hpp>
+#include <thread>
 
 #undef min
 #undef max
@@ -77,7 +78,7 @@ TrbSegmentRWLock::~TrbSegmentRWLock()
 {
     for(auto pair : row_lock)
     {
-        delete pair.second.lock;
+        delete pair.second;
     }
     for(auto ptr : lock_pool)
     {
@@ -87,58 +88,53 @@ TrbSegmentRWLock::~TrbSegmentRWLock()
 
 TrbSegmentRWLock::scoped_lock::scoped_lock(TrbSegmentRWLock &m, size_t i, bool w)
     : parent(&m)
-    , id(uint32_t(i))
-    , write(w)
 {
     {
         spin_lock_t::scoped_lock l(parent->g_lock);
-        auto ib = parent->row_lock.emplace(uint32_t(id), map_item{1, nullptr});
+        auto ib = parent->row_lock.emplace(uint32_t(i), nullptr);
         if(ib.second)
         {
             if(parent->lock_pool.empty())
             {
-                ib.first->second.lock = lock = new rw_lock_t();
+                ib.first->second = item = new map_item;
             }
             else
             {
-                ib.first->second.lock = lock = parent->lock_pool.back();
-                parent->lock_pool.pop_back();
+                ib.first->second = item = parent->lock_pool.pop_val();
             }
         }
         else
         {
-            ++ib.first->second.count;
-            lock = ib.first->second.lock;
+            item = ib.first->second;
         }
+        item->id = uint32_t(i);
+        ++item->count;
     }
-    if(write)
-    {
-        lock->lock();
-    }
-    else
-    {
-        lock->lock_shared();
-    }
+    lock.acquire(item->lock, w);
 }
 
 TrbSegmentRWLock::scoped_lock::~scoped_lock()
 {
-    if(write)
+    lock.release();
+    if(--item->count == 0)
     {
-        lock->unlock();
+        spin_lock_t::scoped_lock l(parent->g_lock);
+        if(item->count == 0)
+        {
+            parent->row_lock.erase(item->id);
+            parent->lock_pool.emplace_back(item);
+        }
     }
-    else
-    {
-        lock->unlock_shared();
-    }
-    spin_lock_t::scoped_lock l(parent->g_lock);
-    auto find = parent->row_lock.find(id);
-    assert(find != parent->row_lock.end());
-    if(--find->second.count == 0)
-    {
-        parent->lock_pool.emplace_back(lock);
-        parent->row_lock.erase(find);
-    }
+}
+
+bool TrbSegmentRWLock::scoped_lock::upgrade()
+{
+    return lock.upgrade_to_writer();
+}
+
+bool TrbSegmentRWLock::scoped_lock::downgrade()
+{
+    return lock.downgrade_to_reader();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -63,6 +63,10 @@ public:
 										fstring key, valvec<llong>* recIdvec,
 										DbContext*) const = 0;
 
+    virtual void indexSearchExactInternalAppend(size_t mySegIdx, size_t indexId,
+                                                fstring key, valvec<llong>* recIdvec,
+                                                DbContext*) const;
+
 	virtual void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext*) const = 0;
 	virtual void selectOneColumn(llong recId, size_t columnId,
