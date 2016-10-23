@@ -445,7 +445,7 @@ namespace threded_rb_tree_tools
     {
         return std::true_type();
     }
-    template<typename U, typename C> static std::false_type check_comparator(...)
+    template<typename U, typename C> std::false_type check_comparator(...)
     {
         return std::false_type();
     }
@@ -1761,7 +1761,7 @@ public:
         {
             if(where == node_type::nil_sentinel)
             {
-                where = tree->root_.get_right();
+                where = tree->root_.rbeg_i();
             }
             else
             {
@@ -1796,13 +1796,13 @@ public:
 
         bool operator == (iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where == other.where;
         }
 
         bool operator != (iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where != other.where;
         }
 
@@ -1844,7 +1844,7 @@ public:
         {
             if(where == node_type::nil_sentinel)
             {
-                where = tree->root_.get_right();
+                where = tree->rbeg_i();
             }
             else
             {
@@ -1879,13 +1879,13 @@ public:
 
         bool operator == (const_iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where == other.where;
         }
 
         bool operator != (const_iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where != other.where;
         }
 
@@ -1911,12 +1911,14 @@ public:
 
         explicit reverse_iterator(iterator const &other) : tree(other.tree)
         {
-			if (other.where == node_type::nil_sentinel) {
-				where = other.tree->beg_i();
-			}
-			else {
-				where = other.tree->prev_i(other.where);
-			}
+            if(other.where == node_type::nil_sentinel)
+            {
+                where = other.tree->beg_i();
+            }
+            else
+            {
+                where = other.tree->prev_i(other.where);
+            }
         }
 
         reverse_iterator(reverse_iterator const &) = default;
@@ -1931,7 +1933,7 @@ public:
         {
             if(where == node_type::nil_sentinel)
             {
-                where = tree->root_.get_left();
+                where = tree->root_.beg_i();
             }
             else
             {
@@ -1966,21 +1968,22 @@ public:
 
         bool operator == (reverse_iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where == other.where;
         }
 
         bool operator != (reverse_iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where != other.where;
         }
 
         iterator base() const
         {
-			if (node_type::nil_sentinel == where) {
-				return tree->begin();
-			}
+            if(node_type::nil_sentinel == where)
+            {
+                return tree->begin();
+            }
             return ++iterator(tree, where);
         }
 
@@ -2008,12 +2011,14 @@ public:
 
         explicit const_reverse_iterator(const_iterator const &other) : tree(other.tree)
         {
-			if (other.where == node_type::nil_sentinel) {
-				where = other.tree->beg_i();
-			}
-			else {
-				where = other.tree->prev_i(other.where);
-			}
+            if(other.where == node_type::nil_sentinel)
+            {
+                where = other.tree->beg_i();
+            }
+            else
+            {
+                where = other.tree->prev_i(other.where);
+            }
         }
 
         const_reverse_iterator(reverse_iterator const &other) : tree(other.tree), where(other.where)
@@ -2032,7 +2037,7 @@ public:
         {
             if(where == node_type::nil_sentinel)
             {
-                where = tree->root_.get_left();
+                where = tree->root_.beg_i();
             }
             else
             {
@@ -2067,21 +2072,22 @@ public:
 
         bool operator == (const_reverse_iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where == other.where;
         }
 
         bool operator != (const_reverse_iterator const &other) const
         {
-			assert(tree == other.tree);
+            assert(tree == other.tree);
             return where != other.where;
         }
 
         const_iterator base() const
         {
-			if (node_type::nil_sentinel == where) {
-				return tree->begin();
-			}
+            if(node_type::nil_sentinel == where)
+            {
+                return tree->cbegin();
+            }
             return ++const_iterator(tree, where);
         }
 
@@ -2887,11 +2893,16 @@ class trb_map : public threaded_rb_tree_impl<threaded_rb_tree_default_map_config
     typedef threaded_rb_tree_default_map_config_t<key_t, value_t, comparator_t, index_t, std::true_type> config_t;
     typedef threaded_rb_tree_impl<config_t> base_t;
 public:
-    using base_t::base_t;
-    
-    trb_map() : base_t()
+    template<class ...args_t>
+    trb_map(args_t &&...args) : base_t(std::forward<args_t>(args)...)
     {
     }
+    template<class ...args_t>
+    trb_map(std::initializer_list<typename base_t::value_type> il, args_t &&...args)
+        : base_t(il, std::forward<args_t>(args)...)
+    {
+    }
+    
     typename base_t::mapped_type &operator[](typename base_t::key_type const &key)
     {
         typename base_t::size_type offset = base_t::lwb_i(key);
