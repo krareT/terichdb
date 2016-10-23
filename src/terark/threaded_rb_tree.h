@@ -16,6 +16,12 @@ struct threaded_rb_tree_node_t
 
     index_type children[2];
 
+	threaded_rb_tree_node_t(index_type left, index_type right) {
+		children[0] = left;
+		children[1] = right;
+	}
+	threaded_rb_tree_node_t() {}
+
     static std::size_t constexpr flag_bit_mask = index_type(1) << (sizeof(index_type) * 8 - 1);
     static std::size_t constexpr type_bit_mask = index_type(1) << (sizeof(index_type) * 8 - 2);
     static std::size_t constexpr full_bit_mask = flag_bit_mask | type_bit_mask;
