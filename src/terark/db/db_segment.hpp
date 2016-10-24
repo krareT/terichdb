@@ -243,10 +243,10 @@ class TERARK_DB_DLL DbTransaction : boost::noncopyable {
 public:
 	enum Status { started, committed, rollbacked } m_status;
 	///@{ just for BatchWriter
-	valvec<llong>   m_removeOnCommit;
-	valvec<uint32_t>m_appearOnCommit; // the subId, must be in m_wrSeg
-    llong           m_recId;
+	//valvec<llong>   m_removeOnCommit;
+	//valvec<uint32_t>m_appearOnCommit; // the subId, must be in m_wrSeg
 	// @}
+    llong m_recId;
 	virtual void indexRemove(size_t indexId, fstring key) = 0;
 	virtual bool indexInsert(size_t indexId, fstring key) = 0;
 	virtual void storeRemove() = 0;
