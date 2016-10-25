@@ -111,8 +111,8 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ForceSymbolReferences>terark_db_dfadb;terark_db_trbdb;terark_db_wiredtiger;%(ForceSymbolReferences)</ForceSymbolReferences>
-      <AdditionalDependencies>terark-fsa-d.lib;terark-db-d.lib;terark-db-dfadb-d.lib;terark-db-trbdb-d.lib;terark-db-wiredtiger-d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ForceSymbolReferences>%(ForceSymbolReferences)</ForceSymbolReferences>
+      <AdditionalDependencies>terark-fsa-d.lib;terark-db-d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -145,8 +145,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <ForceSymbolReferences>terark_db_dfadb;terark_db_trbdb;terark_db_wiredtiger;%(ForceSymbolReferences)</ForceSymbolReferences>
-      <AdditionalDependencies>terark-fsa-r.lib;terark-db-r.lib;terark-db-dfadb-r.lib;terark-db-trbdb-r.lib;terark-db-wiredtiger-r.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ForceSymbolReferences>%(ForceSymbolReferences)</ForceSymbolReferences>
+      <AdditionalDependencies>terark-fsa-r.lib;terark-db-r.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
