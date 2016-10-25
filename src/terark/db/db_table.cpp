@@ -641,16 +641,20 @@ public:
 	}
 };
 
-//const std::string& BatchWriter::strError() const {
-//	return m_ctx->m_transaction->strError();
-//}
-//const char* BatchWriter::szError() const {
-//	return m_ctx->m_transaction->strError().c_str();
-//}
-//
-//// if ctx is NULL, will create a new DbContext for m_ctx
-//BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
-//{
+const std::string& BatchWriter::strError() const {
+	return m_ctx->m_transaction->strError();
+}
+const char* BatchWriter::szError() const {
+	return m_ctx->m_transaction->strError().c_str();
+}
+
+// if ctx is NULL, will create a new DbContext for m_ctx
+BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
+{
+    TERARK_THROW(DbException
+                 , "FATAL: "
+                 "BatchWriter temporarily unsupported ."
+    );
 //	assert(nullptr != tab);
 //	assert(nullptr == ctx || ctx->m_tab == tab);
 //	if (!tab->m_wrSeg) {
@@ -692,9 +696,9 @@ public:
 //		}
 //		throw;
 //	}
-//}
-//
-//BatchWriter::~BatchWriter() {
+}
+
+BatchWriter::~BatchWriter() {
 //	auto tab = m_ctx->m_tab;
 //	auto txn = m_ctx->m_transaction.get();
 //	assert(DbTransaction::started != txn->m_status);
@@ -707,8 +711,8 @@ public:
 //	tab->m_inprogressWritingCount -= 2;
 //	txn->m_removeOnCommit.erase_all();
 //	txn->m_appearOnCommit.erase_all();
-//}
-//
+}
+
 //llong BatchWriter::overwriteExisting(fstring row) {
 //	auto ctx = m_ctx.get();
 //	auto tab = ctx->m_tab;
@@ -736,8 +740,9 @@ public:
 //	txn->storeUpsert(subId, row);
 //	return baseId + subId;
 //}
-//
-//llong BatchWriter::upsertRow(fstring row) {
+
+llong BatchWriter::upsertRow(fstring row) {
+    return -1;
 //	for (size_t retry = 0; retry < 3; ++retry) {
 //		llong recId = upsertRowImpl(row);
 //		if (recId >= 0)
@@ -745,8 +750,8 @@ public:
 //		std::this_thread::yield();
 //	}
 //	TERARK_THROW(NeedRetryException, "Concurrent transaction conflict, retry again");
-//}
-//
+}
+
 //llong BatchWriter::upsertRowImpl(fstring row) {
 //	auto ctx = m_ctx.get();
 //	auto tab = ctx->m_tab;
@@ -827,8 +832,8 @@ public:
 //	}
 //	return newRecId;
 //}
-//
-//void BatchWriter::removeRow(llong recId) {
+
+void BatchWriter::removeRow(llong recId) {
 //	auto ctx = m_ctx.get();
 //	auto tab = ctx->m_tab;
 //	auto txn = ctx->m_transaction.get();
@@ -882,9 +887,10 @@ public:
 //		if (!seg->m_isDel[subId])
 //			txn->m_removeOnCommit.push_back(recId);
 //	}
-//}
-//
-//bool BatchWriter::commit() {
+}
+
+bool BatchWriter::commit() {
+    return false;
 //	auto tab = m_ctx->m_tab;
 //	DbTransaction* txn(m_ctx->m_transaction.get());
 //	auto& ws = *tab->m_wrSeg;
@@ -947,9 +953,9 @@ public:
 //		}
 //	}
 //	return true;
-//}
-//
-//void BatchWriter::rollback() {
+}
+
+void BatchWriter::rollback() {
 //	auto tab = m_ctx->m_tab;
 //	DbTransaction* txn(m_ctx->m_transaction.get());
 //	assert(tab->m_wrSeg.get() == m_wrSeg);
@@ -958,7 +964,7 @@ public:
 //	txn->rollback();
 //	auto& ws = *tab->m_wrSeg;
 //	ws.m_deletedWrIdSet.append(txn->m_appearOnCommit);
-//}
+}
 
 StoreIterator* DbTable::createStoreIterForward(DbContext* ctx) const {
 	assert(m_schema);

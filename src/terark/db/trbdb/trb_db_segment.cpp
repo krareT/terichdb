@@ -68,6 +68,7 @@ void WriteLog(NativeDataOutput<OutputBuffer> &out, valvec<byte> &buffer, LogActi
     uint32_t crc;
     std::initializer_list<uint32_t>{crc = CrcUpdate::update(0, buffer, uint8_t(action)), (crc = CrcUpdate::update<args_t>(crc, buffer, args))...};
     out << crc << buffer;
+    out.flush();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -240,6 +241,8 @@ TrbColgroupSegment::~TrbColgroupSegment()
 {
     if(m_fp.isOpen())
     {
+        m_out.flush();
+        m_out.attach(static_cast<FileStream *>(nullptr));
         fclose(m_fp.detach());
     }
 }

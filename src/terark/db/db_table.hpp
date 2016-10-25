@@ -46,25 +46,25 @@ typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 typedef boost::intrusive_ptr<WritableSegment> WritableSegmentPtr;
 
 // Now BatchWriter is supported only when table has at most one unique index
-//class TERARK_DB_DLL BatchWriter {
-//	DECLARE_NONE_COPYABLE_CLASS(BatchWriter);
-//protected:
-//	DbContextPtr     m_ctx;
-//	WritableSegment* m_wrSeg; // for debug only
-//	DbTransaction*   m_txn; // for debug only
-//	llong overwriteExisting(fstring row);
-//	llong upsertRowImpl(fstring row);
-//public:
-//	explicit BatchWriter(DbTable* tab, DbContext* ctx = NULL);
-//	~BatchWriter();
-//	DbContext* getCtx() const { return m_ctx.get(); }
-//	const std::string& strError() const;
-//	const char* szError() const;
-//	llong upsertRow(fstring row);
-//	void  removeRow(llong recId);
-//	bool  commit();
-//	void  rollback();
-//};
+class TERARK_DB_DLL BatchWriter {
+	DECLARE_NONE_COPYABLE_CLASS(BatchWriter);
+protected:
+	DbContextPtr     m_ctx;
+	WritableSegment* m_wrSeg; // for debug only
+	DbTransaction*   m_txn; // for debug only
+	llong overwriteExisting(fstring row);
+	llong upsertRowImpl(fstring row);
+public:
+	explicit BatchWriter(DbTable* tab, DbContext* ctx = NULL);
+	~BatchWriter();
+	DbContext* getCtx() const { return m_ctx.get(); }
+	const std::string& strError() const;
+	const char* szError() const;
+	llong upsertRow(fstring row);
+	void  removeRow(llong recId);
+	bool  commit();
+	void  rollback();
+};
 
 // is not a WritableStore
 class TERARK_DB_DLL DbTable : public ReadableStore {
