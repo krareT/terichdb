@@ -26,6 +26,7 @@
 	#include <io.h>
 #else
 	#include <unistd.h>
+	#include <dlfcn.h>
 #endif
 #include <fcntl.h>
 #include <float.h>
