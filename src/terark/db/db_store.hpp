@@ -58,6 +58,8 @@ class TERARK_DB_DLL ReadableStore : virtual public Permanentable {
 protected:
 	byte_t* m_recordsBasePtr;
 public:
+    bool    m_isFreezed;
+public:
 	struct TERARK_DB_DLL RegisterStoreFactory {
 		typedef std::function<ReadableStore*(const Schema&)> StoreFactory;
 		RegisterStoreFactory(const char* fnameSuffix, const StoreFactory&);
@@ -94,6 +96,8 @@ public:
 
 	StoreIterator* ensureStoreIterForward(DbContext*) const;
 	StoreIterator* ensureStoreIterBackward(DbContext*) const;
+
+    virtual void markFrozen();
 };
 
 class TERARK_DB_DLL AppendableStore {

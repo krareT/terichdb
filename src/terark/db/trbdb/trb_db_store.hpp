@@ -26,8 +26,7 @@ protected:
     };
     valvec<uint32_t> m_index;
     pool_type m_data;
-    ReadableSegment const *m_seg;
-    mutable TrbStoreRWLock m_lock;
+    mutable TrbStoreRWLock m_rwMutex;
 
     fstring readItem(size_type i) const;
     void storeItem(size_type i, fstring d);
@@ -37,7 +36,7 @@ protected:
     friend class TrbStoreIterBackward;
 
 public:
-    TrbWritableStore(Schema const &, ReadableSegment const *);
+    TrbWritableStore(Schema const &);
 	~TrbWritableStore();
 
 	void save(PathRef) const override;
@@ -69,9 +68,10 @@ class TERARK_DB_DLL MemoryFixedLenStore : public ReadableStore, public WritableS
 protected:
     size_t m_fixlen;
     valvec<byte> m_data;
+    mutable TrbStoreRWLock m_rwMutex;
 
 public:
-    MemoryFixedLenStore(Schema const &, ReadableSegment const *);
+    MemoryFixedLenStore(Schema const &);
     ~MemoryFixedLenStore();
 
     void save(PathRef) const override;

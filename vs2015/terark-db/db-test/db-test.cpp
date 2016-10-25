@@ -8,31 +8,9 @@
 #include <terark/io/RangeStream.hpp>
 #include <terark/num_to_str.hpp>
 #include <random>
+#include "TestRow.hpp"
 
-struct TestRow
-{
-    uint64_t id;
-    terark::db::Schema::Fixed<20> fix;
-    terark::db::Schema::Fixed<20> fix2;
-    std::string str0;
-    std::string str1;
-    std::string str2;
-    std::string str3;
-    std::string str4;
-    DATA_IO_LOAD_SAVE(TestRow,
-                      &id
-                      &fix
-                      &fix2
-
-                      // StrZero would never be serialized as LastColumn/RestAll
-                      &terark::db::Schema::StrZero(str0)
-                      &terark::db::Schema::StrZero(str1)
-                      &str2
-                      &str3
-                      &terark::RestAll(str4)
-    )
-};
-
+using namespace DbTest;
 using namespace terark::db;
 
 void doTest(const char* tableDir, size_t maxRowNum)
@@ -40,7 +18,7 @@ void doTest(const char* tableDir, size_t maxRowNum)
     using namespace terark;
 
     std::mt19937 mt;
-    DbTablePtr tab = DbTable::open(tableDir);
+    DbTablePtr tab = TestRow::openTable(tableDir, true);
     DbContextPtr ctx = tab->createDbContext();
 
     valvec<llong> recIdvec;

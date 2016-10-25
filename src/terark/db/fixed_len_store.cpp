@@ -207,6 +207,11 @@ void FixedLenStore::shrinkToFit() {
 	TERARK_RT_assert(realSize == m_mmapSize, std::logic_error);
 }
 
+void FixedLenStore::markFrozen() {
+    ReadableStore::markFrozen();
+    unneedsLock();
+}
+
 void FixedLenStore::reserveRows(size_t rows) {
 	ScopeLock(true);
 	allocFileSize(sizeof(Header) + m_fixlen * rows);

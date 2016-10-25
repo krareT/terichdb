@@ -41,6 +41,8 @@ public:
 	void remove(llong id, DbContext*) override;
 	void shrinkToFit() override;
 
+    void markFrozen() override;
+
 	void setNumRows(size_t rows);
 	void reserveRows(size_t rows);
 

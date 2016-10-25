@@ -27,9 +27,11 @@ TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment, "trbdb", "trb");
 
 enum class LogAction : unsigned char
 {
-    Store,      //Id, Data
-    Emplace,    //Id, Remove, Data
-    Modify,     //[Id, Remove]
+    Reserved = 0,
+    UpdateRow,              //Id, Data
+    RemoveRow,              //Id
+    TransactionUpdateRow,   //Id, Version, Data
+    TransactionCommitRow,   //[Id, Version]
 };
 
 struct CrcUpdate
@@ -75,7 +77,7 @@ void WriteLog(NativeDataOutput<OutputBuffer> &out, valvec<byte> &buffer, LogActi
 ////////////////////////////////////////////////////////////////////////////////
 
 
-TrbSegmentRWLock::~TrbSegmentRWLock()
+TrbRWRowMutex::~TrbRWRowMutex()
 {
     for(auto pair : row_lock)
     {
@@ -87,15 +89,15 @@ TrbSegmentRWLock::~TrbSegmentRWLock()
     }
 }
 
-TrbSegmentRWLock::scoped_lock::scoped_lock(TrbSegmentRWLock &m, size_t i, bool w)
-    : parent(&m)
+TrbRWRowMutex::scoped_lock::scoped_lock(TrbRWRowMutex &mutex, size_t index, bool write)
+    : parent(&mutex)
 {
     {
         spin_lock_t::scoped_lock l(parent->g_lock);
-        auto ib = parent->row_lock.emplace(uint32_t(i), nullptr);
+        auto ib = parent->row_lock.emplace(uint32_t(index), nullptr);
         if(ib.second)
         {
-            if(parent->lock_pool.empty())
+            if(terark_unlikely(parent->lock_pool.empty()))
             {
                 ib.first->second = item = new map_item;
             }
@@ -108,13 +110,13 @@ TrbSegmentRWLock::scoped_lock::scoped_lock(TrbSegmentRWLock &m, size_t i, bool w
         {
             item = ib.first->second;
         }
-        item->id = uint32_t(i);
+        item->id = uint32_t(index);
         ++item->count;
     }
-    lock.acquire(item->lock, w);
+    lock.acquire(item->lock, write);
 }
 
-TrbSegmentRWLock::scoped_lock::~scoped_lock()
+TrbRWRowMutex::scoped_lock::~scoped_lock()
 {
     lock.release();
     if(--item->count == 0)
@@ -128,12 +130,12 @@ TrbSegmentRWLock::scoped_lock::~scoped_lock()
     }
 }
 
-bool TrbSegmentRWLock::scoped_lock::upgrade()
+bool TrbRWRowMutex::scoped_lock::upgrade()
 {
     return lock.upgrade_to_writer();
 }
 
-bool TrbSegmentRWLock::scoped_lock::downgrade()
+bool TrbRWRowMutex::scoped_lock::downgrade()
 {
     return lock.downgrade_to_reader();
 }
@@ -141,21 +143,21 @@ bool TrbSegmentRWLock::scoped_lock::downgrade()
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-class MutexLockTransaction : public DbTransaction
+class RowLockTransaction : public DbTransaction
 {
     const SchemaConfig& m_sconf;
     TrbColgroupSegment *m_seg;
     DbContext          *m_ctx;
-    boost::optional<TrbSegmentRWLock::scoped_lock> m_lock;
+    boost::optional<TrbRWRowMutex::scoped_lock> m_lock;
 
 public:
-    explicit MutexLockTransaction(TrbColgroupSegment* seg, DbContext* ctx)
+    explicit RowLockTransaction(TrbColgroupSegment* seg, DbContext* ctx)
         : m_sconf(*seg->m_schema)
     {
         m_seg = seg;
         m_ctx = ctx;
     }
-    ~MutexLockTransaction()
+    ~RowLockTransaction()
     {
     }
     void indexRemove(size_t indexId, fstring key) override
@@ -177,7 +179,7 @@ public:
             auto &store = m_seg->m_colgroups[i];
             store->getWritableStore()->remove(m_recId, m_ctx);
         }
-        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::Modify, uint32_t(m_recId), uint32_t(0));
+        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::RemoveRow, uint32_t(m_recId));
     }
     void storeUpdate(fstring row) override
     {
@@ -191,7 +193,7 @@ public:
             schema.selectParent(m_ctx->trbCols, &m_ctx->trbBuf);
             store->getUpdatableStore()->update(m_recId, m_ctx->trbBuf, m_ctx);
         }
-        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::Store, uint32_t(m_recId), row);
+        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::UpdateRow, uint32_t(m_recId), row);
     }
     void storeGetRow(valvec<byte>* row) override
     {
@@ -201,7 +203,7 @@ public:
     }
     void do_startTransaction() override
     {
-        m_lock.emplace(m_seg->m_lock, m_recId);
+        m_lock.emplace(m_seg->m_rowMutex, m_recId);
     }
     bool do_commit() override
     {
@@ -228,7 +230,7 @@ public:
 
 DbTransaction *TrbColgroupSegment::createTransaction(DbContext* ctx)
 {
-    auto txn = new MutexLockTransaction(this, ctx);
+    auto txn = new RowLockTransaction(this, ctx);
     return txn;
 }
 
@@ -287,7 +289,7 @@ void TrbColgroupSegment::load(PathRef path)
             std::memcpy(&action, data.data(), 1);
             switch(action)
             {
-            case LogAction::Store:
+            case LogAction::UpdateRow:
                 assert(data.size() >= 5);
                 std::memcpy(&index, data.data() + 1, 4);
                 m_schema->m_rowSchema->parseRow({data.begin() + 5, data.end()}, &cols);
@@ -296,24 +298,20 @@ void TrbColgroupSegment::load(PathRef path)
                     auto &store = m_colgroups[i];
                     auto &schema = m_schema->getColgroupSchema(i);
                     schema.selectParent(cols, &buf);
-                    store->getWritableStore()->update(index, buf, nullptr); //TODO ... how to get context ?
+                    store->getWritableStore()->update(index, buf, nullptr);
                 }
                 break;
-            case LogAction::Emplace:
-                assert(data.size() >= 9);
-                std::memcpy(&index, data.data() + 1, 4);
-                std::memcpy(&remove, data.data() + 5, 4);
-                m_schema->m_rowSchema->parseRow({data.begin() + 9, data.end()}, &cols);
+            case LogAction::RemoveRow:
+                std::memcpy(&remove, data.data() + 1, 4);
                 for(size_t i = 0; i < colgroups_size; ++i)
                 {
                     auto &store = m_colgroups[i];
-                    auto &schema = m_schema->getColgroupSchema(i);
-                    schema.selectParent(cols, &buf);
-                    store->getWritableStore()->update(index, buf, nullptr); //TODO ... context & remove ...
+                    store->getWritableStore()->remove(remove, nullptr);
                 }
                 break;
-            case LogAction::Modify:
-
+                break;
+            case LogAction::TransactionUpdateRow:
+            case LogAction::TransactionCommitRow:
                 break;
             default:
                 //TODO WTF ??
@@ -379,21 +377,21 @@ void TrbColgroupSegment::initEmptySegment()
 
 ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef) const
 {
-    return TrbWritableIndex::createIndex(schema, this);
+    return TrbWritableIndex::createIndex(schema);
 }
 ReadableIndex *TrbColgroupSegment::createIndex(const Schema &schema, PathRef) const
 {
-    return TrbWritableIndex::createIndex(schema, this);
+    return TrbWritableIndex::createIndex(schema);
 }
 ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef) const
 {
     if(schema.getFixedRowLen() > 0)
     {
-        return new MemoryFixedLenStore(schema, this);
+        return new MemoryFixedLenStore(schema);
     }
     else
     {
-        return new TrbWritableStore(schema, this);
+        return new TrbWritableStore(schema);
     }
 }
 
@@ -405,7 +403,7 @@ void TrbColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
     }
     else
     {
-        TrbSegmentRWLock::scoped_lock l(m_lock, indexId, false);
+        TrbRWRowMutex::scoped_lock l(m_rowMutex, indexId, false);
         ColgroupWritableSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
     }
 }
@@ -418,7 +416,7 @@ void TrbColgroupSegment::getValueAppend(llong id, valvec<byte>* val, DbContext *
     }
     else
     {
-        TrbSegmentRWLock::scoped_lock l(m_lock, id, false);
+        TrbRWRowMutex::scoped_lock l(m_rowMutex, id, false);
         ColgroupWritableSegment::getValueAppend(id, val, ctx);
     }
 }
@@ -453,48 +451,10 @@ void TrbColgroupSegment::shrinkToFit()
 
 void TrbColgroupSegment::saveRecordStore(PathRef segDir) const
 {
-    //for(size_t colgroupId : m_schema->m_updatableColgroups)
-    //{
-    //    const Schema& schema = m_schema->getColgroupSchema(colgroupId);
-    //    assert(schema.m_isInplaceUpdatable);
-    //    assert(schema.getFixedRowLen() > 0);
-    //    auto store = m_colgroups[colgroupId];
-    //    assert(nullptr != store);
-    //    store->save(segDir / "colgroup-" + schema.m_name);
-    //}
 }
 
 void TrbColgroupSegment::loadRecordStore(PathRef segDir)
 {
-    //assert(m_colgroups.size() == 0);
-    //m_colgroups.resize(m_schema->getColgroupNum());
-    //for(size_t colgroupId : m_schema->m_updatableColgroups)
-    //{
-    //    const Schema& schema = m_schema->getColgroupSchema(colgroupId);
-    //    assert(schema.m_isInplaceUpdatable);
-    //    assert(schema.getFixedRowLen() > 0);
-    //    std::unique_ptr<FixedLenStore> store(new FixedLenStore(segDir, schema));
-    //    store->openStore();
-    //    m_colgroups[colgroupId] = store.release();
-    //}
-    //size_t const colgroups_size = m_colgroups.size();
-    //for(size_t i = 0; i < colgroups_size; ++i)
-    //{
-    //    auto &store = m_colgroups[i];
-    //    if(store)
-    //    {
-    //        continue;
-    //    }
-    //    if(i < m_indices.size())
-    //    {
-    //        store = m_indices[i]->getReadableStore();
-    //    }
-    //    if(!store)
-    //    {
-    //        const Schema& schema = m_schema->getColgroupSchema(i);
-    //        store = new TrbWritableStore(segDir / "colgroup-" + schema.m_name);
-    //    }
-    //}
 }
 
 llong TrbColgroupSegment::dataStorageSize() const

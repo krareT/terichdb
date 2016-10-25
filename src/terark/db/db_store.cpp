@@ -49,7 +49,9 @@ ReadableStore::RegisterStoreFactory::RegisterStoreFactory
 		THROW_STD(invalid_argument, "duplicate suffix: %s", fnameSuffix);
 }
 
-ReadableStore::ReadableStore() {
+ReadableStore::ReadableStore()
+    : m_isFreezed(false)
+{
 	m_recordsBasePtr = nullptr;
 }
 ReadableStore::~ReadableStore() {
@@ -199,6 +201,11 @@ ReadableStore::ensureStoreIterBackward(DbContext* ctx) const {
 	if (iter)
 		return iter;
 	return new DefaultStoreIterBackward(const_cast<ReadableStore*>(this), ctx);
+}
+
+void ReadableStore::markFrozen()
+{
+    m_isFreezed = true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

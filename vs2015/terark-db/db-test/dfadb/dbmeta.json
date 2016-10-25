@@ -2,10 +2,10 @@
 	"RowSchema": {
 		"columns" : {
 			"id"  : { "type" : "uint64" },
-			"fix" : { "type" : "fixed", "length" : 20 },
+			"fix" : { "type" : "fixed", "length" : 19 },
 			"fix2": {
 				"type": "fixed",
-				"length": 20,
+				"length": 19,
 				"colstore": {
 					"inplaceUpdatable": true
 				}

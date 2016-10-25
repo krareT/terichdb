@@ -16,9 +16,9 @@
 
 namespace terark { namespace db { namespace trbdb {
 
-class TERARK_DB_DLL MutexLockTransaction;
+class TERARK_DB_DLL RowLockTransaction;
 
-struct TrbSegmentRWLock : boost::noncopyable
+struct TrbRWRowMutex : boost::noncopyable
 {
 private:
     typedef tbb::queuing_rw_mutex rw_lock_t;
@@ -35,17 +35,17 @@ private:
     spin_lock_t g_lock;
 
 public:
-    ~TrbSegmentRWLock();
+    ~TrbRWRowMutex();
 
     class scoped_lock
     {
     private:
-        TrbSegmentRWLock *parent;
+        TrbRWRowMutex *parent;
         map_item *item;
         rw_lock_t::scoped_lock lock;
 
     public:
-        scoped_lock(TrbSegmentRWLock &mutex, size_t id, bool write = true);
+        scoped_lock(TrbRWRowMutex &mutex, size_t id, bool write = true);
         ~scoped_lock();
 
         bool upgrade();
@@ -56,8 +56,8 @@ public:
 class TERARK_DB_DLL TrbColgroupSegment : public ColgroupWritableSegment {
 
 protected:
-    friend class MutexLockTransaction;
-    mutable TrbSegmentRWLock m_lock;
+    friend class RowLockTransaction;
+    mutable TrbRWRowMutex m_rowMutex;
     mutable FileStream m_fp;
     NativeDataOutput<OutputBuffer> m_out;
 

@@ -63,10 +63,6 @@ public:
 										fstring key, valvec<llong>* recIdvec,
 										DbContext*) const = 0;
 
-    virtual void indexSearchExactInternalAppend(size_t mySegIdx, size_t indexId,
-                                                fstring key, valvec<llong>* recIdvec,
-                                                DbContext*) const;
-
 	virtual void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
 							   valvec<byte>* colsData, DbContext*) const = 0;
 	virtual void selectOneColumn(llong recId, size_t columnId,
@@ -115,7 +111,6 @@ public:
 	ReadableStorePtr m_deletionTime; // for snapshot, an uint64 array
 	bool        m_tobeDel;
 	bool        m_isDirty;
-	bool        m_isFreezed;
 	bool        m_hasLockFreePointSearch;
 	bool        m_bookUpdates;
 	bool        m_withPurgeBits;  // just for ReadonlySegment

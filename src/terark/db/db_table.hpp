@@ -6,9 +6,6 @@
 #include <tbb/queuing_rw_mutex.h>
 //#include <tbb/spin_rw_mutex.h>
 #include <atomic>
-#undef min
-#undef max
-#include <terark/threaded_rbtree_hash.h>
 
 #if defined(TBB_VERSION_MAJOR)
 	#if TBB_VERSION_MAJOR * 1000 + TBB_VERSION_MINOR < 4004
