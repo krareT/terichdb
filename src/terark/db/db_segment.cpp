@@ -15,6 +15,7 @@
 #include <terark/util/mmap.hpp>
 #include <terark/util/sortable_strvec.hpp>
 #include <terark/util/truncate_file.hpp>
+//#include <boost/dll.hpp>
 
 //#define TERARK_DB_ENABLE_DFA_META
 #if defined(TERARK_DB_ENABLE_DFA_META)
@@ -66,8 +67,59 @@ RegisterSegmentFactory(std::initializer_list<fstring> names, const SegmentCreato
 	}
 }
 
+struct AutoLoadSegmentLibraries : hash_strmap<void*> {
+	AutoLoadSegmentLibraries() {
+		load_dll("terark-db-dfadb");
+		load_dll("terark-db-trbdb");
+		load_dll("terark-db-wiredtiger");
+	}
+	void load_dll(fstring libname) {
+#if defined(_WIN32) || defined(_WIN64)
+		std::string realnames[1] = {
+			libname + TERARK_IF_DEBUG("-d", "-r") ".dll",
+		};
+#elif defined(__DARWIN_C_LEVEL)
+		std::string realnames[2] = {
+			"lib" + libname + TERARK_IF_DEBUG("-d", "-r") ".dylib",
+			"lib" + libname + TERARK_IF_DEBUG("-d", "-r") ".so",
+		};
+#else
+		std::string realnames[1] = {
+			"lib" + libname + TERARK_IF_DEBUG("-d", "-r") ".so",
+		};
+#endif
+		void* lib = NULL;
+		for (const std::string& realname : realnames) {
+#if defined(_WIN32) || defined(_WIN64)
+			lib = (void*)LoadLibraryA(realname.c_str());
+#else
+			lib = dlopen(realname.c_str(), RTLD_NOW);
+			if (lib)
+				break;
+#endif
+		}
+		if (lib) {
+			auto ib = this->insert_i(libname, lib);
+			if (!ib.second) {
+				THROW_STD(invalid_argument
+					, "duplicate lib: \"%s\", it has been loaded"
+					, libname.c_str());
+			}
+		}
+		else {
+			fprintf(stderr, "WARN: dynamic load DLL: %s failed\n", libname.c_str());
+		}
+	}
+};
+
+const hash_strmap<void*>& g_AutoLoadSegmentDLLs() {
+	static AutoLoadSegmentLibraries libtab;
+	return libtab;
+}
+
 ReadableSegment*
 ReadableSegment::createSegment(fstring clazz, PathRef segDir, SchemaConfig* sc) {
+	(void)g_AutoLoadSegmentDLLs(); // auto load dll
 	const SegmentFactory& factory = s_segmentFactory();
 	const size_t idx = factory.find_i(clazz);
 	if (idx < factory.end_i()) {

@@ -19,6 +19,8 @@
 #include <re2/re2.h>
 #endif
 
+#include <set>
+
 namespace terark { namespace db {
 
 // copy of DictZipBlobStore::Options::EntropyAlgo
@@ -2556,20 +2558,25 @@ do { \
 } while (0)
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// defined in db_segment.cpp
+const hash_strmap<void*>& g_AutoLoadSegmentDLLs();
+
 void SchemaConfig::loadJsonString(fstring jstr) {
 	using terark::json;
 	const json meta = json::parse(jstr.p
 					// UTF8 BOM Check, fixed in nlohmann::json
 					// + (fstring(alljson.p, 3) == "\xEF\xBB\xBF" ? 3 : 0)
 					);
-	m_tableClass = getJsonValue(meta, "TableClass", std::string("DfaDbTable"));
-	if (fstring("MockDbTable") == m_tableClass) {
-		m_writableSegmentClass = getJsonValue(meta, "WritableSegmentClass", std::string("MockWritableSegment"));
-		m_readonlySegmentClass = getJsonValue(meta, "ReadonlySegmentClass", std::string("MockReadonlySegment"));
-	}
-	else { // fstring("DfaDbTable") == m_tableClass, and others
-		m_writableSegmentClass = getJsonValue(meta, "WritableSegmentClass", std::string("WtWritableSegment"));
-		m_readonlySegmentClass = getJsonValue(meta, "ReadonlySegmentClass", std::string("DfaDbReadonlySegment"));
+	m_writableSegmentClass = getJsonValue(meta, "WritableSegmentClass", std::string("WtWritableSegment"));
+	m_readonlySegmentClass = getJsonValue(meta, "ReadonlySegmentClass", std::string("DfaDbReadonlySegment"));
+	if (g_AutoLoadSegmentDLLs().count("terark-db-dfadb") == 0) {
+		static std::set<std::string> dfadbNames = {"DfaDbReadonlySegment", "dfadb", "dfa"};
+		if (dfadbNames.count(m_readonlySegmentClass) == 0) {
+			THROW_STD(invalid_argument
+				, "ReadonlySegmentClass is %s, but dll terark-db-dfadb is not loaded"
+				, m_readonlySegmentClass.c_str()
+				);
+		}
 	}
 	const bool checkMongoType = getJsonValue(meta, "CheckMongoType", false);
 	const bool checkMysqlType = getJsonValue(meta, "CheckMysqlType", false);
