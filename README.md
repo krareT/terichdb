@@ -51,15 +51,15 @@ sudo wget https://raw.githubusercontent.com/Terark/terark-db/master/online_insta
 
 ### 4.2.Compiler Support
 
-- Linux : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.1`
-- Mac OS : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.0`, `clang++-7.3`
+- Linux : `g++-4.7`, `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-5.4`, `g++-6.1`, `g++-6.2`
+- Mac OS : `g++-4.8`, `g++-4.9`, `g++-5.3`, `g++-6.0`, `g++-6.1`, `clang++-7.3`
 - Windows : `vs2015`
 
 ### 4.3.`dfadb` alternative
 1. TerarkDB is open source but our core data structures and algorithms(`dfadb`) are not yet.
-2. `dfadb` is supported by a library named `fsa_all_*` in our released packages.
-3. Developers who want to build their own TerarkDB, should place the `fsa_all-*` library into their library search path(e.g. `/usr/local/lib`).
-4. Self compiled TerarkDB can only uses limited APIs, and need to set `"TableClass" : "MockDbTable"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/docs/4)).
+2. `dfadb` is supported by a library named `terark-fsa-*` in our released packages.
+3. Developers who want to build their own TerarkDB, should place the `terark-fsa-*` library into their library search path(e.g. `/usr/local/lib`).
+4. User compiled TerarkDB can only uses limited APIs, and need to set `"ReadonlySegmentClass" : "MockReadonlySegment"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/docs/4)).
 
 ## 5. Notes
 - UNIX `fork()` should not be called in the applications using TerarkDB, this would cause undefined behaviors.
