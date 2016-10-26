@@ -111,7 +111,6 @@ public:
 	ReadableStorePtr m_deletionTime; // for snapshot, an uint64 array
 	bool        m_tobeDel;
 	bool        m_isDirty;
-	bool        m_isFreezed;
 	bool        m_hasLockFreePointSearch;
 	bool        m_bookUpdates;
 	bool        m_withPurgeBits;  // just for ReadonlySegment
@@ -132,6 +131,7 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 
+protected:
 	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
 
 	void selectColumnsByPhysicId(llong recId, const size_t* colsId,
@@ -140,6 +140,8 @@ public:
 								valvec<byte>* colsData, DbContext*) const;
 	void selectColgroupsByPhysicId(llong id, const size_t* cgIdvec,
 			size_t cgIdvecSize, valvec<byte>* cgDataVec, DbContext*) const;
+
+public:
 
 	void saveRecordStore(PathRef segDir) const override;
 	void closeFiles();
@@ -236,17 +238,16 @@ class TERARK_DB_DLL DbTransaction : boost::noncopyable {
 public:
 	enum Status { started, committed, rollbacked } m_status;
 	///@{ just for BatchWriter
-	valvec<llong>   m_removeOnCommit;
-	valvec<uint32_t>m_appearOnCommit; // the subId, must be in m_wrSeg
+	//valvec<llong>   m_removeOnCommit;
+	//valvec<uint32_t>m_appearOnCommit; // the subId, must be in m_wrSeg
 	// @}
-	virtual void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) = 0;
-	virtual void indexRemove(size_t indexId, fstring key, llong recId) = 0;
-	virtual bool indexInsert(size_t indexId, fstring key, llong recId) = 0;
-	virtual void indexUpsert(size_t indexId, fstring key, llong recId) = 0;
-	virtual void storeRemove(llong recId) = 0;
-	virtual void storeUpsert(llong recId, fstring row) = 0;
-	virtual void storeGetRow(llong recId, valvec<byte>* row) = 0;
-	void startTransaction();
+    llong m_recId;
+	virtual void indexRemove(size_t indexId, fstring key) = 0;
+	virtual bool indexInsert(size_t indexId, fstring key) = 0;
+	virtual void storeRemove() = 0;
+	virtual void storeUpdate(fstring row) = 0;
+	virtual void storeGetRow(valvec<byte>* row) = 0;
+	void startTransaction(llong recId);
 	bool commit();
 	void rollback();
 	virtual const std::string& strError() const = 0;
@@ -261,9 +262,9 @@ class TransactionGuard : boost::noncopyable {
 protected:
 	DbTransaction* m_txn;
 public:
-	explicit TransactionGuard(DbTransaction* txn) {
+	explicit TransactionGuard(DbTransaction* txn, llong recId) {
 		assert(NULL != txn);
-		txn->startTransaction();
+		txn->startTransaction(recId);
 		m_txn = txn;
 	}
 	~TransactionGuard() {
@@ -271,26 +272,20 @@ public:
 			   DbTransaction::rollbacked == m_txn->m_status);
 	}
 	DbTransaction* getTxn() const { return m_txn; }
-	void indexSearch(size_t indexId, fstring key, valvec<llong>* recIdvec) {
-		m_txn->indexSearch(indexId, key, recIdvec);
+	void indexRemove(size_t indexId, fstring key) {
+		m_txn->indexRemove(indexId, key);
 	}
-	void indexRemove(size_t indexId, fstring key, llong recId) {
-		m_txn->indexRemove(indexId, key, recId);
+	bool indexInsert(size_t indexId, fstring key) {
+		return m_txn->indexInsert(indexId, key);
 	}
-	bool indexInsert(size_t indexId, fstring key, llong recId) {
-		return m_txn->indexInsert(indexId, key, recId);
+	void storeRemove() {
+		m_txn->storeRemove();
 	}
-	void indexUpsert(size_t indexId, fstring key, llong recId) {
-		m_txn->indexUpsert(indexId, key, recId);
+	void storeUpdate(fstring row) {
+		m_txn->storeUpdate(row);
 	}
-	void storeRemove(llong recId) {
-		m_txn->storeRemove(recId);
-	}
-	void storeUpsert(llong recId, fstring row) {
-		m_txn->storeUpsert(recId, row);
-	}
-	void storeGetRow(llong recId, valvec<byte>* row) {
-		m_txn->storeGetRow(recId, row);
+	void storeGetRow(valvec<byte>* row) {
+		m_txn->storeGetRow(row);
 	}
 	bool commit() {
 		assert(DbTransaction::started == m_txn->m_status);
@@ -306,7 +301,7 @@ public:
 class TERARK_DB_DLL DefaultRollbackTransaction : public TransactionGuard {
 public:
 	explicit
-	DefaultRollbackTransaction(DbTransaction* txn) : TransactionGuard(txn) {}
+	DefaultRollbackTransaction(DbTransaction* txn, llong recId) : TransactionGuard(txn, recId) {}
 	~DefaultRollbackTransaction();
 };
 

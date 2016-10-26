@@ -29,16 +29,35 @@ public:
     bool increment(llong* id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        size_t max = o->m_index.size();
-        while(m_where < max)
+        if(o->m_isFreezed)
         {
-            size_t k = m_where++;
-            if(o->m_index[k] != 0x80000000U)
+            size_t max = o->m_index.size();
+            while(m_where < max)
             {
-                fstring item = o->readItem(k);
-                *id = k;
-                val->assign(item.begin(), item.end());
-                return true;
+                size_t k = m_where++;
+                if(o->m_index[k] != 0x80000000U)
+                {
+                    fstring item = o->readItem(k);
+                    *id = k;
+                    val->assign(item.data(), item.size());
+                    return true;
+                }
+            }
+        }
+        else
+        {
+            TrbStoreRWLock::scoped_lock l(o->m_rwMutex, false);
+            size_t max = o->m_index.size();
+            while(m_where < max)
+            {
+                size_t k = m_where++;
+                if(o->m_index[k] != 0x80000000U)
+                {
+                    fstring item = o->readItem(k);
+                    *id = k;
+                    val->assign(item.data(), item.size());
+                    return true;
+                }
             }
         }
         return false;
@@ -46,16 +65,34 @@ public:
     bool seekExact(llong id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        if(id < 0 || id >= llong(o->m_index.size()))
+        if(o->m_isFreezed)
         {
-            THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
-                        , id, o->m_index.size());
+            if(id < 0 || id >= llong(o->m_index.size()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_index.size());
+            }
+            if(o->m_index[id] != 0x80000000U)
+            {
+                fstring item = o->readItem(size_t(id));
+                val->assign(item.data(), item.size());
+                return true;
+            }
         }
-        if(o->m_index[id] != 0x80000000U)
+        else
         {
-            fstring item = o->readItem(size_t(id));
-            val->assign(item.begin(), item.end());
-            return true;
+            TrbStoreRWLock::scoped_lock l(o->m_rwMutex, false);
+            if(id < 0 || id >= llong(o->m_index.size()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_index.size());
+            }
+            if(o->m_index[id] != 0x80000000U)
+            {
+                fstring item = o->readItem(size_t(id));
+                val->assign(item.data(), item.size());
+                return true;
+            }
         }
         return false;
     }
@@ -73,20 +110,39 @@ public:
     TrbStoreIterBackward(owner_t const *o)
     {
         m_store.reset(const_cast<owner_t *>(o));
+        //TrbStoreRWLock::scoped_lock l(o->m_rwMutex, false);
         m_where = o->m_index.size();
     }
     bool increment(llong* id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        while(m_where > 0)
+        if(o->m_isFreezed)
         {
-            size_t k = --m_where;
-            if(o->m_index[k] != 0x80000000U)
+            while(m_where > 0)
             {
-                fstring item = o->readItem(k);
-                *id = k;
-                val->assign(item.begin(), item.end());
-                return true;
+                size_t k = --m_where;
+                if(o->m_index[k] != 0x80000000U)
+                {
+                    fstring item = o->readItem(k);
+                    *id = k;
+                    val->assign(item.data(), item.size());
+                    return true;
+                }
+            }
+        }
+        else
+        {
+            TrbStoreRWLock::scoped_lock l(o->m_rwMutex, false);
+            while(m_where > 0)
+            {
+                size_t k = --m_where;
+                if(o->m_index[k] != 0x80000000U)
+                {
+                    fstring item = o->readItem(k);
+                    *id = k;
+                    val->assign(item.data(), item.size());
+                    return true;
+                }
             }
         }
         return false;
@@ -94,67 +150,53 @@ public:
     bool seekExact(llong id, valvec<byte>* val) override
     {
         auto const *o = static_cast<owner_t const *>(m_store.get());
-        if(id < 0 || id >= llong(o->m_index.size()))
+        if(o->m_isFreezed)
         {
-            THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
-                      , id, o->m_index.size());
+            if(id < 0 || id >= llong(o->m_index.size()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_index.size());
+            }
+            if(o->m_index[id] != 0x80000000U)
+            {
+                fstring item = o->readItem(size_t(id));
+                val->assign(item.data(), item.size());
+                return true;
+            }
         }
-        if(o->m_index[id] != 0x80000000U)
+        else
         {
-            fstring item = o->readItem(size_t(id));
-            val->assign(item.begin(), item.end());
-            return true;
+            TrbStoreRWLock::scoped_lock l(o->m_rwMutex, false);
+            if(id < 0 || id >= llong(o->m_index.size()))
+            {
+                THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
+                          , id, o->m_index.size());
+            }
+            if(o->m_index[id] != 0x80000000U)
+            {
+                fstring item = o->readItem(size_t(id));
+                val->assign(item.data(), item.size());
+                return true;
+            }
         }
         return false;
     }
     void reset() override
     {
-        m_where = m_store->numDataRows();
+        auto const *o = static_cast<owner_t const *>(m_store.get());
+        //TrbStoreRWLock::scoped_lock l(o->m_rwMutex, false);
+        m_where = o->m_index.size();
     }
 };
 
 
-TrbWritableStore::TrbWritableStore(PathRef fpath)
+TrbWritableStore::TrbWritableStore(Schema const &)
     : m_data(256)
-    , m_fp(fixFilePath(fpath).c_str(), "wb")
 {
-    m_fp.disbuf();
-    NativeDataInput<InputBuffer> in; in.attach(&m_fp);
-    uint32_t index_remove;
-    std::string key;
+}
 
-    try
-    {
-        while(true)
-        {
-            // |   1  |  31 |
-            // |remove|index|
-            // index_remove_replace
-            //     if remove , remove item at index
-            //     otherwise , read key , insert or update key at index
-
-            in >> index_remove;
-            if((index_remove & 0x80000000) == 0)
-            {
-                in >> key;
-                storeItem(index_remove, key);
-            }
-            else
-            {
-                //TODO check index exists !!!
-                bool success = removeItem(index_remove & 0x7FFFFFFFU);
-                if(!success)
-                {
-                    //TODO WTF ? bad storage file +1 ???
-                }
-            }
-        }
-    }
-    catch(EndOfFileException const &e)
-    {
-        (void)e;//shut up !
-    }
-    m_out.attach(&m_fp);
+TrbWritableStore::~TrbWritableStore()
+{
 }
 
 fstring TrbWritableStore::readItem(size_type i) const
@@ -197,17 +239,6 @@ bool TrbWritableStore::removeItem(size_type i)
     return true;
 }
 
-std::string TrbWritableStore::fixFilePath(PathRef path)
-{
-    return fstring(path.string()).endsWith(".trb")
-        ? path.string()
-        : path.string() + ".trb";
-}
-
-TrbWritableStore::~TrbWritableStore()
-{
-}
-
 void TrbWritableStore::save(PathRef) const
 {
     //nothing todo ...
@@ -222,23 +253,35 @@ void TrbWritableStore::load(PathRef)
 
 llong TrbWritableStore::dataStorageSize() const
 {
+    //TrbStoreRWLock::scoped_lock l(m_rwMutex, false);
     return m_index.used_mem_size() + m_data.size();
 }
 
 llong TrbWritableStore::dataInflateSize() const
 {
+    //TrbStoreRWLock::scoped_lock l(m_rwMutex, false);
     return m_data.size();
 }
 
 llong TrbWritableStore::numDataRows() const
 {
+    //TrbStoreRWLock::scoped_lock l(m_rwMutex, false);
     return m_index.size();
 }
 
 void TrbWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext *) const
 {
-    fstring item = readItem(size_t(id));
-    val->append(item.begin(), item.end());
+    if(m_isFreezed)
+    {
+        fstring item = readItem(size_t(id));
+        val->append(item.data(), item.size());
+    }
+    else
+    {
+        TrbStoreRWLock::scoped_lock l(m_rwMutex, false);
+        fstring item = readItem(size_t(id));
+        val->append(item.data(), item.size());
+    }
 }
 
 StoreIterator *TrbWritableStore::createStoreIterForward(DbContext *) const
@@ -253,29 +296,27 @@ StoreIterator *TrbWritableStore::createStoreIterBackward(DbContext *) const
 
 llong TrbWritableStore::append(fstring row, DbContext *)
 {
+    TrbStoreRWLock::scoped_lock l(m_rwMutex);
     size_t id;
     storeItem(id = m_index.size(), row);
-    m_out << uint32_t(id) << row;
-    m_out.flush();
     return id;
 }
 
 void TrbWritableStore::update(llong id, fstring row, DbContext *)
 {
+    TrbStoreRWLock::scoped_lock l(m_rwMutex);
     storeItem(size_t(id), row);
-    m_out << uint32_t(id) << row;
-    m_out.flush();
 }
 
 void TrbWritableStore::remove(llong id, DbContext *)
 {
+    TrbStoreRWLock::scoped_lock l(m_rwMutex);
     removeItem(size_t(id));
-    m_out << (uint32_t(id) | 0x80000000U);
-    m_out.flush();
 }
 
 void TrbWritableStore::shrinkToFit()
 {
+    TrbStoreRWLock::scoped_lock l(m_rwMutex);
     m_index.shrink_to_fit();
     m_data.shrink_to_fit();
 }
@@ -291,6 +332,126 @@ UpdatableStore *TrbWritableStore::getUpdatableStore()
 }
 
 WritableStore *TrbWritableStore::getWritableStore()
+{
+    return this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+#define ScopeLock(WriteLock) \
+	TrbStoreRWLock::scoped_lock lock; \
+    if (!m_isFreezed) lock.acquire(m_rwMutex, WriteLock)
+
+MemoryFixedLenStore::MemoryFixedLenStore(Schema const &schema)
+    : m_fixlen(schema.getFixedRowLen())
+    , m_data()
+{
+    m_recordsBasePtr = m_data.data();
+}
+MemoryFixedLenStore::~MemoryFixedLenStore()
+{
+}
+
+void MemoryFixedLenStore::save(PathRef) const
+{
+}
+
+void MemoryFixedLenStore::load(PathRef)
+{
+}
+
+llong MemoryFixedLenStore::dataStorageSize() const
+{
+    //ScopeLock(false);
+    return m_data.used_mem_size() + sizeof m_fixlen;
+}
+
+llong MemoryFixedLenStore::dataInflateSize() const
+{
+    //ScopeLock(false);
+    return m_data.used_mem_size();
+}
+
+llong MemoryFixedLenStore::numDataRows() const
+{
+    //ScopeLock(false);
+    return m_data.size() / m_fixlen;
+}
+
+void MemoryFixedLenStore::getValueAppend(llong id, valvec<byte>* val, DbContext *) const
+{
+    ScopeLock(false);
+    size_t offset = size_t(id) * m_fixlen;
+    if(terark_unlikely(offset >= m_data.size()))
+    {
+        return;
+    }
+    val->append(m_data.data() + offset, m_data.data() + offset + m_fixlen);
+}
+
+StoreIterator *MemoryFixedLenStore::createStoreIterForward(DbContext *) const
+{
+    return nullptr;
+}
+
+StoreIterator *MemoryFixedLenStore::createStoreIterBackward(DbContext *) const
+{
+    return nullptr;
+}
+
+llong MemoryFixedLenStore::append(fstring row, DbContext *)
+{
+    ScopeLock(true);
+    assert(row.size() == m_fixlen);
+    assert(m_data.size() % m_fixlen == 0);
+    size_t size = m_data.size();
+    m_data.append(row.begin(), row.end());
+    m_recordsBasePtr = m_data.data();
+    return llong(size / m_fixlen);
+}
+
+void MemoryFixedLenStore::update(llong id, fstring row, DbContext *)
+{
+    ScopeLock(true);
+    assert(row.size() == m_fixlen);
+    size_t offset = size_t(id) * m_fixlen;
+    if(terark_likely(offset >= m_data.size()))
+    {
+        m_data.resize(offset + m_fixlen);
+        m_recordsBasePtr = m_data.data();
+    }
+    std::memcpy(m_data.data() + offset, row.data(), m_fixlen);
+}
+
+void MemoryFixedLenStore::remove(llong id, DbContext *)
+{
+    ScopeLock(true);
+    size_t offset = size_t(id) * m_fixlen;
+    if(terark_unlikely(offset + m_fixlen == m_data.size()))
+    {
+        m_data.risk_set_size(offset);
+    }
+}
+
+void MemoryFixedLenStore::shrinkToFit()
+{
+    ScopeLock(true);
+    m_data.shrink_to_fit();
+    m_recordsBasePtr = m_data.data();
+}
+
+AppendableStore *MemoryFixedLenStore::getAppendableStore()
+{
+    return this;
+}
+
+UpdatableStore *MemoryFixedLenStore::getUpdatableStore()
+{
+    return this;
+}
+
+WritableStore *MemoryFixedLenStore::getWritableStore()
 {
     return this;
 }

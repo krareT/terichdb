@@ -16,11 +16,12 @@ struct threaded_rb_tree_node_t
 
     index_type children[2];
 
-	threaded_rb_tree_node_t(index_type left, index_type right) {
-		children[0] = left;
-		children[1] = right;
-	}
-	threaded_rb_tree_node_t() {}
+    threaded_rb_tree_node_t(index_type left, index_type right)
+    {
+        children[0] = left;
+        children[1] = right;
+    }
+    threaded_rb_tree_node_t() {}
 
     static std::size_t constexpr flag_bit_mask = index_type(1) << (sizeof(index_type) * 8 - 1);
     static std::size_t constexpr type_bit_mask = index_type(1) << (sizeof(index_type) * 8 - 2);
@@ -2899,6 +2900,16 @@ class trb_map : public threaded_rb_tree_impl<threaded_rb_tree_default_map_config
     typedef threaded_rb_tree_default_map_config_t<key_t, value_t, comparator_t, index_t, std::true_type> config_t;
     typedef threaded_rb_tree_impl<config_t> base_t;
 public:
+    //explicit
+    explicit trb_map(typename base_t::key_compare const &comp,
+                     typename base_t::container_type const &container = typename base_t::container_type()
+    ) : base_t(comp, container)
+    {
+    }
+    explicit trb_map(typename base_t::container_type const &container)
+        : base_t(container)
+    {
+    }
     template<class ...args_t>
     trb_map(args_t &&...args) : base_t(std::forward<args_t>(args)...)
     {

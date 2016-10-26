@@ -1806,10 +1806,11 @@ DbTransaction::~DbTransaction() {
 DbTransaction::DbTransaction() {
 	m_status = committed;
 }
-void DbTransaction::startTransaction() {
+void DbTransaction::startTransaction(llong recId) {
 	assert(started != m_status);
+    m_recId = recId;
 	do_startTransaction();
-	m_status = started;
+    m_status = started;
 }
 bool DbTransaction::commit() {
 	assert(started == m_status);
@@ -1953,9 +1954,11 @@ void PlainWritableSegment::markFrozen() {
 }
 void ColgroupWritableSegment::markFrozen() {
 	for (size_t cgId = 0; cgId < m_colgroups.size(); ++cgId) {
-		auto store = dynamic_cast<FixedLenStore*>(m_colgroups[cgId].get());
-		if (store)
-			store->unneedsLock();
+        auto readable_store = m_colgroups[cgId].get();
+        auto wtitable_store = readable_store->getWritableStore();
+        assert(readable_store && wtitable_store);
+        wtitable_store->shrinkToFit();
+        readable_store->markFrozen();
 	}
 	m_isFreezed = true;
 }
@@ -1996,7 +1999,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 			size_t i = oldsize, j = oldsize;
 			size_t n = recIdvec->size();
 			llong* p = recIdvec->data();
-			if (this->m_isFreezed || m_isDel.unused() > ProtectCnt) {
+			if (this->m_isFreezed || (n < ProtectCnt && m_isDel.unused() > ProtectCnt)) {
 				const bm_uint_t* isDel = m_isDel.bldata();
 				for (; j < n; ++j) {
 					intptr_t id = intptr_t(p[j]);
