@@ -244,7 +244,7 @@ override CXXFLAGS += ${DEFS}
 
 .PHONY : default all TerarkDB LeveldbApi DfaDB TrbDB Tiger
 
-default : TerarkDB LeveldbApi TrbDB Tiger
+default : TerarkDB LeveldbApi TrbDB Tiger ${DFADB_TARGET}
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
 DfaDB: ${DfaDB_d} ${DfaDB_r} ${static_DfaDB_d} ${static_DfaDB_r}
