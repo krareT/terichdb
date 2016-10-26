@@ -1954,8 +1954,11 @@ void PlainWritableSegment::markFrozen() {
 }
 void ColgroupWritableSegment::markFrozen() {
 	for (size_t cgId = 0; cgId < m_colgroups.size(); ++cgId) {
-        auto store = m_colgroups[cgId].get();
-        store->markFrozen();
+        auto readable_store = m_colgroups[cgId].get();
+        auto wtitable_store = readable_store->getWritableStore();
+        assert(readable_store && wtitable_store);
+        wtitable_store->shrinkToFit();
+        readable_store->markFrozen();
 	}
 	m_isFreezed = true;
 }

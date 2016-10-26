@@ -139,7 +139,7 @@ void doTest(const char* tableDir, size_t maxRowNum)
             if(tab->exists(randomRecId))
             {
                 size_t keyId_ColumnId = 0;
-                Schema::Fixed<20> fix2;
+                decltype(TestRow::fix2) fix2;
                 ctx->selectOneColumn(randomRecId, keyId_ColumnId, &recBuf);
                 assert(recBuf.size() == sizeof(llong));
                 llong keyId = Schema::numberOf<llong>(recBuf);
