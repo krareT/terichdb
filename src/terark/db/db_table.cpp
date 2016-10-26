@@ -651,314 +651,319 @@ const char* BatchWriter::szError() const {
 // if ctx is NULL, will create a new DbContext for m_ctx
 BatchWriter::BatchWriter(DbTable* tab, DbContext* ctx)
 {
-	assert(nullptr != tab);
-	assert(nullptr == ctx || ctx->m_tab == tab);
-	if (!tab->m_wrSeg) {
-		THROW_STD(invalid_argument, "the writing segment is NULL: %s"
-			, tab->m_dir.string().c_str());
-	}
-	const SchemaConfig& sconf = *tab->m_schema;
-	if (sconf.m_uniqIndices.size() > 1) {
-		THROW_STD(invalid_argument
-			, "this table has %zd unique indices, "
-				"must have at most one unique index for calling this method"
-			, sconf.m_uniqIndices.size());
-	}
-	bool inprogressWritingCountInced = false;
-	try {
-		MyRwLock lock(tab->m_rwMutex, false);
-		DebugCheckRowNumVecNoLock(tab);
-		tab->maybeCreateNewSegment(lock);
-		if (ctx == nullptr) {
-			ctx = tab->createDbContextNoLock();
-		}
-		tab->m_inprogressWritingCount += 2;
-		inprogressWritingCountInced = true;
-		m_wrSeg = tab->m_wrSeg.get();
-		m_ctx = ctx;
-		ctx->trySyncSegCtxNoLock(tab);
-		ctx->ensureTransactionNoLock();
-		auto txn = ctx->m_transaction.get();
-		m_txn = txn;
-		txn->startTransaction();
-		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
-		assert(txn->m_appearOnCommit.size() == 0);
-		txn->m_removeOnCommit.erase_all(); // tolerate on release
-		txn->m_appearOnCommit.erase_all();
-	}
-	catch (const std::exception&) {
-		if (inprogressWritingCountInced) {
-			tab->m_inprogressWritingCount -= 2;
-		}
-		throw;
-	}
+    TERARK_THROW(DbException
+                 , "FATAL: "
+                 "BatchWriter temporarily unsupported ."
+    );
+//	assert(nullptr != tab);
+//	assert(nullptr == ctx || ctx->m_tab == tab);
+//	if (!tab->m_wrSeg) {
+//		THROW_STD(invalid_argument, "the writing segment is NULL: %s"
+//			, tab->m_dir.string().c_str());
+//	}
+//	const SchemaConfig& sconf = *tab->m_schema;
+//	if (sconf.m_uniqIndices.size() > 1) {
+//		THROW_STD(invalid_argument
+//			, "this table has %zd unique indices, "
+//				"must have at most one unique index for calling this method"
+//			, sconf.m_uniqIndices.size());
+//	}
+//	bool inprogressWritingCountInced = false;
+//	try {
+//		MyRwLock lock(tab->m_rwMutex, false);
+//		DebugCheckRowNumVecNoLock(tab);
+//		tab->maybeCreateNewSegment(lock);
+//		if (ctx == nullptr) {
+//			ctx = tab->createDbContextNoLock();
+//		}
+//		tab->m_inprogressWritingCount += 2;
+//		inprogressWritingCountInced = true;
+//		m_wrSeg = tab->m_wrSeg.get();
+//		m_ctx = ctx;
+//		ctx->trySyncSegCtxNoLock(tab);
+//		ctx->ensureTransactionNoLock();
+//		auto txn = ctx->m_transaction.get();
+//		m_txn = txn;
+//		txn->startTransaction();
+//		assert(txn->m_removeOnCommit.size() == 0); // strict on debug
+//		assert(txn->m_appearOnCommit.size() == 0);
+//		txn->m_removeOnCommit.erase_all(); // tolerate on release
+//		txn->m_appearOnCommit.erase_all();
+//	}
+//	catch (const std::exception&) {
+//		if (inprogressWritingCountInced) {
+//			tab->m_inprogressWritingCount -= 2;
+//		}
+//		throw;
+//	}
 }
 
 BatchWriter::~BatchWriter() {
-	auto tab = m_ctx->m_tab;
-	auto txn = m_ctx->m_transaction.get();
-	assert(DbTransaction::started != txn->m_status);
-	if (DbTransaction::started == txn->m_status) {
-		// abort();
-		fprintf(stderr
-			, "ERROR: commit or rollback was not called for BatchWriter, rollback by default\n");
-		this->rollback();
-	}
-	tab->m_inprogressWritingCount -= 2;
-	txn->m_removeOnCommit.erase_all();
-	txn->m_appearOnCommit.erase_all();
+//	auto tab = m_ctx->m_tab;
+//	auto txn = m_ctx->m_transaction.get();
+//	assert(DbTransaction::started != txn->m_status);
+//	if (DbTransaction::started == txn->m_status) {
+//		// abort();
+//		fprintf(stderr
+//			, "ERROR: commit or rollback was not called for BatchWriter, rollback by default\n");
+//		this->rollback();
+//	}
+//	tab->m_inprogressWritingCount -= 2;
+//	txn->m_removeOnCommit.erase_all();
+//	txn->m_appearOnCommit.erase_all();
 }
 
-llong BatchWriter::overwriteExisting(fstring row) {
-	auto ctx = m_ctx.get();
-	auto tab = ctx->m_tab;
-	const SchemaConfig& sconf = *tab->m_schema;
-	llong subId = ctx->exactMatchRecIdvec[0];
-	llong baseId = tab->m_rowNumVec.ende(2);
-	assert(ctx->exactMatchRecIdvec.size() == 1);
-	DbTransaction* txn(ctx->m_transaction.get());
-	assert(tab->m_wrSeg.get() == m_wrSeg);
-	assert(txn == m_txn);
-	if (!sconf.m_multIndices.empty()) {
-		try {
-			txn->storeGetRow(subId, &ctx->row2);
-		}
-		catch (const ReadRecordException&) {
-			fprintf(stderr
-				, "ERROR: upsertRow(baseId=%lld, subId=%lld): read old row data failed: %s\n"
-				, baseId, subId, tab->m_wrSeg->m_segDir.string().c_str());
-			throw ReadRecordException("pre updateSyncMultIndex",
-						tab->m_wrSeg->m_segDir.string(), baseId, subId);
-		}
-		sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
-		tab->updateSyncMultIndex(subId, txn, ctx);
-	}
-	txn->storeUpsert(subId, row);
-	return baseId + subId;
-}
+//llong BatchWriter::overwriteExisting(fstring row) {
+//	auto ctx = m_ctx.get();
+//	auto tab = ctx->m_tab;
+//	const SchemaConfig& sconf = *tab->m_schema;
+//	llong subId = ctx->exactMatchRecIdvec[0];
+//	llong baseId = tab->m_rowNumVec.ende(2);
+//	assert(ctx->exactMatchRecIdvec.size() == 1);
+//	DbTransaction* txn(ctx->m_transaction.get());
+//	assert(tab->m_wrSeg.get() == m_wrSeg);
+//	assert(txn == m_txn);
+//	if (!sconf.m_multIndices.empty()) {
+//		try {
+//			txn->storeGetRow(subId, &ctx->row2);
+//		}
+//		catch (const ReadRecordException&) {
+//			fprintf(stderr
+//				, "ERROR: upsertRow(baseId=%lld, subId=%lld): read old row data failed: %s\n"
+//				, baseId, subId, tab->m_wrSeg->m_segDir.string().c_str());
+//			throw ReadRecordException("pre updateSyncMultIndex",
+//						tab->m_wrSeg->m_segDir.string(), baseId, subId);
+//		}
+//		sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
+//		tab->updateSyncMultIndex(subId, txn, ctx);
+//	}
+//	txn->storeUpsert(subId, row);
+//	return baseId + subId;
+//}
 
 llong BatchWriter::upsertRow(fstring row) {
-	for (size_t retry = 0; retry < 3; ++retry) {
-		llong recId = upsertRowImpl(row);
-		if (recId >= 0)
-			return recId;
-	//	std::this_thread::yield();
-		tbb::this_tbb_thread::yield();
-	}
-	TERARK_THROW(NeedRetryException, "Concurrent transaction conflict, retry again");
+    return -1;
+//	for (size_t retry = 0; retry < 3; ++retry) {
+//		llong recId = upsertRowImpl(row);
+//		if (recId >= 0)
+//			return recId;
+//		std::this_thread::yield();
+//	}
+//	TERARK_THROW(NeedRetryException, "Concurrent transaction conflict, retry again");
 }
 
-llong BatchWriter::upsertRowImpl(fstring row) {
-	auto ctx = m_ctx.get();
-	auto tab = ctx->m_tab;
-	auto txn = ctx->m_transaction.get();
-	const SchemaConfig& sconf = *tab->m_schema;
-	assert(tab->m_wrSeg.get() == m_wrSeg);
-	assert(txn == m_txn);
-	if (!tab->m_wrSeg) {
-		THROW_STD(invalid_argument
-			, "syncFinishWriting('%s') was called, now writing is not allowed"
-			, tab->m_dir.string().c_str());
-	}
-	assert(sconf.m_uniqIndices.size() <= 1);
-	size_t uniqueIndexId = sconf.m_uniqIndices[0];
-	llong  newRecId;
-	// parseRow doesn't need lock
-	sconf.m_rowSchema->parseRow(row, &ctx->cols1);
-	const Schema& indexSchema = sconf.getIndexSchema(uniqueIndexId);
-	indexSchema.selectParent(ctx->cols1, &ctx->key1);
-{
-	MyRwLock lock(tab->m_rwMutex, false);
-	ctx->trySyncSegCtxNoLock(tab);
-	ctx->ensureTransactionNoLock();
-	txn->indexSearch(uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec);
-	if (!ctx->exactMatchRecIdvec.empty()) {
-		return overwriteExisting(row);
-	}
-	llong wrBaseId = tab->m_rowNumVec.ende(2);
-	llong wrSubId = tab->allocInvisibleWrSubId_NoTabLock();
-	if (ctx->syncIndex) {
-		if (tab->insertSyncIndex(wrSubId, txn, ctx)) {
-			txn->storeUpsert(wrSubId, row);
-			tab->m_accumulateWrittenBytes += row.size();
-		} else {
-			return -1; // fail
-		}
-	} else {
-		txn->storeUpsert(wrSubId, row);
-		tab->m_accumulateWrittenBytes += row.size();
-	}
-	newRecId = wrBaseId + wrSubId;
-	assert(tab->m_wrSeg->m_isDel[wrSubId]); // unvisible
-	txn->m_appearOnCommit.push_back(uint32_t(wrSubId));
-}
-// Find and put existing row with same unique key to txn->m_removeOnCommit
-	for (size_t segIdx = 0; segIdx < ctx->m_segCtx.size()-1; ++segIdx) {
-		auto seg = ctx->m_segCtx[segIdx]->seg;
-		assert(seg->m_isFreezed);
-		seg->indexSearchExact(segIdx, uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
-		if (!ctx->exactMatchRecIdvec.empty()) {
-			llong subId = ctx->exactMatchRecIdvec[0];
-			llong baseId = ctx->m_rowNumVec[segIdx];
-			llong recId = baseId + subId;
-			assert(ctx->exactMatchRecIdvec.size() == 1);
-			MyRwLock lock(tab->m_rwMutex, false);
-			if (ctx->segArrayUpdateSeq != tab->m_segArrayUpdateSeq) {
-				ctx->doSyncSegCtxNoLock(tab);
-				size_t upp = upper_bound_a(ctx->m_rowNumVec, recId);
-#if !defined(NDEBUG)
-				if (seg != ctx->m_segCtx[upp-1]->seg) {
-					seg = ctx->m_segCtx[upp-1]->seg; // for set break point
-				}
-#endif
-				segIdx = upp - 1;
-				seg = ctx->m_segCtx[segIdx]->seg;
-				baseId = ctx->m_rowNumVec[segIdx];
-				subId = recId - baseId;
-			}
-			else {
-				ctx->m_rowNumVec.back() = tab->m_rowNum;
-			}
-			if (seg->m_isDel[subId]) { // should be very rare
-				//break;
-			} else {
-				txn->m_removeOnCommit.push_back(recId);
-			}
-		}
-	}
-	return newRecId;
-}
+//llong BatchWriter::upsertRowImpl(fstring row) {
+//	auto ctx = m_ctx.get();
+//	auto tab = ctx->m_tab;
+//	auto txn = ctx->m_transaction.get();
+//	const SchemaConfig& sconf = *tab->m_schema;
+//	assert(tab->m_wrSeg.get() == m_wrSeg);
+//	assert(txn == m_txn);
+//	if (!tab->m_wrSeg) {
+//		THROW_STD(invalid_argument
+//			, "syncFinishWriting('%s') was called, now writing is not allowed"
+//			, tab->m_dir.string().c_str());
+//	}
+//	assert(sconf.m_uniqIndices.size() <= 1);
+//	size_t uniqueIndexId = sconf.m_uniqIndices[0];
+//	llong  newRecId;
+//	// parseRow doesn't need lock
+//	sconf.m_rowSchema->parseRow(row, &ctx->cols1);
+//	const Schema& indexSchema = sconf.getIndexSchema(uniqueIndexId);
+//	indexSchema.selectParent(ctx->cols1, &ctx->key1);
+//{
+//	MyRwLock lock(tab->m_rwMutex, false);
+//	ctx->trySyncSegCtxNoLock(tab);
+//	ctx->ensureTransactionNoLock();
+//	txn->indexSearch(uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec);
+//	if (!ctx->exactMatchRecIdvec.empty()) {
+//		return overwriteExisting(row);
+//	}
+//	llong wrBaseId = tab->m_rowNumVec.ende(2);
+//	llong wrSubId = tab->allocInvisibleWrSubId_NoTabLock();
+//	if (ctx->syncIndex) {
+//		if (tab->insertSyncIndex(wrSubId, txn, ctx)) {
+//			txn->storeUpsert(wrSubId, row);
+//			tab->m_accumulateWrittenBytes += row.size();
+//		} else {
+//			return -1; // fail
+//		}
+//	} else {
+//		txn->storeUpsert(wrSubId, row);
+//		tab->m_accumulateWrittenBytes += row.size();
+//	}
+//	newRecId = wrBaseId + wrSubId;
+//	assert(tab->m_wrSeg->m_isDel[wrSubId]); // unvisible
+//	txn->m_appearOnCommit.push_back(uint32_t(wrSubId));
+//}
+//// Find and put existing row with same unique key to txn->m_removeOnCommit
+//	for (size_t segIdx = 0; segIdx < ctx->m_segCtx.size()-1; ++segIdx) {
+//		auto seg = ctx->m_segCtx[segIdx]->seg;
+//		assert(seg->m_isFreezed);
+//		seg->indexSearchExact(segIdx, uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+//		if (!ctx->exactMatchRecIdvec.empty()) {
+//			llong subId = ctx->exactMatchRecIdvec[0];
+//			llong baseId = ctx->m_rowNumVec[segIdx];
+//			llong recId = baseId + subId;
+//			assert(ctx->exactMatchRecIdvec.size() == 1);
+//			MyRwLock lock(tab->m_rwMutex, false);
+//			if (ctx->segArrayUpdateSeq != tab->m_segArrayUpdateSeq) {
+//				ctx->doSyncSegCtxNoLock(tab);
+//				size_t upp = upper_bound_a(ctx->m_rowNumVec, recId);
+//#if !defined(NDEBUG)
+//				if (seg != ctx->m_segCtx[upp-1]->seg) {
+//					seg = ctx->m_segCtx[upp-1]->seg; // for set break point
+//				}
+//#endif
+//				segIdx = upp - 1;
+//				seg = ctx->m_segCtx[segIdx]->seg;
+//				baseId = ctx->m_rowNumVec[segIdx];
+//				subId = recId - baseId;
+//			}
+//			else {
+//				ctx->m_rowNumVec.back() = tab->m_rowNum;
+//			}
+//			if (seg->m_isDel[subId]) { // should be very rare
+//				//break;
+//			} else {
+//				txn->m_removeOnCommit.push_back(recId);
+//			}
+//		}
+//	}
+//	return newRecId;
+//}
 
 void BatchWriter::removeRow(llong recId) {
-	auto ctx = m_ctx.get();
-	auto tab = ctx->m_tab;
-	auto txn = ctx->m_transaction.get();
-	auto& sconf = *tab->m_schema;
-	assert(recId >= 0);
-	assert(recId < tab->m_rowNum);
-	assert(tab->m_wrSeg.get() == m_wrSeg);
-	assert(txn == m_txn);
-	ctx->trySyncSegCtxSpeculativeLock(tab);
-	size_t upp = upper_bound_a(ctx->m_rowNumVec, recId);
-	llong baseId = ctx->m_rowNumVec[upp-1];
-	llong subId = recId - baseId;
-	assert(recId >= baseId);
-//	fprintf(stderr
-//		, "TRACE: BatchWriter::removeRow: recId = %lld, subId = %lld, segIdx = %zd, segNum = %zd\n"
-//		, recId, subId, upp-1, tab->m_segments.size());
-	auto seg = ctx->m_segCtx[upp-1]->seg;
-	if (upp == ctx->m_rowNumVec.size()-1) {
-		auto wrseg = tab->m_wrSeg.get();
-		assert(wrseg == seg);
-		assert(!wrseg->m_isFreezed);
-		assert(!wrseg->m_bookUpdates);
-		{
-			if (wrseg->locked_testIsDel(subId))
-				return;
-			else
-				txn->m_removeOnCommit.push_back(recId);
-		}
-		valvec<byte> &row = ctx->row1, &key = ctx->key1;
-		ColumnVec& columns = ctx->cols1;
-		try {
-			txn->storeGetRow(subId, &row);
-		}
-		catch (const ReadRecordException& ex) {
-			fprintf(stderr
-				, "ERROR: removeRow(id=%lld): read row data failed: %s\n"
-				, recId, ex.what());
-		//	throw ReadRecordException("removeRow: pre remove index",
-		//		wrseg->m_segDir.string(), baseId, subId);
-			return;
-		}
-		sconf.m_rowSchema->parseRow(row, &columns);
-		for (size_t i = 0; i < wrseg->m_indices.size(); ++i) {
-			const Schema& iSchema = sconf.getIndexSchema(i);
-			iSchema.selectParent(columns, &key);
-			txn->indexRemove(i, key, subId);
-		}
-		txn->storeRemove(subId);
-	}
-	else {
-		if (!seg->m_isDel[subId])
-			txn->m_removeOnCommit.push_back(recId);
-	}
+//	auto ctx = m_ctx.get();
+//	auto tab = ctx->m_tab;
+//	auto txn = ctx->m_transaction.get();
+//	auto& sconf = *tab->m_schema;
+//	assert(recId >= 0);
+//	assert(recId < tab->m_rowNum);
+//	assert(tab->m_wrSeg.get() == m_wrSeg);
+//	assert(txn == m_txn);
+//	ctx->trySyncSegCtxSpeculativeLock(tab);
+//	size_t upp = upper_bound_a(ctx->m_rowNumVec, recId);
+//	llong baseId = ctx->m_rowNumVec[upp-1];
+//	llong subId = recId - baseId;
+//	assert(recId >= baseId);
+////	fprintf(stderr
+////		, "TRACE: BatchWriter::removeRow: recId = %lld, subId = %lld, segIdx = %zd, segNum = %zd\n"
+////		, recId, subId, upp-1, tab->m_segments.size());
+//	auto seg = ctx->m_segCtx[upp-1]->seg;
+//	if (upp == ctx->m_rowNumVec.size()-1) {
+//		auto wrseg = tab->m_wrSeg.get();
+//		assert(wrseg == seg);
+//		assert(!wrseg->m_isFreezed);
+//		assert(!wrseg->m_bookUpdates);
+//		{
+//			if (wrseg->locked_testIsDel(subId))
+//				return;
+//			else
+//				txn->m_removeOnCommit.push_back(recId);
+//		}
+//		valvec<byte> &row = ctx->row1, &key = ctx->key1;
+//		ColumnVec& columns = ctx->cols1;
+//		try {
+//			txn->storeGetRow(subId, &row);
+//		}
+//		catch (const ReadRecordException& ex) {
+//			fprintf(stderr
+//				, "ERROR: removeRow(id=%lld): read row data failed: %s\n"
+//				, recId, ex.what());
+//		//	throw ReadRecordException("removeRow: pre remove index",
+//		//		wrseg->m_segDir.string(), baseId, subId);
+//			return;
+//		}
+//		sconf.m_rowSchema->parseRow(row, &columns);
+//		for (size_t i = 0; i < wrseg->m_indices.size(); ++i) {
+//			const Schema& iSchema = sconf.getIndexSchema(i);
+//			iSchema.selectParent(columns, &key);
+//			txn->indexRemove(i, key, subId);
+//		}
+//		txn->storeRemove(subId);
+//	}
+//	else {
+//		if (!seg->m_isDel[subId])
+//			txn->m_removeOnCommit.push_back(recId);
+//	}
 }
 
 bool BatchWriter::commit() {
-	auto tab = m_ctx->m_tab;
-	DbTransaction* txn(m_ctx->m_transaction.get());
-	auto& ws = *tab->m_wrSeg;
-	assert(&ws == m_wrSeg);
-	assert(txn == m_txn);
-	assert(DbTransaction::started == txn->m_status);
-	if (!txn->commit()) {
-		return false;
-	}
-	const size_t batchCnt = 100; // don't lock too long time
-	sort_a(txn->m_removeOnCommit);
-	sort_a(txn->m_appearOnCommit);
-//	fprintf(stderr, "TRACE: BatchWriter::commit: txn->m_removeOnCommit.size = %zd\n", txn->m_removeOnCommit.size());
-	ws.m_deletedWrIdSet.grow_capacity(txn->m_appearOnCommit.size());
-	{
-		MyRwLock lock(tab->m_rwMutex, false);
-		SpinRwLock segLock(ws.m_segMutex, true);
-		auto bits = ws.m_isDel.bldata();
-		for (llong wrSubId : txn->m_appearOnCommit) {
-			terark_bit_set0(bits, wrSubId);
-		}
-		ws.m_delcnt -= txn->m_appearOnCommit.size();
-	}
-	for(size_t i = 0; i < txn->m_removeOnCommit.size(); ) {
-		size_t upper = std::min(i + batchCnt, txn->m_removeOnCommit.size());
-		MyRwLock lock(tab->m_rwMutex, false);
-		for(; i < upper; ++i) {
-			llong recId = txn->m_removeOnCommit[i];
-			size_t upp = upper_bound_a(tab->m_rowNumVec, recId);
-			llong baseId = tab->m_rowNumVec[upp-1];
-			size_t subId = size_t(recId - baseId);
-			auto seg = tab->m_segments[upp-1].get();
-			SpinRwLock segLock(seg->m_segMutex, true);
-		//	fprintf(stderr
-		//		, "TRACE: BatchWriter::commit: remove: recId = %lld, subId = %zd, segIdx = %zd, segNum = %zd, seg[del = %zd, all = %zd], delratio = %f\n"
-		//		, recId, subId, upp-1, tab->m_segments.size(), seg->m_delcnt, seg->m_isDel.size(), double(seg->m_delcnt) / seg->m_isDel.size());
-			if (seg->m_isDel[subId]) {
-				continue;
-			}
-			seg->m_isDel.set1(subId);
-			seg->m_delcnt++;
-			if (&ws == seg) {
-				ws.m_deletedWrIdSet.push_back(uint32_t(subId));
-			} else {
-				seg->addtoUpdateList(subId);
-			}
-		}
-	}
-	if (txn->m_removeOnCommit.size() > 0) {
-		MyRwLock lock(tab->m_rwMutex, true);
-		const size_t segNum = tab->m_segments.size();
-		for(size_t i = 0; i < segNum-1; ++i) {
-			auto seg = tab->m_segments[i].get();
-			if (seg->getReadonlySegment()) {
-				if (tab->checkPurgeDeleteNoLock(seg)) {
-					tab->asyncPurgeDeleteInLock();
-					break;
-				}
-			}
-		}
-	}
-	return true;
+    return false;
+//	auto tab = m_ctx->m_tab;
+//	DbTransaction* txn(m_ctx->m_transaction.get());
+//	auto& ws = *tab->m_wrSeg;
+//	assert(&ws == m_wrSeg);
+//	assert(txn == m_txn);
+//	assert(DbTransaction::started == txn->m_status);
+//	if (!txn->commit()) {
+//		return false;
+//	}
+//	const size_t batchCnt = 100; // don't lock too long time
+//	sort_a(txn->m_removeOnCommit);
+//	sort_a(txn->m_appearOnCommit);
+////	fprintf(stderr, "TRACE: BatchWriter::commit: txn->m_removeOnCommit.size = %zd\n", txn->m_removeOnCommit.size());
+//	ws.m_deletedWrIdSet.grow_capacity(txn->m_appearOnCommit.size());
+//	{
+//		MyRwLock lock(tab->m_rwMutex, false);
+//		SpinRwLock segLock(ws.m_segMutex, true);
+//		auto bits = ws.m_isDel.bldata();
+//		for (llong wrSubId : txn->m_appearOnCommit) {
+//			terark_bit_set0(bits, wrSubId);
+//		}
+//		ws.m_delcnt -= txn->m_appearOnCommit.size();
+//	}
+//	for(size_t i = 0; i < txn->m_removeOnCommit.size(); ) {
+//		size_t upper = std::min(i + batchCnt, txn->m_removeOnCommit.size());
+//		MyRwLock lock(tab->m_rwMutex, false);
+//		for(; i < upper; ++i) {
+//			llong recId = txn->m_removeOnCommit[i];
+//			size_t upp = upper_bound_a(tab->m_rowNumVec, recId);
+//			llong baseId = tab->m_rowNumVec[upp-1];
+//			size_t subId = size_t(recId - baseId);
+//			auto seg = tab->m_segments[upp-1].get();
+//			SpinRwLock segLock(seg->m_segMutex, true);
+//		//	fprintf(stderr
+//		//		, "TRACE: BatchWriter::commit: remove: recId = %lld, subId = %zd, segIdx = %zd, segNum = %zd, seg[del = %zd, all = %zd], delratio = %f\n"
+//		//		, recId, subId, upp-1, tab->m_segments.size(), seg->m_delcnt, seg->m_isDel.size(), double(seg->m_delcnt) / seg->m_isDel.size());
+//			if (seg->m_isDel[subId]) {
+//				continue;
+//			}
+//			seg->m_isDel.set1(subId);
+//			seg->m_delcnt++;
+//			if (&ws == seg) {
+//				ws.m_deletedWrIdSet.push_back(uint32_t(subId));
+//			} else {
+//				seg->addtoUpdateList(subId);
+//			}
+//		}
+//	}
+//	if (txn->m_removeOnCommit.size() > 0) {
+//		MyRwLock lock(tab->m_rwMutex, true);
+//		const size_t segNum = tab->m_segments.size();
+//		for(size_t i = 0; i < segNum-1; ++i) {
+//			auto seg = tab->m_segments[i].get();
+//			if (seg->getReadonlySegment()) {
+//				if (tab->checkPurgeDeleteNoLock(seg)) {
+//					tab->asyncPurgeDeleteInLock();
+//					break;
+//				}
+//			}
+//		}
+//	}
+//	return true;
 }
 
 void BatchWriter::rollback() {
-	auto tab = m_ctx->m_tab;
-	DbTransaction* txn(m_ctx->m_transaction.get());
-	assert(tab->m_wrSeg.get() == m_wrSeg);
-	assert(txn == m_txn);
-	assert(DbTransaction::started == txn->m_status);
-	txn->rollback();
-	auto& ws = *tab->m_wrSeg;
-	ws.m_deletedWrIdSet.append(txn->m_appearOnCommit);
+//	auto tab = m_ctx->m_tab;
+//	DbTransaction* txn(m_ctx->m_transaction.get());
+//	assert(tab->m_wrSeg.get() == m_wrSeg);
+//	assert(txn == m_txn);
+//	assert(DbTransaction::started == txn->m_status);
+//	txn->rollback();
+//	auto& ws = *tab->m_wrSeg;
+//	ws.m_deletedWrIdSet.append(txn->m_appearOnCommit);
 }
 
 StoreIterator* DbTable::createStoreIterForward(DbContext* ctx) const {
@@ -1248,8 +1253,9 @@ llong DbTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 }
 
 llong DbTable::insertRowDoInsert(fstring row, DbContext* ctx) {
-	TransactionGuard txn(ctx->m_transaction.get());
-	llong recId = insertRowDoInsertNoCommit(row, ctx);
+    llong subId = allocInvisibleWrSubId_NoTabLock();
+	TransactionGuard txn(ctx->m_transaction.get(), subId);
+	llong recId = insertRowDoInsertNoCommit(subId, row, ctx);
 	if (recId >= 0) {
 		if (!txn.commit()) {
 			llong wrBaseId = m_rowNumVec.end()[-2];
@@ -1307,12 +1313,11 @@ void DbTable::freeInvisibleWrSubId_NoTabLock(llong wrSubId) {
 #endif
 }
 
-llong DbTable::insertRowDoInsertNoCommit(fstring row, DbContext* ctx) {
-	llong subId = allocInvisibleWrSubId_NoTabLock();
+llong DbTable::insertRowDoInsertNoCommit(llong subId, fstring row, DbContext* ctx) {
 	if (ctx->syncIndex) {
 		DbTransaction* txn = ctx->m_transaction.get();
 		if (insertSyncIndex(subId, txn, ctx)) {
-			txn->storeUpsert(subId, row);
+			txn->storeUpdate(row);
 			m_wrSeg->delmarkSet0(subId);
 		}
 		else {
@@ -1339,7 +1344,7 @@ DbTable::insertSyncIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
 		assert(iSchema.m_isUnique);
 		iSchema.selectParent(ctx->cols1, &ctx->key1);
-		if (!txn->indexInsert(indexId, ctx->key1, subId)) {
+		if (!txn->indexInsert(indexId, ctx->key1)) {
 			ctx->errMsg = "DupKey=" + iSchema.toJsonStr(ctx->key1)
 						+ ", in writing seg: " + m_wrSeg->m_segDir.string();
 			goto Fail;
@@ -1351,7 +1356,7 @@ DbTable::insertSyncIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
 		assert(!iSchema.m_isUnique);
 		iSchema.selectParent(ctx->cols1, &ctx->key1);
-		txn->indexInsert(indexId, ctx->key1, subId);
+		txn->indexInsert(indexId, ctx->key1);
 	}
 	return true;
 Fail:
@@ -1360,7 +1365,7 @@ Fail:
 		size_t indexId = sconf.m_uniqIndices[j];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
 		iSchema.selectParent(ctx->cols1, &ctx->key1);
-		txn->indexRemove(indexId, ctx->key1, subId);
+		txn->indexRemove(indexId, ctx->key1);
 	}
 	return false;
 }
@@ -1486,10 +1491,10 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	llong subId = ctx->exactMatchRecIdvec[0];
 	llong baseId = m_rowNumVec.ende(2);
 	assert(ctx->exactMatchRecIdvec.size() == 1);
-	TransactionGuard txn(ctx->m_transaction.get());
+	TransactionGuard txn(ctx->m_transaction.get(), subId);
 	if (!sconf.m_multIndices.empty()) {
 		try {
-			txn.storeGetRow(subId, &ctx->row2);
+			txn.storeGetRow(&ctx->row2);
 		}
 		catch (const ReadRecordException&) {
 			fprintf(stderr
@@ -1502,7 +1507,7 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 		sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
 		updateSyncMultIndex(subId, txn.getTxn(), ctx);
 	}
-	txn.storeUpsert(subId, row);
+	txn.storeUpdate(row);
 	if (!txn.commit()) {
 		TERARK_THROW(CommitException
 			, "commit failed: %s, baseId=%lld, subId=%lld, seg = %s, caller should retry"
@@ -1647,9 +1652,9 @@ DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 bool
 DbTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
-	TransactionGuard txn(ctx->m_transaction.get());
+	TransactionGuard txn(ctx->m_transaction.get(), subId);
 	try {
-		txn.storeGetRow(subId, &ctx->row2);
+		txn.storeGetRow(&ctx->row2);
 	}
 	catch (const ReadRecordException&) {
 		txn.rollback();
@@ -1665,7 +1670,7 @@ DbTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
 		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
 		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			if (!txn.indexInsert(indexId, ctx->key1, subId)) {
+			if (!txn.indexInsert(indexId, ctx->key1)) {
 				goto Fail;
 			}
 		}
@@ -1676,11 +1681,11 @@ DbTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
 		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
 		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			txn.indexRemove(indexId, ctx->key1, subId);
+			txn.indexRemove(indexId, ctx->key1);
 		}
 	}
 	updateSyncMultIndex(subId, txn.getTxn(), ctx);
-	txn.storeUpsert(subId, row);
+	txn.storeUpdate(row);
 	if (!txn.commit()) {
 		llong baseId = m_rowNumVec.ende(2);
 		TERARK_THROW(CommitException
@@ -1697,7 +1702,7 @@ Fail:
 		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
 		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
 		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			txn.indexRemove(indexId, ctx->key1, subId);
+			txn.indexRemove(indexId, ctx->key1);
 		}
 	}
 	txn.rollback();
@@ -1713,8 +1718,8 @@ DbTable::updateSyncMultIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
 		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
 		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			txn->indexRemove(indexId, ctx->key2, subId);
-			txn->indexInsert(indexId, ctx->key1, subId);
+			txn->indexRemove(indexId, ctx->key2);
+			txn->indexInsert(indexId, ctx->key1);
 		}
 	}
 }
@@ -1806,11 +1811,11 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 			}
 		}
 		if (ctx->syncIndex) {
-			TransactionGuard txn(ctx->m_transaction.get());
+			TransactionGuard txn(ctx->m_transaction.get(), subId);
 			valvec<byte> &row = ctx->row1, &key = ctx->key1;
 			ColumnVec& columns = ctx->cols1;
 			try {
-				txn.storeGetRow(subId, &row);
+				txn.storeGetRow(&row);
 			}
 			catch (const ReadRecordException& ex) {
 				fprintf(stderr
@@ -1824,9 +1829,9 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 			for (size_t i = 0; i < wrseg->m_indices.size(); ++i) {
 				const Schema& iSchema = m_schema->getIndexSchema(i);
 				iSchema.selectParent(columns, &key);
-				txn.indexRemove(i, key, subId);
+				txn.indexRemove(i, key);
 			}
-			txn.storeRemove(subId);
+			txn.storeRemove();
 			if (!txn.commit()) {
 				// this fail should be ignored, because the deletion bit
 				// have always be set, remove index is just an optimization

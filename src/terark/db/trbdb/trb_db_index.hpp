@@ -8,7 +8,7 @@ namespace terark { namespace db { namespace trbdb {
 
 class TERARK_DB_DLL TrbWritableIndex : public ReadableIndex, public WritableIndex, public ReadableStore, public WritableStore {
 public:
-    static TrbWritableIndex *createIndex(Schema const &, PathRef);
+    static TrbWritableIndex *createIndex(Schema const &);
 };
 typedef boost::intrusive_ptr<TrbWritableIndex> TrbWritableIndexPtr;
 

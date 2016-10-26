@@ -99,7 +99,7 @@ protected:
 
     static size_type constexpr offset_empty = node_t::nil_sentinel;
 
-    struct value_t
+    struct pod_value_t
     {
         typename std::aligned_storage<sizeof(storage_type), alignof(storage_type)>::type value_pod;
 
@@ -115,7 +115,7 @@ protected:
 
     typedef typename allocator_type::template rebind<trb_root_t>::other bucket_allocator_t;
     typedef typename allocator_type::template rebind<node_t>::other node_allocator_t;
-    typedef typename allocator_type::template rebind<value_t>::other value_allocator_t;
+    typedef typename allocator_type::template rebind<pod_value_t>::other value_allocator_t;
     struct root_t : public hasher, public key_compare, public bucket_allocator_t, public node_allocator_t, public value_allocator_t
     {
         template<class any_hasher, class any_key_compare, class any_allocator_type>
@@ -147,7 +147,7 @@ protected:
         float setting_load_factor;
         trb_root_t *bucket;
         node_t *node;
-        value_t *value;
+        pod_value_t *value;
     };
     template<class k_t, class v_t> struct get_key_select_t
     {
@@ -1206,21 +1206,22 @@ protected:
 
     void realloc_(size_type size)
     {
-        if(size * sizeof(value_t) > 0x1000)
+        size_type constexpr value_size = sizeof(value_size);
+        if(size * value_size > 0x1000)
         {
-            size = ((size * sizeof(value_t) + std::max<size_type>(sizeof(value_t), 0x1000) - 1) & (~size_type(0) ^ 0xFFF)) / sizeof(value_t);
+            size = ((size * value_size + std::max<size_type>(value_size, 0x1000) - 1) & (~size_type(0) ^ 0xFFF)) / value_size;
         }
-        else if(size * sizeof(value_t) > 0x100)
+        else if(size * value_size > 0x100)
         {
-            size = ((size * sizeof(value_t) + std::max<size_type>(sizeof(value_t), 0x100) - 1) & (~size_type(0) ^ 0xFF)) / sizeof(value_t);
+            size = ((size * value_size + std::max<size_type>(value_size, 0x100) - 1) & (~size_type(0) ^ 0xFF)) / value_size;
         }
         else
         {
-            size = ((size * sizeof(value_t) + std::max<size_type>(sizeof(value_t), 0x10) - 1) & (~size_type(0) ^ 0xF)) / sizeof(value_t);
+            size = ((size * value_size + std::max<size_type>(value_size, 0x10) - 1) & (~size_type(0) ^ 0xF)) / value_size;
         }
         size = std::min(size, max_size());
         node_t *new_node = get_node_allocator_().allocate(size);
-        value_t *new_value = get_value_allocator_().allocate(size);
+        pod_value_t *new_value = get_value_allocator_().allocate(size);
 
         std::memset(new_node + root_.capacity, 0xFFFFFFFF, sizeof(node_t) * (size - root_.capacity));
         if(root_.capacity != 0)
@@ -1466,6 +1467,17 @@ class trb_hash_map : public threaded_rbtree_hash<threaded_rbtree_hash_map_config
 {
     typedef threaded_rbtree_hash<threaded_rbtree_hash_map_config_t<key_t, value_t, std::true_type, hasher_t, key_compare_t, allocator_t>> base_t;
 public:
+    //explicit
+    explicit trb_hash_map(typename base_t::size_type bucket_count,
+                          typename base_t::hasher const &hash = typename base_t::hasher(),
+                          typename base_t::key_compare const &compare = typename base_t::key_compare(),
+                          typename base_t::allocator_type const &alloc = typename base_t::allocator_type()
+    ) : base_t(bucket_count, hash, compare, alloc)
+    {
+    }
+    explicit trb_hash_map(typename base_t::allocator_type const &alloc) : base_t(alloc)
+    {
+    }
     template<class ...args_t>
     trb_hash_map(args_t &&...args) : base_t(std::forward<args_t>(args)...)
     {
