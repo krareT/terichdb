@@ -24,7 +24,6 @@ ifneq "${err}" "0"
 endif
 
 TERARK_INC := -Isrc
-LIB_TERARK_DIR ?= ../terark/lib
 
 include ${BUILD_ROOT}/env.mk
 
@@ -120,8 +119,6 @@ ifeq (, $(findstring ${BOOST_LIB}, /usr/lib64 /usr/lib /usr/local/lib))
   override LIBS += -L${BOOST_LIB}
 endif
 
-#override INCS += -I/usr/include
-
 LIBBOOST ?= \
 	  -lboost_filesystem${BOOST_SUFFIX} \
 	  -lboost_system${BOOST_SUFFIX}
@@ -157,6 +154,7 @@ override CXXFLAGS += ${extf}
 override INCS += -Iapi/leveldb/leveldb/include
 override INCS += -Iapi/leveldb/leveldb
 override INCS += -Iapi/leveldb
+override INCS += -Iterark-base/src ${INCS}
 override INCS += -I/opt/include
 override LIBS += -L/opt/lib
 
@@ -190,31 +188,8 @@ DfaDB_lib := terark-db-dfadb
 TrbDB_lib := terark-db-trbdb
 Tiger_lib := terark-db-wiredtiger
 
-ifeq (DfaDB,${DFADB_TARGET})
-  LIB_TERARK_DIR = ../terark/lib
-  LIB_TERARK_INC = -I../terark/src
-else
-  ifeq (,${LIB_TERARK_DIR})
-    $(error LIB_TERARK_DIR must be defined when compiling without DfaDB)
-  endif
-  ifeq (,${DFADB_TARGET})
-    DFADB_TARGET=
-  else
-    $(error DFADB_TARGET must be empty or DfaDB)
-  endif
-  LIB_TERARK_INC += -Iterark-base/src
-#  zip_src := \
-#    terark-base/src/terark/io/BzipStream.cpp \
-#  terark-base/src/terark/io/GzipStream.cpp
-#  TerarkDB_src += $(wildcard terark-base/src/terark/*.cpp)
-#  TerarkDB_src += $(wildcard terark-base/src/terark/io/*.cpp)
-#  TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)
-#  TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
-#  TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
-endif
-LIB_TERARK_D := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-d
-LIB_TERARK_R := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-r
-override INCS := ${LIB_TERARK_INC} ${INCS}
+LIB_TERARK_D := -Lterark-base/lib -lterark-core-${COMPILER}-d
+LIB_TERARK_R := -Lterark-base/lib -lterark-core-${COMPILER}-r
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core
@@ -266,7 +241,7 @@ override CXXFLAGS += ${DEFS}
 
 .PHONY : default all TerarkDB LeveldbApi DfaDB TrbDB Tiger
 
-default : TerarkDB LeveldbApi ${DFADB_TARGET} TrbDB Tiger
+default : TerarkDB LeveldbApi TrbDB Tiger
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
 DfaDB: ${DfaDB_d} ${DfaDB_r} ${static_DfaDB_d} ${static_DfaDB_r}
@@ -298,8 +273,10 @@ endif
 ${TerarkDB_d} : override LIBS := ${LIB_TERARK_D} ${LIBS} -ltbb
 ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 
-${DfaDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
-${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
+${DfaDB_d} : override INCS += -I../terark/src
+${DfaDB_r} : override INCS += -I../terark/src
+${DfaDB_d} : override LIBS := -L../terark/lib -lterark-fsa-${COMPILER}-d -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
+${DfaDB_r} : override LIBS := -L../terark/lib -lterark-fsa-${COMPILER}-r -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 
 ${TrbDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${TrbDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
@@ -354,16 +331,17 @@ ${TarBall}.tgz : ${TerarkDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} 
 	mkdir -p ${TarBall}/include/terark/util
 	mkdir -p ${TarBall}/api/leveldb
 ifeq (${PKG_WITH_DBG},1)
-	cp -Ppa ../terark/lib/libterark-fsa_all{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/lib/libterark-fsa{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/lib/libterark-core{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${TerarkDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${DfaDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${TrbDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${Tiger_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
 endif
-	#rm -rf vs2015/terark-db/terark-db-schema-compile/{rls,dbg,build}
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
-	cp -Ppa ../terark/lib/libterark-fsa_all{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/lib/libterark-fsa{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/lib/libterark-core{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${TerarkDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${DfaDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
 	cp -Ppa lib/lib${TrbDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib

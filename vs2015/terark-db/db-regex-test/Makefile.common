@@ -1,4 +1,4 @@
-CHECK_TERARK_FSA_LIB_UPDATE ?= 1
+CHECK_TERARK_CORE_LIB_UPDATE ?= 1
 TERARK_HOME ?= ../..
 WITH_BMI2 ?= $(shell ${TERARK_HOME}/cpu_has_bmi2.sh)
 
@@ -132,24 +132,24 @@ link : ${BINS_D} ${BINS_R} ${DLL_BINS_D} ${DLL_BINS_R}
 	done; cd ..
 
 ifeq (${STATIC},1)
-ifeq (${CHECK_TERARK_FSA_LIB_UPDATE},1)
-${BINS_D} : ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-d.a
-${BINS_R} : ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-r.a
+ifeq (${CHECK_TERARK_CORE_LIB_UPDATE},1)
+${BINS_D} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d.a
+${BINS_R} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r.a
 endif
   ifeq (Darwin, ${UNAME_System})
-${BINS_D} : LIBS := ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-d.a ${LIBS}
-${BINS_R} : LIBS := ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-r.a ${LIBS}
+${BINS_D} : LIBS := ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d.a ${LIBS}
+${BINS_R} : LIBS := ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r.a ${LIBS}
   else
-${BINS_D} : LIBS := -Wl,--whole-archive ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-d.a -Wl,--no-whole-archive -ldivsufsort-d ${LIBS}
-${BINS_R} : LIBS := -Wl,--whole-archive ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-r.a -Wl,--no-whole-archive -ldivsufsort-r ${LIBS}
+${BINS_D} : LIBS := -Wl,--whole-archive ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d.a -Wl,--no-whole-archive -ldivsufsort-d ${LIBS}
+${BINS_R} : LIBS := -Wl,--whole-archive ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r.a -Wl,--no-whole-archive -ldivsufsort-r ${LIBS}
   endif
 else
-ifeq (${CHECK_TERARK_FSA_LIB_UPDATE},1)
-${BINS_D} : ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-d${DLL_SUFFIX}
-${BINS_R} : ${TERARK_HOME}/lib/libterark-fsa_all-${COMPILER}-r${DLL_SUFFIX}
+ifeq (${CHECK_TERARK_CORE_LIB_UPDATE},1)
+${BINS_D} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX}
+${BINS_R} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}
 endif
-${BINS_D} : LIBS := -L${TERARK_HOME}/lib -lterark-fsa_all-${COMPILER}-d ${LIBS}
-${BINS_R} : LIBS := -L${TERARK_HOME}/lib -lterark-fsa_all-${COMPILER}-r ${LIBS}
+${BINS_D} : LIBS := -L${TERARK_HOME}/lib -lterark-core-${COMPILER}-d ${LIBS}
+${BINS_R} : LIBS := -L${TERARK_HOME}/lib -lterark-core-${COMPILER}-r ${LIBS}
 endif
 
 clean :
