@@ -191,14 +191,13 @@ TrbDB_lib := terark-db-trbdb
 Tiger_lib := terark-db-wiredtiger
 
 ifeq (${WITH_BMI2},1)
-  override INCS += -I../terark/src ${INCS}
-  LIB_TERARK_D := -L../terark/lib -lterark-core-${COMPILER}-d
-  LIB_TERARK_R := -L../terark/lib -lterark-core-${COMPILER}-r
+  CORE_HOME := ../terark
 else
-  override INCS += -Iterark-base/src ${INCS}
-  LIB_TERARK_D := -Lterark-base/lib -lterark-core-${COMPILER}-d
-  LIB_TERARK_R := -Lterark-base/lib -lterark-core-${COMPILER}-r
+  CORE_HOME := terark-base
 endif
+override INCS := -I${CORE_HOME}/src ${INCS}
+LIB_TERARK_D := -L${CORE_HOME}/lib -lterark-core-${COMPILER}-d
+LIB_TERARK_R := -L${CORE_HOME}/lib -lterark-core-${COMPILER}-r
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core
@@ -300,8 +299,13 @@ ${LeveldbApi_r} : ${TerarkDB_r}
 
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 
+ifeq (${WITH_BMI2},1)
 ${TerarkDB_d} : $(call objs,TerarkDB,d)
 ${TerarkDB_r} : $(call objs,TerarkDB,r)
+else
+${TerarkDB_d} : $(call objs,TerarkDB,d) ${CORE_HOME}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX}
+${TerarkDB_r} : $(call objs,TerarkDB,r) ${CORE_HOME}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}
+endif
 ${static_TerarkDB_d} : $(call objs,TerarkDB,d)
 ${static_TerarkDB_r} : $(call objs,TerarkDB,r)
 
@@ -383,6 +387,12 @@ endif
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
 	tar czf ${TarBall}.tgz ${TarBall}
+
+ifeq (${WITH_BMI2},0)
+terark-base/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX} \
+terark-base/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}:
+	$(MAKE) -C terark-base core
+endif
 
 %${DLL_SUFFIX}:
 	@echo "----------------------------------------------------------------------------------"
