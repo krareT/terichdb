@@ -2,23 +2,6 @@
 #define __terark_rank_select_se_512_hpp__
 
 #include "rank_select.hpp"
-#if defined(__BMI2__)
-#include <bmiintrin.h>
-  #if defined(__GNUC__) && __GNUC__*1000 + __GNUC_MINOR__ < 4008 \
-	&& !defined(__clang__) && !defined(__INTEL_COMPILER)
-	/* Intel-specified, single-leading-underscore version of BEXTR */
-	static __inline__ unsigned int __attribute__((__always_inline__))
-	_bextr_u32(unsigned int __X, unsigned int __Y, unsigned int __Z) {
-	  return __builtin_ia32_bextr_u32 (__X, ((__Y & 0xff) | ((__Z & 0xff) << 8)));
-	}
-	/* Intel-specified, single-leading-underscore version of BEXTR */
-	static __inline__ unsigned long long __attribute__((__always_inline__))
-	_bextr_u64(unsigned long long __X, unsigned int __Y, unsigned int __Z)
-	{
-	  return __builtin_ia32_bextr_u64 (__X, ((__Y & 0xff) | ((__Z & 0xff) << 8)));
-	}
-  #endif
-#endif
 
 namespace terark {
 
