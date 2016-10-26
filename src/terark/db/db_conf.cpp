@@ -2569,6 +2569,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 					);
 	m_writableSegmentClass = getJsonValue(meta, "WritableSegmentClass", std::string("WtWritableSegment"));
 	m_readonlySegmentClass = getJsonValue(meta, "ReadonlySegmentClass", std::string("DfaDbReadonlySegment"));
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
 	if (g_AutoLoadSegmentDLLs().count("terark-db-dfadb") == 0) {
 		static std::set<std::string> dfadbNames = {"DfaDbReadonlySegment", "dfadb", "dfa"};
 		if (dfadbNames.count(m_readonlySegmentClass) == 0) {
@@ -2578,6 +2579,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 				);
 		}
 	}
+#endif
 	const bool checkMongoType = getJsonValue(meta, "CheckMongoType", false);
 	const bool checkMysqlType = getJsonValue(meta, "CheckMysqlType", false);
 	const json& rowSchema = meta["RowSchema"];

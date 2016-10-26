@@ -1,6 +1,7 @@
 DBG_FLAGS ?= -g3 -D_DEBUG
 RLS_FLAGS ?= -O3 -DNDEBUG -g3
-WITH_BMI2 ?= $(shell bash ./cpu_has_bmi2.sh)
+#WITH_BMI2 ?= $(shell bash ./cpu_has_bmi2.sh)
+WITH_BMI2 ?= 0
 
 ifeq "$(origin LD)" "default"
   LD := ${CXX}
@@ -80,11 +81,11 @@ else
   endif
 endif
 
-#ifeq (${WITH_BMI2},1)
-#	CPU += -mbmi -mbmi2
-#else
+ifeq (${WITH_BMI2},1)
+	CPU += -mbmi -mbmi2
+else
 	CPU += -mno-bmi -mno-bmi2
-#endif
+endif
 
 COMMON_C_FLAGS  += -Wformat=2 -Wcomment
 COMMON_C_FLAGS  += -Wall -Wextra

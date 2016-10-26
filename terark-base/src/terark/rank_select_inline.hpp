@@ -130,6 +130,19 @@ fast_select1(const bm_uint_t* bits, const uint32_t* sel1, const RankCache* rankC
 
 /////////////////////////////////////////////////////////////////////////////
 
+inline size_t rank_select_se_512::rank1(size_t bitpos) const {
+	assert(bitpos < m_size);
+	const RankCache512& rc = m_rank_cache[bitpos / 512];
+	const uint64_t* pu64 = (const uint64_t*)this->m_words;
+	int tail = fast_popcount_trail(pu64[bitpos / 64], bitpos % 64);
+	int k = bitpos % 512 / 64;
+	return rc.base + tail + TERARK_GET_BITS_64(rc.rela, k, 9);
+}
+inline size_t rank_select_se_512::rank0(size_t bitpos) const {
+	assert(bitpos < m_size);
+	return bitpos - rank1(bitpos);
+}
+
 inline size_t rank_select_se_512::
 fast_rank1(const bm_uint_t* bits, const RankCache512* rankCache, size_t bitpos) {
 	const RankCache512& rc = rankCache[bitpos / 512];

@@ -84,27 +84,6 @@ public:
 		{ return 2 * fast_rank1(bits, rankCache, bitpos) - bitpos; }
 };
 
-inline size_t rank_select_se_512::rank1(size_t bitpos) const {
-	assert(bitpos < m_size);
-	const RankCache512& rc = m_rank_cache[bitpos / 512];
-	const uint64_t* pu64 = (const uint64_t*)this->m_words;
-	int tail = fast_popcount_trail(pu64[bitpos / 64], bitpos % 64);
-	int k = bitpos % 512 / 64;
-#if defined(__BMI2__) && TERARK_WORD_BITS == 64
-	return rc.base + tail + _bextr_u64(rc.rela, (k-1)*9, 9);
-#else
-	if (k)
-		return rc.base + tail + ((rc.rela >> (k-1)*9) & 511);
-	else
-		return rc.base + tail;
-#endif
-}
-
-inline size_t rank_select_se_512::rank0(size_t bitpos) const {
-	assert(bitpos < m_size);
-	return bitpos - rank1(bitpos);
-}
-
 } // namespace terark
 
 #endif // __terark_rank_select_se_512_hpp__
