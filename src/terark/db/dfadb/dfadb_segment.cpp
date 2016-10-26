@@ -2,7 +2,7 @@
 #include "nlt_index.hpp"
 #include "nlt_store.hpp"
 #include <terark/db/fixed_len_store.hpp>
-#include <terark/fast_zip_blob_store.hpp>
+#include <terark/fsa/fast_zip_blob_store.hpp>
 #include <mutex>
 #include <random>
 #include <float.h>

@@ -157,7 +157,6 @@ override CXXFLAGS += ${extf}
 override INCS += -Iapi/leveldb/leveldb/include
 override INCS += -Iapi/leveldb/leveldb
 override INCS += -Iapi/leveldb
-override INCS += -Iterark-base/src ${INCS}
 override INCS += -I/opt/include
 override LIBS += -L/opt/lib
 
@@ -191,8 +190,15 @@ DfaDB_lib := terark-db-dfadb
 TrbDB_lib := terark-db-trbdb
 Tiger_lib := terark-db-wiredtiger
 
-LIB_TERARK_D := -Lterark-base/lib -lterark-core-${COMPILER}-d
-LIB_TERARK_R := -Lterark-base/lib -lterark-core-${COMPILER}-r
+ifeq (${WITH_BMI2},1)
+  override INCS += -I../terark/src ${INCS}
+  LIB_TERARK_D := -L../terark/lib -lterark-core-${COMPILER}-d
+  LIB_TERARK_R := -L../terark/lib -lterark-core-${COMPILER}-r
+else
+  override INCS += -Iterark-base/src ${INCS}
+  LIB_TERARK_D := -Lterark-base/lib -lterark-core-${COMPILER}-d
+  LIB_TERARK_R := -Lterark-base/lib -lterark-core-${COMPILER}-r
+endif
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core

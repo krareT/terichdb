@@ -2,7 +2,7 @@
 
 #include <terark/db/db_index.hpp>
 #include <terark/fsa/nest_louds_trie.hpp>
-#include <terark/fast_zip_blob_store.hpp>
+#include <terark/fsa/fast_zip_blob_store.hpp>
 
 namespace terark {
 //	class Nest
