@@ -3626,11 +3626,17 @@ static void
 moveStoreFiles(PathRef srcDir, PathRef destDir,
 			   const std::string& prefix, size_t& newPartIdx) {
 	size_t prevOldpartIdx = 0;
+	std::vector<std::string> fnames;
+	// iterate on dir may not at lexical order
 	for (auto& entry : fs::directory_iterator(srcDir)) {
 		std::string fname = entry.path().filename().string();
 		if ("." == fname || ".." == fname) {
 			continue;
 		}
+		fnames.push_back(fname);
+	}
+	std::sort(fnames.begin(), fnames.end());
+	for (const std::string& fname : fnames) {
 		assert(!fstring(fname).endsWith(".empty"));
 		assert(fstring(fname).startsWith(prefix));
 		std::string dotExt = getDotExtension(fname).str();
