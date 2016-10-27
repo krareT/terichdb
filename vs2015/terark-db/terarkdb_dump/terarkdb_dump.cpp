@@ -1,4 +1,3 @@
-#include "stdafx.h"
 #include <terark/util/autoclose.hpp>
 #include <terark/util/linebuf.hpp>
 #include <terark/db/db_table.hpp>

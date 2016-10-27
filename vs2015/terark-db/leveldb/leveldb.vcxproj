@@ -142,9 +142,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="..\..\..\..\leveldb_terark\db\builder.cc" />
     <ClCompile Include="..\..\..\..\leveldb_terark\db\c.cc" />
     <ClCompile Include="..\..\..\..\leveldb_terark\db\dbformat.cc" />

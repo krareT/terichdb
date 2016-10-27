@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+﻿#include <thread>
 #include <terark/util/autoclose.hpp>
 #include <terark/util/linebuf.hpp>
 #include <terark/util/profiling.hpp>
