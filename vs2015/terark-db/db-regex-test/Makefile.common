@@ -1,6 +1,7 @@
-CHECK_TERARK_CORE_LIB_UPDATE ?= 1
-TERARK_HOME ?= ../..
-WITH_BMI2 ?= $(shell ${TERARK_HOME}/cpu_has_bmi2.sh)
+CHECK_TERARK_LIB_UPDATE ?= 1
+DB_HOME ?= ../..
+CORE_HOME ?= ../../terark-base
+WITH_BMI2 ?= 0
 
 ifeq "$(origin CXX)" "default"
   ifeq "$(shell test -e /opt/bin/g++ && echo 1)" "1"
@@ -16,7 +17,7 @@ ifeq "$(origin LD)" "default"
   LD := ${CXX}
 endif
 
-override INCS := -I${TERARK_HOME}/src ${INCS}
+override INCS := -I${DB_HOME}/src ${INCS}
 #override CXXFLAGS += -pipe
 override CXXFLAGS += -Wall -Wextra
 override CXXFLAGS += -Wno-unused-parameter
@@ -33,7 +34,7 @@ ifeq ($(shell uname), Linux)
   override LIBS += -lrt
 endif
 
-COMPILER := $(shell ${CXX} ${TERARK_HOME}/tools/configure/compiler.cpp -o a.exe && ./a.exe && rm -f a.exe)
+COMPILER := $(shell ${CXX} ${DB_HOME}/tools/configure/compiler.cpp -o a.exe && ./a.exe && rm -f a.exe)
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
 UNAME_System := $(shell uname | sed 's/^\([0-9a-zA-Z]*\).*/\1/')
 COMPILER_LAZY = ${COMPILER}
@@ -96,10 +97,13 @@ else
 endif
 #override CXXFLAGS += ${FPIC}
 
-BUILD_DIR := build/${COMPILER}-${UNAME_MachineSystem}-bmi2-${WITH_BMI2}
+BUILD_NAME := ${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
+BUILD_ROOT := build/${BUILD_NAME}
+DB_LIB_DIR := ${DB_HOME}/${BUILD_ROOT}/lib
+CORE_LIB_DIR := ${CORE_HOME}/${BUILD_ROOT}/lib
 
-DBG_DIR := ${BUILD_DIR}/dbg
-RLS_DIR := ${BUILD_DIR}/rls
+DBG_DIR := ${BUILD_ROOT}/dbg
+RLS_DIR := ${BUILD_ROOT}/rls
 
 SRCS ?= $(wildcard *.cpp)
 OBJS_R := $(addprefix ${RLS_DIR}/, $(addsuffix .o, $(basename ${SRCS})))
@@ -132,28 +136,28 @@ link : ${BINS_D} ${BINS_R} ${DLL_BINS_D} ${DLL_BINS_R}
 	done; cd ..
 
 ifeq (${STATIC},1)
-ifeq (${CHECK_TERARK_CORE_LIB_UPDATE},1)
-${BINS_D} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d.a
-${BINS_R} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r.a
+ifeq (${CHECK_TERARK_LIB_UPDATE},1)
+${BINS_D} : ${DB_LIB_DIR}/libterark-db-${COMPILER}-d.a ${CORE_LIB_DIR}/libterark-core-${COMPILER}-d.a
+${BINS_R} : ${DB_LIB_DIR}/libterark-db-${COMPILER}-r.a ${CORE_LIB_DIR}/libterark-core-${COMPILER}-r.a
 endif
   ifeq (Darwin, ${UNAME_System})
-${BINS_D} : LIBS := ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d.a ${LIBS}
-${BINS_R} : LIBS := ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r.a ${LIBS}
+${BINS_D} : LIBS := ${CORE_LIB_DIR}/libterark-core-${COMPILER}-d.a ${LIBS}
+${BINS_R} : LIBS := ${CORE_LIB_DIR}/libterark-core-${COMPILER}-r.a ${LIBS}
   else
-${BINS_D} : LIBS := -Wl,--whole-archive ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d.a -Wl,--no-whole-archive -ldivsufsort-d ${LIBS}
-${BINS_R} : LIBS := -Wl,--whole-archive ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r.a -Wl,--no-whole-archive -ldivsufsort-r ${LIBS}
+${BINS_D} : LIBS := -Wl,--whole-archive ${CORE_LIB_DIR}/libterark-core-${COMPILER}-d.a -Wl,--no-whole-archive -ldivsufsort-d ${LIBS}
+${BINS_R} : LIBS := -Wl,--whole-archive ${CORE_LIB_DIR}/libterark-core-${COMPILER}-r.a -Wl,--no-whole-archive -ldivsufsort-r ${LIBS}
   endif
 else
-ifeq (${CHECK_TERARK_CORE_LIB_UPDATE},1)
-${BINS_D} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX}
-${BINS_R} : ${TERARK_HOME}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}
+ifeq (${CHECK_TERARK_LIB_UPDATE},1)
+${BINS_D} : ${DB_LIB_DIR}/libterark-db-${COMPILER}-d${DLL_SUFFIX} ${CORE_LIB_DIR}/libterark-core-${COMPILER}-d${DLL_SUFFIX}
+${BINS_R} : ${DB_LIB_DIR}/libterark-db-${COMPILER}-r${DLL_SUFFIX} ${CORE_LIB_DIR}/libterark-core-${COMPILER}-r${DLL_SUFFIX}
 endif
-${BINS_D} : LIBS := -L${TERARK_HOME}/lib -lterark-core-${COMPILER}-d ${LIBS}
-${BINS_R} : LIBS := -L${TERARK_HOME}/lib -lterark-core-${COMPILER}-r ${LIBS}
+${BINS_D} : LIBS := -L${DB_LIB_DIR} -lterark-db-${COMPILER}-d -L${CORE_HOME}/lib -lterark-core-${COMPILER}-d ${LIBS}
+${BINS_R} : LIBS := -L${DB_LIB_DIR} -lterark-db-${COMPILER}-r -L${CORE_HOME}/lib -lterark-core-${COMPILER}-r ${LIBS}
 endif
 
 clean :
-	rm -rf ${BUILD_DIR} dbg rls
+	rm -rf ${BUILD_ROOT} dbg rls
 
 ${DBG_DIR}/%.o : %.cpp
 	@mkdir -p $(dir $@)

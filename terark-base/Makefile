@@ -11,7 +11,8 @@ endif
 COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o a && ./a && rm -f a a.exe)
 #$(error COMPILER=${COMPILER})
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
-BUILD_ROOT := build/${COMPILER}-${UNAME_MachineSystem}-bmi2-${WITH_BMI2}
+BUILD_NAME := ${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
+BUILD_ROOT := build/${BUILD_NAME}
 ddir:=${BUILD_ROOT}/dbg
 rdir:=${BUILD_ROOT}/rls
 
@@ -80,6 +81,7 @@ else
     COMMON_C_FLAGS  += -Wstrict-aliasing=3
   endif
 endif
+
 ifeq (${WITH_BMI2},1)
   CPU += -mbmi -mbmi2
 else
@@ -112,7 +114,6 @@ override CXXFLAGS += ${COMMON_C_FLAGS}
 #$(error ${CXXFLAGS} "----" ${COMMON_C_FLAGS})
 
 DEFS := -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE
-DEFS += -DDIVSUFSORT_API=
 override CFLAGS   += ${DEFS}
 override CXXFLAGS += ${DEFS}
 
@@ -125,8 +126,6 @@ endif
 ifeq (, $(findstring ${BOOST_LIB}, /usr/lib64 /usr/lib /usr/local/lib))
   override LIBS += -L${BOOST_LIB}
 endif
-
-#override INCS += -I/usr/include
 
 LIBBOOST ?=
 #LIBBOOST += -lboost_thread${BOOST_SUFFIX}
@@ -189,10 +188,10 @@ objs = $(addprefix ${${2}dir}/, $(addsuffix .o, $(basename ${${1}_src})))
 
 core_d_o := $(call objs,core,d)
 core_r_o := $(call objs,core,r)
-core_d := lib/libterark-core-${COMPILER}-d${DLL_SUFFIX}
-core_r := lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}
-static_core_d := lib/libterark-core-${COMPILER}-d.a
-static_core_r := lib/libterark-core-${COMPILER}-r.a
+core_d := ${BUILD_ROOT}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX}
+core_r := ${BUILD_ROOT}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}
+static_core_d := ${BUILD_ROOT}/lib/libterark-core-${COMPILER}-d.a
+static_core_r := ${BUILD_ROOT}/lib/libterark-core-${COMPILER}-r.a
 
 ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} core
 DBG_TARGETS = ${MAYBE_DBB_DBG} ${core_d}
@@ -230,10 +229,8 @@ ${static_core_r}:${core_r_o}
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	@echo -e "OBJS:" $(addprefix "\n  ",$(sort $(filter %.o,$^)))
 	@echo -e "LIBS:" $(addprefix "\n  ",${LIBS})
-	@mkdir -p lib
+	@mkdir -p ${BUILD_ROOT}/lib
 	@rm -f $@
-	@rm -f $(subst -${COMPILER},, $@)
-	@ln -sf $(notdir $@) $(subst -${COMPILER},, $@)
 	@${LD} -shared $(sort $(filter %.o,$^)) ${LDFLAGS} ${LIBS} -o ${CYG_DLL_FILE} ${CYGWIN_LDFLAGS}
 ifeq (CYGWIN, ${UNAME_System})
 	@cp -l -f ${CYG_DLL_FILE} /usr/bin
@@ -245,18 +242,16 @@ endif
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	@echo -e "OBJS:" $(addprefix "\n  ",$(sort $(filter %.o,$^)))
 	@echo -e "LIBS:" $(addprefix "\n  ",${LIBS})
-	@mkdir -p lib
-	@rm -f $(subst -${COMPILER},, $@)
-	@ln -sf $(notdir $@) $(subst -${COMPILER},, $@)
+	@mkdir -p ${BUILD_ROOT}/lib
 	@${AR} rcs $@ $(filter %.o,$^)
 
 .PHONY : install
 install : core
-	cp lib/* ${prefix}/lib/
+	cp ${BUILD_ROOT}/lib/* ${prefix}/lib/
 
 .PHONY : clean
 clean:
-	-rm -rf lib/libterark* ${BUILD_ROOT} ${PRECOMPILED_HEADER_GCH}
+	-rm -rf ${BUILD_ROOT} ${PRECOMPILED_HEADER_GCH}
 
 .PHONY : depends
 depends : ${alldep}
