@@ -1,0 +1,411 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\terark">
+      <UniqueIdentifier>{59a340ca-d77b-4fbe-b092-dc09b80efaf0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\terark\io">
+      <UniqueIdentifier>{9bba8f62-ae84-407d-8fc1-49221e977b9d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\terark\util">
+      <UniqueIdentifier>{cde413ab-15de-4eb3-b6bf-448be9f338d6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark">
+      <UniqueIdentifier>{ad791452-8b08-4a4b-9bb3-721d6183e9d6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark\io">
+      <UniqueIdentifier>{0b7c2f3e-2bb9-46d4-8795-ff65c9e9ba3f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark\util">
+      <UniqueIdentifier>{db8b9747-268f-4322-bdff-41ff19ad46ec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark\thread">
+      <UniqueIdentifier>{888a44b3-03f3-41e4-a8e2-a5ecf5919918}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\terark\thread">
+      <UniqueIdentifier>{404d44fd-7829-4e13-8867-dec22d83d1d3}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\src\terark\io\access_byid.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\avro.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\byte_io_impl.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\byte_swap.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\byte_swap_impl.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\BzipStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataInput.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataInputIterator.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataIO.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataIO_Basic.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataIO_Dump.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataIO_Exception.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataIO_SmartPtr.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataIO_Tuple.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataIO_Version.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\DataOutput.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\file_load_save.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\FileDataIO.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\FileStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\GzipStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\HexCodingStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\int_diff_coding.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\IOException.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\IStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\IStreamWrapper.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\MemMapStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\MemStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\StreamBuffer.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\var_int.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\var_int_boost_serialization.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\var_int_inline.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\var_int_io.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\ZcMemMap.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\ZeroCopy.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\autoclose.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\autofree.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\compare.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\DataBuffer.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\fstrvec.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\ini_parser.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\linebuf.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\mmap.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\profiling.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\refcount.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\strbuilder.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\strjoin.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\throw.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\unicode_iterator.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\bitmap.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\circular_queue.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\config.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\fstring.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\gold_hash_map.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\gold_hash_map_iterator.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\hash_common.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\hash_strmap.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\hash_strmap_iterator.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\lcast.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\logged_tab.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\mempool.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\mpoolxx.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\node_layout.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\num_to_str.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\objbox.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\parallel_lib.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\pass_by_value.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\ptree.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\radix_sort.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\set_op.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\smallmap.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\stdtypes.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\trb_cxx.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\valvec.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\int_vector.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\rank_select.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\bitmanip.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\rank_select_inline.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\balanced_parents.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\sortable_strvec.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\RangeStream.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\io\byte_lex_code.hpp">
+      <Filter>Header Files\terark\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\gold_hash_idx.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\mmap_vec.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\thread\pipeline.hpp">
+      <Filter>Header Files\terark\thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\rank_select_se_512.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\blob_store.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\truncate_file.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\crc.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\util\deepcopy_ptr.hpp">
+      <Filter>Header Files\terark\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\rank_select_inline_bmi2.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\rank_select_inline_slow.hpp">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\src\terark\io\access_byid.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\DataIO_Exception.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\FileStream.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\HexCodingStream.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\IOException.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\IStream.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\MemMapStream.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\MemStream.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\StreamBuffer.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\var_int.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\ZcMemMap.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\io\ZeroCopy.cpp">
+      <Filter>Source Files\terark\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\DataBuffer.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\linebuf.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\mmap.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\profiling.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\bitmap.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\fstring.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\lcast.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\num_to_str.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\objbox.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\ptree.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\radix_sort.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\rank_select.cpp">
+      <Filter>Source Files\terark</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\ini_parser.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\sortable_strvec.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\thread\pipeline.cpp">
+      <Filter>Source Files\terark\thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\blob_store.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\truncate_file.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\util\crc.cpp">
+      <Filter>Source Files\terark\util</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
