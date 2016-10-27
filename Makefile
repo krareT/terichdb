@@ -346,21 +346,21 @@ ${TarBall}.tgz : ${TerarkDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} 
 	mkdir -p ${TarBall}/include/terark/util
 	mkdir -p ${TarBall}/api/leveldb
 ifeq (${PKG_WITH_DBG},1)
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
 endif
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
 	cp    src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 	cp    src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
 	cp    src/terark/db/db_index.hpp          ${TarBall}/include/terark/db
