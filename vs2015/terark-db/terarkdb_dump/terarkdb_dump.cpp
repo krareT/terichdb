@@ -3,9 +3,12 @@
 #include <terark/util/linebuf.hpp>
 #include <terark/db/db_table.hpp>
 #include <terark/util/profiling.hpp>
-#include <getopt.h>
 #include <mongo_terarkdb/record_codec.h>
 #include <mongo/bson/bsonobj.h>
+
+#ifdef _MSC_VER
+	#include <getopt.c>
+#endif
 
 void usage(const char* prog) {
 	fprintf(stderr, "usage: %s options dbDir startId count...\n", prog);

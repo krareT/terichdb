@@ -3,7 +3,9 @@
 #include <terark/util/linebuf.hpp>
 #include <terark/util/profiling.hpp>
 #include <terark/db/db_table.hpp>
-#include <getopt.h>
+#ifdef _MSC_VER
+	#include <getopt.c>
+#endif
 
 void usage(const char* prog) {
 	fprintf(stderr, "usage: %s options db-dir input-data-files...\n", prog);

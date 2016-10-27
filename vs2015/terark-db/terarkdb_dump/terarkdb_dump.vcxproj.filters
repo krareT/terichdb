@@ -29,9 +29,6 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\terark\3rdparty\getopt_win\getopt.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="terarkdb_dump.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

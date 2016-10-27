@@ -32,8 +32,5 @@
     <ClCompile Include="terarkdb_import.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\terark\3rdparty\getopt_win\getopt.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>
