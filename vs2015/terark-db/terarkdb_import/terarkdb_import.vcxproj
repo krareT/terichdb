@@ -75,7 +75,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..\..\..\..\terark\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -84,7 +84,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\..\..\terark\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
