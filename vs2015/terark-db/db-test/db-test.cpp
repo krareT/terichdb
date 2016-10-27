@@ -26,19 +26,19 @@ void doTest(const char* tableDir, size_t maxRowNum)
     NativeDataOutput<AutoGrownMemIO> rowBuilder;
     TestRow recRow;
 
-    size_t insertedRows = 0;
+    llong insertedRows = 0;
     febitvec bits(maxRowNum + 1);
     for(size_t i = 0; i < maxRowNum; ++i)
     {
         TestRow recRow;
         recRow.id = std::uniform_int_distribution<size_t>(0, maxRowNum - 1)(mt);
-        int len = sprintf(recRow.fix.data, "%06lld", recRow.id);
+        int len = sprintf(recRow.fix.data, "%06lld", llong(recRow.id));
         recRow.str0 = std::string("s0:") + recRow.fix.data;
         recRow.str1 = std::string("s1:") + recRow.fix.data;
         recRow.str2 = std::string("s2:") + recRow.fix.data;
         recRow.str3 = std::string("s3:") + recRow.fix.data;
         recRow.str4 = std::string("s4:") + recRow.fix.data;
-        sprintf(recRow.fix2.data, "F2.%06lld", recRow.id);
+        sprintf(recRow.fix2.data, "F2.%06lld", llong(recRow.id));
         rowBuilder.rewind();
         rowBuilder << recRow;
         fstring binRow(rowBuilder.written());
@@ -144,7 +144,7 @@ void doTest(const char* tableDir, size_t maxRowNum)
                 assert(recBuf.size() == sizeof(llong));
                 llong keyId = Schema::numberOf<llong>(recBuf);
                 int len = sprintf(fix2.data, "F-%lld", keyId);
-                TERARK_RT_assert(len < sizeof(fix2.data), std::out_of_range);
+                TERARK_RT_assert(len < (int)sizeof(fix2.data), std::out_of_range);
                 tab->updateColumn(randomRecId, "fix2", fix2);
             }
         }

@@ -8,6 +8,6 @@ CHECK_TERARK_FSA_LIB_UPDATE := 0
 
 include $(shell dirname $(shell readlink $(lastword ${MAKEFILE_LIST})))/Makefile.common
 
-${BINS_D} : LIBS := -L../../../lib -lterark-db-${COMPILER_LAZY}-d -lterark-core-${COMPILER_LAZY}-d ${LIBS}
-${BINS_R} : LIBS := -L../../../lib -lterark-db-${COMPILER_LAZY}-r -lterark-core-${COMPILER_LAZY}-d ${LIBS}
+${BINS_D} : LIBS := -L../../../lib -lterark-db-${COMPILER_LAZY}-d ${LIBS}
+${BINS_R} : LIBS := -L../../../lib -lterark-db-${COMPILER_LAZY}-r ${LIBS}
 
