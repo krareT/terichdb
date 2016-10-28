@@ -346,21 +346,21 @@ ${TarBall}.tgz : ${TerarkDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} 
 	mkdir -p ${TarBall}/include/terark/util
 	mkdir -p ${TarBall}/api/leveldb
 ifeq (${PKG_WITH_DBG},1)
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
 endif
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
 	cp    src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 	cp    src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
 	cp    src/terark/db/db_index.hpp          ${TarBall}/include/terark/db
@@ -405,6 +405,7 @@ endif
 	@mkdir -p ${BUILD_ROOT}/lib
 	@rm -f $@
 	@${LD} -shared $(sort $(filter %.o,$^)) ${LDFLAGS} ${LIBS} -o ${CYG_DLL_FILE} ${CYGWIN_LDFLAGS}
+	cd $(dir $@); ln -sf $(notdir $@) $(subst -${COMPILER},,$(notdir $@))
 ifeq (CYGWIN, ${UNAME_System})
 	@cp -l -f ${CYG_DLL_FILE} /usr/bin
 endif
@@ -416,7 +417,9 @@ endif
 	@echo -e "OBJS:" $(addprefix "\n  ",$(sort $(filter %.o,$^)))
 	@echo -e "LIBS:" $(addprefix "\n  ",${LIBS})
 	@mkdir -p ${BUILD_ROOT}/lib
+	@rm -f $@
 	@${AR} rcs $@ $(filter %.o,$^)
+	cd $(dir $@); ln -sf $(notdir $@) $(subst -${COMPILER},,$(notdir $@))
 
 .PHONY : install
 install : TerarkDB
