@@ -33,15 +33,13 @@ void doTest(const char* tableDir, size_t maxRowNum)
         TestRow recRow;
         recRow.id = std::uniform_int_distribution<size_t>(0, maxRowNum - 1)(mt);
         int len = sprintf(recRow.fix.data, "%06lld", llong(recRow.id));
-        recRow.str0 = std::string("s0:") + recRow.fix.data;
-        recRow.str1 = std::string("s1:") + recRow.fix.data;
-        recRow.str2 = std::string("s2:") + recRow.fix.data;
-        recRow.str3 = std::string("s3:") + recRow.fix.data;
-        recRow.str4 = std::string("s4:") + recRow.fix.data;
+        recRow.str0.assign("s0:").append(recRow.fix.data, len);
+        recRow.str1.assign("s1:").append(recRow.fix.data, len);
+        recRow.str2.assign("s2:").append(recRow.fix.data, len);
+        recRow.str3.assign("s3:").append(recRow.fix.data, len);
+        recRow.str4.assign("s4:").append(recRow.fix.data, len);
         sprintf(recRow.fix2.data, "F2.%06lld", llong(recRow.id));
-        rowBuilder.rewind();
-        rowBuilder << recRow;
-        fstring binRow(rowBuilder.written());
+        fstring binRow = recRow.encode(rowBuilder);
         if(bits[recRow.id])
         {
             if(!ctx->indexKeyExists(0, Schema::fstringOf(&recRow.id)))
