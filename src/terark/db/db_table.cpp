@@ -2816,7 +2816,7 @@ public:
 					llong baseId = m_segs[segIdx].baseId;
 					*id = baseId + subId;
 				#if !defined(NDEBUG)
-					assert(*id < m_tab->numDataRows());
+					assert(*id < m_tab->m_rowNum);
 					if (m_forward) {
 						if (schema.compareData(key, m_keyBuf) > 0) {
 							fprintf(stderr, "ERROR: key=%s m_keyBuf=%s\n"
