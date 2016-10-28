@@ -31,7 +31,7 @@ void doTest(const char* tableDir, size_t maxRowNum)
     for(size_t i = 0; i < maxRowNum; ++i)
     {
         TestRow recRow;
-        recRow.id = std::uniform_int_distribution<size_t>(0, maxRowNum - 1)(mt);
+        recRow.id = std::uniform_int_distribution<size_t>(1, maxRowNum)(mt);
         int len = sprintf(recRow.fix.data, "%06lld", llong(recRow.id));
         recRow.str0.assign("s0:").append(recRow.fix.data, len);
         recRow.str1.assign("s1:").append(recRow.fix.data, len);
