@@ -1410,7 +1410,7 @@ void threaded_rb_tree_remove(root_t &root,
     }
     if(deref(p).is_black())
     {
-        for(; k > 1; --k)
+        for(; k > 0; --k)
         {
             if(stack.is_left(k - 1))
             {
