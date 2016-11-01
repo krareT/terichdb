@@ -334,6 +334,10 @@ ${static_LeveldbApi_r} : $(call objs,LeveldbApi,r)
 TarBall := pkg/${TerarkDB_lib}-${BUILD_NAME}
 .PHONY : pkg
 pkg: ${TarBall}.tgz
+scp: ${TarBall}.tgz.scp.done
+${TarBall}.tgz.scp.done : ${TarBall}.tgz
+	scp -P 22    $< root@nark.cc:/var/www/html/download/
+	touch $@
 
 ${TarBall}.tgz : ${TerarkDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} \
 				 ${TerarkDB_r} ${LeveldbApi_r} ${DfaDB_r} ${TrbDB_r} ${Tiger_r}

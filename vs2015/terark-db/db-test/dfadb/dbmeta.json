@@ -29,8 +29,8 @@
 			"dictZipSampleRatio": 0.0
 		}
 	},
-	"CompressingWorkMemSize" : "10K",
-  "MaxWritingSegmentSize": "20K",
+	"CompressingWorkMemSize" : "10M",
+  "MaxWritingSegmentSize": "20M",
   "//TableClass": "MockDbTable",
   "WritableSegmentClass": "TrbColgroupSegment",
 	"TableIndex" : [
