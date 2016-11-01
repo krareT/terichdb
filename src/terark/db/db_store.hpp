@@ -203,6 +203,13 @@ public:
 //	using DbException::DbException;
 };
 
+class TERARK_DB_DLL StoreInternalException : public DbException {
+public:
+	template<class String>
+    StoreInternalException(const String& msg) : DbException(msg) {}
+//	using DbException::DbException;
+};
+
 } } // namespace terark::db
 
 #endif // __terark_db_db_store_hpp__

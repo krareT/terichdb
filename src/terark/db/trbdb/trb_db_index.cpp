@@ -315,7 +315,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                remove<Compare>(i);
+                bool resule = remove<Compare>(i);
+                assert(resule);
+                (void)resule;
                 threaded_rb_tree_find_path_for_unique(root,
                                                       stack,
                                                       const_deref_node(*this),
@@ -350,7 +352,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                remove<Compare>(i);
+                bool resule = remove<Compare>(i);
+                assert(resule);
+                (void)resule;
             }
             byte len_data[8];
             byte *end_ptr = save_var_uint32(len_data, uint32_t(d.size()));
@@ -392,7 +396,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             total += d.size();
         }
         template<class Compare>
-        void remove(size_type i)
+        bool remove(size_type i)
         {
             threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
             bool exists = threaded_rb_tree_find_path_for_remove(root,
@@ -401,8 +405,10 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                                                                 i,
                                                                 Compare{*this}
             );
-            assert(exists);
-            (void)exists;
+            if(!exists)
+            {
+                return false;
+            }
             byte const *ptr = data.at<data_object>(index[i].offset).data, *end_ptr;
             size_type len = load_var_uint32(ptr, &end_ptr);
             if(true
@@ -425,6 +431,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                                     mutable_deref_node(*this)
             );
             total -= len;
+            return true;
         }
 
         void clear()
@@ -513,7 +520,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                remove<Compare>(i);
+                bool resule = remove<Compare>(i);
+                assert(resule);
+                (void)resule;
                 std::memcpy(data.data() + i * key_length, d.data(), d.size());
                 threaded_rb_tree_find_path_for_multi(root,
                                                      stack,
@@ -545,7 +554,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                remove<Compare>(i);
+                bool resule = remove<Compare>(i);
+                assert(resule);
+                (void)resule;
             }
             std::memcpy(data.data() + i * key_length, d.data(), d.size());
             threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
@@ -562,7 +573,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             );
         }
         template<class Compare>
-        void remove(size_type i)
+        bool remove(size_type i)
         {
             threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
             bool exists = threaded_rb_tree_find_path_for_remove(root,
@@ -571,12 +582,15 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                                                                 i,
                                                                 Compare{*this}
             );
-            assert(exists);
-            (void)exists;
+            if(!exists)
+            {
+                return false;
+            }
             threaded_rb_tree_remove(root,
                                     stack,
                                     mutable_deref_node(*this)
             );
+            return true;
         }
 
         void clear()
@@ -672,7 +686,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             element_type *ptr = reinterpret_cast<element_type *>(index.data() + i * element_length);
             if(terark_unlikely(node(i).is_used()))
             {
-                remove<Compare>(i);
+                bool resule = remove<Compare>(i);
+                assert(resule);
+                (void)resule;
                 std::memcpy(ptr->data, d.data(), d.size());
                 threaded_rb_tree_find_path_for_multi(root,
                                                      stack,
@@ -703,7 +719,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                remove<Compare>(i);
+                bool resule = remove<Compare>(i);
+                assert(resule);
+                (void)resule;
             }
             assert(node(i).is_empty());
             element_type *ptr = reinterpret_cast<element_type *>(index.data() + i * element_length);
@@ -722,7 +740,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             );
         }
         template<class Compare>
-        void remove(size_type i)
+        bool remove(size_type i)
         {
             threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
             bool exists = threaded_rb_tree_find_path_for_remove(root,
@@ -731,12 +749,15 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                                                                 i,
                                                                 Compare{*this}
             );
-            assert(exists);
-            (void)exists;
+            if(!exists)
+            {
+                return false;
+            }
             threaded_rb_tree_remove(root,
                                     stack,
                                     mutable_deref_node(*this)
             );
+            return true;
         }
 
         void clear()
@@ -819,8 +840,7 @@ public:
     {
         TrbIndexRWLock::scoped_lock l(m_rwMutex);
         assert(m_storage.key(id) == key);
-        m_storage.template remove<key_compare_type>(id);
-        return true;
+        return m_storage.template remove<key_compare_type>(id);
     }
     bool insert(fstring key, llong id, DbContext*) override
     {
@@ -843,7 +863,9 @@ public:
         TrbIndexRWLock::scoped_lock l(m_rwMutex);
         assert(key == m_storage.key(oldId));
         m_storage.template store_cover<key_compare_type>(newId, key);
-        m_storage.template remove<key_compare_type>(oldId);
+        bool success = m_storage.template remove<key_compare_type>(oldId);
+        assert(success);
+        (void)success;
         return true;
     }
 
@@ -934,38 +956,66 @@ public:
 
     llong append(fstring row, DbContext*) override
     {
-        TrbIndexRWLock::scoped_lock l(m_rwMutex);
-        size_t id = m_storage.max_index();
-        if(m_isUnique)
+        bool success;
+        size_t id;
         {
-            bool success = m_storage.template store_check<key_compare_type>(id, row);
-            assert(success);
-            (void)success;
+            TrbIndexRWLock::scoped_lock l(m_rwMutex);
+            id = m_storage.max_index();
+            if(m_isUnique)
+            {
+                success = m_storage.template store_check<key_compare_type>(id, row);
+            }
+            else
+            {
+                m_storage.template store_cover<key_compare_type>(id, row);
+                success = true;
+            }
         }
-        else
+        if(!success)
         {
-            m_storage.template store_cover<key_compare_type>(id, row);
+            TERARK_THROW(StoreInternalException,
+                         "StoreInternalException: TrbWritableIndex::append"
+            );
         }
         return llong(id);
     }
     void update(llong id, fstring row, DbContext*) override
     {
-        TrbIndexRWLock::scoped_lock l(m_rwMutex);
-        if(m_isUnique)
+        bool success;
         {
-            bool success = m_storage.template store_check<key_compare_type>(id, row);
-            assert(success);
-            (void)success;
+            TrbIndexRWLock::scoped_lock l(m_rwMutex);
+            if(m_isUnique)
+            {
+                success = m_storage.template store_check<key_compare_type>(id, row);
+            }
+            else
+            {
+                m_storage.template store_cover<key_compare_type>(id, row);
+                success = true;
+            }
         }
-        else
+        if(!success)
         {
-            m_storage.template store_cover<key_compare_type>(id, row);
+            TERARK_THROW(StoreInternalException,
+                         "StoreInternalException: TrbWritableIndex::update = %lld",
+                         id
+            );
         }
     }
     void remove(llong id, DbContext*) override
     {
-        TrbIndexRWLock::scoped_lock l(m_rwMutex);
-        m_storage.template remove<key_compare_type>(id);
+        bool success;
+        {
+            TrbIndexRWLock::scoped_lock l(m_rwMutex);
+            success = m_storage.template remove<key_compare_type>(id);
+        }
+        if(!success)
+        {
+            TERARK_THROW(StoreInternalException,
+                         "StoreInternalException: TrbWritableIndex::remove = %lld",
+                         id
+            );
+        }
     }
 
     void shrinkToFit() override

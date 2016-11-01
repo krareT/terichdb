@@ -13,6 +13,7 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/optional.hpp>
 #include <thread>
+#include <tbb/queuing_mutex.h>
 
 #undef min
 #undef max
@@ -25,53 +26,199 @@ TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment, "trbdb", "trb");
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class LogAction : unsigned char
+class TrbLogger
 {
-    Reserved = 0,
-    UpdateRow,              //Id, Data
-    RemoveRow,              //Id
-    TransactionUpdateRow,   //Id, Version, Data
-    TransactionCommitRow,   //[Id, Version]
+private:
+    enum class LogAction : unsigned char
+    {
+        Reserved = 0,
+        UpdateRow,              //SubId, Data
+        RemoveRow,              //SubId, Version
+        GlobalUpdateRow,        //SubId, RecId, Version, Data
+        GlobalRemoveRow,        //RecId, Version
+        TransactionUpdateRow,   //SubId, Version, Data
+        TransactionCommitRow,   //[RecId, Version]
+    };
+    struct CrcUpdate
+    {
+        template<class T>
+        static uint32_t update(uint32_t c, ...)
+        {
+            static_assert(sizeof(T) != 0, "wtf ?");
+            return c;
+        }
+        template<class T>
+        static uint32_t update(uint32_t c, valvec<byte> &b, fstring v)
+        {
+            b.append(v.begin(), v.end());
+            return Crc32c_update(c, v.data(), v.size());
+        }
+        template<class T>
+        static uint32_t update(uint32_t c, valvec<byte> &b, valvec<byte> const &v)
+        {
+            b.append(v.begin(), v.end());
+            return Crc32c_update(c, v.data(), v.size());
+        }
+        template<class T, class = typename std::enable_if<std::is_arithmetic<T>::value>::type>
+        static uint32_t update(uint32_t c, valvec<byte> &b, T const &v)
+        {
+            byte const *v_ptr = reinterpret_cast<byte const *>(&v);
+            b.append(v_ptr, sizeof(T));
+            return Crc32c_update(c, &v, sizeof(T));
+        }
+    };
+
+    template<class ...args_t>
+    void writeLog(valvec<byte> &buffer, LogAction action, args_t const &...args)
+    {
+        buffer.risk_set_size(0);
+        uint32_t crc;
+        std::initializer_list<uint32_t>
+        {
+            (crc = CrcUpdate::update(0, buffer, uint8_t(action))),
+            (crc = CrcUpdate::update<args_t>(crc, buffer, args))...
+        };
+        {
+            lock_t l(m_mutex);
+            m_out << crc << buffer;
+            m_out.flush();
+        }
+    }
+
+    typedef tbb::queuing_mutex mutex_t;
+    typedef mutex_t::scoped_lock lock_t;
+
+
+public:
+    struct Param
+    {
+        Param(FileStream *fp) : file(fp)
+        {
+        }
+        FileStream *file;
+        std::function<bool(uint32_t, ColumnVec const &, valvec<byte> &)> updateRow;
+        std::function<bool(uint32_t, llong)> removeRow;
+    };
+
+private:
+    mutex_t m_mutex;
+    Param m_param;
+    NativeDataOutput<OutputBuffer> m_out;
+
+
+public:
+    TrbLogger() : m_param(nullptr)
+    {
+    }
+    ~TrbLogger()
+    {
+        if(m_param.file != nullptr)
+        {
+            m_out.flush();
+            m_out.attach(static_cast<FileStream *>(nullptr));
+        }
+    }
+
+    void init(Param p)
+    {
+        assert(p.file);
+        assert(p.updateRow);
+        assert(p.removeRow);
+        m_param = p;
+        m_out.attach(m_param.file);
+    }
+    void load(Schema *schema)
+    {
+        NativeDataInput<InputBuffer> in; in.attach(m_param.file);
+        LogAction action;
+        uint32_t crc;
+        uint32_t sub_id;
+        llong rec_id;
+        llong version;
+        valvec<byte> data;
+
+        valvec<byte> buf;
+        ColumnVec cols;
+
+        (void)rec_id; //uhmmm ...
+
+        struct BadLog
+        {
+        };
+
+        stream_position_t pos = m_param.file->tell() - (in.bufsize() - in.bufpos());
+
+        try
+        {
+            while(true)
+            {
+                in >> crc >> data;
+                if(crc != Crc32c_update(0, data.data(), data.size()) || data.size() < 1)
+                {
+                    throw BadLog();
+                }
+                std::memcpy(&action, data.data(), 1);
+                switch(action)
+                {
+                case LogAction::UpdateRow:
+                    if(data.size() < 5)
+                    {
+                        throw BadLog();
+                    }
+                    std::memcpy(&sub_id, data.data() + 1, 4);
+                    schema->parseRow({data.begin() + 5, data.end()}, &cols);
+                    if(!m_param.updateRow(sub_id, cols, buf))
+                    {
+                        throw BadLog();
+                    }
+                    break;
+                case LogAction::RemoveRow:
+                    if(data.size() < 13)
+                    {
+                        throw BadLog();
+                    }
+                    std::memcpy(&sub_id, data.data() + 1, 4);
+                    std::memcpy(&version, data.data() + 5, 8);
+                    if(!m_param.removeRow(sub_id, version))
+                    {
+                        throw BadLog();
+                    }
+                    break;
+                case LogAction::GlobalUpdateRow:
+                case LogAction::GlobalRemoveRow:
+                case LogAction::TransactionUpdateRow:
+                case LogAction::TransactionCommitRow:
+                    break;
+                default:
+                    //TODO WTF ??
+                    throw BadLog();
+                }
+                pos = m_param.file->tell() - (in.bufsize() - in.bufpos());
+            }
+        }
+        catch(BadLog)
+        {
+            //TODO ... BadLog BadLog BadLog
+            throw;
+        }
+        catch(EndOfFileException const &)
+        {
+        }
+        m_param.file->seek(pos);
+        m_out.attach(m_param.file);
+    }
+    void updateRow(valvec<byte> &buffer, uint32_t id, fstring row)
+    {
+        writeLog(buffer, LogAction::UpdateRow, id, row);
+    }
+    void removeRow(valvec<byte> &buffer, uint32_t id, llong version)
+    {
+        writeLog(buffer, LogAction::RemoveRow, id, version);
+    }
 };
 
-struct CrcUpdate
-{
-    template<class T>
-    static uint32_t update(uint32_t c, ...)
-    {
-        static_assert(sizeof(T) != 0, "wtf ?");
-        return c;
-    }
-    template<class T>
-    static uint32_t update(uint32_t c, valvec<byte> &b, fstring v)
-    {
-        b.append(v.begin(), v.end());
-        return Crc32c_update(c, v.data(), v.size());
-    }
-    template<class T>
-    static uint32_t update(uint32_t c, valvec<byte> &b, valvec<byte> const &v)
-    {
-        b.append(v.begin(), v.end());
-        return Crc32c_update(c, v.data(), v.size());
-    }
-    template<class T, class = typename std::enable_if<std::is_arithmetic<T>::value>::type>
-    static uint32_t update(uint32_t c, valvec<byte> &b, T const &v)
-    {
-        byte const *v_ptr = reinterpret_cast<byte const *>(&v);
-        b.append(v_ptr, v_ptr + sizeof(T));
-        return Crc32c_update(c, &v, sizeof(T));
-    }
-};
 
-template<class ...args_t>
-void WriteLog(NativeDataOutput<OutputBuffer> &out, valvec<byte> &buffer, LogAction action, args_t const &...args)
-{
-    buffer.risk_set_size(0);
-    uint32_t crc;
-    std::initializer_list<uint32_t>{crc = CrcUpdate::update(0, buffer, uint8_t(action)), (crc = CrcUpdate::update<args_t>(crc, buffer, args))...};
-    out << crc << buffer;
-    out.flush();
-}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -179,7 +326,7 @@ public:
             auto &store = m_seg->m_colgroups[i];
             store->getWritableStore()->remove(m_recId, m_ctx);
         }
-        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::RemoveRow, uint32_t(m_recId));
+        m_seg->m_logger->removeRow(m_ctx->trbBuf, uint32_t(m_recId), 0);
     }
     void storeUpdate(fstring row) override
     {
@@ -193,7 +340,7 @@ public:
             schema.selectParent(m_ctx->trbCols, &m_ctx->trbBuf);
             store->getUpdatableStore()->update(m_recId, m_ctx->trbBuf, m_ctx);
         }
-        WriteLog(m_seg->m_out, m_ctx->trbBuf, LogAction::UpdateRow, uint32_t(m_recId), row);
+        m_seg->m_logger->updateRow(m_ctx->trbBuf, uint32_t(m_recId), row);
     }
     void storeGetRow(valvec<byte>* row) override
     {
@@ -237,14 +384,45 @@ DbTransaction *TrbColgroupSegment::createTransaction(DbContext* ctx)
 TrbColgroupSegment::TrbColgroupSegment()
 {
     m_hasLockFreePointSearch = true;
+    m_logger = new TrbLogger();
+    TrbLogger::Param param =
+    {
+        &m_fp
+    };
+    param.updateRow = [this](uint32_t sub_id, ColumnVec const &cols, valvec<byte> &buf)
+    {
+        auto colgroups_size = m_colgroups.size();
+        size_t i = 0;
+        for(; i < colgroups_size; ++i)
+        {
+            auto &store = m_colgroups[i];
+            auto &schema = m_schema->getColgroupSchema(i);
+            schema.selectParent(cols, &buf);
+            store->getWritableStore()->update(sub_id, buf, nullptr);
+        }
+        return true;
+        //TODO add fail check !!!
+    };
+    param.removeRow = [this](uint32_t sub_id, llong version)
+    {
+        (void)version;
+        auto colgroups_size = m_colgroups.size();
+        for(size_t i = 0; i < colgroups_size; ++i)
+        {
+            auto &store = m_colgroups[i];
+            store->getWritableStore()->remove(sub_id, nullptr);
+        }
+        return true;
+        //TODO add fail check !!!
+    };
+    m_logger->init(param);
 }
 
 TrbColgroupSegment::~TrbColgroupSegment()
 {
+    delete m_logger;
     if(m_fp.isOpen())
     {
-        m_out.flush();
-        m_out.attach(static_cast<FileStream *>(nullptr));
         fclose(m_fp.detach());
     }
 }
@@ -262,72 +440,7 @@ void TrbColgroupSegment::load(PathRef path)
     initIndicesColgroups();
 
     m_fp.disbuf();
-    NativeDataInput<InputBuffer> in; in.attach(&m_fp);
-    LogAction action;
-    uint32_t crc;
-    uint32_t index;
-    uint32_t remove;
-    valvec<byte> data;
-
-    valvec<byte> buf;
-    ColumnVec cols;
-
-    struct BadLog{};
-
-    try
-    {
-        size_t const colgroups_size = m_colgroups.size();
-        while(true)
-        {
-            in >> crc >> data;
-            if(crc != Crc32c_update(0, data.data(), data.size()))
-            {
-                //TODO crc32 check error !!!
-                throw BadLog();
-            }
-            assert(data.size() >= 1);
-            std::memcpy(&action, data.data(), 1);
-            switch(action)
-            {
-            case LogAction::UpdateRow:
-                assert(data.size() >= 5);
-                std::memcpy(&index, data.data() + 1, 4);
-                m_schema->m_rowSchema->parseRow({data.begin() + 5, data.end()}, &cols);
-                for(size_t i = 0; i < colgroups_size; ++i)
-                {
-                    auto &store = m_colgroups[i];
-                    auto &schema = m_schema->getColgroupSchema(i);
-                    schema.selectParent(cols, &buf);
-                    store->getWritableStore()->update(index, buf, nullptr);
-                }
-                break;
-            case LogAction::RemoveRow:
-                std::memcpy(&remove, data.data() + 1, 4);
-                for(size_t i = 0; i < colgroups_size; ++i)
-                {
-                    auto &store = m_colgroups[i];
-                    store->getWritableStore()->remove(remove, nullptr);
-                }
-                break;
-                break;
-            case LogAction::TransactionUpdateRow:
-            case LogAction::TransactionCommitRow:
-                break;
-            default:
-                //TODO WTF ??
-                throw BadLog();
-            }
-        }
-    }
-    catch(BadLog)
-    {
-        //TODO ... BadLog BadLog BadLog
-    }
-    catch(EndOfFileException const &)
-    {
-    }
-
-    m_out.attach(&m_fp);
+    m_logger->load(m_schema->m_rowSchema.get());
 }
 
 void TrbColgroupSegment::save(PathRef path) const
@@ -367,12 +480,16 @@ void TrbColgroupSegment::initIndicesColgroups()
 
 void TrbColgroupSegment::initEmptySegment()
 {
-    //ColgroupWritableSegment::initEmptySegment();
+    FILE *f = fopen(fixFilePath(m_segDir).c_str(), "wb");
+    if(f == nullptr)
+    {
+        assert(f != nullptr);
+    }
+    m_fp.attach(f);
+
     initIndicesColgroups();
 
-    FILE *f = fopen(fixFilePath(m_segDir).c_str(), "wb");
-    m_fp.attach(f);
-    m_out.attach(&m_fp);
+    m_fp.disbuf();
 }
 
 ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef) const

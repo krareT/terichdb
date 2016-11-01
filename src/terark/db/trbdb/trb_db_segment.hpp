@@ -17,6 +17,7 @@
 namespace terark { namespace db { namespace trbdb {
 
 class TERARK_DB_DLL RowLockTransaction;
+class TrbLogger;
 
 struct TrbRWRowMutex : boost::noncopyable
 {
@@ -59,7 +60,7 @@ protected:
     friend class RowLockTransaction;
     mutable TrbRWRowMutex m_rowMutex;
     mutable FileStream m_fp;
-    NativeDataOutput<OutputBuffer> m_out;
+    mutable TrbLogger *m_logger;
 
 public:
 	class TrbDbTransaction; friend class TrbDbTransaction;
