@@ -58,7 +58,9 @@ DbTable* DbTable::open(PathRef dbPath) {
 	return tab.release();
 }
 
-DbTable::DbTable() {
+DbTable::DbTable()
+    : m_inprogressWritingCount{0}
+{
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
 	m_isMerging = false;
