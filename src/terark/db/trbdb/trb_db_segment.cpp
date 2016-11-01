@@ -92,120 +92,152 @@ private:
 public:
     struct Param
     {
-        Param(FileStream *fp) : file(fp)
-        {
-        }
-        FileStream *file;
         std::function<bool(uint32_t, ColumnVec const &, valvec<byte> &)> updateRow;
         std::function<bool(uint32_t, llong)> removeRow;
     };
 
 private:
     mutex_t m_mutex;
+    uint32_t m_seed;
     Param m_param;
+    FileStream m_fp;
     NativeDataOutput<OutputBuffer> m_out;
 
 
 public:
-    TrbLogger() : m_param(nullptr)
+    TrbLogger() : m_seed(0)
     {
     }
     ~TrbLogger()
     {
-        if(m_param.file != nullptr)
+        if(m_fp.isOpen())
         {
             m_out.flush();
             m_out.attach(static_cast<FileStream *>(nullptr));
+            m_fp.flush();
+            m_fp.close();
         }
     }
 
-    void init(Param p)
+    void initCallback(Param p)
     {
-        assert(p.file);
         assert(p.updateRow);
         assert(p.removeRow);
         m_param = p;
-        m_out.attach(m_param.file);
     }
-    void load(Schema *schema)
+    static std::string getFilePath(PathRef path, uint32_t seed)
     {
-        NativeDataInput<InputBuffer> in; in.attach(m_param.file);
-        LogAction action;
-        uint32_t crc;
-        uint32_t sub_id;
-        llong rec_id;
-        llong version;
-        valvec<byte> data;
-
-        valvec<byte> buf;
-        ColumnVec cols;
-
-        (void)rec_id; //uhmmm ...
-
-        struct BadLog
+        char szBuf[64];
+        snprintf(szBuf, sizeof(szBuf), "trb.%04ld.log", long(seed));
+        return (path / szBuf).string();
+    }
+    void flush()
+    {
+        assert(m_fp.isOpen());
         {
-        };
+            lock_t l(m_mutex);
+            m_out.flush();
+            m_fp.flush();
+        }
+    }
 
-        stream_position_t pos = m_param.file->tell() - (in.bufsize() - in.bufpos());
-
-        try
+    void initLog(PathRef path)
+    {
+        m_fp.open(getFilePath(path, m_seed).c_str(), "wb");
+        assert(m_fp.isOpen());
+        m_fp.disbuf();
+        m_out.attach(&m_fp);
+    }
+    void loadLog(PathRef path, Schema *schema)
+    {
+        while(true)
         {
-            while(true)
+            try
             {
-                in >> crc >> data;
-                if(crc != Crc32c_update(0, data.data(), data.size()) || data.size() < 1)
-                {
-                    throw BadLog();
-                }
-                std::memcpy(&action, data.data(), 1);
-                switch(action)
-                {
-                case LogAction::UpdateRow:
-                    if(data.size() < 5)
-                    {
-                        throw BadLog();
-                    }
-                    std::memcpy(&sub_id, data.data() + 1, 4);
-                    schema->parseRow({data.begin() + 5, data.end()}, &cols);
-                    if(!m_param.updateRow(sub_id, cols, buf))
-                    {
-                        throw BadLog();
-                    }
-                    break;
-                case LogAction::RemoveRow:
-                    if(data.size() < 13)
-                    {
-                        throw BadLog();
-                    }
-                    std::memcpy(&sub_id, data.data() + 1, 4);
-                    std::memcpy(&version, data.data() + 5, 8);
-                    if(!m_param.removeRow(sub_id, version))
-                    {
-                        throw BadLog();
-                    }
-                    break;
-                case LogAction::GlobalUpdateRow:
-                case LogAction::GlobalRemoveRow:
-                case LogAction::TransactionUpdateRow:
-                case LogAction::TransactionCommitRow:
-                    break;
-                default:
-                    //TODO WTF ??
-                    throw BadLog();
-                }
-                pos = m_param.file->tell() - (in.bufsize() - in.bufpos());
+                m_fp.open(getFilePath(path, m_seed).c_str(), "rb");
             }
+            catch(OpenFileException const &)
+            {
+                break;
+            }
+            ++m_seed;
+            assert(m_fp.isOpen());
+            NativeDataInput<InputBuffer> in; in.attach(&m_fp);
+            LogAction action;
+            uint32_t crc;
+            uint32_t sub_id;
+            llong rec_id;
+            llong version;
+            valvec<byte> data;
+
+            valvec<byte> buf;
+            ColumnVec cols;
+
+            (void)rec_id; //uhmmm ...
+
+            struct BadLog
+            {
+            };
+
+            try
+            {
+                while(true)
+                {
+                    in >> crc >> data;
+                    if(crc != Crc32c_update(0, data.data(), data.size()) || data.size() < 1)
+                    {
+                        throw BadLog();
+                    }
+                    std::memcpy(&action, data.data(), 1);
+                    switch(action)
+                    {
+                    case LogAction::UpdateRow:
+                        if(data.size() < 5)
+                        {
+                            throw BadLog();
+                        }
+                        std::memcpy(&sub_id, data.data() + 1, 4);
+                        schema->parseRow({data.begin() + 5, data.end()}, &cols);
+                        if(!m_param.updateRow(sub_id, cols, buf))
+                        {
+                            throw BadLog();
+                        }
+                        break;
+                    case LogAction::RemoveRow:
+                        if(data.size() < 13)
+                        {
+                            throw BadLog();
+                        }
+                        std::memcpy(&sub_id, data.data() + 1, 4);
+                        std::memcpy(&version, data.data() + 5, 8);
+                        if(!m_param.removeRow(sub_id, version))
+                        {
+                            throw BadLog();
+                        }
+                        break;
+                    case LogAction::GlobalUpdateRow:
+                    case LogAction::GlobalRemoveRow:
+                    case LogAction::TransactionUpdateRow:
+                    case LogAction::TransactionCommitRow:
+                        break;
+                    default:
+                        //TODO WTF ??
+                        throw BadLog();
+                    }
+                }
+            }
+            catch(BadLog)
+            {
+                //TODO ... BadLog BadLog BadLog
+                throw;
+            }
+            catch(EndOfFileException const &)
+            {
+            }
+            in.attach(nullptr);
+            m_fp.close();
         }
-        catch(BadLog)
-        {
-            //TODO ... BadLog BadLog BadLog
-            throw;
-        }
-        catch(EndOfFileException const &)
-        {
-        }
-        m_param.file->seek(pos);
-        m_out.attach(m_param.file);
+        initLog(path);
     }
     void updateRow(valvec<byte> &buffer, uint32_t id, fstring row)
     {
@@ -385,10 +417,7 @@ TrbColgroupSegment::TrbColgroupSegment()
 {
     m_hasLockFreePointSearch = true;
     m_logger = new TrbLogger();
-    TrbLogger::Param param =
-    {
-        &m_fp
-    };
+    TrbLogger::Param param;
     param.updateRow = [this](uint32_t sub_id, ColumnVec const &cols, valvec<byte> &buf)
     {
         auto colgroups_size = m_colgroups.size();
@@ -415,44 +444,24 @@ TrbColgroupSegment::TrbColgroupSegment()
         return true;
         //TODO add fail check !!!
     };
-    m_logger->init(param);
+    m_logger->initCallback(param);
 }
 
 TrbColgroupSegment::~TrbColgroupSegment()
 {
     delete m_logger;
-    if(m_fp.isOpen())
-    {
-        fclose(m_fp.detach());
-    }
 }
 
 void TrbColgroupSegment::load(PathRef path)
 {
     assert(m_segDir == path);
-    FILE *f = fopen(fixFilePath(m_segDir).c_str(), "rb+");
-    if(f == nullptr)
-    {
-        assert(f != nullptr);
-    }
-    m_fp.attach(f);
-
     initIndicesColgroups();
-
-    m_fp.disbuf();
-    m_logger->load(m_schema->m_rowSchema.get());
+    m_logger->loadLog(m_segDir, m_schema->m_rowSchema.get());
 }
 
 void TrbColgroupSegment::save(PathRef path) const
 {
-    m_fp.flush();
-}
-
-std::string TrbColgroupSegment::fixFilePath(PathRef path)
-{
-    return path.has_filename() && path.filename().string() == fstring("trb.log")
-        ? path.string()
-        : (path / "trb.log").string();
+    m_logger->flush();
 }
 
 void TrbColgroupSegment::initIndicesColgroups()
@@ -480,16 +489,9 @@ void TrbColgroupSegment::initIndicesColgroups()
 
 void TrbColgroupSegment::initEmptySegment()
 {
-    FILE *f = fopen(fixFilePath(m_segDir).c_str(), "wb");
-    if(f == nullptr)
-    {
-        assert(f != nullptr);
-    }
-    m_fp.attach(f);
-
     initIndicesColgroups();
 
-    m_fp.disbuf();
+    m_logger->initLog(m_segDir);
 }
 
 ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef) const

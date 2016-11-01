@@ -59,7 +59,6 @@ class TERARK_DB_DLL TrbColgroupSegment : public ColgroupWritableSegment {
 protected:
     friend class RowLockTransaction;
     mutable TrbRWRowMutex m_rowMutex;
-    mutable FileStream m_fp;
     mutable TrbLogger *m_logger;
 
 public:
@@ -73,7 +72,6 @@ public:
     void save(PathRef path) const override;
 
 protected:
-    static std::string fixFilePath(PathRef);
     void initIndicesColgroups();
 
     void initEmptySegment() override;
