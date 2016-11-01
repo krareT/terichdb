@@ -16,6 +16,8 @@ using namespace terark::db;
 
 namespace terark { namespace db { namespace trbdb {
 
+static uint32_t constexpr store_nil_index = 0xFFFFFFFFU;
+
 class TrbStoreIterForward : public StoreIterator
 {
     typedef TrbWritableStore owner_t;
@@ -35,7 +37,7 @@ public:
             while(m_where < max)
             {
                 size_t k = m_where++;
-                if(o->m_index[k] != 0x80000000U)
+                if(o->m_index[k] != store_nil_index)
                 {
                     fstring item = o->readItem(k);
                     *id = k;
@@ -51,7 +53,7 @@ public:
             while(m_where < max)
             {
                 size_t k = m_where++;
-                if(o->m_index[k] != 0x80000000U)
+                if(o->m_index[k] != store_nil_index)
                 {
                     fstring item = o->readItem(k);
                     *id = k;
@@ -72,7 +74,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
-            if(o->m_index[id] != 0x80000000U)
+            if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));
                 val->assign(item.data(), item.size());
@@ -87,7 +89,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
-            if(o->m_index[id] != 0x80000000U)
+            if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));
                 val->assign(item.data(), item.size());
@@ -121,7 +123,7 @@ public:
             while(m_where > 0)
             {
                 size_t k = --m_where;
-                if(o->m_index[k] != 0x80000000U)
+                if(o->m_index[k] != store_nil_index)
                 {
                     fstring item = o->readItem(k);
                     *id = k;
@@ -136,7 +138,7 @@ public:
             while(m_where > 0)
             {
                 size_t k = --m_where;
-                if(o->m_index[k] != 0x80000000U)
+                if(o->m_index[k] != store_nil_index)
                 {
                     fstring item = o->readItem(k);
                     *id = k;
@@ -157,7 +159,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
-            if(o->m_index[id] != 0x80000000U)
+            if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));
                 val->assign(item.data(), item.size());
@@ -172,7 +174,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
-            if(o->m_index[id] != 0x80000000U)
+            if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));
                 val->assign(item.data(), item.size());
@@ -201,10 +203,7 @@ TrbWritableStore::~TrbWritableStore()
 
 fstring TrbWritableStore::readItem(size_type i) const
 {
-    if(terark_unlikely(i >= m_index.size()))
-    {
-        return fstring();
-    }
+    assert(i < m_index.size());
     byte const *ptr;
     size_type len = load_var_uint32(m_data.at<data_object>(m_index[i]).data, &ptr);
     return fstring(ptr, len);
@@ -214,7 +213,7 @@ void TrbWritableStore::storeItem(size_type i, fstring d)
 {
     if(terark_likely(i >= m_index.size()))
     {
-        m_index.resize(i + 1, 0x80000000U);
+        m_index.resize(i + 1, store_nil_index);
     }
     byte len_data[8];
     byte *end_ptr = save_var_uint32(len_data, uint32_t(d.size()));
@@ -226,17 +225,13 @@ void TrbWritableStore::storeItem(size_type i, fstring d)
     std::memcpy(dst_ptr + len_len, d.data(), d.size());
 }
 
-bool TrbWritableStore::removeItem(size_type i)
+void TrbWritableStore::removeItem(size_type i)
 {
-    if(terark_unlikely(i >= m_index.size() || m_index[i] == 0x80000000U))
-    {
-        return false;
-    }
+    assert(i < m_index.size() && m_index[i] != store_nil_index);
     byte const *ptr = m_data.at<data_object>(m_index[i]).data, *end_ptr;
     size_type len = load_var_uint32(ptr, &end_ptr);
     m_data.sfree(m_index[i], pool_type::align_to(end_ptr - ptr + len));
-    m_index[i] = 0x80000000U;
-    return true;
+    m_index[i] = store_nil_index;
 }
 
 void TrbWritableStore::save(PathRef) const
@@ -273,14 +268,20 @@ void TrbWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext *) 
 {
     if(m_isFreezed)
     {
-        fstring item = readItem(size_t(id));
-        val->append(item.data(), item.size());
+        if(terark_likely(size_t(id) < m_index.size() && m_index[id] != store_nil_index))
+        {
+            fstring item = readItem(size_t(id));
+            val->append(item.data(), item.size());
+        }
     }
     else
     {
         TrbStoreRWLock::scoped_lock l(m_rwMutex, false);
-        fstring item = readItem(size_t(id));
-        val->append(item.data(), item.size());
+        if(terark_likely(size_t(id) < m_index.size() && m_index[id] != store_nil_index))
+        {
+            fstring item = readItem(size_t(id));
+            val->append(item.data(), item.size());
+        }
     }
 }
 
@@ -311,6 +312,7 @@ void TrbWritableStore::update(llong id, fstring row, DbContext *)
 void TrbWritableStore::remove(llong id, DbContext *)
 {
     TrbStoreRWLock::scoped_lock l(m_rwMutex);
+    assert(size_t(id) < m_index.size() && m_index[id] != store_nil_index);
     removeItem(size_t(id));
 }
 

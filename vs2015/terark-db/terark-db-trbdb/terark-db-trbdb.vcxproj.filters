@@ -45,7 +45,10 @@
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_store.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\threaded_rb_tree.h">
+    <ClInclude Include="..\..\..\src\terark\threaded_rbtree.h">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\threaded_rbtree_hash.h">
       <Filter>Header Files\terark</Filter>
     </ClInclude>
   </ItemGroup>

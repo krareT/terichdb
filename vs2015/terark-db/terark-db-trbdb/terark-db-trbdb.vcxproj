@@ -164,11 +164,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\src\terark\threaded_rb_tree.h" />
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_context.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_index.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_segment.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_store.hpp" />
+    <ClInclude Include="..\..\..\src\terark\threaded_rbtree.h" />
+    <ClInclude Include="..\..\..\src\terark\threaded_rbtree_hash.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

@@ -4,7 +4,7 @@
 #include <terark/io/var_int.hpp>
 #include <type_traits>
 #include <tbb/spin_rw_mutex.h>
-#include <terark/threaded_rb_tree.h>
+#include <terark/threaded_rbtree.h>
 #include <terark/mempool.hpp>
 #include <terark/lcast.hpp>
 #include <boost/filesystem.hpp>
@@ -43,8 +43,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     friend class TrbIndexStoreIterBackward<Key, Fixed>;
 
     typedef size_t size_type;
-    typedef threaded_rb_tree_node_t<uint32_t> node_type;
-    typedef threaded_rb_tree_root_t<node_type, std::true_type, std::true_type> root_type;
+    typedef threaded_rbtree_node_t<uint32_t> node_type;
+    typedef threaded_rbtree_root_t<node_type, std::true_type, std::true_type> root_type;
     static size_type constexpr max_stack_depth = 2 * (sizeof(uint32_t) * 8 - 1);
 
     template<class Storage>
@@ -297,8 +297,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         template<class Compare>
         bool store_check(size_type i, fstring d)
         {
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            bool exists = threaded_rb_tree_find_path_for_unique(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            bool exists = threaded_rbtree_find_path_for_unique(root,
                                                                 stack,
                                                                 const_deref_node(*this),
                                                                 d,
@@ -318,7 +318,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 bool resule = remove<Compare>(i);
                 assert(resule);
                 (void)resule;
-                threaded_rb_tree_find_path_for_unique(root,
+                threaded_rbtree_find_path_for_unique(root,
                                                       stack,
                                                       const_deref_node(*this),
                                                       d,
@@ -335,7 +335,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             byte *dst_ptr = data.at<data_object>(index[i].offset).data;
             std::memcpy(dst_ptr, len_data, len_len);
             std::memcpy(dst_ptr + len_len, d.data(), d.size());
-            threaded_rb_tree_insert(root,
+            threaded_rbtree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
                                     i
@@ -364,14 +364,14 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             byte *dst_ptr = data.at<data_object>(index[i].offset).data;
             std::memcpy(dst_ptr, len_data, len_len);
             std::memcpy(dst_ptr + len_len, d.data(), d.size());
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            threaded_rb_tree_find_path_for_multi(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            threaded_rbtree_find_path_for_multi(root,
                                                  stack,
                                                  const_deref_node(*this),
                                                  i,
                                                  Compare{*this}
             );
-            threaded_rb_tree_insert(root,
+            threaded_rbtree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
                                     i
@@ -381,12 +381,12 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                || (
                    i != root.get_most_left(const_deref_node(*this))
                    &&
-                   !Compare{*this}(c = threaded_rb_tree_move_prev(i, const_deref_node(*this)), i)
+                   !Compare{*this}(c = threaded_rbtree_move_prev(i, const_deref_node(*this)), i)
                    )
                || (
                    i != root.get_most_right(const_deref_node(*this))
                    &&
-                   !Compare{*this}(i, c = threaded_rb_tree_move_next(i, const_deref_node(*this)))
+                   !Compare{*this}(i, c = threaded_rbtree_move_next(i, const_deref_node(*this)))
                    )
                )
             {
@@ -398,8 +398,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         template<class Compare>
         bool remove(size_type i)
         {
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            bool exists = threaded_rb_tree_find_path_for_remove(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            bool exists = threaded_rbtree_find_path_for_remove(root,
                                                                 stack,
                                                                 const_deref_node(*this),
                                                                 i,
@@ -415,18 +415,18 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                && (
                    i == root.get_most_left(const_deref_node(*this))
                    ||
-                   Compare{*this}(threaded_rb_tree_move_prev(i, const_deref_node(*this)), i)
+                   Compare{*this}(threaded_rbtree_move_prev(i, const_deref_node(*this)), i)
                    )
                && (
                    i == root.get_most_right(const_deref_node(*this))
                    ||
-                   Compare{*this}(i, threaded_rb_tree_move_next(i, const_deref_node(*this)))
+                   Compare{*this}(i, threaded_rbtree_move_next(i, const_deref_node(*this)))
                    )
                )
             {
                 data.sfree(index[i].offset, pool_type::align_to(end_ptr - ptr + len));
             }
-            threaded_rb_tree_remove(root,
+            threaded_rbtree_remove(root,
                                     stack,
                                     mutable_deref_node(*this)
             );
@@ -501,8 +501,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         bool store_check(size_type i, fstring d)
         {
             assert(d.size() == key_length);
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            bool exists = threaded_rb_tree_find_path_for_unique(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            bool exists = threaded_rbtree_find_path_for_unique(root,
                                                                 stack,
                                                                 const_deref_node(*this),
                                                                 d,
@@ -524,7 +524,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 assert(resule);
                 (void)resule;
                 std::memcpy(data.data() + i * key_length, d.data(), d.size());
-                threaded_rb_tree_find_path_for_multi(root,
+                threaded_rbtree_find_path_for_multi(root,
                                                      stack,
                                                      const_deref_node(*this),
                                                      i,
@@ -536,7 +536,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 std::memcpy(data.data() + i * key_length, d.data(), d.size());
             }
             assert(node(i).is_empty());
-            threaded_rb_tree_insert(root,
+            threaded_rbtree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
                                     i
@@ -559,14 +559,14 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 (void)resule;
             }
             std::memcpy(data.data() + i * key_length, d.data(), d.size());
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            threaded_rb_tree_find_path_for_multi(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            threaded_rbtree_find_path_for_multi(root,
                                                  stack,
                                                  const_deref_node(*this),
                                                  i,
                                                  Compare{*this}
             );
-            threaded_rb_tree_insert(root,
+            threaded_rbtree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
                                     i
@@ -575,8 +575,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         template<class Compare>
         bool remove(size_type i)
         {
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            bool exists = threaded_rb_tree_find_path_for_remove(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            bool exists = threaded_rbtree_find_path_for_remove(root,
                                                                 stack,
                                                                 const_deref_node(*this),
                                                                 i,
@@ -586,7 +586,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             {
                 return false;
             }
-            threaded_rb_tree_remove(root,
+            threaded_rbtree_remove(root,
                                     stack,
                                     mutable_deref_node(*this)
             );
@@ -667,8 +667,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         bool store_check(size_type i, fstring d)
         {
             assert(d.size() + sizeof(node_type) == element_length);
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            bool exists = threaded_rb_tree_find_path_for_unique(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            bool exists = threaded_rbtree_find_path_for_unique(root,
                                                                 stack,
                                                                 const_deref_node(*this),
                                                                 d,
@@ -690,7 +690,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 assert(resule);
                 (void)resule;
                 std::memcpy(ptr->data, d.data(), d.size());
-                threaded_rb_tree_find_path_for_multi(root,
+                threaded_rbtree_find_path_for_multi(root,
                                                      stack,
                                                      const_deref_node(*this),
                                                      i,
@@ -702,7 +702,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                 std::memcpy(ptr->data, d.data(), d.size());
             }
             assert(node(i).is_empty());
-            threaded_rb_tree_insert(root,
+            threaded_rbtree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
                                     i
@@ -726,14 +726,14 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             assert(node(i).is_empty());
             element_type *ptr = reinterpret_cast<element_type *>(index.data() + i * element_length);
             std::memcpy(ptr->data, d.data(), d.size());
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            threaded_rb_tree_find_path_for_multi(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            threaded_rbtree_find_path_for_multi(root,
                                                  stack,
                                                  const_deref_node(*this),
                                                  i,
                                                  Compare{*this}
             );
-            threaded_rb_tree_insert(root,
+            threaded_rbtree_insert(root,
                                     stack,
                                     mutable_deref_node(*this),
                                     i
@@ -742,8 +742,8 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         template<class Compare>
         bool remove(size_type i)
         {
-            threaded_rb_tree_stack_t<node_type, max_stack_depth> stack;
-            bool exists = threaded_rb_tree_find_path_for_remove(root,
+            threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
+            bool exists = threaded_rbtree_find_path_for_remove(root,
                                                                 stack,
                                                                 const_deref_node(*this),
                                                                 i,
@@ -753,7 +753,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             {
                 return false;
             }
-            threaded_rb_tree_remove(root,
+            threaded_rbtree_remove(root,
                                     stack,
                                     mutable_deref_node(*this)
             );
@@ -880,7 +880,7 @@ public:
         if(m_isFreezed)
         {
             size_type lower, upper;
-            threaded_rb_tree_equal_range(m_storage.root,
+            threaded_rbtree_equal_range(m_storage.root,
                                          const_deref_node(m_storage),
                                          key,
                                          deref_key(m_storage),
@@ -891,14 +891,14 @@ public:
             while(lower != upper)
             {
                 recIdvec->emplace_back(lower);
-                lower = threaded_rb_tree_move_next(lower, const_deref_node(m_storage));
+                lower = threaded_rbtree_move_next(lower, const_deref_node(m_storage));
             }
         }
         else
         {
             TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
             size_type lower, upper;
-            threaded_rb_tree_equal_range(m_storage.root,
+            threaded_rbtree_equal_range(m_storage.root,
                                          const_deref_node(m_storage),
                                          key,
                                          deref_key(m_storage),
@@ -909,7 +909,7 @@ public:
             while(lower != upper)
             {
                 recIdvec->emplace_back(lower);
-                lower = threaded_rb_tree_move_next(lower, const_deref_node(m_storage));
+                lower = threaded_rbtree_move_next(lower, const_deref_node(m_storage));
             }
         }
     }
@@ -1099,7 +1099,7 @@ public:
             {
                 if(o->m_storage.node(where).is_empty())
                 {
-                    where = threaded_rb_tree_lower_bound(o->m_storage.root,
+                    where = threaded_rbtree_lower_bound(o->m_storage.root,
                                                          owner_t::const_deref_node(o->m_storage),
                                                          std::make_pair(fstring(data), where),
                                                          owner_t::deref_pair_key(o->m_storage),
@@ -1109,7 +1109,7 @@ public:
                 auto storage_key = o->m_storage.key(where);
                 *id = where;
                 key->assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_next(where, owner_t::const_deref_node(o->m_storage));
                 return true;
             }
         }
@@ -1120,7 +1120,7 @@ public:
                 TrbIndexRWLock::scoped_lock l(o->m_rwMutex, false);
                 if(o->m_storage.node(where).is_empty())
                 {
-                    where = threaded_rb_tree_lower_bound(o->m_storage.root,
+                    where = threaded_rbtree_lower_bound(o->m_storage.root,
                                                          owner_t::const_deref_node(o->m_storage),
                                                          std::make_pair(fstring(data), where),
                                                          owner_t::deref_pair_key(o->m_storage),
@@ -1131,7 +1131,7 @@ public:
                 *id = where;
                 key->assign(storage_key.data(), storage_key.size());
                 data.assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_next(where, owner_t::const_deref_node(o->m_storage));
                 return true;
             }
         }
@@ -1143,7 +1143,7 @@ public:
         auto const *o = owner.get();
         if(o->m_isFreezed)
         {
-            where = threaded_rb_tree_lower_bound(o->m_storage.root,
+            where = threaded_rbtree_lower_bound(o->m_storage.root,
                                                  owner_t::const_deref_node(o->m_storage),
                                                  key,
                                                  owner_t::deref_key(o->m_storage),
@@ -1154,7 +1154,7 @@ public:
                 auto storage_key = o->m_storage.key(where);
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_next(where, owner_t::const_deref_node(o->m_storage));
                 if(typename owner_t::key_compare_type{o->m_storage}(storage_key, key))
                 {
                     return 1;
@@ -1168,7 +1168,7 @@ public:
         else
         {
             TrbIndexRWLock::scoped_lock l(o->m_rwMutex, false);
-            where = threaded_rb_tree_lower_bound(o->m_storage.root,
+            where = threaded_rbtree_lower_bound(o->m_storage.root,
                                                  owner_t::const_deref_node(o->m_storage),
                                                  key,
                                                  owner_t::deref_key(o->m_storage),
@@ -1180,7 +1180,7 @@ public:
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
                 data.assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_next(where, owner_t::const_deref_node(o->m_storage));
                 if(typename owner_t::key_compare_type{o->m_storage}(storage_key, key))
                 {
                     return 1;
@@ -1198,7 +1198,7 @@ public:
         auto const *o = owner.get();
         if(o->m_isFreezed)
         {
-            where = threaded_rb_tree_upper_bound(o->m_storage.root,
+            where = threaded_rbtree_upper_bound(o->m_storage.root,
                                                  owner_t::const_deref_node(o->m_storage),
                                                  key,
                                                  owner_t::deref_key(o->m_storage),
@@ -1209,14 +1209,14 @@ public:
                 auto storage_key = o->m_storage.key(where);
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_next(where, owner_t::const_deref_node(o->m_storage));
                 return 1;
             }
         }
         else
         {
             TrbIndexRWLock::scoped_lock l(o->m_rwMutex, false);
-            where = threaded_rb_tree_upper_bound(o->m_storage.root,
+            where = threaded_rbtree_upper_bound(o->m_storage.root,
                                                  owner_t::const_deref_node(o->m_storage),
                                                  key,
                                                  owner_t::deref_key(o->m_storage),
@@ -1228,7 +1228,7 @@ public:
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
                 data.assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_next(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_next(where, owner_t::const_deref_node(o->m_storage));
                 return 1;
             }
         }
@@ -1286,7 +1286,7 @@ public:
             {
                 if(o->m_storage.node(where).is_empty())
                 {
-                    where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+                    where = threaded_rbtree_reverse_lower_bound(o->m_storage.root,
                                                                  owner_t::const_deref_node(o->m_storage),
                                                                  std::make_pair(fstring(data), where),
                                                                  owner_t::deref_pair_key(o->m_storage),
@@ -1296,7 +1296,7 @@ public:
                 auto storage_key = o->m_storage.key(where);
                 *id = where;
                 key->assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_prev(where, owner_t::const_deref_node(o->m_storage));
                 return true;
             }
         }
@@ -1307,7 +1307,7 @@ public:
                 TrbIndexRWLock::scoped_lock l(o->m_rwMutex, false);
                 if(o->m_storage.node(where).is_empty())
                 {
-                    where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+                    where = threaded_rbtree_reverse_lower_bound(o->m_storage.root,
                                                                  owner_t::const_deref_node(o->m_storage),
                                                                  std::make_pair(fstring(data), where),
                                                                  owner_t::deref_pair_key(o->m_storage),
@@ -1318,7 +1318,7 @@ public:
                 *id = where;
                 key->assign(storage_key.data(), storage_key.size());
                 data.assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_prev(where, owner_t::const_deref_node(o->m_storage));
                 return true;
             }
         }
@@ -1330,7 +1330,7 @@ public:
         auto const *o = owner.get();
         if(o->m_isFreezed)
         {
-            where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+            where = threaded_rbtree_reverse_lower_bound(o->m_storage.root,
                                                          owner_t::const_deref_node(o->m_storage),
                                                          key,
                                                          owner_t::deref_key(o->m_storage),
@@ -1341,7 +1341,7 @@ public:
                 auto storage_key = o->m_storage.key(where);
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_prev(where, owner_t::const_deref_node(o->m_storage));
                 if(typename owner_t::key_compare_type{o->m_storage}(key, storage_key))
                 {
                     return 1;
@@ -1355,7 +1355,7 @@ public:
         else
         {
             TrbIndexRWLock::scoped_lock l(o->m_rwMutex, false);
-            where = threaded_rb_tree_reverse_lower_bound(o->m_storage.root,
+            where = threaded_rbtree_reverse_lower_bound(o->m_storage.root,
                                                          owner_t::const_deref_node(o->m_storage),
                                                          key,
                                                          owner_t::deref_key(o->m_storage),
@@ -1367,7 +1367,7 @@ public:
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
                 data.assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_prev(where, owner_t::const_deref_node(o->m_storage));
                 if(typename owner_t::key_compare_type{o->m_storage}(key, storage_key))
                 {
                     return 1;
@@ -1385,7 +1385,7 @@ public:
         auto const *o = owner.get();
         if(o->m_isFreezed)
         {
-            where = threaded_rb_tree_reverse_upper_bound(o->m_storage.root,
+            where = threaded_rbtree_reverse_upper_bound(o->m_storage.root,
                                                          owner_t::const_deref_node(o->m_storage),
                                                          key,
                                                          owner_t::deref_key(o->m_storage),
@@ -1396,14 +1396,14 @@ public:
                 auto storage_key = o->m_storage.key(where);
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_prev(where, owner_t::const_deref_node(o->m_storage));
                 return 1;
             }
         }
         else
         {
             TrbIndexRWLock::scoped_lock l(o->m_rwMutex, false);
-            where = threaded_rb_tree_reverse_upper_bound(o->m_storage.root,
+            where = threaded_rbtree_reverse_upper_bound(o->m_storage.root,
                                                          owner_t::const_deref_node(o->m_storage),
                                                          key,
                                                          owner_t::deref_key(o->m_storage),
@@ -1415,7 +1415,7 @@ public:
                 *id = where;
                 retKey->assign(storage_key.data(), storage_key.size());
                 data.assign(storage_key.data(), storage_key.size());
-                where = threaded_rb_tree_move_prev(where, owner_t::const_deref_node(o->m_storage));
+                where = threaded_rbtree_move_prev(where, owner_t::const_deref_node(o->m_storage));
                 return 1;
             }
         }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "threaded_rb_tree.h"
+#include "threaded_rbtree.h"
 #include <stdexcept>
 #include <cstdint>
 #include <utility>
@@ -93,9 +93,9 @@ public:
 protected:
     static size_type constexpr max_stack_depth = 2 * (sizeof(offset_type) * 8 - 1);
 
-    typedef threaded_rb_tree_node_t<offset_type> node_t;
-    typedef threaded_rb_tree_stack_t<node_t, max_stack_depth> stack_t;
-    typedef threaded_rb_tree_root_t<node_t, std::false_type, std::false_type> trb_root_t;
+    typedef threaded_rbtree_node_t<offset_type> node_t;
+    typedef threaded_rbtree_stack_t<node_t, max_stack_depth> stack_t;
+    typedef threaded_rbtree_root_t<node_t, std::false_type, std::false_type> trb_root_t;
 
     static size_type constexpr offset_empty = node_t::nil_sentinel;
 
@@ -120,11 +120,11 @@ protected:
     {
         template<class any_hasher, class any_key_compare, class any_allocator_type>
         root_t(any_hasher &&hash, any_key_compare &&compare, any_allocator_type &&alloc)
-        : hasher(std::forward<any_hasher>(hash))
-        , key_compare(std::forward<any_key_compare>(compare))
-        , bucket_allocator_t(alloc)
-        , node_allocator_t(alloc)
-        , value_allocator_t(std::forward<any_allocator_type>(alloc))
+            : hasher(std::forward<any_hasher>(hash))
+            , key_compare(std::forward<any_key_compare>(compare))
+            , bucket_allocator_t(alloc)
+            , node_allocator_t(alloc)
+            , value_allocator_t(std::forward<any_allocator_type>(alloc))
         {
             static_assert(std::is_unsigned<offset_type>::value && std::is_integral<offset_type>::value, "offset_type must be unsighed integer");
             static_assert(sizeof(offset_type) <= sizeof(threaded_rbtree_hash::size_type), "offset_type too big");
@@ -495,7 +495,7 @@ public:
     }
     //copy
     threaded_rbtree_hash(threaded_rbtree_hash const &other)
-            : root_(other.get_hasher(), other.get_key_comp(), other.get_value_allocator_())
+        : root_(other.get_hasher(), other.get_key_comp(), other.get_value_allocator_())
     {
         copy_all_<false>(&other.root_);
     }
@@ -763,13 +763,13 @@ public:
     {
         size_type bucket = get_hasher()(key) % root_.bucket_count;
         size_type lower, upper;
-        threaded_rb_tree_equal_range(root_.bucket[bucket],
-                                     const_deref_node_t{&root_},
-                                     key,
-                                     deref_key_t{&root_},
-                                     get_key_comp(),
-                                     lower,
-                                     upper
+        threaded_rbtree_equal_range(root_.bucket[bucket],
+                                    const_deref_node_t{&root_},
+                                    key,
+                                    deref_key_t{&root_},
+                                    get_key_comp(),
+                                    lower,
+                                    upper
         );
         return std::make_pair(local_iterator(lower, this), local_iterator(upper, this));
     }
@@ -777,13 +777,13 @@ public:
     {
         size_type bucket = get_hasher()(key) % root_.bucket_count;
         size_type lower, upper;
-        threaded_rb_tree_equal_range(root_.bucket[bucket],
-                                     const_deref_node_t{&root_},
-                                     key,
-                                     deref_key_t{&root_},
-                                     get_key_comp(),
-                                     lower,
-                                     upper
+        threaded_rbtree_equal_range(root_.bucket[bucket],
+                                    const_deref_node_t{&root_},
+                                    key,
+                                    deref_key_t{&root_},
+                                    get_key_comp(),
+                                    lower,
+                                    upper
         );
         return std::make_pair(const_local_iterator(lower, this), const_local_iterator(upper, this));
     }
@@ -999,7 +999,7 @@ protected:
 
     size_type local_advance_next_(size_type i) const
     {
-        return threaded_rb_tree_move_next(i, const_deref_node_t{&root_});
+        return threaded_rbtree_move_next(i, const_deref_node_t{&root_});
     }
 
     template<class iterator_t, class ...args_t> static void construct_one_(iterator_t where, args_t &&...args)
@@ -1099,8 +1099,8 @@ protected:
                     }
                     size_type bucket = get_hasher()(get_key_t()(*other->value[i].value())) % root_.bucket_count;
                     stack_t stack;
-                    threaded_rb_tree_find_path_for_multi(root_.bucket[bucket], stack, deref_node_t{&root_}, i, get_offset_comp());
-                    threaded_rb_tree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, i);
+                    threaded_rbtree_find_path_for_multi(root_.bucket[bucket], stack, deref_node_t{&root_}, i, get_offset_comp());
+                    threaded_rbtree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, i);
                 }
             }
         }
@@ -1194,8 +1194,8 @@ protected:
                 {
                     size_type bucket = get_hasher()(get_key_t()(*root_.value[i].value())) % size;
                     stack_t stack;
-                    threaded_rb_tree_find_path_for_multi(new_bucket[bucket], stack, const_deref_node_t{&root_}, i, get_offset_comp());
-                    threaded_rb_tree_insert(new_bucket[bucket], stack, deref_node_t{&root_}, i);
+                    threaded_rbtree_find_path_for_multi(new_bucket[bucket], stack, const_deref_node_t{&root_}, i, get_offset_comp());
+                    threaded_rbtree_insert(new_bucket[bucket], stack, deref_node_t{&root_}, i);
                 }
             }
             get_bucket_allocator_().deallocate(root_.bucket, root_.bucket_count);
@@ -1272,13 +1272,13 @@ protected:
         key_type key = get_key_t()(in, args...);
         size_type bucket = get_hasher()(key) % root_.bucket_count;
         stack_t stack;
-        if(threaded_rb_tree_find_path_for_unique(root_.bucket[bucket],
-                                                 stack,
-                                                 deref_node_t{&root_},
-                                                 key,
-                                                 deref_key_t{&root_},
-                                                 get_key_comp())
-        )
+        if(threaded_rbtree_find_path_for_unique(root_.bucket[bucket],
+                                                stack,
+                                                deref_node_t{&root_},
+                                                key,
+                                                deref_key_t{&root_},
+                                                get_key_comp())
+           )
         {
             return {stack.get_index(stack.height - 1), false};
         }
@@ -1293,7 +1293,7 @@ protected:
         {
             ++root_.size;
         }
-        threaded_rb_tree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, offset);
+        threaded_rbtree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, offset);
         return {offset, true};
     }
     template<class in_t, class ...args_t>
@@ -1304,13 +1304,13 @@ protected:
         key_type key = get_key_t()(in, args...);
         size_type bucket = get_hasher()(key) % root_.bucket_count;
         stack_t stack;
-        if(threaded_rb_tree_find_path_for_unique(root_.bucket[bucket],
-                                                 stack,
-                                                 deref_node_t{&root_},
-                                                 key,
-                                                 deref_key_t{&root_},
-                                                 get_key_comp())
-        )
+        if(threaded_rbtree_find_path_for_unique(root_.bucket[bucket],
+                                                stack,
+                                                deref_node_t{&root_},
+                                                key,
+                                                deref_key_t{&root_},
+                                                get_key_comp())
+           )
         {
             return {stack.get_index(stack.height - 1), false};
         }
@@ -1325,8 +1325,8 @@ protected:
         {
             ++root_.size;
         }
-        threaded_rb_tree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, offset);
-        return {offset, true};
+        threaded_rbtree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, offset);
+        return{offset, true};
     }
 
     template<class in_t, class ...args_t> pair_posb_t insert_value_uncheck_(std::false_type, in_t &&in, args_t &&...args)
@@ -1344,19 +1344,19 @@ protected:
         }
         size_type bucket = get_hasher()(get_key_t()(*root_.value[offset].value())) % root_.bucket_count;
         stack_t stack;
-        threaded_rb_tree_find_path_for_multi(root_.bucket[bucket], stack, deref_node_t{&root_}, offset, get_offset_comp());
-        threaded_rb_tree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, offset);
+        threaded_rbtree_find_path_for_multi(root_.bucket[bucket], stack, deref_node_t{&root_}, offset, get_offset_comp());
+        threaded_rbtree_insert(root_.bucket[bucket], stack, deref_node_t{&root_}, offset);
         return {offset, true};
     }
 
     size_type find_value_(key_type const &key) const
     {
         size_type bucket = get_hasher()(key) % root_.bucket_count;
-        size_type offset = threaded_rb_tree_lower_bound(root_.bucket[bucket],
-                                                        deref_node_t{&root_},
-                                                        key,
-                                                        deref_key_t{&root_},
-                                                        get_key_comp()
+        size_type offset = threaded_rbtree_lower_bound(root_.bucket[bucket],
+                                                       deref_node_t{&root_},
+                                                       key,
+                                                       deref_key_t{&root_},
+                                                       get_key_comp()
         );
         return (offset == offset_empty || get_key_comp()(key, get_key_t()(*root_.value[offset].value()))) ? offset_empty : offset;
     }
@@ -1365,16 +1365,16 @@ protected:
     {
         size_type bucket = get_hasher()(key) % root_.bucket_count;
         stack_t stack;
-        if(threaded_rb_tree_find_path_for_unique(root_.bucket[bucket],
-                                                 stack,
-                                                 deref_node_t{&root_},
-                                                 key,
-                                                 deref_key_t{&root_},
-                                                 get_key_comp())
-        )
+        if(threaded_rbtree_find_path_for_unique(root_.bucket[bucket],
+                                                stack,
+                                                deref_node_t{&root_},
+                                                key,
+                                                deref_key_t{&root_},
+                                                get_key_comp())
+           )
         {
             size_type offset = stack.get_index(stack.height - 1);
-            threaded_rb_tree_remove(root_.bucket[bucket], stack, deref_node_t{&root_});
+            threaded_rbtree_remove(root_.bucket[bucket], stack, deref_node_t{&root_});
             destroy_one_(root_.value[offset].value());
             root_.node[offset].set_empty();
             root_.node[offset].left_set_link(root_.free_list);
@@ -1401,8 +1401,8 @@ protected:
     {
         size_type bucket = get_hasher()(get_key_t()(*root_.value[offset].value())) % root_.bucket_count;
         stack_t stack;
-        threaded_rb_tree_find_path_for_remove(root_.bucket[bucket], stack, deref_node_t{&root_}, offset, get_offset_comp());
-        threaded_rb_tree_remove(root_.bucket[bucket], stack, deref_node_t{&root_});
+        threaded_rbtree_find_path_for_remove(root_.bucket[bucket], stack, deref_node_t{&root_}, offset, get_offset_comp());
+        threaded_rbtree_remove(root_.bucket[bucket], stack, deref_node_t{&root_});
         destroy_one_(root_.value[offset].value());
         root_.node[offset].set_empty();
         root_.node[offset].left_set_link(root_.free_list);
@@ -1487,7 +1487,7 @@ public:
         : base_t(il, std::forward<args_t>(args)...)
     {
     }
-    
+
     typename base_t::mapped_type &operator[](typename base_t::key_type const &key)
     {
         typename base_t::offset_type offset = base_t::root_.size;
@@ -1505,10 +1505,3 @@ public:
 
 template<class key_t, class value_t, class hasher_t = std::hash<key_t>, class key_compare_t = std::less<key_t>, class allocator_t = std::allocator<std::pair<key_t const, value_t>>>
 using trb_hash_multimap = threaded_rbtree_hash<threaded_rbtree_hash_map_config_t<key_t, value_t, std::false_type, hasher_t, key_compare_t, allocator_t>>;
-
-
-
-
-
-
-

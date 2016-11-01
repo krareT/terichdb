@@ -30,7 +30,7 @@ protected:
 
     fstring readItem(size_type i) const;
     void storeItem(size_type i, fstring d);
-    bool removeItem(size_type i);
+    void removeItem(size_type i);
 
     friend class TrbStoreIterForward;
     friend class TrbStoreIterBackward;
