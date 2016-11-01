@@ -30,15 +30,9 @@
 		}
 	},
 	"CompressingWorkMemSize" : "10M",
-<<<<<<< Updated upstream
-  "MaxWritingSegmentSize": "20M",
-  "//TableClass": "MockDbTable",
-  "WritableSegmentClass": "TrbColgroupSegment",
-=======
 	"MaxWritingSegmentSize": "20M",
 	"//TableClass": "MockDbTable",
-	"WritableSegmentClass": "TrbColgroupSegment",
->>>>>>> Stashed changes
+	"WritableSegmentClass": "trb",
 	"TableIndex" : [
 		{ "fields": "id"  , "ordered" : true, "unique" : true },
 		{ "fields": "str0", "ordered" : true },
