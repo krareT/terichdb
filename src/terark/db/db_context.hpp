@@ -112,11 +112,11 @@ public:
 	valvec<byte> key1;
 	valvec<byte> key2;
 	valvec<byte> userBuf; // TerarkDB will not use userBuf
-    valvec<byte> trbBuf;
+	valvec<byte> trbBuf;
 	valvec<uint32_t> offsets;
 	ColumnVec    cols1;
 	ColumnVec    cols2;
-    ColumnVec    trbCols;
+	ColumnVec    trbCols;
 	valvec<llong> exactMatchRecIdvec;
 	size_t regexMatchMemLimit;
 	size_t segArrayUpdateSeq;

@@ -164,7 +164,15 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		auto fpath = tmpDir / ("colgroup-" + valueSchema.m_name + ".nlt");
 		emptyCheckProtect(sampleLenSum, val, *builder);
 		builder->prepare(newRowNum, fpath.string());
+		prevId = -1;
 		while (iter->increment(&id, &val) && id < inputRowNum) {
+			for (llong j = prevId+1; j < id; ++j) {
+				if (!m_isDel[j]) {
+					// j was deleted during compressing
+					builder->addRecord(fstring()); // add an empty record
+				}
+			}
+			prevId = id;
 			if (!m_isDel[id])
 				builder->addRecord(val);
 		}
@@ -275,7 +283,15 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 		auto fpath = tmpDir / ("colgroup-" + valueSchema.m_name + ".nlt");
 		emptyCheckProtect(sampleLenSum, val, *builder);
 		builder->prepare(newRowNum, fpath.string());
+		prevId = -1;
 		while (iter->increment(&id, &buf) && id < inputRowNum) {
+			for (llong j = prevId+1; j < id; ++j) {
+				if (!m_isDel[j]) {
+					// j was deleted during compressing
+					builder->addRecord(fstring()); // add an empty record
+				}
+			}
+			prevId = id;
 			if (!m_isDel[id]) {
 				rowSchema.parseRow(buf, &columns);
 				valueSchema.selectParent(columns, &val);

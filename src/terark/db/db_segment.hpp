@@ -96,7 +96,7 @@ public:
 		return m_isDel[logicId];
 	}
 
-	SchemaConfigPtr         m_schema;
+	SchemaConfigPtr          m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
 	valvec<ReadableStorePtr> m_colgroups; // indices + pure_colgroups
 	size_t      m_delcnt;
@@ -128,8 +128,10 @@ public:
 	llong dataStorageSize() const override;
 	llong totalStorageSize() const override;
 
+	///@{ Will skip m_isDel'ed records
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
+	///@}
 
 protected:
 	void getValueByPhysicId(size_t id, valvec<byte>* val, DbContext*) const;
