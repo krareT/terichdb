@@ -14,6 +14,8 @@
 #include <boost/optional.hpp>
 #include <thread>
 #include <tbb/queuing_mutex.h>
+#include <terark/io/MemStream.hpp>
+#include <terark/util/mmap.hpp>
 
 #undef min
 #undef max
@@ -26,74 +28,102 @@ TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment, "trbdb", "trb");
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+
+static byte constexpr logCheckPoint[] =
+{
+    'T', 'e', 'R', 'a', 'R', 'k', 'D', 'b'
+};
+static uint32_t constexpr logCheckPointCount = 16;
+static size_t constexpr logCheckPointSize = 8192;
+
+typedef LittleEndianDataOutput<AutoGrownMemIO> LogOutout_t;
+
+//this should be in Transaction.cpp
+//tempory place here
+struct CommitPair
+{
+    llong recId, version;
+};
+DATA_IO_LOAD_SAVE_E(CommitPair, &recId&version);
+typedef valvec<CommitPair> CommitVec_t;
+
+class TrbLoggerContext : public RefCounter
+{
+public:
+    LogOutout_t buf;
+    CommitVec_t commit;
+};
+
 class TrbLogger
 {
 private:
     enum class LogAction : unsigned char
     {
         Reserved = 0,
-        UpdateRow,              //SubId, Data
-        RemoveRow,              //SubId, Version
-        GlobalUpdateRow,        //SubId, RecId, Version, Data
-        GlobalRemoveRow,        //RecId, Version
+        WritableUpdateRow,      //SubId, Data
+        WritableRemoveRow,      //SubId, Version
+        TableUpdateRow,         //SubId, RecId, Version, Data
+        TableRemoveRow,         //RecId, Version
         TransactionUpdateRow,   //SubId, Version, Data
         TransactionCommitRow,   //[RecId, Version]
     };
-    struct CrcUpdate
-    {
-        template<class T>
-        static uint32_t update(uint32_t c, ...)
-        {
-            static_assert(sizeof(T) != 0, "wtf ?");
-            return c;
-        }
-        template<class T>
-        static uint32_t update(uint32_t c, valvec<byte> &b, fstring v)
-        {
-            b.append(v.begin(), v.end());
-            return Crc32c_update(c, v.data(), v.size());
-        }
-        template<class T>
-        static uint32_t update(uint32_t c, valvec<byte> &b, valvec<byte> const &v)
-        {
-            b.append(v.begin(), v.end());
-            return Crc32c_update(c, v.data(), v.size());
-        }
-        template<class T, class = typename std::enable_if<std::is_arithmetic<T>::value>::type>
-        static uint32_t update(uint32_t c, valvec<byte> &b, T const &v)
-        {
-            byte const *v_ptr = reinterpret_cast<byte const *>(&v);
-            b.append(v_ptr, sizeof(T));
-            return Crc32c_update(c, &v, sizeof(T));
-        }
-    };
 
     template<class ...args_t>
-    void writeLog(valvec<byte> &buffer, LogAction action, args_t const &...args)
+    void writeLog(DbContext *ctx, LogAction action, args_t const &...args)
     {
-        buffer.risk_set_size(0);
-        uint32_t crc;
-        std::initializer_list<uint32_t>
+        if(!ctx->trbLog)
         {
-            (crc = CrcUpdate::update(0, buffer, uint8_t(action))),
-            (crc = CrcUpdate::update<args_t>(crc, buffer, args))...
-        };
+            ctx->trbLog.reset(new TrbLoggerContext);
+        }
+        assert(dynamic_cast<TrbLoggerContext *>(ctx->trbLog.get()) != nullptr);
+        auto &buffer = static_cast<TrbLoggerContext *>(ctx->trbLog.get())->buf;
+
+        buffer.rewind();
+        buffer.resize(12);
+        buffer.seek(12);
+
+        buffer << uint8_t(action);
+        std::initializer_list<int>{((buffer << args), 0)...};
+
+        if(m_logCount >= logCheckPointCount || m_logSize >= logCheckPointSize)
         {
-            lock_t l(m_mutex);
-            m_out << crc << buffer;
-            m_out.flush();
+            buffer.ensureWrite(logCheckPoint, sizeof logCheckPoint);
+            m_logCount = 0;
+            m_logSize = 0;
+        }
+
+        size_t size = buffer.tell();
+
+        buffer.seek(8);
+        buffer << Crc32c_update(0, buffer.buf() + 12, size - 12);
+        buffer.seek(4);
+        buffer << uint32_t(size);
+        buffer.seek(0);
+        buffer << Crc32c_update(0, buffer.buf() + 4, 8);
+
+        ++m_logCount;
+        m_logSize += size;
+
+        lock_t l(m_mutex);
+        m_fp.write(buffer.buf(), size);
+        if(ctx->syncOnCommit)
+        {
+            m_fp.flush();
         }
     }
 
     typedef tbb::queuing_mutex mutex_t;
     typedef mutex_t::scoped_lock lock_t;
 
-
 public:
     struct Param
     {
-        std::function<bool(uint32_t, ColumnVec const &, valvec<byte> &)> updateRow;
-        std::function<bool(uint32_t, llong)> removeRow;
+        std::function<bool(uint32_t, ColumnVec const &, valvec<byte> &)> writableUpdateRow;
+        std::function<bool(uint32_t, llong)> writableRemoveRow;
+        std::function<bool(uint32_t, llong, llong, ColumnVec const &, valvec<byte> &)> tableUpdateRow;
+        std::function<bool(llong, llong)> tableRemoveRow;
+        std::function<bool(uint32_t, llong, ColumnVec const &, valvec<byte> &)> transactionUpdateRow;
+        std::function<bool(CommitVec_t const &)> transactionCommitRow;
     };
 
 private:
@@ -101,19 +131,17 @@ private:
     uint32_t m_seed;
     Param m_param;
     FileStream m_fp;
-    NativeDataOutput<OutputBuffer> m_out;
-
+    uint32_t m_logSize; // these two fields didn't need sync ...
+    size_t m_logCount;  // we don't care add check point later
 
 public:
-    TrbLogger() : m_seed(0)
+    TrbLogger() : m_seed(), m_logSize(), m_logCount()
     {
     }
     ~TrbLogger()
     {
         if(m_fp.isOpen())
         {
-            m_out.flush();
-            m_out.attach(static_cast<FileStream *>(nullptr));
             m_fp.flush();
             m_fp.close();
         }
@@ -121,8 +149,8 @@ public:
 
     void initCallback(Param p)
     {
-        assert(p.updateRow);
-        assert(p.removeRow);
+        assert(p.writableUpdateRow);
+        assert(p.writableRemoveRow);
         m_param = p;
     }
     static std::string getFilePath(PathRef path, uint32_t seed)
@@ -134,11 +162,8 @@ public:
     void flush()
     {
         assert(m_fp.isOpen());
-        {
-            lock_t l(m_mutex);
-            m_out.flush();
-            m_fp.flush();
-        }
+        lock_t l(m_mutex);
+        m_fp.flush();
     }
 
     void initLog(PathRef path)
@@ -146,83 +171,129 @@ public:
         m_fp.open(getFilePath(path, m_seed).c_str(), "wb");
         assert(m_fp.isOpen());
         m_fp.disbuf();
-        m_out.attach(&m_fp);
     }
     void loadLog(PathRef path, Schema *schema)
     {
         while(true)
         {
-            try
-            {
-                m_fp.open(getFilePath(path, m_seed).c_str(), "rb");
-            }
-            catch(OpenFileException const &)
+            std::string fileName = getFilePath(path, m_seed);
+            if(!boost::filesystem::exists(fileName))
             {
                 break;
             }
+            MmapWholeFile file(fileName);
+            assert(file.base != nullptr);
             ++m_seed;
-            assert(m_fp.isOpen());
-            NativeDataInput<InputBuffer> in; in.attach(&m_fp);
-            LogAction action;
-            uint32_t crc;
-            uint32_t sub_id;
-            llong rec_id;
-            llong version;
+            LittleEndianDataInput<MemIO> in; in.set(file.base, file.size);
+            uint8_t action = 0;
+            uint32_t sizeCrc = 0;
+            uint32_t size = 0;
+            uint32_t dataCrc = 0;
+            uint32_t subId = 0;
+            llong recId = 0;
+            llong version = 0;
             valvec<byte> data;
+            CommitVec_t commitVec;
 
             valvec<byte> buf;
             ColumnVec cols;
+            byte const *pos;
 
-            (void)rec_id; //uhmmm ...
-
-            struct BadLog
+            struct BadLog : std::logic_error
             {
-            };
+                BadLog(std::string f) : std::logic_error("TrbSegment bad log : " + f)
+                {
+                }
+            } badLog(fileName);
 
             try
             {
                 while(true)
                 {
-                    in >> crc >> data;
-                    if(crc != Crc32c_update(0, data.data(), data.size()) || data.size() < 1)
+                    pos = in.current();
+                    in >> sizeCrc >> size >> dataCrc;
+                    if(sizeCrc != Crc32c_update(0, in.current() - 8, 8))
                     {
-                        throw BadLog();
+                        throw badLog;
                     }
-                    std::memcpy(&action, data.data(), 1);
-                    switch(action)
+                    if(in.end() - in.current() < size)
                     {
-                    case LogAction::UpdateRow:
-                        if(data.size() < 5)
-                        {
-                            throw BadLog();
-                        }
-                        std::memcpy(&sub_id, data.data() + 1, 4);
-                        schema->parseRow({data.begin() + 5, data.end()}, &cols);
-                        if(!m_param.updateRow(sub_id, cols, buf))
-                        {
-                            throw BadLog();
-                        }
                         break;
-                    case LogAction::RemoveRow:
-                        if(data.size() < 13)
+                    }
+                    if(dataCrc != Crc32c_update(0, in.current(), size - 12))
+                    {
+                        throw badLog;
+                    }
+                    in >> action;
+                    try
+                    {
+                        switch(LogAction(action))
                         {
-                            throw BadLog();
+                        case LogAction::WritableUpdateRow:
+                            in >> subId >> data;
+                            schema->parseRow(data, &cols);
+                            if(!m_param.writableUpdateRow(subId, cols, buf))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::WritableRemoveRow:
+                            in >> subId >> version;
+                            if(!m_param.writableRemoveRow(subId, version))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TableUpdateRow:
+                            in >> subId >> recId >> version >> data;
+                            schema->parseRow(data, &cols);
+                            if(!m_param.tableUpdateRow(subId, recId, version, cols, buf))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TableRemoveRow:
+                            in >> recId >> version;
+                            if(!m_param.tableRemoveRow(recId, version))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TransactionUpdateRow:
+                            in >> subId >> version >> data;
+                            schema->parseRow(data, &cols);
+                            if(!m_param.transactionUpdateRow(subId, version, cols, buf))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TransactionCommitRow:
+                            in >> commitVec;
+                            if(!m_param.transactionCommitRow(commitVec))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        default:
+                            // wtf ?
+                            throw badLog;
                         }
-                        std::memcpy(&sub_id, data.data() + 1, 4);
-                        std::memcpy(&version, data.data() + 5, 8);
-                        if(!m_param.removeRow(sub_id, version))
+                    }
+                    catch(EndOfFileException const &)
+                    {
+                        // vrtify by crc32 , but still everflow ?
+                        throw badLog;
+                    }
+                    if(in.current() - pos != size)
+                    {
+                        if(false
+                           || in.current() - pos + sizeof logCheckPoint != size
+                           || std::memcmp(logCheckPoint, in.current(), sizeof logCheckPoint) != 0
+                           )
                         {
-                            throw BadLog();
+                            throw badLog;
                         }
-                        break;
-                    case LogAction::GlobalUpdateRow:
-                    case LogAction::GlobalRemoveRow:
-                    case LogAction::TransactionUpdateRow:
-                    case LogAction::TransactionCommitRow:
-                        break;
-                    default:
-                        //TODO WTF ??
-                        throw BadLog();
+                        in.skip(sizeof logCheckPoint);
                     }
                 }
             }
@@ -234,18 +305,32 @@ public:
             catch(EndOfFileException const &)
             {
             }
-            in.attach(nullptr);
-            m_fp.close();
         }
         initLog(path);
     }
-    void updateRow(valvec<byte> &buffer, uint32_t id, fstring row)
+    void writableUpdateRow(DbContext *ctx, uint32_t subId, fstring data)
     {
-        writeLog(buffer, LogAction::UpdateRow, id, row);
+        writeLog(ctx, LogAction::WritableUpdateRow, subId, data);
     }
-    void removeRow(valvec<byte> &buffer, uint32_t id, llong version)
+    void writableRemoveRow(DbContext *ctx, uint32_t id, llong version)
     {
-        writeLog(buffer, LogAction::RemoveRow, id, version);
+        writeLog(ctx, LogAction::WritableRemoveRow, id, version);
+    }
+    void tableUpdateRow(DbContext *ctx, uint32_t subId, llong recId, llong version, fstring data)
+    {
+        writeLog(ctx, LogAction::TableUpdateRow, subId, recId, version, data);
+    }
+    void tableRemoveRow(DbContext *ctx, llong recId, llong version)
+    {
+        writeLog(ctx, LogAction::TableRemoveRow, recId, version);
+    }
+    void transactionUpdateRow(DbContext *ctx, uint32_t subId, llong version, fstring data)
+    {
+        writeLog(ctx, LogAction::TransactionUpdateRow, subId, version, data);
+    }
+    void transactionCommitRow(DbContext *ctx, CommitVec_t const &commitVec)
+    {
+        writeLog(ctx, LogAction::TransactionCommitRow, commitVec);
     }
 };
 
@@ -358,7 +443,7 @@ public:
             auto &store = m_seg->m_colgroups[i];
             store->getWritableStore()->remove(m_recId, m_ctx);
         }
-        m_seg->m_logger->removeRow(m_ctx->trbBuf, uint32_t(m_recId), 0);
+        m_seg->m_logger->writableRemoveRow(m_ctx, uint32_t(m_recId), 0);
     }
     void storeUpdate(fstring row) override
     {
@@ -372,7 +457,7 @@ public:
             schema.selectParent(m_ctx->trbCols, &m_ctx->trbBuf);
             store->getUpdatableStore()->update(m_recId, m_ctx->trbBuf, m_ctx);
         }
-        m_seg->m_logger->updateRow(m_ctx->trbBuf, uint32_t(m_recId), row);
+        m_seg->m_logger->writableUpdateRow(m_ctx, uint32_t(m_recId), row);
     }
     void storeGetRow(valvec<byte>* row) override
     {
@@ -418,7 +503,7 @@ TrbColgroupSegment::TrbColgroupSegment()
     m_hasLockFreePointSearch = true;
     m_logger = new TrbLogger();
     TrbLogger::Param param;
-    param.updateRow = [this](uint32_t sub_id, ColumnVec const &cols, valvec<byte> &buf)
+    param.writableUpdateRow = [this](uint32_t subId, ColumnVec const &cols, valvec<byte> &buf)
     {
         auto colgroups_size = m_colgroups.size();
         size_t i = 0;
@@ -427,19 +512,19 @@ TrbColgroupSegment::TrbColgroupSegment()
             auto &store = m_colgroups[i];
             auto &schema = m_schema->getColgroupSchema(i);
             schema.selectParent(cols, &buf);
-            store->getWritableStore()->update(sub_id, buf, nullptr);
+            store->getWritableStore()->update(subId, buf, nullptr);
         }
         return true;
         //TODO add fail check !!!
     };
-    param.removeRow = [this](uint32_t sub_id, llong version)
+    param.writableRemoveRow = [this](uint32_t subId, llong version)
     {
         (void)version;
         auto colgroups_size = m_colgroups.size();
         for(size_t i = 0; i < colgroups_size; ++i)
         {
             auto &store = m_colgroups[i];
-            store->getWritableStore()->remove(sub_id, nullptr);
+            store->getWritableStore()->remove(subId, nullptr);
         }
         return true;
         //TODO add fail check !!!

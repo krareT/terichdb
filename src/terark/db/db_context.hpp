@@ -118,11 +118,13 @@ public:
 	ColumnVec    cols2;
 	ColumnVec    trbCols;
 	valvec<llong> exactMatchRecIdvec;
+    boost::intrusive_ptr<RefCounter> trbLog;
 	size_t regexMatchMemLimit;
 	size_t segArrayUpdateSeq;
 	int  upsertMaxRetry;
 	bool syncIndex;
 	bool m_isUserDefineSnapshot;
+    bool syncOnCommit;
 	byte isUpsertOverwritten;
 };
 typedef boost::intrusive_ptr<DbContext> DbContextPtr;

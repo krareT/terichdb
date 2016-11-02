@@ -70,7 +70,8 @@ static std::atomic<size_t> g_dbCtxLiveCnt;
 static std::atomic<size_t> g_dbCtxCreatedCnt;
 
 DbContext::DbContext(const DbTable* tab)
-  : m_tab(const_cast<DbTable*>(tab))
+    : m_tab(const_cast<DbTable*>(tab))
+    , syncOnCommit(false)
 {
 // must calling the constructor in lock tab->m_rwMutex
 	size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
