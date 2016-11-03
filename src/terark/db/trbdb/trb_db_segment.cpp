@@ -547,17 +547,18 @@ void TrbColgroupSegment::load(PathRef path)
 
     m_logger->loadLog(m_segDir, m_schema->m_rowSchema.get());
 
-    size_t physicRows = this->getPhysicRows();
-    for(size_t i = 0; i < m_colgroups.size(); ++i)
+    assert(!m_colgroups.empty());
+    size_t storeRows = m_colgroups[0]->numDataRows();
+    for(size_t i = 1; i < m_colgroups.size(); ++i)
     {
         auto store = m_colgroups[i].get();
-        assert(size_t(store->numDataRows()) == physicRows);
-        if(size_t(store->numDataRows()) != physicRows)
+        assert(size_t(store->numDataRows()) == storeRows);
+        if(size_t(store->numDataRows()) != storeRows)
         {
             TERARK_THROW(DbException
                          , "FATAL: "
                          "m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
-                         , i, store->numDataRows(), physicRows
+                         , i, store->numDataRows(), storeRows
             );
         }
     }
