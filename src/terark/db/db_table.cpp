@@ -4258,7 +4258,7 @@ void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
 		MyRwLock lock(m_rwMutex, true);
 		m_bgTaskNum--;
 	}BOOST_SCOPE_EXIT_END;
-  {
+  auto compressToReadonly = [&]() {
 	auto segDir = getSegPath("rd", segIdx);
 	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
 	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
@@ -4295,12 +4295,24 @@ void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
 	if (this->m_isMerging || m_bgTaskNum > 1) {
 		return;
 	}
-  }
-  MergeParam toMerge;
-  if (toMerge.canMerge(this)) {
-	  assert(this->m_isMerging);
-	  this->merge(toMerge);
-  }
+  };
+	MergeParam toMerge;
+	if (toMerge.canMerge(this)) {
+		ReadableSegmentPtr inputSeg;
+		{
+			MyRwLock lock(m_rwMutex, false);
+			inputSeg = m_segments[segIdx];
+		}
+		if (!inputSeg->getColgroupSegment()) {
+			compressToReadonly();
+		}
+		inputSeg.reset();
+		assert(this->m_isMerging);
+		this->merge(toMerge);
+	}
+	else {
+		compressToReadonly();
+	}
 }
 
 void DbTable::freezeFlushWritableSegment(size_t segIdx) {
