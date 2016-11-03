@@ -72,8 +72,6 @@ public:
     void save(PathRef path) const override;
 
 protected:
-    void initIndicesColgroups();
-
     void initEmptySegment() override;
 
     ReadableIndex *openIndex(const Schema &, PathRef segDir) const override;

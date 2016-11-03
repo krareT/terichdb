@@ -181,9 +181,13 @@ public:
             {
                 break;
             }
+            ++m_seed;
+            if(boost::filesystem::file_size(fileName) == 0)
+            {
+                continue;
+            }
             MmapWholeFile file(fileName);
             assert(file.base != nullptr);
-            ++m_seed;
             LittleEndianDataInput<MemIO> in; in.set(file.base, file.size);
             uint8_t action = 0;
             uint32_t sizeCrc = 0;
@@ -539,8 +543,24 @@ TrbColgroupSegment::~TrbColgroupSegment()
 void TrbColgroupSegment::load(PathRef path)
 {
     assert(m_segDir == path);
-    initIndicesColgroups();
+    ReadableSegment::load(path);
+
     m_logger->loadLog(m_segDir, m_schema->m_rowSchema.get());
+
+    size_t physicRows = this->getPhysicRows();
+    for(size_t i = 0; i < m_colgroups.size(); ++i)
+    {
+        auto store = m_colgroups[i].get();
+        assert(size_t(store->numDataRows()) == physicRows);
+        if(size_t(store->numDataRows()) != physicRows)
+        {
+            TERARK_THROW(DbException
+                         , "FATAL: "
+                         "m_colgroups[%zd]->numDataRows() = %lld, physicRows = %zd"
+                         , i, store->numDataRows(), physicRows
+            );
+        }
+    }
 }
 
 void TrbColgroupSegment::save(PathRef path) const
@@ -548,7 +568,7 @@ void TrbColgroupSegment::save(PathRef path) const
     m_logger->flush();
 }
 
-void TrbColgroupSegment::initIndicesColgroups()
+void TrbColgroupSegment::initEmptySegment()
 {
     size_t const indices_size = m_schema->getIndexNum();
     size_t const colgroups_size = m_schema->getColgroupNum();
@@ -569,11 +589,6 @@ void TrbColgroupSegment::initIndicesColgroups()
         assert(store);
         m_colgroups[i] = store;
     }
-}
-
-void TrbColgroupSegment::initEmptySegment()
-{
-    initIndicesColgroups();
 
     m_logger->initLog(m_segDir);
 }
@@ -632,6 +647,30 @@ void TrbColgroupSegment::saveRecordStore(PathRef segDir) const
 
 void TrbColgroupSegment::loadRecordStore(PathRef segDir)
 {
+    if(!m_colgroups.empty())
+    {
+        THROW_STD(invalid_argument, "m_colgroups must be empty");
+    }
+    // indices must be loaded first
+    assert(m_indices.size() == m_schema->getIndexNum());
+
+    size_t indices_size = m_schema->getIndexNum();
+    size_t colgroups_size = m_schema->getColgroupNum();
+    m_colgroups.resize(colgroups_size);
+    for(size_t i = 0; i < indices_size; ++i)
+    {
+        assert(m_indices[i]); // index must have be loaded
+        auto store = m_indices[i]->getReadableStore();
+        assert(nullptr != store);
+        m_colgroups[i] = store;
+    }
+    for(size_t i = indices_size; i < colgroups_size; ++i)
+    {
+        const Schema& schema = m_schema->getColgroupSchema(i);
+        auto store = createStore(schema, m_segDir);
+        assert(store);
+        m_colgroups[i] = store;
+    }
 }
 
 llong TrbColgroupSegment::dataStorageSize() const
