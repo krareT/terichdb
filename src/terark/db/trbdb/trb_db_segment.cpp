@@ -562,6 +562,10 @@ void TrbColgroupSegment::load(PathRef path)
             );
         }
     }
+    if(storeRows < m_isDel.size())
+    {
+        m_isDel.set1(storeRows, m_isDel.size() - storeRows);
+    }
 }
 
 void TrbColgroupSegment::save(PathRef path) const
