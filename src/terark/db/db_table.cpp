@@ -1042,6 +1042,10 @@ const {
 	ctx->trySyncSegCtxSpeculativeLock(this);
 // this assert is very unlikely but still possibly failed
 //	assert(ctx->m_rowNumVec.size() == ctx->m_segCtx.size() + 1);
+	if (terark_unlikely(id < 0 || id >= m_rowNum)) {
+		THROW_STD(out_of_range,
+			"invalid id = %lld, m_rowNum = %lld", id, m_rowNum);
+	}
 	auto rowNumPtr = ctx->m_rowNumVec.data();
 	size_t upp = upper_bound_0(rowNumPtr, ctx->m_rowNumVec.size(), id);
 	assert(upp < ctx->m_rowNumVec.size());

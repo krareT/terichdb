@@ -1,5 +1,6 @@
 #include "nlt_store.hpp"
 #include <terark/int_vector.hpp>
+#include <terark/zbs/nest_louds_trie_blob_store.hpp>
 #include <typeinfo>
 #include <float.h>
 #include <mutex>
