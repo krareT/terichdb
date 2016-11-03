@@ -498,7 +498,7 @@ ColgroupWritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	size_t recIdvecSize = recIdvec->size();
 	llong* recIdvecData = recIdvec->data();
 	SpinRwLock lock;
-	if (m_isFreezed) {
+	if (!m_isFreezed) {
 		lock.acquire(m_segMutex, false);
 	}
 	if (m_deletionTime) {

@@ -81,12 +81,6 @@ protected:
     ReadableStore *createStore(const Schema &, PathRef segDir) const override;
 
 public:
-    void indexSearchExactAppend(size_t mySegIdx, size_t indexId,
-                                fstring key, valvec<llong>* recIdvec,
-                                DbContext*) const override;
-
-    void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
-
     llong append(fstring, DbContext *) override;
     void remove(llong, DbContext *) override;
     void update(llong, fstring, DbContext *) override;

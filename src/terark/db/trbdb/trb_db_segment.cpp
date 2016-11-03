@@ -199,9 +199,9 @@ public:
             ColumnVec cols;
             byte const *pos;
 
-            struct BadLog : std::logic_error
+            struct BadTrbLogException : std::logic_error
             {
-                BadLog(std::string f) : std::logic_error("TrbSegment bad log : " + f)
+                BadTrbLogException(std::string f) : std::logic_error("TrbSegment bad log : " + f)
                 {
                 }
             } badLog(fileName);
@@ -281,7 +281,7 @@ public:
                     }
                     catch(EndOfFileException const &)
                     {
-                        // vrtify by crc32 , but still everflow ?
+                        // verify by crc32 , but still overflow ?
                         throw badLog;
                     }
                     if(in.current() - pos != size)
@@ -297,9 +297,8 @@ public:
                     }
                 }
             }
-            catch(BadLog)
+            catch(BadTrbLogException)
             {
-                //TODO ... BadLog BadLog BadLog
                 throw;
             }
             catch(EndOfFileException const &)
@@ -596,32 +595,6 @@ ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef) co
     else
     {
         return new TrbWritableStore(schema);
-    }
-}
-
-void TrbColgroupSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId, fstring key, valvec<llong>* recIdvec, DbContext *ctx) const
-{
-    if(m_isFreezed)
-    {
-        ColgroupWritableSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
-    }
-    else
-    {
-        TrbRWRowMutex::scoped_lock l(m_rowMutex, indexId, false);
-        ColgroupWritableSegment::indexSearchExactAppend(mySegIdx, indexId, key, recIdvec, ctx);
-    }
-}
-
-void TrbColgroupSegment::getValueAppend(llong id, valvec<byte>* val, DbContext *ctx) const
-{
-    if(m_isFreezed)
-    {
-        ColgroupWritableSegment::getValueAppend(id, val, ctx);
-    }
-    else
-    {
-        TrbRWRowMutex::scoped_lock l(m_rowMutex, id, false);
-        ColgroupWritableSegment::getValueAppend(id, val, ctx);
     }
 }
 
