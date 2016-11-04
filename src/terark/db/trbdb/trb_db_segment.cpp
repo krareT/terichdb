@@ -263,7 +263,7 @@ public:
                         // verify by crc32 , but still error size ?
                         throw badLog;
                     }
-                    if(in.end() - in.current() - 12 < size - 12)
+                    if(in.end() - in.current() < size - 12)
                     {
                         throw EndOfFileException();
                     }
@@ -569,6 +569,7 @@ TrbColgroupSegment::TrbColgroupSegment()
             schema.selectParent(cols, &buf);
             store->getWritableStore()->update(subId, buf, nullptr);
         }
+        m_isDel.set0(subId);
         return true;
         //TODO add fail check !!!
     };
@@ -581,6 +582,7 @@ TrbColgroupSegment::TrbColgroupSegment()
             auto &store = m_colgroups[i];
             store->getWritableStore()->remove(subId, nullptr);
         }
+        m_isDel.set1(subId);
         return true;
         //TODO add fail check !!!
     };
@@ -618,6 +620,7 @@ void TrbColgroupSegment::load(PathRef path)
     {
         m_isDel.set1(storeRows, m_isDel.size() - storeRows);
     }
+    m_delcnt = m_isDel.popcnt();
 }
 
 void TrbColgroupSegment::save(PathRef path) const
