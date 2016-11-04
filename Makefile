@@ -285,8 +285,8 @@ ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 
 ${DfaDB_d} : override INCS += -I../terark/src
 ${DfaDB_r} : override INCS += -I../terark/src
-${DfaDB_d} : override LIBS := -L../terark/${BUILD_ROOT}/lib -lterark-fsa-${COMPILER}-d -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
-${DfaDB_r} : override LIBS := -L../terark/${BUILD_ROOT}/lib -lterark-fsa-${COMPILER}-r -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
+${DfaDB_d} : override LIBS := -L../terark/${BUILD_ROOT}/lib -lterark-zbs-${COMPILER}-d -lterark-fsa-${COMPILER}-d -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
+${DfaDB_r} : override LIBS := -L../terark/${BUILD_ROOT}/lib -lterark-zbs-${COMPILER}-r -lterark-fsa-${COMPILER}-r -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 
 ${TrbDB_d} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
 ${TrbDB_r} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb

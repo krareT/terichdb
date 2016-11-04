@@ -17,6 +17,7 @@ ifeq "$(origin LD)" "default"
   LD := ${CXX}
 endif
 
+#TERARK_EXT_LIBS :=
 override INCS := -I${DB_HOME}/src -I${CORE_HOME}/src ${INCS}
 #override CXXFLAGS += -pipe
 override CXXFLAGS += -Wall -Wextra

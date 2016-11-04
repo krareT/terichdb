@@ -97,6 +97,7 @@ struct AutoLoadSegmentLibraries : hash_strmap<void*> {
 			lib = dlopen(realname.c_str(), RTLD_NOW);
 			if (lib)
 				break;
+			fprintf(stderr, "dlopen(%s) = %s\n", realname.c_str(), dlerror());
 #endif
 		}
 		if (lib) {
