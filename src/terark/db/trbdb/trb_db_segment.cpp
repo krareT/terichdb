@@ -598,6 +598,10 @@ void TrbColgroupSegment::load(PathRef path)
 {
     assert(m_segDir == path);
     ReadableSegment::load(path);
+    if(!m_isDel.empty())
+    {
+        m_isDel.set1(0, m_isDel.size());
+    }
 
     m_logger->loadLog(m_segDir, m_schema->m_rowSchema.get());
 
@@ -615,10 +619,6 @@ void TrbColgroupSegment::load(PathRef path)
                          , i, store->numDataRows(), storeRows
             );
         }
-    }
-    if(storeRows < m_isDel.size())
-    {
-        m_isDel.set1(storeRows, m_isDel.size() - storeRows);
     }
     m_delcnt = m_isDel.popcnt();
 }
