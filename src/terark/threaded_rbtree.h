@@ -498,6 +498,42 @@ void threaded_rbtree_find_path_for_multi(root_t &root,
     }
 }
 
+template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t, size_t max_depth>
+void threaded_rbtree_find_path_for_multi(root_t &root,
+                                         threaded_rbtree_stack_t<typename root_t::node_type, max_depth> &stack,
+                                         deref_node_t deref,
+                                         key_t const &key,
+                                         deref_key_t deref_key,
+                                         comparator_t comparator
+)
+{
+    typedef typename root_t::node_type node_type;
+
+    stack.height = 0;
+    std::size_t p = root.root.root;
+    while(p != node_type::nil_sentinel)
+    {
+        if(comparator(key, deref_key(p)))
+        {
+            stack.push_index(p, true);
+            if(deref(p).left_is_thread())
+            {
+                return;
+            }
+            p = deref(p).left_get_link();
+        }
+        else
+        {
+            stack.push_index(p, false);
+            if(deref(p).right_is_thread())
+            {
+                return;
+            }
+            p = deref(p).right_get_link();
+        }
+    }
+}
+
 
 template<class root_t, class comparator_t, class key_t, class deref_node_t, class deref_key_t, size_t max_depth>
 bool threaded_rbtree_find_path_for_unique(root_t &root,

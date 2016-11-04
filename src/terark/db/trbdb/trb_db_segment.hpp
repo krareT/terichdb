@@ -31,7 +31,23 @@ private:
         std::atomic<uint32_t> count;
         rw_lock_t lock;
     };
-    trb_hash_map<uint32_t, map_item *> row_lock;
+    template<size_t Size, class Unused>
+    struct hasher
+    {
+        size_t operator()(llong id) const
+        {
+            return size_t(id);
+        }
+    };
+    template<class Unused>
+    struct hasher<4, Unused>
+    {
+        size_t operator()(llong id) const
+        {
+            return size_t(id & 0xFFFFFFFF) | size_t(uint64_t(id) >> 32);
+        }
+    };
+    trb_hash_map<uint32_t, map_item *, hasher<sizeof(size_t), void>> row_lock;
     valvec<map_item *> lock_pool;
     spin_lock_t g_lock;
 

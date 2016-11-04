@@ -29,6 +29,37 @@ TERARK_DB_REGISTER_SEGMENT(TrbColgroupSegment, "trbdb", "trb");
 ////////////////////////////////////////////////////////////////////////////////
 
 
+struct TrbLogHeader
+{
+    byte name[16];
+    uint32_t magic;
+    uint32_t ver;
+    byte empty[128 - 24];
+
+    static TrbLogHeader getDefault()
+    {
+        static_assert(sizeof(TrbLogHeader) == 128, "WTF ?");
+        return
+        {
+            // name =
+            {
+                'T', 'E', 'R', 'A', 'R', 'K', '-', 'D', 'B', ' ', 'T', 'r', 'b', 'L', 'o', 'g'
+            },
+            // magic =
+            0x12239275,
+            // ver =
+            1,
+            // empty =
+            {},
+        };
+    }
+};
+
+static TrbLogHeader const logHead = TrbLogHeader::getDefault();
+static byte constexpr logTail[] =
+{
+    'T', 'R', 'B', 'L', 'O', 'G', 'E', 'D'
+};
 static byte constexpr logCheckPoint[] =
 {
     'T', 'e', 'R', 'a', 'R', 'k', 'D', 'b'
@@ -54,6 +85,15 @@ public:
     CommitVec_t commit;
 };
 
+/**
+ * |--- crc size ---|--- data size ---|--- crc data ---|--- action ---|--- param(s) ---|
+ * |                |                 |                |              |                |
+ * |                |    data size                  = size( action    +    param(s) )  |
+ * |                |                 |    crc data = crc ( action    +    param(s) )  |
+ * |    crc size = crc ( data size    +    crc data )  |              |                |
+ * |                |                 |                |              |                |
+ * |--- crc size ---|--- data size ---|--- crc data ---|--- action ---|--- param(s) ---|
+ */
 class TrbLogger
 {
 private:
@@ -94,10 +134,9 @@ private:
 
         size_t size = buffer.tell();
 
-        buffer.seek(8);
-        buffer << Crc32c_update(0, buffer.buf() + 12, size - 12);
         buffer.seek(4);
         buffer << uint32_t(size);
+        buffer << Crc32c_update(0, buffer.buf() + 12, size - 12);
         buffer.seek(0);
         buffer << Crc32c_update(0, buffer.buf() + 4, 8);
 
@@ -201,7 +240,7 @@ public:
 
             valvec<byte> buf;
             ColumnVec cols;
-            byte const *pos;
+            byte const *pos = in.current();
 
             struct BadTrbLogException : std::logic_error
             {
@@ -214,17 +253,21 @@ public:
             {
                 while(true)
                 {
-                    pos = in.current();
                     in >> sizeCrc >> size >> dataCrc;
-                    if(sizeCrc != Crc32c_update(0, in.current() - 8, 8))
+                    if(Crc32c_update(0, in.current() - 8, 8) != sizeCrc)
                     {
                         throw badLog;
                     }
-                    if(in.end() - in.current() < size)
+                    if(size < 12)
                     {
-                        break;
+                        // verify by crc32 , but still error size ?
+                        throw badLog;
                     }
-                    if(dataCrc != Crc32c_update(0, in.current(), size - 12))
+                    if(in.end() - in.current() - 12 < size - 12)
+                    {
+                        throw EndOfFileException();
+                    }
+                    if(Crc32c_update(0, in.current(), size - 12) != dataCrc)
                     {
                         throw badLog;
                     }
@@ -279,7 +322,7 @@ public:
                             }
                             break;
                         default:
-                            // wtf ?
+                            // verify by crc32 , but still error action ?
                             throw badLog;
                         }
                     }
@@ -299,6 +342,7 @@ public:
                         }
                         in.skip(sizeof logCheckPoint);
                     }
+                    pos = in.current();
                 }
             }
             catch(BadTrbLogException)
@@ -307,6 +351,14 @@ public:
             }
             catch(EndOfFileException const &)
             {
+                if(pos != in.end())
+                {
+                    fprintf(stderr,
+                            "INFO: TrgSegment log incomplete , caused by unsafe shutdown . %s : %zd byte(s)\n",
+                            fileName.c_str(),
+                            in.end() - pos
+                    );
+                }
             }
         }
         initLog(path);
