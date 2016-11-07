@@ -1153,6 +1153,7 @@ DbTable::myCreateWritableSegment(PathRef segDir) const {
 	std::unique_ptr<ReadableSegment>
 	seg(ReadableSegment::createSegment(clazz, segDir, m_schema.get()));
 	if (auto wrseg = seg->getWritableSegment()) {
+		assert(seg->getColgroupSegment() || seg->getPlainWritableSegment());
 		wrseg->initEmptySegment();
 		seg.release();
 		return wrseg;
@@ -3165,15 +3166,24 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		MyRwLock lock(tab->m_rwMutex, false);
 		for (size_t i = 0; i < tab->m_segments.size(); ++i) {
 			auto seg = tab->m_segments[i].get();
-			if (seg->getWritableStore())
+			auto mgseg = seg->getMergableSegment();
+			if (!mgseg)
 				break; // writable seg must be at top side
 			else
-				m_segs.emplace_back(seg->getMergableSegment(), i);
+				m_segs.emplace_back(mgseg, i);
 		}
 		if (m_segs.size() <= 1)
 			return false;
-		if (m_segs.size() + 1 < tab->m_segments.size())
-			return false;
+		if (tab->m_wrSeg) {
+			if (tab->m_wrSeg->getPlainWritableSegment()) {
+			// for PlainWritableSegment, compress to readonly is prefered
+				if (m_segs.size() + 1 < tab->m_segments.size())
+					return false;
+			}
+			else {
+				assert(tab->m_wrSeg->getColgroupSegment());
+			}
+		}
 		if (tab->m_isMerging)
 			return false;
 		if (PurgeStatus::none != tab->m_purgeStatus)
@@ -3184,6 +3194,7 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 			if (PurgeStatus::none != tab->m_purgeStatus)
 				return false;
 			if (m_old_segArrayUpdateSeq != tab->m_segArrayUpdateSeq) {
+				///< rarely but possible
 				assert(m_old_segArrayUpdateSeq < tab->m_segArrayUpdateSeq);
 				fprintf(stderr,
 "INFO: MergeParam::canMerge(): m_segArrayUpdateSeq: old = %zd, new = %zd\n",
@@ -3752,6 +3763,11 @@ try{
 			continue;
 		}
 		if (toMerge.m_forcePurgeAndMerge) {
+			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
+			continue;
+		}
+		if (toMerge.m_segs.back().seg->getWritableSegment()) {
+			// has ColgroupWritableSegment
 			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
 			continue;
 		}
