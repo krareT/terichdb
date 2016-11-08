@@ -1052,6 +1052,9 @@ const {
 	llong baseId = rowNumPtr[upp-1];
 	llong subId = id - baseId;
 	auto seg = ctx->m_segCtx[upp-1]->seg;
+	if (seg->m_isDel[subId]) {
+		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+	}
 	seg->getValueAppend(subId, val, ctx);
 }
 
@@ -2922,7 +2925,11 @@ const {
 	size_t upp = upper_bound_a(ctx->m_rowNumVec, id);
 	llong baseId = ctx->m_rowNumVec[upp-1];
 	auto seg = ctx->m_segCtx[upp-1]->seg;
-	seg->selectColumns(id - baseId, cols.data(), cols.size(), colsData, ctx);
+	llong subId = id - baseId;
+	if (seg->m_isDel[subId]) {
+		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+	}
+	seg->selectColumns(subId, cols.data(), cols.size(), colsData, ctx);
 }
 
 void
@@ -2945,7 +2952,11 @@ const {
 	size_t upp = upper_bound_a(ctx->m_rowNumVec, id);
 	llong baseId = ctx->m_rowNumVec[upp-1];
 	auto seg = ctx->m_segCtx[upp-1]->seg;
-	seg->selectColumns(id - baseId, colsId, colsNum, colsData, ctx);
+	llong subId = id - baseId;
+	if (seg->m_isDel[subId]) {
+		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+	}
+	seg->selectColumns(subId, colsId, colsNum, colsData, ctx);
 }
 
 void
@@ -2968,7 +2979,11 @@ const {
 	size_t upp = upper_bound_a(ctx->m_rowNumVec, id);
 	llong baseId = ctx->m_rowNumVec[upp-1];
 	auto seg = ctx->m_segCtx[upp-1]->seg;
-	seg->selectOneColumn(id - baseId, columnId, colsData, ctx);
+	llong subId = id - baseId;
+	if (seg->m_isDel[subId]) {
+		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+	}
+	seg->selectOneColumn(subId, columnId, colsData, ctx);
 }
 
 void DbTable::selectColgroups(llong recId, const valvec<size_t>& cgIdvec,
@@ -3002,6 +3017,9 @@ void DbTable::selectColgroupsNoLock(llong recId,
 	llong subId = recId - baseId;
 	assert(recId >= baseId);
 	auto seg = ctx->m_segCtx[upp-1]->seg;
+	if (seg->m_isDel[subId]) {
+		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+	}
 	seg->selectColgroups(subId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
 }
 

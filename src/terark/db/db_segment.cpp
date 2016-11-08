@@ -434,6 +434,9 @@ const {
 	if (terark_unlikely(id < 0 || id >= rows)) {
 		THROW_STD(out_of_range, "invalid id=%lld, rows=%lld", id, rows);
 	}
+	if (m_isDel[id]) {
+		throw ReadDeletedRecordException(m_segDir.string(), -1, id);
+	}
 	getValueByPhysicId(id, val, ctx);
 }
 
@@ -1919,13 +1922,14 @@ const {
 	//	m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
 		this->getWrtStoreData(recId, &ctx->buf1, ctx);
 		const size_t ProtectCnt = 100;
-		if (m_isFreezed || m_isDel.unused() > ProtectCnt) {
-			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
+		SpinRwLock  lock;
+		if (!m_isFreezed && m_isDel.unused() < ProtectCnt) {
+			lock.acquire(m_segMutex, false);
 		}
-		else {
-			SpinRwLock  lock(m_segMutex, false);
-			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
+		if (m_isDel[recId]) {
+			throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
 		}
+		this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
 	}
 }
 
@@ -2080,6 +2084,9 @@ const {
 	colsData->erase_all();
 //	this->getValue(recId, &ctx->buf1, ctx);
 	this->getWrtStoreData(recId, &ctx->buf1, ctx);
+	if (m_isDel[recId]) {
+		throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
+	}
 	const Schema& schema = *m_schema->m_rowSchema;
 	schema.parseRow(ctx->buf1, &ctx->cols1);
 	assert(ctx->cols1.size() == schema.columnNum());
@@ -2118,12 +2125,18 @@ const {
 			assert(colmeta.fixedEndOffset() <= fixlen);
 #endif
 			store->getValueAppend(recId, colsData, ctx);
+			if (m_isDel[recId]) {
+				throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
+			}
 		}
 		else {
 			schema = sconf.m_wrtSchema.get();
 			if (ctx->cols1.empty()) {
 			//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
 				this->getWrtStoreData(recId, &ctx->buf1, ctx);
+				if (m_isDel[recId]) {
+					throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
+				}
 				schema->parseRow(ctx->buf1, &ctx->cols1);
 			}
 			size_t subColumnId = sconf.m_rowSchemaColToWrtCol[columnId];
@@ -2159,6 +2172,9 @@ const {
 		const Schema& wrtSchema = *m_schema->m_wrtSchema;
 	//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
 		this->getWrtStoreData(recId, &ctx->buf1, ctx);
+		if (m_isDel[recId]) {
+			throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
+		}
 		wrtSchema.parseRow(ctx->buf1, &ctx->cols1);
 		assert(ctx->cols1.size() == wrtSchema.columnNum());
 		colsData->erase_all();
