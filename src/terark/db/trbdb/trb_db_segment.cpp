@@ -395,6 +395,10 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+TrbRWRowMutex::map_item::map_item(uint32_t _id)
+    : id(_id), count{1}
+{
+}
 
 TrbRWRowMutex::~TrbRWRowMutex()
 {
@@ -418,19 +422,24 @@ TrbRWRowMutex::scoped_lock::scoped_lock(TrbRWRowMutex &mutex, size_t index, bool
         {
             if(terark_unlikely(parent->lock_pool.empty()))
             {
-                ib.first->second = item = new map_item;
+                ib.first->second = item = new map_item(uint32_t(index));
+                assert(item->count == 1);
+                assert(item->id == index);
             }
             else
             {
                 ib.first->second = item = parent->lock_pool.pop_val();
+                assert(item->count == 0);
+                item->id = uint32_t(index);
+                ++item->count;
             }
         }
         else
         {
             item = ib.first->second;
+            assert(item->id == index);
+            ++item->count;
         }
-        item->id = uint32_t(index);
-        ++item->count;
     }
     lock.acquire(item->lock, write);
 }
@@ -438,14 +447,12 @@ TrbRWRowMutex::scoped_lock::scoped_lock(TrbRWRowMutex &mutex, size_t index, bool
 TrbRWRowMutex::scoped_lock::~scoped_lock()
 {
     lock.release();
+    spin_lock_t::scoped_lock l(parent->g_lock);
     if(--item->count == 0)
     {
-        spin_lock_t::scoped_lock l(parent->g_lock);
-        if(item->count == 0)
-        {
-            parent->row_lock.erase(item->id);
-            parent->lock_pool.emplace_back(item);
-        }
+        parent->row_lock.erase(item->id);
+        parent->lock_pool.emplace_back(item);
+        return;
     }
 }
 
@@ -522,7 +529,7 @@ public:
     }
     void do_startTransaction() override
     {
-        m_lock.emplace(m_seg->m_rowMutex, m_recId);
+        m_lock.emplace(m_seg->m_rowMutex, m_recId, true);
     }
     bool do_commit() override
     {
@@ -670,6 +677,19 @@ ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef) co
     else
     {
         return new TrbWritableStore(schema);
+    }
+}
+
+void TrbColgroupSegment::getValueAppend(llong id, valvec<byte>* val, DbContext *ctx) const
+{
+    if(m_isFreezed)
+    {
+        ColgroupWritableSegment::getValueAppend(id, val, ctx);
+    }
+    else
+    {
+        TrbRWRowMutex::scoped_lock l(m_rowMutex, id, false);
+        ColgroupWritableSegment::getValueAppend(id, val, ctx);
     }
 }
 

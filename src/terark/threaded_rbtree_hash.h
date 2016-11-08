@@ -1379,6 +1379,7 @@ protected:
             root_.node[offset].set_empty();
             root_.node[offset].left_set_link(root_.free_list);
             root_.free_list = offset_type(offset);
+            ++root_.free_count;
             return 1;
         }
         else
@@ -1407,6 +1408,7 @@ protected:
         root_.node[offset].set_empty();
         root_.node[offset].left_set_link(root_.free_list);
         root_.free_list = offset_type(offset);
+        ++root_.free_count;
     }
 };
 

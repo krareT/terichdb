@@ -27,8 +27,9 @@ private:
 
     struct map_item
     {
+        map_item(uint32_t);
         uint32_t id;
-        std::atomic<uint32_t> count;
+        uint32_t count;
         rw_lock_t lock;
     };
     template<size_t Size, class Unused>
@@ -95,6 +96,8 @@ protected:
     ReadableStore *createStore(const Schema &, PathRef segDir) const override;
 
 public:
+    void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+
     llong append(fstring, DbContext *) override;
     void remove(llong, DbContext *) override;
     void update(llong, fstring, DbContext *) override;

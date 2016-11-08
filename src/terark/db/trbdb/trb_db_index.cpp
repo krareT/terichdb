@@ -341,9 +341,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                bool resule = remove<TrbLockWrite, Compare>(l, v, i);
-                assert(resule);
-                (void)resule;
+                bool result = remove<TrbLockWrite, Compare>(l, v, i);
+                assert(result);
+                (void)result;
                 threaded_rbtree_find_path_for_unique(root,
                                                      stack,
                                                      const_deref_node(*this),
@@ -376,9 +376,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
             if(terark_unlikely(i < index.size() && node(i).is_used()))
             {
-                bool resule = remove<IsWrite, Compare>(l, v, i);
-                assert(resule);
-                (void)resule;
+                bool result = remove<IsWrite, Compare>(l, v, i);
+                assert(result);
+                (void)result;
                 if(terark_likely(i >= index.size()))
                 {
                     index.resize(i + 1, element_type{{0xFFFFFFFFU, 0xFFFFFFFFU}, 0xFFFFFFFFU});
@@ -616,9 +616,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                bool resule = remove<TrbLockWrite, Compare>(l, v, i);
-                assert(resule);
-                (void)resule;
+                bool result = remove<TrbLockWrite, Compare>(l, v, i);
+                assert(result);
+                (void)result;
                 std::memcpy(data.data() + i * key_length, d.data(), d.size());
                 threaded_rbtree_find_path_for_multi(root,
                                                     stack,
@@ -647,9 +647,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
             if(terark_unlikely(i < index.size() && node(i).is_used()))
             {
-                bool resule = remove<IsWrite, Compare>(l, v, i);
-                assert(resule);
-                (void)resule;
+                bool result = remove<IsWrite, Compare>(l, v, i);
+                assert(result);
+                (void)result;
                 if(terark_likely(i >= index.size()))
                 {
                     index.resize(i + 1, node_type{0xFFFFFFFFU, 0xFFFFFFFFU});
@@ -853,9 +853,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             element_type *ptr = reinterpret_cast<element_type *>(index.data() + i * element_length);
             if(terark_unlikely(node(i).is_used()))
             {
-                bool resule = remove<TrbLockWrite, Compare>(l, v, i);
-                assert(resule);
-                (void)resule;
+                bool result = remove<TrbLockWrite, Compare>(l, v, i);
+                assert(result);
+                (void)result;
                 std::memcpy(ptr->data, d.data(), d.size());
                 threaded_rbtree_find_path_for_multi(root,
                                                     stack,
@@ -884,9 +884,9 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
             if(terark_unlikely(i < index.size() && node(i).is_used()))
             {
-                bool resule = remove<IsWrite, Compare>(l, v, i);
-                assert(resule);
-                (void)resule;
+                bool result = remove<IsWrite, Compare>(l, v, i);
+                assert(result);
+                (void)result;
                 if(terark_likely(i * element_length >= index.size()))
                 {
                     index.resize((i + 1) * element_length, 0xFFU);
@@ -1155,14 +1155,20 @@ public:
     {
         if(m_isFreezed)
         {
-            fstring key = m_storage.key(size_t(id));
-            val->append(key.data(), key.size());
+            if(terark_likely(size_t(id) < m_storage.max_index() && m_storage.node(id).is_used()))
+            {
+                fstring key = m_storage.key(size_t(id));
+                val->append(key.data(), key.size());
+            }
         }
         else
         {
             TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
-            fstring key = m_storage.key(size_t(id));
-            val->append(key.data(), key.size());
+            if(terark_likely(size_t(id) < m_storage.max_index() && m_storage.node(id).is_used()))
+            {
+                fstring key = m_storage.key(size_t(id));
+                val->append(key.data(), key.size());
+            }
         }
     }
 
