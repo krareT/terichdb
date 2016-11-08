@@ -325,21 +325,20 @@ void Schema::parseRowAppend(fstring row, size_t start, ColumnVec* columns) const
 #if defined(NDEBUG)
   #define CHECK_CURR_LAST3(curr, last, len) \
 	if (terark_unlikely(curr + (len) > last)) { \
-		THROW_STD(out_of_range, "len=%ld remain=%ld", \
-			long(len), long(last-curr)); \
+		THROW_STD(out_of_range, "schema=%s colname=%s len=%ld remain=%ld", \
+			m_name.c_str(), colname.c_str(), long(len), long(last-curr)); \
 	}
 #else
   #define CHECK_CURR_LAST3(curr, last, len) \
+	fprintf(stderr, "ERROR: schema=%s colname=%s len=%ld remain=%ld", \
+			m_name.c_str(), colname.c_str(), long(len), long(last-curr)); \
 	assert(terark_unlikely(curr + (len) <= last));
 #endif
 
 #define CHECK_CURR_LAST(len) CHECK_CURR_LAST3(curr, last, len)
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
-#ifndef NDEBUG
 		const fstring colname = m_columnsMeta.key(i);
-		(void)colname;
-#endif
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		size_t collen = 0;
 		size_t colpos = curr - base;
@@ -832,6 +831,7 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 	byte* last = data + size;
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
+		const fstring     colname = m_columnsMeta.key(i);
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		switch (colmeta.type) {
 		default:
@@ -1628,6 +1628,7 @@ int Schema::compareData(fstring x, fstring y) const {
 
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
+		const fstring     colname = m_columnsMeta.key(i);
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		switch (colmeta.type) {
 		default:
