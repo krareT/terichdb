@@ -2710,6 +2710,8 @@ swap(terark::hash_strmap<Value, HashFunc, KeyEqual, ValuePlace, CopyStrategy, Li
 	x.swap(y);
 }
 
+#ifdef DONT_USE_TERARK_fast_hash_strmap
+#else
 template< class Key
 		, class Value
 		, class HashFunc
@@ -2725,6 +2727,7 @@ swap(terark::fast_hash_strmap<Key, Value, HashFunc, KeyEqual, ValuePlace, CopySt
 {
 	x.swap(y);
 }
+#endif
 
 } // namespace std
 
