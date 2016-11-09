@@ -1,4 +1,5 @@
 #include "trb_db_index.hpp"
+#include "trb_db_segment.hpp"
 #include "trb_db_context.hpp"
 #include <terark/util/fstrvec.hpp>
 #include <terark/io/var_int.hpp>
@@ -1024,12 +1025,14 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
 
     storage_type m_storage;
     uint32_t m_version;
+    uint64_t m_seqSeed;
     mutable TrbIndexRWLock m_rwMutex;
 
 public:
     explicit TrbWritableIndexTemplate(size_type fixedLen, bool isUnique)
         : m_storage(fixedLen)
         , m_version()
+        , m_seqSeed()
     {
         ReadableIndex::m_isUnique = isUnique;
     }
@@ -1055,6 +1058,36 @@ public:
     {
         //TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
         return m_storage.memory_size();
+    }
+
+    bool removeWithSeqId(fstring key, llong id, uint64_t &seq, DbContext*) override
+    {
+        TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
+        assert(m_storage.key(id) == key);
+        if(!m_storage.template remove<TrbLockRead, key_compare_type>(l, m_version, id))
+        {
+            return false;
+        }
+        seq = m_seqSeed++;
+        return true;
+    }
+
+    bool insertWithSeqId(fstring key, llong id, uint64_t &seq, DbContext*) override
+    {
+        TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
+        if(m_isUnique)
+        {
+            if(!m_storage.template store_check<TrbLockRead, key_compare_type>(l, m_version, id, key))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            m_storage.template store_cover<TrbLockRead, key_compare_type>(l, m_version, id, key);
+        }
+        seq = m_seqSeed++;
+        return true;
     }
 
     bool remove(fstring key, llong id, DbContext*) override
@@ -1160,6 +1193,10 @@ public:
                 fstring key = m_storage.key(size_t(id));
                 val->append(key.data(), key.size());
             }
+            else
+            {
+                throw TrbReadDeletedRecordException{id};
+            }
         }
         else
         {
@@ -1168,6 +1205,10 @@ public:
             {
                 fstring key = m_storage.key(size_t(id));
                 val->append(key.data(), key.size());
+            }
+            else
+            {
+                throw TrbReadDeletedRecordException{id};
             }
         }
     }

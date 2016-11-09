@@ -1,6 +1,6 @@
-
 #define NOMINMAX
 #include "trb_db_store.hpp"
+#include "trb_db_segment.hpp"
 #include "trb_db_context.hpp"
 #include <terark/io/FileStream.hpp>
 #include <terark/io/StreamBuffer.hpp>
@@ -273,6 +273,10 @@ void TrbWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext *) 
             fstring item = readItem(size_t(id));
             val->append(item.data(), item.size());
         }
+        else
+        {
+            throw TrbReadDeletedRecordException{id};
+        }
     }
     else
     {
@@ -281,6 +285,10 @@ void TrbWritableStore::getValueAppend(llong id, valvec<byte>* val, DbContext *) 
         {
             fstring item = readItem(size_t(id));
             val->append(item.data(), item.size());
+        }
+        else
+        {
+            throw TrbReadDeletedRecordException{id};
         }
     }
 }
@@ -387,7 +395,7 @@ void MemoryFixedLenStore::getValueAppend(llong id, valvec<byte>* val, DbContext 
     size_t offset = size_t(id) * m_fixlen;
     if(terark_unlikely(offset >= m_data.size()))
     {
-        return;
+        throw TrbReadDeletedRecordException{id};
     }
     val->append(m_data.data() + offset, m_data.data() + offset + m_fixlen);
 }

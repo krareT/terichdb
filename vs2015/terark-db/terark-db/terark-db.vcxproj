@@ -183,7 +183,6 @@
     <ClInclude Include="..\..\..\src\terark\db\intkey_index.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\json.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\mock_db_engine.hpp" />
-    <ClInclude Include="..\..\..\src\terark\db\rocksdb-api.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\zip_int_store.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\record_data.hpp" />
     <ClInclude Include="..\..\..\src\terark\db\seg_db.hpp" />

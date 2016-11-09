@@ -1828,9 +1828,13 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 				txn.storeGetRow(&row);
 			}
 			catch (const ReadRecordException& ex) {
-				fprintf(stderr
-					, "ERROR: removeRow(id=%lld): read row data failed: %s\n"
-					, id, ex.what());
+#if 0//!defined(NDEBUG)
+                fprintf(stderr
+                        , "ERROR: removeRow(id=%lld): read row data failed: %s\n"
+                        , id, ex.what());
+#else
+                (void)ex;
+#endif
 				txn.rollback();
 				throw ReadRecordException("removeRow: pre remove index",
 					wrseg->m_segDir.string(), baseId, subId);

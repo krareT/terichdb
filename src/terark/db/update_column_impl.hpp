@@ -43,9 +43,7 @@
 	assert(subId < (llong)seg->m_isDel.size());
 	assert(seg->m_isDel.is0(subId));
 	if (seg->m_isDel.is1(size_t(subId))) {
-		THROW_STD(invalid_argument
-			, "Row has been deleted: id=%lld seg=%zd baseId=%lld subId=%lld"
-			, recordId, upp, baseId, subId);
+        throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
 	}
 	assert(seg->m_colgroups.size() == m_schema->getColgroupNum());
 	assert(seg->m_colgroups[colproj.colgroupId] != nullptr);

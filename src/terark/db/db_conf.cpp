@@ -330,7 +330,7 @@ void Schema::parseRowAppend(fstring row, size_t start, ColumnVec* columns) const
 	}
 #else
   #define CHECK_CURR_LAST3(curr, last, len) \
-	fprintf(stderr, "ERROR: schema=%s colname=%s len=%ld remain=%ld", \
+	fprintf(stderr, "ERROR: schema=%s colname=%s len=%ld remain=%ld\n", \
 			m_name.c_str(), colname.c_str(), long(len), long(last-curr)); \
 	assert(terark_unlikely(curr + (len) <= last));
 #endif

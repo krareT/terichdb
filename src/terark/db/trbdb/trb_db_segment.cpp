@@ -16,6 +16,7 @@
 #include <tbb/queuing_mutex.h>
 #include <terark/io/MemStream.hpp>
 #include <terark/util/mmap.hpp>
+#include <algorithm>
 
 #undef min
 #undef max
@@ -55,11 +56,7 @@ struct TrbLogHeader
     }
 };
 
-static TrbLogHeader const logHead = TrbLogHeader::getDefault();
-static byte constexpr logTail[] =
-{
-    'T', 'R', 'B', 'L', 'O', 'G', 'E', 'D'
-};
+static TrbLogHeader const logHeader = TrbLogHeader::getDefault();
 static byte constexpr logCheckPoint[] =
 {
     'T', 'e', 'R', 'a', 'R', 'k', 'D', 'b'
@@ -109,7 +106,7 @@ private:
     };
 
     template<class ...args_t>
-    void writeLog(DbContext *ctx, LogAction action, args_t const &...args)
+    void writeLog(DbContext *ctx, uint64_t seq, LogAction action, args_t const &...args)
     {
         if(!ctx->trbLog)
         {
@@ -122,7 +119,7 @@ private:
         buffer.resize(12);
         buffer.seek(12);
 
-        buffer << uint8_t(action);
+        buffer << seq << uint8_t(action);
         std::initializer_list<int>{((buffer << args), 0)...};
 
         if(m_logCount >= logCheckPointCount || m_logSize >= logCheckPointSize)
@@ -142,6 +139,7 @@ private:
 
         ++m_logCount;
         m_logSize += size;
+        m_totalLogSize += size;
 
         lock_t l(m_mutex);
         m_fp.write(buffer.buf(), size);
@@ -172,9 +170,10 @@ private:
     FileStream m_fp;
     uint32_t m_logSize; // these two fields didn't need sync ...
     size_t m_logCount;  // we don't care add check point later
+    std::atomic<uint64_t> m_totalLogSize;   //togal log size
 
 public:
-    TrbLogger() : m_seed(), m_logSize(), m_logCount()
+    TrbLogger() : m_seed(), m_logSize(), m_logCount(), m_totalLogSize{0}
     {
     }
     ~TrbLogger()
@@ -184,6 +183,11 @@ public:
             m_fp.flush();
             m_fp.close();
         }
+    }
+
+    uint64_t logSize()
+    {
+        return m_totalLogSize;
     }
 
     void initCallback(Param p)
@@ -210,6 +214,8 @@ public:
         m_fp.open(getFilePath(path, m_seed).c_str(), "wb");
         assert(m_fp.isOpen());
         m_fp.disbuf();
+        m_fp.write(&logHeader, sizeof logHeader);
+        m_totalLogSize += sizeof logHeader;
     }
     void loadLog(PathRef path, Schema *schema)
     {
@@ -225,9 +231,32 @@ public:
             {
                 continue;
             }
+            struct BadTrbLogException : std::logic_error
+            {
+                BadTrbLogException(std::string f) : std::logic_error("TrbSegment bad log : " + f)
+                {
+                }
+            } badLog(fileName);
+
             MmapWholeFile file(fileName);
             assert(file.base != nullptr);
+            m_totalLogSize += file.size;
             LittleEndianDataInput<MemIO> in; in.set(file.base, file.size);
+            TrbLogHeader header;
+            in.ensureRead(&header, sizeof header);
+            if(false
+               || std::memcmp(header.name, logHeader.name, sizeof header.name) != 0
+               || header.magic != logHeader.magic
+               || header.ver != logHeader.ver
+               || std::find_if(header.empty,
+                               header.empty + sizeof header.empty,
+                               [](byte b){ return b != 0; }
+               ) != header.empty + sizeof header.empty
+               )
+            {
+                //TODO compatible old version
+                throw badLog;
+            }
             uint8_t action = 0;
             uint32_t sizeCrc = 0;
             uint32_t size = 0;
@@ -237,17 +266,95 @@ public:
             llong version = 0;
             valvec<byte> data;
             CommitVec_t commitVec;
+            uint64_t seq;
 
             valvec<byte> buf;
             ColumnVec cols;
+            struct heap_item
+            {
+                uint64_t seq;
+                LittleEndianDataInput<MemIO> in;
+                struct comp
+                {
+                    bool operator()(heap_item const &left, heap_item const &right)
+                    {
+                        return left.seq > right.seq;
+                    }
+                };
+            };
+            valvec<heap_item> seqHeap;
+            uint64_t currentSeq = 0;
             byte const *pos = in.current();
 
-            struct BadTrbLogException : std::logic_error
+            auto proc_seq = [&]
             {
-                BadTrbLogException(std::string f) : std::logic_error("TrbSegment bad log : " + f)
+                while(!seqHeap.empty() && seqHeap.front().seq == currentSeq)
                 {
+                    std::pop_heap(seqHeap.begin(), seqHeap.end(), heap_item::comp());
+                    auto seq_in = seqHeap.pop_val().in;
+                    ++currentSeq;
+                    seq_in >> action;
+                    try
+                    {
+                        switch(LogAction(action))
+                        {
+                        case LogAction::WritableUpdateRow:
+                            seq_in >> subId >> data;
+                            schema->parseRow(data, &cols);
+                            if(!m_param.writableUpdateRow(subId, cols, buf))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::WritableRemoveRow:
+                            seq_in >> subId >> version;
+                            if(!m_param.writableRemoveRow(subId, version))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TableUpdateRow:
+                            seq_in >> subId >> recId >> version >> data;
+                            schema->parseRow(data, &cols);
+                            if(!m_param.tableUpdateRow(subId, recId, version, cols, buf))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TableRemoveRow:
+                            seq_in >> recId >> version;
+                            if(!m_param.tableRemoveRow(recId, version))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TransactionUpdateRow:
+                            seq_in >> subId >> version >> data;
+                            schema->parseRow(data, &cols);
+                            if(!m_param.transactionUpdateRow(subId, version, cols, buf))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        case LogAction::TransactionCommitRow:
+                            seq_in >> commitVec;
+                            if(!m_param.transactionCommitRow(commitVec))
+                            {
+                                throw badLog;
+                            }
+                            break;
+                        default:
+                            // verify by crc32 , but still error action ?
+                            throw badLog;
+                        }
+                    }
+                    catch(EndOfFileException const &)
+                    {
+                        // verify by crc32 , but still overflow ?
+                        throw badLog;
+                    }
                 }
-            } badLog(fileName);
+            };
 
             try
             {
@@ -271,66 +378,10 @@ public:
                     {
                         throw badLog;
                     }
-                    in >> action;
-                    try
-                    {
-                        switch(LogAction(action))
-                        {
-                        case LogAction::WritableUpdateRow:
-                            in >> subId >> data;
-                            schema->parseRow(data, &cols);
-                            if(!m_param.writableUpdateRow(subId, cols, buf))
-                            {
-                                throw badLog;
-                            }
-                            break;
-                        case LogAction::WritableRemoveRow:
-                            in >> subId >> version;
-                            if(!m_param.writableRemoveRow(subId, version))
-                            {
-                                throw badLog;
-                            }
-                            break;
-                        case LogAction::TableUpdateRow:
-                            in >> subId >> recId >> version >> data;
-                            schema->parseRow(data, &cols);
-                            if(!m_param.tableUpdateRow(subId, recId, version, cols, buf))
-                            {
-                                throw badLog;
-                            }
-                            break;
-                        case LogAction::TableRemoveRow:
-                            in >> recId >> version;
-                            if(!m_param.tableRemoveRow(recId, version))
-                            {
-                                throw badLog;
-                            }
-                            break;
-                        case LogAction::TransactionUpdateRow:
-                            in >> subId >> version >> data;
-                            schema->parseRow(data, &cols);
-                            if(!m_param.transactionUpdateRow(subId, version, cols, buf))
-                            {
-                                throw badLog;
-                            }
-                            break;
-                        case LogAction::TransactionCommitRow:
-                            in >> commitVec;
-                            if(!m_param.transactionCommitRow(commitVec))
-                            {
-                                throw badLog;
-                            }
-                            break;
-                        default:
-                            // verify by crc32 , but still error action ?
-                            throw badLog;
-                        }
-                    }
-                    catch(EndOfFileException const &)
-                    {
-                        // verify by crc32 , but still overflow ?
-                        throw badLog;
-                    }
+                    in >> seq;
+                    seqHeap.emplace_back(heap_item{seq, {in.current(), in.current() + size - 8}});
+                    std::push_heap(seqHeap.begin(), seqHeap.end(), heap_item::comp());
+                    in.skip(size - 20);
                     if(in.current() - pos != size)
                     {
                         if(false
@@ -343,14 +394,27 @@ public:
                         in.skip(sizeof logCheckPoint);
                     }
                     pos = in.current();
+                    proc_seq();
                 }
             }
-            catch(BadTrbLogException)
+            catch(BadTrbLogException const &)
             {
                 throw;
             }
             catch(EndOfFileException const &)
             {
+                try
+                {
+                    proc_seq();
+                }
+                catch(EndOfFileException const &)
+                {
+                    throw badLog;
+                }
+                if(!seqHeap.empty())
+                {
+                    throw badLog;
+                }
                 if(pos != in.end())
                 {
                     fprintf(stderr,
@@ -363,29 +427,29 @@ public:
         }
         initLog(path);
     }
-    void writableUpdateRow(DbContext *ctx, uint32_t subId, fstring data)
+    void writableUpdateRow(DbContext *ctx, uint64_t seq, uint32_t subId, fstring data)
     {
-        writeLog(ctx, LogAction::WritableUpdateRow, subId, data);
+        writeLog(ctx, seq, LogAction::WritableUpdateRow, subId, data);
     }
-    void writableRemoveRow(DbContext *ctx, uint32_t id, llong version)
+    void writableRemoveRow(DbContext *ctx, uint64_t seq, uint32_t id, llong version)
     {
-        writeLog(ctx, LogAction::WritableRemoveRow, id, version);
+        writeLog(ctx, seq, LogAction::WritableRemoveRow, id, version);
     }
-    void tableUpdateRow(DbContext *ctx, uint32_t subId, llong recId, llong version, fstring data)
+    void tableUpdateRow(DbContext *ctx, uint64_t seq, uint32_t subId, llong recId, llong version, fstring data)
     {
-        writeLog(ctx, LogAction::TableUpdateRow, subId, recId, version, data);
+        writeLog(ctx, seq, LogAction::TableUpdateRow, subId, recId, version, data);
     }
-    void tableRemoveRow(DbContext *ctx, llong recId, llong version)
+    void tableRemoveRow(DbContext *ctx, uint64_t seq, llong recId, llong version)
     {
-        writeLog(ctx, LogAction::TableRemoveRow, recId, version);
+        writeLog(ctx, seq, LogAction::TableRemoveRow, recId, version);
     }
-    void transactionUpdateRow(DbContext *ctx, uint32_t subId, llong version, fstring data)
+    void transactionUpdateRow(DbContext *ctx, uint64_t seq, uint32_t subId, llong version, fstring data)
     {
-        writeLog(ctx, LogAction::TransactionUpdateRow, subId, version, data);
+        writeLog(ctx, seq, LogAction::TransactionUpdateRow, seq, subId, version, data);
     }
-    void transactionCommitRow(DbContext *ctx, CommitVec_t const &commitVec)
+    void transactionCommitRow(DbContext *ctx, uint64_t seq, CommitVec_t const &commitVec)
     {
-        writeLog(ctx, LogAction::TransactionCommitRow, commitVec);
+        writeLog(ctx, seq, LogAction::TransactionCommitRow, seq, commitVec);
     }
 };
 
@@ -452,7 +516,6 @@ TrbRWRowMutex::scoped_lock::~scoped_lock()
     {
         parent->row_lock.erase(item->id);
         parent->lock_pool.emplace_back(item);
-        return;
     }
 }
 
@@ -474,14 +537,18 @@ class RowLockTransaction : public DbTransaction
     const SchemaConfig& m_sconf;
     TrbColgroupSegment *m_seg;
     DbContext          *m_ctx;
+    uint64_t            m_seq;
+    size_t              m_seqIndex;
     boost::optional<TrbRWRowMutex::scoped_lock> m_lock;
 
 public:
     explicit RowLockTransaction(TrbColgroupSegment* seg, DbContext* ctx)
         : m_sconf(*seg->m_schema)
+        , m_seq(std::numeric_limits<uint64_t>::max())
     {
         m_seg = seg;
         m_ctx = ctx;
+        m_seqIndex = m_sconf.m_uniqIndices.empty() ? 0 : m_sconf.m_uniqIndices.back();
     }
     ~RowLockTransaction()
     {
@@ -489,27 +556,47 @@ public:
     void indexRemove(size_t indexId, fstring key) override
     {
         assert(started == m_status);
-        m_seg->m_indices[indexId]->getWritableIndex()->remove(key, m_recId, m_ctx);
+        if(m_seqIndex == indexId)
+        {
+            assert(dynamic_cast<TrbWritableIndex *>(m_seg->m_indices[indexId]->getWritableIndex()) != nullptr);
+            TrbWritableIndex *idx = static_cast<TrbWritableIndex *>(m_seg->m_indices[indexId]->getWritableIndex());
+            idx->removeWithSeqId(key, m_recId, m_seq, m_ctx);
+        }
+        else
+        {
+            m_seg->m_indices[indexId]->getWritableIndex()->remove(key, m_recId, m_ctx);
+        }
     }
     bool indexInsert(size_t indexId, fstring key) override
     {
         assert(started == m_status);
-        return m_seg->m_indices[indexId]->getWritableIndex()->insert(key, m_recId, m_ctx);
+        if(m_seqIndex == indexId)
+        {
+            assert(dynamic_cast<TrbWritableIndex *>(m_seg->m_indices[indexId]->getWritableIndex()) != nullptr);
+            TrbWritableIndex *idx = static_cast<TrbWritableIndex *>(m_seg->m_indices[indexId]->getWritableIndex());
+            return idx->insertWithSeqId(key, m_recId, m_seq, m_ctx);
+        }
+        else
+        {
+            return m_seg->m_indices[indexId]->getWritableIndex()->insert(key, m_recId, m_ctx);
+        }
     }
     void storeRemove() override
     {
         assert(started == m_status);
+        assert(m_seq != std::numeric_limits<uint64_t>::max());
         size_t const colgroups_size = m_seg->m_colgroups.size();
         for(size_t i = m_seg->m_indices.size(); i < colgroups_size; ++i)
         {
             auto &store = m_seg->m_colgroups[i];
             store->getWritableStore()->remove(m_recId, m_ctx);
         }
-        m_seg->m_logger->writableRemoveRow(m_ctx, uint32_t(m_recId), 0);
+        m_seg->m_logger->writableRemoveRow(m_ctx, m_seq, uint32_t(m_recId), 0);
     }
     void storeUpdate(fstring row) override
     {
         assert(started == m_status);
+        assert(m_seq != std::numeric_limits<uint64_t>::max());
         m_sconf.m_rowSchema->parseRow(row, &m_ctx->trbCols);
         size_t const colgroups_size = m_seg->m_colgroups.size();
         for(size_t i = m_seg->m_indices.size(); i < colgroups_size; ++i)
@@ -519,7 +606,7 @@ public:
             schema.selectParent(m_ctx->trbCols, &m_ctx->trbBuf);
             store->getUpdatableStore()->update(m_recId, m_ctx->trbBuf, m_ctx);
         }
-        m_seg->m_logger->writableUpdateRow(m_ctx, uint32_t(m_recId), row);
+        m_seg->m_logger->writableUpdateRow(m_ctx, m_seq, uint32_t(m_recId), row);
     }
     void storeGetRow(valvec<byte>* row) override
     {
@@ -529,6 +616,7 @@ public:
     }
     void do_startTransaction() override
     {
+        m_seq = std::numeric_limits<uint64_t>::max();
         m_lock.emplace(m_seg->m_rowMutex, m_recId, true);
     }
     bool do_commit() override
@@ -682,14 +770,87 @@ ReadableStore *TrbColgroupSegment::createStore(const Schema &schema, PathRef) co
 
 void TrbColgroupSegment::getValueAppend(llong id, valvec<byte>* val, DbContext *ctx) const
 {
-    if(m_isFreezed)
+    try
     {
-        ColgroupWritableSegment::getValueAppend(id, val, ctx);
+        if(m_isFreezed)
+        {
+            ColgroupWritableSegment::getValueAppend(id, val, ctx);
+        }
+        else
+        {
+            TrbRWRowMutex::scoped_lock l(m_rowMutex, id, false);
+            ColgroupWritableSegment::getValueAppend(id, val, ctx);
+        }
     }
-    else
+    catch(TrbReadDeletedRecordException const &ex)
     {
-        TrbRWRowMutex::scoped_lock l(m_rowMutex, id, false);
-        ColgroupWritableSegment::getValueAppend(id, val, ctx);
+        throw ReadDeletedRecordException(m_segDir.string(), -1, ex.id);
+    }
+}
+
+void TrbColgroupSegment::selectColumns(llong recId,
+                                       size_t const *colsId,
+                                       size_t colsNum,
+                                       valvec<byte> *colsData,
+                                       DbContext *ctx
+) const
+{
+    try
+    {
+        if(m_isFreezed)
+        {
+            ColgroupSegment::selectColumnsByPhysicId(recId, colsId, colsNum, colsData, ctx);
+        }
+        else
+        {
+            TrbRWRowMutex::scoped_lock l(m_rowMutex, recId, false);
+            ColgroupSegment::selectColumnsByPhysicId(recId, colsId, colsNum, colsData, ctx);
+        }
+    }
+    catch(TrbReadDeletedRecordException const &ex)
+    {
+        throw ReadDeletedRecordException(m_segDir.string(), -1, ex.id);
+    }
+}
+
+void TrbColgroupSegment::selectOneColumn(llong recId,
+                                         size_t columnId,
+                                         valvec<byte> *colsData,
+                                         DbContext *ctx
+) const
+{
+    try
+    {
+        ColgroupSegment::selectOneColumnByPhysicId(recId, columnId, colsData, ctx);
+    }
+    catch(TrbReadDeletedRecordException const &ex)
+    {
+        throw ReadDeletedRecordException(m_segDir.string(), -1, ex.id);
+    }
+}
+
+void TrbColgroupSegment::selectColgroups(llong id,
+                                         size_t const *cgIdvec,
+                                         size_t cgIdvecSize,
+                                         valvec<byte> *cgDataVec,
+                                         DbContext *ctx
+) const
+{
+    try
+    {
+        if(m_isFreezed)
+        {
+            ColgroupSegment::selectColgroupsByPhysicId(id, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+        }
+        else
+        {
+            TrbRWRowMutex::scoped_lock l(m_rowMutex, id, false);
+            ColgroupSegment::selectColgroupsByPhysicId(id, cgIdvec, cgIdvecSize, cgDataVec, ctx);
+        }
+    }
+    catch(TrbReadDeletedRecordException const &ex)
+    {
+        throw ReadDeletedRecordException(m_segDir.string(), -1, ex.id);
     }
 }
 
@@ -755,16 +916,11 @@ void TrbColgroupSegment::loadRecordStore(PathRef segDir)
 
 llong TrbColgroupSegment::dataStorageSize() const
 {
-    return totalStorageSize();
+    return m_logger->logSize();
 }
 llong TrbColgroupSegment::totalStorageSize() const
 {
-    llong size = 0;
-    for(auto &store : m_colgroups)
-    {
-        size += store->dataStorageSize();
-    }
-    return size;
+    return m_logger->logSize();
 }
 
 }}} // namespace terark::db::trbdb

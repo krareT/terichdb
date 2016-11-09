@@ -19,6 +19,11 @@ namespace terark { namespace db { namespace trbdb {
 class TERARK_DB_DLL RowLockTransaction;
 class TrbLogger;
 
+struct TrbReadDeletedRecordException
+{
+    llong id;
+};
+
 struct TrbRWRowMutex : boost::noncopyable
 {
 private:
@@ -97,6 +102,14 @@ protected:
 
 public:
     void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
+
+    void selectColumns(llong recId, const size_t* colsId, size_t colsNum,
+                       valvec<byte>* colsData, DbContext*) const override;
+    void selectOneColumn(llong recId, size_t columnId,
+                         valvec<byte>* colsData, DbContext*) const override;
+
+    void selectColgroups(llong id, const size_t* cgIdvec, size_t cgIdvecSize,
+                         valvec<byte>* cgDataVec, DbContext*) const override;
 
     llong append(fstring, DbContext *) override;
     void remove(llong, DbContext *) override;
