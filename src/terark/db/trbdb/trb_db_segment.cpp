@@ -266,7 +266,7 @@ public:
             llong version = 0;
             valvec<byte> data;
             CommitVec_t commitVec;
-            uint64_t seq;
+            uint64_t seq = 0;
 
             valvec<byte> buf;
             ColumnVec cols;
@@ -464,44 +464,53 @@ TrbRWRowMutex::map_item::map_item(uint32_t _id)
 {
 }
 
+TrbRWRowMutex::TrbRWRowMutex(spin_mutex_t &mutex)
+    : g_mutex(mutex)
+{
+
+}
+
 TrbRWRowMutex::~TrbRWRowMutex()
 {
-    for(auto pair : row_lock)
+    for(auto pair : row_mutex)
     {
         delete pair.second;
     }
-    for(auto ptr : lock_pool)
+    for(auto ptr : mutex_pool)
     {
         delete ptr;
     }
 }
 
-TrbRWRowMutex::scoped_lock::scoped_lock(TrbRWRowMutex &mutex, size_t index, bool write)
+TrbRWRowMutex::scoped_lock::scoped_lock(TrbRWRowMutex &mutex, llong index, bool write)
     : parent(&mutex)
 {
+    assert(index >= 0);
+    assert(index <= 0x3FFFFFFFU);
+    uint32_t u32_index = uint32_t(index);
     {
-        spin_lock_t::scoped_lock l(parent->g_lock);
-        auto ib = parent->row_lock.emplace(uint32_t(index), nullptr);
+        spin_mutex_t::scoped_lock l(parent->g_mutex);
+        auto ib = parent->row_mutex.emplace(u32_index, nullptr);
         if(ib.second)
         {
-            if(terark_unlikely(parent->lock_pool.empty()))
+            if(terark_unlikely(parent->mutex_pool.empty()))
             {
-                ib.first->second = item = new map_item(uint32_t(index));
+                ib.first->second = item = new map_item(u32_index);
                 assert(item->count == 1);
-                assert(item->id == index);
+                assert(item->id == u32_index);
             }
             else
             {
-                ib.first->second = item = parent->lock_pool.pop_val();
+                ib.first->second = item = parent->mutex_pool.pop_val();
                 assert(item->count == 0);
-                item->id = uint32_t(index);
+                item->id = u32_index;
                 ++item->count;
             }
         }
         else
         {
             item = ib.first->second;
-            assert(item->id == index);
+            assert(item->id == u32_index);
             ++item->count;
         }
     }
@@ -511,11 +520,11 @@ TrbRWRowMutex::scoped_lock::scoped_lock(TrbRWRowMutex &mutex, size_t index, bool
 TrbRWRowMutex::scoped_lock::~scoped_lock()
 {
     lock.release();
-    spin_lock_t::scoped_lock l(parent->g_lock);
+    spin_mutex_t::scoped_lock l(parent->g_mutex);
     if(--item->count == 0)
     {
-        parent->row_lock.erase(item->id);
-        parent->lock_pool.emplace_back(item);
+        parent->row_mutex.erase(item->id);
+        parent->mutex_pool.emplace_back(item);
     }
 }
 
@@ -649,6 +658,7 @@ DbTransaction *TrbColgroupSegment::createTransaction(DbContext* ctx)
 }
 
 TrbColgroupSegment::TrbColgroupSegment()
+    : m_rowMutex(m_segMutex)
 {
     m_hasLockFreePointSearch = true;
     m_logger = new TrbLogger();
@@ -850,6 +860,7 @@ void TrbColgroupSegment::selectColgroups(llong id,
     }
     catch(TrbReadDeletedRecordException const &ex)
     {
+        assert(ex.id == id);
         throw ReadDeletedRecordException(m_segDir.string(), -1, ex.id);
     }
 }
@@ -878,6 +889,18 @@ void TrbColgroupSegment::shrinkToFit()
         if(nullptr != appendable_store)
         {
             appendable_store->shrinkToFit();
+        }
+    }
+}
+
+void TrbColgroupSegment::shrinkToSize(size_t size)
+{
+    for(auto &store : m_colgroups)
+    {
+        auto appendable_store = store->getAppendableStore();
+        if(nullptr != appendable_store)
+        {
+            appendable_store->shrinkToSize(size);
         }
     }
 }

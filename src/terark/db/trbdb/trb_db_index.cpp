@@ -303,7 +303,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         }
 
         template<class IsWrite, class Compare, class Lock>
-        bool store_check(Lock &l, uint32_t volatile &v, size_type i, fstring d)
+        bool unique_insert_pos(Lock &l, uint32_t volatile &v, size_type i, fstring d)
         {
             uint32_t version = v;
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
@@ -342,7 +342,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                bool result = remove<TrbLockWrite, Compare>(l, v, i);
+                bool result = remove_pos<TrbLockWrite, Compare>(l, v, i);
                 assert(result);
                 (void)result;
                 threaded_rbtree_find_path_for_unique(root,
@@ -372,12 +372,12 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             return true;
         }
         template<class IsWrite, class Compare, class Lock>
-        void store_cover(Lock &l, uint32_t volatile &v, size_type i, fstring d)
+        void multi_insert_pos(Lock &l, uint32_t volatile &v, size_type i, fstring d)
         {
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
             if(terark_unlikely(i < index.size() && node(i).is_used()))
             {
-                bool result = remove<IsWrite, Compare>(l, v, i);
+                bool result = remove_pos<IsWrite, Compare>(l, v, i);
                 assert(result);
                 (void)result;
                 if(terark_likely(i >= index.size()))
@@ -455,7 +455,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             ++v;
         }
         template<class IsWrite, class Compare, class Lock>
-        bool remove(Lock &l, uint32_t volatile &v, size_type i)
+        bool remove_pos(Lock &l, uint32_t volatile &v, size_type i)
         {
             uint32_t version = v;
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
@@ -523,6 +523,10 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             index.shrink_to_fit();
             data.shrink_to_fit();
         }
+        void shrink_to_size(size_t size)
+        {
+            index.resize(size);
+        }
     };
     struct fixed_storage_type
     {
@@ -576,7 +580,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         }
 
         template<class IsWrite, class Compare, class Lock>
-        bool store_check(Lock &l, uint32_t volatile &v, size_type i, fstring d)
+        bool unique_insert_pos(Lock &l, uint32_t volatile &v, size_type i, fstring d)
         {
             assert(d.size() == key_length);
             uint32_t version = v;
@@ -617,7 +621,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             }
             if(terark_unlikely(node(i).is_used()))
             {
-                bool result = remove<TrbLockWrite, Compare>(l, v, i);
+                bool result = remove_pos<TrbLockWrite, Compare>(l, v, i);
                 assert(result);
                 (void)result;
                 std::memcpy(data.data() + i * key_length, d.data(), d.size());
@@ -642,13 +646,13 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             return true;
         }
         template<class IsWrite, class Compare, class Lock>
-        void store_cover(Lock &l, uint32_t volatile &v, size_type i, fstring d)
+        void multi_insert_pos(Lock &l, uint32_t volatile &v, size_type i, fstring d)
         {
             assert(d.size() == key_length);
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
             if(terark_unlikely(i < index.size() && node(i).is_used()))
             {
-                bool result = remove<IsWrite, Compare>(l, v, i);
+                bool result = remove_pos<IsWrite, Compare>(l, v, i);
                 assert(result);
                 (void)result;
                 if(terark_likely(i >= index.size()))
@@ -703,7 +707,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             ++v;
         }
         template<class IsWrite, class Compare, class Lock>
-        bool remove(Lock &l, uint32_t volatile &v, size_type i)
+        bool remove_pos(Lock &l, uint32_t volatile &v, size_type i)
         {
             uint32_t version = v;
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
@@ -752,6 +756,10 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         {
             index.shrink_to_fit();
             data.shrink_to_fit();
+        }
+        void shrink_to_size(size_t size)
+        {
+            index.resize(size);
         }
     };
     struct aligned_fixed_storage_type
@@ -813,7 +821,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         }
 
         template<class IsWrite, class Compare, class Lock>
-        bool store_check(Lock &l, uint32_t volatile &v, size_type i, fstring d)
+        bool unique_insert_pos(Lock &l, uint32_t volatile &v, size_type i, fstring d)
         {
             assert(d.size() + sizeof(node_type) == element_length);
             uint32_t version = v;
@@ -854,7 +862,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             element_type *ptr = reinterpret_cast<element_type *>(index.data() + i * element_length);
             if(terark_unlikely(node(i).is_used()))
             {
-                bool result = remove<TrbLockWrite, Compare>(l, v, i);
+                bool result = remove_pos<TrbLockWrite, Compare>(l, v, i);
                 assert(result);
                 (void)result;
                 std::memcpy(ptr->data, d.data(), d.size());
@@ -879,13 +887,13 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             return true;
         }
         template<class IsWrite, class Compare, class Lock>
-        void store_cover(Lock &l, uint32_t volatile &v, size_type i, fstring d)
+        void multi_insert_pos(Lock &l, uint32_t volatile &v, size_type i, fstring d)
         {
             assert(d.size() + sizeof(node_type) == element_length);
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
             if(terark_unlikely(i < index.size() && node(i).is_used()))
             {
-                bool result = remove<IsWrite, Compare>(l, v, i);
+                bool result = remove_pos<IsWrite, Compare>(l, v, i);
                 assert(result);
                 (void)result;
                 if(terark_likely(i * element_length >= index.size()))
@@ -941,7 +949,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             ++v;
         }
         template<class IsWrite, class Compare, class Lock>
-        bool remove(Lock &l, uint32_t volatile &v, size_type i)
+        bool remove_pos(Lock &l, uint32_t volatile &v, size_type i)
         {
             uint32_t version = v;
             threaded_rbtree_stack_t<node_type, max_stack_depth> stack;
@@ -988,6 +996,10 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
         void shrink_to_fit()
         {
             index.shrink_to_fit();
+        }
+        void shrink_to_size(size_t size)
+        {
+            index.resize(size * element_length);
         }
     };
 
@@ -1062,9 +1074,10 @@ public:
 
     bool removeWithSeqId(fstring key, llong id, uint64_t &seq, DbContext*) override
     {
+        assert(!m_isFreezed);
         TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
         assert(m_storage.key(id) == key);
-        if(!m_storage.template remove<TrbLockRead, key_compare_type>(l, m_version, id))
+        if(!m_storage.template remove_pos<TrbLockRead, key_compare_type>(l, m_version, id))
         {
             return false;
         }
@@ -1074,17 +1087,18 @@ public:
 
     bool insertWithSeqId(fstring key, llong id, uint64_t &seq, DbContext*) override
     {
+        assert(!m_isFreezed);
         TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
         if(m_isUnique)
         {
-            if(!m_storage.template store_check<TrbLockRead, key_compare_type>(l, m_version, id, key))
+            if(!m_storage.template unique_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, key))
             {
                 return false;
             }
         }
         else
         {
-            m_storage.template store_cover<TrbLockRead, key_compare_type>(l, m_version, id, key);
+            m_storage.template multi_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, key);
         }
         seq = m_seqSeed++;
         return true;
@@ -1092,32 +1106,35 @@ public:
 
     bool remove(fstring key, llong id, DbContext*) override
     {
+        assert(!m_isFreezed);
         TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
         assert(m_storage.key(id) == key);
-        return m_storage.template remove<TrbLockRead, key_compare_type>(l, m_version, id);
+        return m_storage.template remove_pos<TrbLockRead, key_compare_type>(l, m_version, id);
     }
     bool insert(fstring key, llong id, DbContext*) override
     {
+        assert(!m_isFreezed);
         TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
         if(m_isUnique)
         {
-            if(!m_storage.template store_check<TrbLockRead, key_compare_type>(l, m_version, id, key))
+            if(!m_storage.template unique_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, key))
             {
                 return false;
             }
         }
         else
         {
-            m_storage.template store_cover<TrbLockRead, key_compare_type>(l, m_version, id, key);
+            m_storage.template multi_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, key);
         }
         return true;
     }
     bool replace(fstring key, llong oldId, llong newId, DbContext*) override
     {
+        assert(!m_isFreezed);
         TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
         assert(key == m_storage.key(oldId));
-        m_storage.template store_cover<TrbLockRead, key_compare_type>(l, m_version, newId, key);
-        bool success = m_storage.template remove<TrbLockWrite, key_compare_type>(l, m_version, oldId);
+        m_storage.template multi_insert_pos<TrbLockRead, key_compare_type>(l, m_version, newId, key);
+        bool success = m_storage.template remove_pos<TrbLockWrite, key_compare_type>(l, m_version, oldId);
         assert(success);
         (void)success;
         return true;
@@ -1224,6 +1241,7 @@ public:
 
     llong append(fstring row, DbContext*) override
     {
+        assert(!m_isFreezed);
         bool success;
         size_t id;
         {
@@ -1231,11 +1249,11 @@ public:
             id = m_storage.max_index();
             if(m_isUnique)
             {
-                success = m_storage.template store_check<TrbLockRead, key_compare_type>(l, m_version, id, row);
+                success = m_storage.template unique_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, row);
             }
             else
             {
-                m_storage.template store_cover<TrbLockRead, key_compare_type>(l, m_version, id, row);
+                m_storage.template multi_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, row);
                 success = true;
             }
         }
@@ -1249,16 +1267,17 @@ public:
     }
     void update(llong id, fstring row, DbContext*) override
     {
+        assert(!m_isFreezed);
         bool success;
         {
             TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
             if(m_isUnique)
             {
-                success = m_storage.template store_check<TrbLockRead, key_compare_type>(l, m_version, id, row);
+                success = m_storage.template unique_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, row);
             }
             else
             {
-                m_storage.template store_cover<TrbLockRead, key_compare_type>(l, m_version, id, row);
+                m_storage.template multi_insert_pos<TrbLockRead, key_compare_type>(l, m_version, id, row);
                 success = true;
             }
         }
@@ -1272,10 +1291,11 @@ public:
     }
     void remove(llong id, DbContext*) override
     {
+        assert(!m_isFreezed);
         bool success;
         {
             TrbIndexRWLock::scoped_lock l(m_rwMutex, false);
-            success = m_storage.template remove<TrbLockRead, key_compare_type>(l, m_version, id);
+            success = m_storage.template remove_pos<TrbLockRead, key_compare_type>(l, m_version, id);
         }
         if(!success)
         {
@@ -1288,8 +1308,28 @@ public:
 
     void shrinkToFit() override
     {
+        assert(!m_isFreezed);
         TrbIndexRWLock::scoped_lock l(m_rwMutex);
         m_storage.shrink_to_fit();
+    }
+
+    void shrinkToSize(size_t size)
+    {
+        assert(!m_isFreezed);
+        TrbIndexRWLock::scoped_lock l(m_rwMutex);
+        assert(size <= m_storage.max_index());
+        assert(([&]()
+        {
+            for(size_t i = size, e = m_storage.max_index(); i < e; ++i)
+            {
+                if(m_storage.node(i).is_used())
+                {
+                    return false;
+                }
+            }
+            return true;
+        })());
+        m_storage.shrink_to_size(size);
     }
 
     ReadableIndex* getReadableIndex() override

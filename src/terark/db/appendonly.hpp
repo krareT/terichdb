@@ -20,6 +20,7 @@ public:
 
 	llong append(fstring row, DbContext*) override;
 	void  shrinkToFit() override;
+    void  shrinkToSize(size_t size) override;
 	void  deleteFiles() override;
 
 	void load(PathRef fpath) override;
@@ -53,6 +54,7 @@ public:
 
 	llong append(fstring row, DbContext*) override;
 	void  shrinkToFit() override;
+    void  shrinkToSize(size_t size) override;
 	void  deleteFiles() override;
 
 	void load(PathRef fpath) override;

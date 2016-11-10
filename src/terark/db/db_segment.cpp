@@ -434,9 +434,6 @@ const {
 	if (terark_unlikely(id < 0 || id >= rows)) {
 		THROW_STD(out_of_range, "invalid id=%lld, rows=%lld", id, rows);
 	}
-	if (m_isDel[id]) {
-		throw ReadDeletedRecordException(m_segDir.string(), -1, id);
-	}
 	getValueByPhysicId(id, val, ctx);
 }
 
@@ -1926,9 +1923,6 @@ const {
 		if (!m_isFreezed && m_isDel.unused() < ProtectCnt) {
 			lock.acquire(m_segMutex, false);
 		}
-		if (m_isDel[recId]) {
-			throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
-		}
 		this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
 	}
 }
@@ -1960,10 +1954,44 @@ void PlainWritableSegment::markFrozen() {
 void ColgroupWritableSegment::markFrozen() {
 	for (size_t cgId = 0; cgId < m_colgroups.size(); ++cgId) {
         auto readable_store = m_colgroups[cgId].get();
+        assert(readable_store);
         auto wtitable_store = readable_store->getWritableStore();
-        assert(readable_store && wtitable_store);
+        assert(wtitable_store);
         wtitable_store->shrinkToFit();
         readable_store->markFrozen();
+#if 0 && !defined(NDEBUG)
+        valvec<byte> v;
+        for(size_t i = 0, e = m_isDel.size(); i < e; ++i)
+        {
+            if(m_isDel.is0(i))
+            {
+                try
+                {
+                    m_colgroups[0]->getValue(i, &v, nullptr);
+                }
+                catch(...)
+                {
+                    assert(0);
+                }
+            }
+            else
+            {
+                do
+                {
+                    try
+                    {
+                        m_colgroups[0]->getValue(i, &v, nullptr);
+                    }
+                    catch(...)
+                    {
+                        break;
+                    }
+                    assert(0);
+                }
+                while(0);
+            }
+        }
+#endif
 	}
 	m_isFreezed = true;
 }
@@ -2084,9 +2112,6 @@ const {
 	colsData->erase_all();
 //	this->getValue(recId, &ctx->buf1, ctx);
 	this->getWrtStoreData(recId, &ctx->buf1, ctx);
-	if (m_isDel[recId]) {
-		throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
-	}
 	const Schema& schema = *m_schema->m_rowSchema;
 	schema.parseRow(ctx->buf1, &ctx->cols1);
 	assert(ctx->cols1.size() == schema.columnNum());
@@ -2125,18 +2150,12 @@ const {
 			assert(colmeta.fixedEndOffset() <= fixlen);
 #endif
 			store->getValueAppend(recId, colsData, ctx);
-			if (m_isDel[recId]) {
-				throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
-			}
 		}
 		else {
 			schema = sconf.m_wrtSchema.get();
 			if (ctx->cols1.empty()) {
 			//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
-				this->getWrtStoreData(recId, &ctx->buf1, ctx);
-				if (m_isDel[recId]) {
-					throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
-				}
+                this->getWrtStoreData(recId, &ctx->buf1, ctx);
 				schema->parseRow(ctx->buf1, &ctx->cols1);
 			}
 			size_t subColumnId = sconf.m_rowSchemaColToWrtCol[columnId];
@@ -2172,9 +2191,6 @@ const {
 		const Schema& wrtSchema = *m_schema->m_wrtSchema;
 	//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
 		this->getWrtStoreData(recId, &ctx->buf1, ctx);
-		if (m_isDel[recId]) {
-			throw ReadDeletedRecordException(m_segDir.string(), -1, recId);
-		}
 		wrtSchema.parseRow(ctx->buf1, &ctx->cols1);
 		assert(ctx->cols1.size() == wrtSchema.columnNum());
 		colsData->erase_all();
@@ -2434,6 +2450,17 @@ void PlainWritableSegment::shrinkToFit() {
 		store->shrinkToFit();
 	}
 	m_wrtStore->getAppendableStore()->shrinkToFit();
+}
+
+void PlainWritableSegment::shrinkToSize(size_t size)
+{
+    for(size_t colgroupId : m_schema->m_updatableColgroups)
+    {
+        auto store = m_colgroups[colgroupId]->getAppendableStore();
+        assert(nullptr != store);
+        store->shrinkToSize(size);
+    }
+    m_wrtStore->getAppendableStore()->shrinkToSize(size);
 }
 
 void PlainWritableSegment::getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx)

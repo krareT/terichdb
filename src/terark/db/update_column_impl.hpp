@@ -41,7 +41,7 @@
 	llong subId = recordId - baseId;
 	auto seg = m_segments[upp-1].get();
 	assert(subId < (llong)seg->m_isDel.size());
-	assert(seg->m_isDel.is0(subId));
+	//assert(seg->m_isDel.is0(subId));
 	if (seg->m_isDel.is1(size_t(subId))) {
         throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
 	}

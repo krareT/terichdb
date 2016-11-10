@@ -1052,9 +1052,10 @@ const {
 	llong baseId = rowNumPtr[upp-1];
 	llong subId = id - baseId;
 	auto seg = ctx->m_segCtx[upp-1]->seg;
-	if (seg->m_isDel[subId]) {
-		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
-	}
+    if(seg->testIsDel(subId))
+    {
+        throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+    }
 	seg->getValueAppend(subId, val, ctx);
 }
 
@@ -1117,6 +1118,12 @@ void DbTable::doCreateNewSegmentInLock() {
 		}
 		m_rowNum = m_rowNumVec.back()
 				 = m_rowNumVec.ende(2) + oldwrseg->m_isDel.size();
+        if(oldwrseg->m_isDel.empty())
+        {
+            oldwrseg->m_deletedWrIdSet.clear();
+            return;
+        }
+        oldwrseg->shrinkToSize(oldwrseg->m_isDel.size());
 	}
 	// createWritableSegment should be fast, other wise the lock time
 	// may be too long
@@ -1807,7 +1814,6 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 			SpinRwLock wsLock(wrseg->m_segMutex);
 		//	assert(!seg->m_isDel[subId]);
 			if (!wrseg->m_isDel[subId]) {
-				wrseg->m_deletedWrIdSet.push_back(uint32_t(subId));
 				wrseg->m_delcnt++;
 				wrseg->m_isDel.set1(subId); // always set delmark
 				wrseg->m_isDirty = true;
@@ -1820,6 +1826,12 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 				return false;
 			}
 		}
+        BOOST_SCOPE_EXIT(wrseg, subId)
+        {
+            SpinRwLock wsLock(wrseg->m_segMutex);
+            wrseg->m_deletedWrIdSet.push_back(uint32_t(subId));
+        }
+        BOOST_SCOPE_EXIT_END;
 		if (ctx->syncIndex) {
 			TransactionGuard txn(ctx->m_transaction.get(), subId);
 			valvec<byte> &row = ctx->row1, &key = ctx->key1;
@@ -2930,9 +2942,10 @@ const {
 	llong baseId = ctx->m_rowNumVec[upp-1];
 	auto seg = ctx->m_segCtx[upp-1]->seg;
 	llong subId = id - baseId;
-	if (seg->m_isDel[subId]) {
-		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
-	}
+    if(seg->testIsDel(subId))
+    {
+        throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+    }
 	seg->selectColumns(subId, cols.data(), cols.size(), colsData, ctx);
 }
 
@@ -2957,9 +2970,10 @@ const {
 	llong baseId = ctx->m_rowNumVec[upp-1];
 	auto seg = ctx->m_segCtx[upp-1]->seg;
 	llong subId = id - baseId;
-	if (seg->m_isDel[subId]) {
-		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
-	}
+    if(seg->testIsDel(subId))
+    {
+        throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+    }
 	seg->selectColumns(subId, colsId, colsNum, colsData, ctx);
 }
 
@@ -2984,9 +2998,10 @@ const {
 	llong baseId = ctx->m_rowNumVec[upp-1];
 	auto seg = ctx->m_segCtx[upp-1]->seg;
 	llong subId = id - baseId;
-	if (seg->m_isDel[subId]) {
-		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
-	}
+    if(seg->testIsDel(subId))
+    {
+        throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
+    }
 	seg->selectOneColumn(subId, columnId, colsData, ctx);
 }
 
@@ -3021,9 +3036,6 @@ void DbTable::selectColgroupsNoLock(llong recId,
 	llong subId = recId - baseId;
 	assert(recId >= baseId);
 	auto seg = ctx->m_segCtx[upp-1]->seg;
-	if (seg->m_isDel[subId]) {
-		throw ReadDeletedRecordException(seg->m_segDir.string(), baseId, subId);
-	}
 	seg->selectColgroups(subId, cgIdvec, cgIdvecSize, cgDataVec, ctx);
 }
 
@@ -3343,7 +3355,7 @@ void DbTable::MergeParam::syncPurgeBits(double purgeThresholdRatio) {
 		// but this would not cause big problems
 		seg->m_updateList.reserve(1024); // reduce enlarge times
 		seg->m_bookUpdates = true;
-		if (newMarkDelRatio > purgeThresholdRatio) {
+		if (seg->getWritableSegment() || newMarkDelRatio > purgeThresholdRatio) {
 			// do purge: physic delete
 			e.newIsPurged = seg->m_isDel; // don't lock
 			e.newNumPurged = e.newIsPurged.popcnt(); // recompute purge count
@@ -3542,7 +3554,7 @@ mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 		}
 		else {
 			size_t physicSubRows = e.seg->getPhysicRows();
-			assert(physicSubRows == (size_t)srcStore->numDataRows());
+			assert(physicSubRows <= (size_t)srcStore->numDataRows());
 			memcpy(newBasePtr + fixlen * newPhysicId,
 				   subBasePtr , fixlen * physicSubRows);
 			newPhysicId += physicSubRows;
@@ -3853,7 +3865,6 @@ try{
 			, m_segments.size(), toMerge.m_tabSegNum);
 	}
 	// newSegPathes don't include m_wrSeg
-	valvec<fs::path> newSegPathes(m_segments.size()-1, valvec_reserve());
 	valvec<ReadableSegmentPtr> newSegs(m_segments.capacity(), valvec_reserve());
 	valvec<llong> newRowNumVec(m_rowNumVec.capacity(), valvec_reserve());
 	newRowNumVec.push_back(0);
@@ -3863,60 +3874,33 @@ try{
 		newSegs.push_back(seg);
 		newRowNumVec.push_back(llong(rows));
 	};
-	auto shareReadonlySeg = [&](size_t Old) {
-		size_t New = newSegs.size();
-		auto&  seg = m_segments[Old];
-		assert(nullptr == seg->getWritableStore());
-		auto newSegDir = getSegPath2(m_dir, m_mergeSeqNum+1, "rd", New);
-#if 0
-		fs::create_directory(newSegDir);
-		for (auto& fpath : fs::directory_iterator(seg->m_segDir)) {
-			fs::path linkPath = newSegDir / fpath.path().filename();
-			try { fs::create_hard_link(fpath, linkPath); }
-			catch (const std::exception& ex) {
-				fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
-				throw;
-			}
-		}
-#else
-		fprintf(stderr, "INFO: rename(%s, %s)\n"
-			, seg->m_segDir.string().c_str()
-			, newSegDir.string().c_str());
-		fs::rename(seg->m_segDir, newSegDir);
-#endif
-		addseg(seg);
-		newSegPathes.emplace_back(std::move(newSegDir));
-	};
+    auto shareSeg = [&](ReadableSegment *seg)
+    {
+        fs::path Old = seg->m_segDir;
+        fs::path New = getSegPath2(m_dir, m_mergeSeqNum + 1, "wr", newSegs.size());
+        fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
+        if(fs::is_symlink(Rela))
+        {
+            Rela = fs::read_symlink(Rela);
+        }
+        try
+        {
+            fs::create_directory_symlink(Rela, New);
+        }
+        catch(const std::exception& ex)
+        {
+            fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
+            throw;
+        }
+        addseg(seg);
+    };
 	for (size_t i = 0; i < toMerge.m_segs[0].idx; ++i) {
-		shareReadonlySeg(i);
+		shareSeg(m_segments[i].get());
 	}
 	addseg(dseg);
-	newSegPathes.emplace_back();
-	for (size_t i = toMerge.m_segs.back().idx + 1; i < m_segments.size()-1; ++i) {
-		shareReadonlySeg(i);
-	}
-	if (m_segments.back()->getWritableStore()) {
-		auto& seg = m_segments.back();
-		fs::path Old = seg->m_segDir;
-		fs::path New = getSegPath2(m_dir, m_mergeSeqNum+1, "wr", newSegs.size());
-		fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
-		try { fs::create_directory_symlink(Rela, New); }
-		catch (const std::exception& ex) {
-			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
-			throw;
-		}
-		addseg(seg);
-	}
-	else if (toMerge.m_segs.back().idx + 1 < m_segments.size()) {
-		assert(nullptr == m_wrSeg);
-		shareReadonlySeg(m_segments.size()-1);
-	}
-	else {
-		// called by syncFinishWriting(), and
-		// last ReadonlySegment is in 'toMerge'
-		assert(nullptr == m_wrSeg);
-		assert(toMerge.m_segs.back().idx + 1 == m_segments.size());
-	}
+	for (size_t i = toMerge.m_segs.back().idx + 1; i < m_segments.size(); ++i) {
+		shareSeg(m_segments[i].get());
+    };
 	auto syncOneRecord = [](ReadonlySegment* dseg, ReadableSegment* sseg,
 							size_t baseLogicId, size_t subId) {
 		if (sseg->m_isDel[subId]) {
@@ -3971,23 +3955,6 @@ try{
 		syncUpdates(dseg.get()); // write locked
 		for (auto& e : toMerge.m_segs) {
 			e.seg->m_bookUpdates = false;
-		}
-		for (size_t i = 0; i < newSegs.size()-1; ++i) {
-			auto&  seg = newSegs[i];
-			assert(nullptr == seg->getWritableStore());
-			if (!newSegPathes[i].empty())
-				seg->m_segDir.swap(newSegPathes[i]);
-		}
-		if (newSegs.back()->getWritableStore() == nullptr) {
-			assert(nullptr == m_wrSeg);
-			if (toMerge.m_segs.back().idx + 1 == m_segments.size()) {
-				// called by syncFinishWriting(), and
-				// last ReadonlySegment is merged
-				assert(newSegPathes.back().empty());
-			}
-			else {
-				newSegs.back()->m_segDir.swap(newSegPathes.back());
-			}
 		}
 		assert(toMerge.m_old_segArrayUpdateSeq == m_segArrayUpdateSeq);
 		m_segments.swap(newSegs);

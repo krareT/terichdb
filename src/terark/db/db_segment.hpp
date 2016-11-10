@@ -95,6 +95,10 @@ public:
 		SpinRwLock wsLock(m_segMutex, false);
 		return m_isDel[logicId];
 	}
+    bool testIsDel(size_t logicId) const
+    {
+        return m_isFreezed ? m_isDel[logicId] : locked_testIsDel(logicId);
+    }
 
 	SchemaConfigPtr          m_schema;
 	valvec<ReadableIndexPtr> m_indices; // parallel with m_indexSchemaSet
@@ -367,6 +371,7 @@ public:
 	void update(llong id, fstring row, DbContext*) override;
 	void remove(llong id, DbContext* ctx) override;
 	void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
 	void getCombineAppend(llong recId, valvec<byte>* val, valvec<byte>& wrtBuf, ColumnVec& cols1, ColumnVec& cols2) const;
 

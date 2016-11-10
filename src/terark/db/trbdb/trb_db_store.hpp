@@ -55,6 +55,7 @@ public:
 	void  remove(llong id, DbContext*) override;
 
 	void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
 	AppendableStore* getAppendableStore() override;
 	UpdatableStore* getUpdatableStore() override;
@@ -90,6 +91,7 @@ public:
     void  remove(llong id, DbContext*) override;
 
     void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
     AppendableStore* getAppendableStore() override;
     UpdatableStore* getUpdatableStore() override;

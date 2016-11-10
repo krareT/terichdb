@@ -105,6 +105,7 @@ public:
 	virtual ~AppendableStore();
 	virtual llong append(fstring row, DbContext*) = 0;
 	virtual void  shrinkToFit() = 0;
+    virtual void  shrinkToSize(size_t size) = 0;
 };
 
 class TERARK_DB_DLL UpdatableStore {

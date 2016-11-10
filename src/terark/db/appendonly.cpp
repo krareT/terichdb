@@ -135,6 +135,11 @@ void RandomReadAppendonlyStore::shrinkToFit() {
 	m_store = (byte_t*)mmap_load(m_storeFile, &m_storeBytes);
 }
 
+void RandomReadAppendonlyStore::shrinkToSize(size_t)
+{
+    assert(0);
+}
+
 void RandomReadAppendonlyStore::deleteFiles() {
 	mmap_close(m_index, m_indexBytes); m_index = NULL;
 	mmap_close(m_store, m_storeBytes); m_store = NULL;
@@ -318,6 +323,11 @@ void SeqReadAppendonlyStore::shrinkToFit() {
 	m_io->dio << int64_t(m_rows);
 	m_io->dio << int64_t(m_inflateSize);
 	m_io.reset();
+}
+
+void SeqReadAppendonlyStore::shrinkToSize(size_t)
+{
+    assert(0);
 }
 
 void SeqReadAppendonlyStore::deleteFiles() {

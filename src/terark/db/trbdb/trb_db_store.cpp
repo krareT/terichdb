@@ -305,6 +305,7 @@ StoreIterator *TrbWritableStore::createStoreIterBackward(DbContext *) const
 
 llong TrbWritableStore::append(fstring row, DbContext *)
 {
+    assert(!m_isFreezed);
     TrbStoreRWLock::scoped_lock l(m_rwMutex);
     size_t id;
     storeItem(id = m_index.size(), row);
@@ -313,12 +314,14 @@ llong TrbWritableStore::append(fstring row, DbContext *)
 
 void TrbWritableStore::update(llong id, fstring row, DbContext *)
 {
+    assert(!m_isFreezed);
     TrbStoreRWLock::scoped_lock l(m_rwMutex);
     storeItem(size_t(id), row);
 }
 
 void TrbWritableStore::remove(llong id, DbContext *)
 {
+    assert(!m_isFreezed);
     TrbStoreRWLock::scoped_lock l(m_rwMutex);
     assert(size_t(id) < m_index.size() && m_index[id] != store_nil_index);
     removeItem(size_t(id));
@@ -326,8 +329,22 @@ void TrbWritableStore::remove(llong id, DbContext *)
 
 void TrbWritableStore::shrinkToFit()
 {
+    assert(!m_isFreezed);
     TrbStoreRWLock::scoped_lock l(m_rwMutex);
     m_index.shrink_to_fit();
+    m_data.shrink_to_fit();
+}
+
+void TrbWritableStore::shrinkToSize(size_t size)
+{
+    assert(!m_isFreezed);
+    TrbStoreRWLock::scoped_lock l(m_rwMutex);
+    assert(size <= m_index.size());
+    assert(std::find_if(m_index.begin() + size, m_index.end(), [](uint32_t o)
+    {
+        return o != store_nil_index;
+    }) == m_index.end());
+    m_index.resize(size);
     m_data.shrink_to_fit();
 }
 
@@ -412,6 +429,7 @@ StoreIterator *MemoryFixedLenStore::createStoreIterBackward(DbContext *) const
 
 llong MemoryFixedLenStore::append(fstring row, DbContext *)
 {
+    assert(!m_isFreezed);
     ScopeLock(true);
     assert(row.size() == m_fixlen);
     assert(m_data.size() % m_fixlen == 0);
@@ -423,6 +441,7 @@ llong MemoryFixedLenStore::append(fstring row, DbContext *)
 
 void MemoryFixedLenStore::update(llong id, fstring row, DbContext *)
 {
+    assert(!m_isFreezed);
     ScopeLock(true);
     assert(row.size() == m_fixlen);
     size_t offset = size_t(id) * m_fixlen;
@@ -436,6 +455,7 @@ void MemoryFixedLenStore::update(llong id, fstring row, DbContext *)
 
 void MemoryFixedLenStore::remove(llong id, DbContext *)
 {
+    assert(!m_isFreezed);
     ScopeLock(true);
     size_t offset = size_t(id) * m_fixlen;
     if(terark_unlikely(offset + m_fixlen == m_data.size()))
@@ -446,8 +466,18 @@ void MemoryFixedLenStore::remove(llong id, DbContext *)
 
 void MemoryFixedLenStore::shrinkToFit()
 {
+    assert(!m_isFreezed);
     ScopeLock(true);
     m_data.shrink_to_fit();
+    m_recordsBasePtr = m_data.data();
+}
+
+void MemoryFixedLenStore::shrinkToSize(size_t size)
+{
+    assert(!m_isFreezed);
+    ScopeLock(true);
+    assert(size <= m_data.size() / m_fixlen);
+    m_data.resize(size * m_fixlen);
     m_recordsBasePtr = m_data.data();
 }
 

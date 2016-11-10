@@ -27,15 +27,15 @@ struct TrbReadDeletedRecordException
 struct TrbRWRowMutex : boost::noncopyable
 {
 private:
-    typedef tbb::queuing_rw_mutex rw_lock_t;
-    typedef tbb::spin_mutex spin_lock_t;
+    typedef tbb::queuing_rw_mutex rw_mutex_t;
+    typedef SpinRwMutex spin_mutex_t;
 
     struct map_item
     {
         map_item(uint32_t);
         uint32_t id;
         uint32_t count;
-        rw_lock_t lock;
+        rw_mutex_t lock;
     };
     template<size_t Size, class Unused>
     struct hasher
@@ -53,27 +53,28 @@ private:
             return size_t(id & 0xFFFFFFFF) | size_t(uint64_t(id) >> 32);
         }
     };
-    trb_hash_map<uint32_t, map_item *, hasher<sizeof(size_t), void>> row_lock;
-    valvec<map_item *> lock_pool;
-    spin_lock_t g_lock;
+    trb_hash_map<uint32_t, map_item *, hasher<sizeof(size_t), void>> row_mutex;
+    valvec<map_item *> mutex_pool;
+    spin_mutex_t &g_mutex;
 
 public:
+    TrbRWRowMutex(spin_mutex_t &);
     ~TrbRWRowMutex();
 
     class scoped_lock
     {
-    private:
+    protected:
         TrbRWRowMutex *parent;
         map_item *item;
-        rw_lock_t::scoped_lock lock;
+        rw_mutex_t::scoped_lock lock;
 
     public:
-        scoped_lock(TrbRWRowMutex &mutex, size_t id, bool write = true);
+        scoped_lock(TrbRWRowMutex &mutex, llong id, bool write = true);
         ~scoped_lock();
 
         bool upgrade();
         bool downgrade();
-    };
+    };  
 };
 
 class TERARK_DB_DLL TrbColgroupSegment : public ColgroupWritableSegment {
@@ -115,7 +116,8 @@ public:
     void remove(llong, DbContext *) override;
     void update(llong, fstring, DbContext *) override;
 
-    void shrinkToFit(void) override;
+    void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
     void saveRecordStore(PathRef segDir) const override;
     void loadRecordStore(PathRef segDir) override;

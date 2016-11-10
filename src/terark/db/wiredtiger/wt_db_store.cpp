@@ -379,6 +379,11 @@ void WtWritableStore::remove(llong id, DbContext* ctx0) {
 void WtWritableStore::shrinkToFit() {
 	// do nothing
 }
+
+void WtWritableStore::shrinkToSize(size_t size)
+{
+    // do nothing
+}
 /*
 void WtWritableStore::clear() {
 	tbb::mutex::scoped_lock lock(m_wtMutex);
