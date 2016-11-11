@@ -51,6 +51,11 @@ private:
     };
     valvec<Wrapper*> pool;
 public:
+    ~DbContextObjCache() {
+        for (auto item : pool) {
+            delete item;
+        }
+    }
     CacheItem get() {
         if (pool.empty()) {
             return CacheItem(new Wrapper{this, {}});
