@@ -231,7 +231,7 @@ public:
             {
                 continue;
             }
-            struct BadTrbLogException : std::logic_error
+            struct BadTrbLogException : public std::logic_error
             {
                 BadTrbLogException(std::string f) : std::logic_error("TrbSegment bad log : " + f)
                 {
@@ -413,7 +413,11 @@ public:
                 }
                 if(!seqHeap.empty())
                 {
-                    throw badLog;
+                    fprintf(stderr,
+                            "WARN: TrgSegment log incomplete , caused by unsafe shutdown . %s : %zd operation(s)\n",
+                            fileName.c_str(),
+                            seqHeap.size()
+                    );
                 }
                 if(pos != in.end())
                 {
