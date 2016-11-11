@@ -3877,12 +3877,18 @@ try{
     auto shareSeg = [&](ReadableSegment *seg)
     {
         fs::path Old = seg->m_segDir;
-        fs::path New = getSegPath2(m_dir, m_mergeSeqNum + 1, "wr", newSegs.size());
-        fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
-        if(fs::is_symlink(Rela))
+        if(fs::is_symlink(Old))
         {
-            Rela = fs::read_symlink(Rela);
+            fs::path RawOld = fs::read_symlink(Old);
+            assert(RawOld.parent_path().filename() == Old.parent_path().filename());
+            Old = RawOld;
         }
+        fs::path New = getSegPath2(m_dir,
+                                   m_mergeSeqNum + 1,
+                                   seg->getWritableStore() ? "wr" : "rd",
+                                   newSegs.size()
+        );
+        fs::path Rela = ".." / Old.parent_path().filename() / Old.filename();
         try
         {
             fs::create_directory_symlink(Rela, New);
@@ -3895,11 +3901,11 @@ try{
         addseg(seg);
     };
 	for (size_t i = 0; i < toMerge.m_segs[0].idx; ++i) {
-		shareSeg(m_segments[i].get());
+        shareSeg(m_segments[i].get());
 	}
 	addseg(dseg);
 	for (size_t i = toMerge.m_segs.back().idx + 1; i < m_segments.size(); ++i) {
-		shareSeg(m_segments[i].get());
+        shareSeg(m_segments[i].get());
     };
 	auto syncOneRecord = [](ReadonlySegment* dseg, ReadableSegment* sseg,
 							size_t baseLogicId, size_t subId) {
