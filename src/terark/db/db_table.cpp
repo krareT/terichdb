@@ -37,7 +37,7 @@ const size_t DEFAULT_maxSegNum = 4095;
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#if defined(NDEBUG)
+#if 1 || defined(NDEBUG)
 	#define DebugCheckRowNumVecNoLock(This)
 #else
 	#define DebugCheckRowNumVecNoLock(This) \
@@ -46,6 +46,13 @@ const size_t DEFAULT_maxSegNum = 4095;
 	BOOST_SCOPE_EXIT(BOOST_PP_CAT(Self, __LINE__)) { \
 		BOOST_PP_CAT(Self, __LINE__)->checkRowNumVecNoLock(); \
 	} BOOST_SCOPE_EXIT_END
+#endif
+
+#if 1 || defined(NDEBUG)
+#   define DebugCheckUnique(ctx,row,uniqueIndexId) do{}while(0)
+#else
+#   define DebugCheckUnique(ctx,row,uniqueIndexId)\
+    TERARK_IF_DEBUG((ctx)->debugCheckUnique((row), (uniqueIndexId)),;);
 #endif
 
 DbTable* DbTable::open(PathRef dbPath) {
@@ -1227,36 +1234,38 @@ bool DbTable::exists(llong id) const {
 
 llong DbTable::insertRow(fstring row, DbContext* txn) {
 	this->throttleWrite();
+    auto cols = txn->cols.get();
 	if (txn->syncIndex) { // parseRow doesn't need lock
-		m_schema->m_rowSchema->parseRow(row, &txn->cols1);
+		m_schema->m_rowSchema->parseRow(row, cols.get());
 	}
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	MyRwLock lock(m_rwMutex, false);
 	assert(m_rowNumVec.size() == m_segments.size()+1);
-	return insertRowImpl(row, txn, lock);
+	return insertRowImpl(row, cols.get(), txn, lock);
 }
 
-llong DbTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
+llong DbTable::insertRowImpl(fstring row, ColumnVec *cols, DbContext* ctx, MyRwLock& lock) {
 	DebugCheckRowNumVecNoLock(this);
 	maybeCreateNewSegment(lock);
 	ctx->trySyncSegCtxNoLock(this);
 	ctx->ensureTransactionNoLock();
 	if (!ctx->syncIndex) {
-		return insertRowDoInsert(row, ctx);
+		return insertRowDoInsert(row, cols, ctx);
 	}
 	const SchemaConfig& sconf = *m_schema;
+    auto key = ctx->bufs.get();
 	for (size_t segIdx = 0; segIdx < m_segments.size()-1; ++segIdx) {
 		auto seg = m_segments[segIdx].get();
 		for(size_t indexId : sconf.m_uniqIndices) {
 			const Schema& iSchema = sconf.getIndexSchema(indexId);
 			assert(iSchema.m_isUnique);
-			iSchema.selectParent(ctx->cols1, &ctx->key1);
-			seg->indexSearchExact(segIdx, indexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			iSchema.selectParent(*cols, key.get());
+			seg->indexSearchExact(segIdx, indexId, *key, &ctx->exactMatchRecIdvec, ctx);
 			for(llong logicId : ctx->exactMatchRecIdvec) {
 				if (!seg->m_isDel[logicId]) {
 					char szIdstr[96];
 					snprintf(szIdstr, sizeof(szIdstr), "logicId = %lld", logicId);
-					ctx->errMsg = "DupKey=" + iSchema.toJsonStr(ctx->key1)
+					ctx->errMsg = "DupKey=" + iSchema.toJsonStr(*key)
 								+ ", " + szIdstr
 								+ ", in frozen seg: " + seg->m_segDir.string();
 				//	txn->errMsg += ", rowData=";
@@ -1266,13 +1275,13 @@ llong DbTable::insertRowImpl(fstring row, DbContext* ctx, MyRwLock& lock) {
 			}
 		}
 	}
-	return insertRowDoInsert(row, ctx);
+	return insertRowDoInsert(row, cols, ctx);
 }
 
-llong DbTable::insertRowDoInsert(fstring row, DbContext* ctx) {
+llong DbTable::insertRowDoInsert(fstring row, ColumnVec *cols, DbContext* ctx) {
     llong subId = allocInvisibleWrSubId_NoTabLock();
 	TransactionGuard txn(ctx->m_transaction.get(), subId);
-	llong recId = insertRowDoInsertNoCommit(subId, row, ctx);
+	llong recId = insertRowDoInsertNoCommit(subId, row, cols, ctx);
 	if (recId >= 0) {
 		if (!txn.commit()) {
 			llong wrBaseId = m_rowNumVec.end()[-2];
@@ -1330,10 +1339,10 @@ void DbTable::freeInvisibleWrSubId_NoTabLock(llong wrSubId) {
 #endif
 }
 
-llong DbTable::insertRowDoInsertNoCommit(llong subId, fstring row, DbContext* ctx) {
+llong DbTable::insertRowDoInsertNoCommit(llong subId, fstring row, ColumnVec *cols, DbContext* ctx) {
 	if (ctx->syncIndex) {
 		DbTransaction* txn = ctx->m_transaction.get();
-		if (insertSyncIndex(subId, txn, ctx)) {
+		if (insertSyncIndex(subId, cols, txn, ctx)) {
 			txn->storeUpdate(row);
 			m_wrSeg->delmarkSet0(subId);
 		}
@@ -1352,17 +1361,18 @@ llong DbTable::insertRowDoInsertNoCommit(llong subId, fstring row, DbContext* ct
 }
 
 bool
-DbTable::insertSyncIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
+DbTable::insertSyncIndex(llong subId, ColumnVec *cols, DbTransaction* txn, DbContext* ctx) {
 	// first try insert unique index
 	const SchemaConfig& sconf = *m_schema;
+    auto key = ctx->bufs.get();
 	size_t i = 0;
 	for (; i < sconf.m_uniqIndices.size(); ++i) {
 		size_t indexId = sconf.m_uniqIndices[i];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
 		assert(iSchema.m_isUnique);
-		iSchema.selectParent(ctx->cols1, &ctx->key1);
-		if (!txn->indexInsert(indexId, ctx->key1)) {
-			ctx->errMsg = "DupKey=" + iSchema.toJsonStr(ctx->key1)
+		iSchema.selectParent(*cols, key.get());
+		if (!txn->indexInsert(indexId, *key)) {
+			ctx->errMsg = "DupKey=" + iSchema.toJsonStr(*key)
 						+ ", in writing seg: " + m_wrSeg->m_segDir.string();
 			goto Fail;
 		}
@@ -1372,8 +1382,8 @@ DbTable::insertSyncIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
 		size_t indexId = sconf.m_multIndices[i];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
 		assert(!iSchema.m_isUnique);
-		iSchema.selectParent(ctx->cols1, &ctx->key1);
-		txn->indexInsert(indexId, ctx->key1);
+		iSchema.selectParent(*cols, key.get());
+		txn->indexInsert(indexId, *key);
 	}
 	return true;
 Fail:
@@ -1381,8 +1391,8 @@ Fail:
 		--j;
 		size_t indexId = sconf.m_uniqIndices[j];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
-		iSchema.selectParent(ctx->cols1, &ctx->key1);
-		txn->indexRemove(indexId, ctx->key1);
+		iSchema.selectParent(*cols, key.get());
+		txn->indexRemove(indexId, *key);
 	}
 	return false;
 }
@@ -1406,7 +1416,8 @@ llong DbTable::upsertRow(fstring row, DbContext* ctx) {
 		tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(millisec*0.001));
 	//	std::this_thread::sleep_for(std::chrono::milliseconds(millisec));
 	}
-	TERARK_THROW(NeedRetryException, "Insertion temporary failed, retry later");
+	//TERARK_THROW(NeedRetryException, "Insertion temporary failed, retry later");
+    throw NeedRetryException("Insertion temporary failed, retry later");
 }
 
 llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
@@ -1435,9 +1446,11 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	}
 	size_t uniqueIndexId = sconf.m_uniqIndices[0];
 	// parseRow doesn't need lock
-	sconf.m_rowSchema->parseRow(row, &ctx->cols1);
+    auto cols1 = ctx->cols.get();
+    auto key1 = ctx->bufs.get();
+	sconf.m_rowSchema->parseRow(row, cols1.get());
 	const Schema& indexSchema = sconf.getIndexSchema(uniqueIndexId);
-	indexSchema.selectParent(ctx->cols1, &ctx->key1);
+	indexSchema.selectParent(*cols1, key1.get());
 	{
 		MyRwLock lock(m_rwMutex, false);
 		ctx->trySyncSegCtxNoLock(this);
@@ -1446,7 +1459,7 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	for (size_t segIdx = 0; segIdx < ctx->m_segCtx.size()-1; ++segIdx) {
 		auto seg = ctx->m_segCtx[segIdx]->seg;
 		assert(seg->m_isFreezed);
-		seg->indexSearchExact(segIdx, uniqueIndexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+		seg->indexSearchExact(segIdx, uniqueIndexId, *key1, &ctx->exactMatchRecIdvec, ctx);
 		if (!ctx->exactMatchRecIdvec.empty()) {
 			llong subId = ctx->exactMatchRecIdvec[0];
 			llong baseId = ctx->m_rowNumVec[segIdx];
@@ -1472,7 +1485,7 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 			if (seg->m_isDel[subId]) { // should be very rare
 				break;
 			}
-			llong newRecId = insertRowDoInsert(row, ctx);
+			llong newRecId = insertRowDoInsert(row, cols1.get(), ctx);
 			if (newRecId >= 0) {
 				{
 					SpinRwLock segLock(seg->m_segMutex, true);
@@ -1480,7 +1493,7 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 					seg->m_isDel.set1(subId);
 					seg->addtoUpdateList(subId);
 				}
-				TERARK_IF_DEBUG(ctx->debugCheckUnique(row, uniqueIndexId),;);
+				DebugCheckUnique(ctx, row, uniqueIndexId);
 				ctx->isUpsertOverwritten = 2;
 				if (checkPurgeDeleteNoLock(seg)) {
 					lock.upgrade_to_writer();
@@ -1498,10 +1511,10 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	ctx->trySyncSegCtxNoLock(this);
 	ctx->ensureTransactionNoLock();
 	m_wrSeg->indexSearchExact(m_segments.size()-1, uniqueIndexId,
-		ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+		*key1, &ctx->exactMatchRecIdvec, ctx);
 	if (ctx->exactMatchRecIdvec.empty()) {
-		llong recId = insertRowDoInsert(row, ctx);
-		TERARK_IF_DEBUG(ctx->debugCheckUnique(row, uniqueIndexId),;);
+		llong recId = insertRowDoInsert(row, cols1.get(), ctx);
+        DebugCheckUnique(ctx, row, uniqueIndexId);
 		maybeCreateNewSegment(lock);
 		return recId;
 	}
@@ -1510,8 +1523,10 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 	assert(ctx->exactMatchRecIdvec.size() == 1);
 	TransactionGuard txn(ctx->m_transaction.get(), subId);
 	if (!sconf.m_multIndices.empty()) {
+        auto cols2 = ctx->cols.get();
+        auto row2 = ctx->bufs.get();
 		try {
-			txn.storeGetRow(&ctx->row2);
+			txn.storeGetRow(row2.get());
 		}
 		catch (const ReadRecordException&) {
 			fprintf(stderr
@@ -1521,8 +1536,8 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 			throw ReadRecordException("pre updateSyncMultIndex",
 						m_wrSeg->m_segDir.string(), baseId, subId);
 		}
-		sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
-		updateSyncMultIndex(subId, txn.getTxn(), ctx);
+		sconf.m_rowSchema->parseRow(*row2, cols2.get()); // old
+		updateSyncMultIndex(subId, cols1.get(), cols2.get(), txn.getTxn(), ctx);
 	}
 	txn.storeUpdate(row);
 	if (!txn.commit()) {
@@ -1547,7 +1562,8 @@ DbTable::upsertRowMultiUniqueIndices(fstring row, valvec<llong>* resRecIdvec, Db
 llong
 DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 	this->throttleWrite();
-	m_schema->m_rowSchema->parseRow(row, &ctx->cols1); // new row
+    auto cols1 = ctx->cols.get();
+	m_schema->m_rowSchema->parseRow(row, cols1.get()); // new row
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
 	MyRwLock lock(m_rwMutex, false);
 	DebugCheckRowNumVecNoLock(this);
@@ -1574,15 +1590,17 @@ DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 				, id, j, baseId, subId);
 		}
 		else {
-			seg->getValue(subId, &ctx->row2, ctx);
-			m_schema->m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old row
+            auto cols2 = ctx->cols.get();
+            auto row2 = ctx->bufs.get();
+			seg->getValue(subId, row2.get(), ctx);
+			m_schema->m_rowSchema->parseRow(*row2, cols2.get()); // old row
 
-			if (!updateCheckSegDup(0, m_segments.size()-1, ctx))
+			if (!updateCheckSegDup(0, m_segments.size()-1, cols2.get(), ctx))
 				return -1;
 			if (!lock.upgrade_to_writer()) {
 				// check for segment changes(should be very rare)
 				if (old_newWrSegNum != m_newWrSegNum) {
-					if (!updateCheckSegDup(m_segments.size()-2, 1, ctx))
+					if (!updateCheckSegDup(m_segments.size()-2, 1, cols2.get(), ctx))
 						return -1;
 				}
 				directUpgrade = false;
@@ -1602,7 +1620,7 @@ DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 	}
 	if (j == m_rowNumVec.size()-1) { // id is in m_wrSeg
 		if (ctx->syncIndex) {
-			updateWithSyncIndex(subId, row, ctx);
+			updateWithSyncIndex(subId, row, cols1.get(), ctx);
 		}
 		else {
 			m_wrSeg->m_isDirty = true;
@@ -1615,7 +1633,7 @@ DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 		lock.downgrade_to_reader();
 	//	lock.release();
 	//	lock.acquire(m_rwMutex, false);
-		llong recId = insertRowImpl(row, ctx, lock); // id is changed
+		llong recId = insertRowImpl(row, cols1.get(), ctx, lock); // id is changed
 		if (recId >= 0) {
 			// mark old subId as deleted
 			SpinRwLock segLock(seg->m_segMutex);
@@ -1629,13 +1647,14 @@ DbTable::updateRow(llong id, fstring row, DbContext* ctx) {
 }
 
 bool
-DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
+DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, ColumnVec *cols, DbContext* ctx) {
 	// m_wrSeg will be check in unique index insert
 	const size_t endSeg = begSeg + numSeg;
 	assert(endSeg < m_segments.size()); // don't check m_wrSeg
 	if (0 == numSeg)
 		return true;
 	const SchemaConfig& sconf = *m_schema;
+    auto key = ctx->bufs.get();
 	for(size_t i = 0; i < sconf.m_uniqIndices.size(); ++i) {
 		size_t indexId = sconf.m_uniqIndices[i];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
@@ -1643,8 +1662,8 @@ DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 			auto seg = &*m_segments[segIdx];
 			assert(iSchema.m_isUnique);
 			assert(seg->m_isFreezed);
-			iSchema.selectParent(ctx->cols1, &ctx->key1);
-			seg->indexSearchExact(segIdx, indexId, ctx->key1, &ctx->exactMatchRecIdvec, ctx);
+			iSchema.selectParent(*cols, key.get());
+			seg->indexSearchExact(segIdx, indexId, *key, &ctx->exactMatchRecIdvec, ctx);
 			for(llong physicId : ctx->exactMatchRecIdvec) {
 				llong logicId = seg->getLogicId(physicId);
 				if (!seg->m_isDel[logicId]) {
@@ -1653,7 +1672,7 @@ DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 					snprintf(szIdstr, sizeof(szIdstr)
 						, "logicId = %lld , physicId = %lld"
 						, logicId, physicId);
-					ctx->errMsg = "DupKey=" + iSchema.toJsonStr(ctx->key1)
+					ctx->errMsg = "DupKey=" + iSchema.toJsonStr(*key)
 								+ ", " + szIdstr
 								+ ", in frozen seg: " + seg->m_segDir.string();
 				//	txn->errMsg += ", rowData=";
@@ -1667,11 +1686,15 @@ DbTable::updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext* ctx) {
 }
 
 bool
-DbTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
+DbTable::updateWithSyncIndex(llong subId, fstring row, ColumnVec *cols1, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
+    auto cols2 = ctx->cols.get();
+    auto row2 = ctx->bufs.get();
+    auto key1 = ctx->bufs.get();
+    auto key2 = ctx->bufs.get();
 	TransactionGuard txn(ctx->m_transaction.get(), subId);
 	try {
-		txn.storeGetRow(&ctx->row2);
+		txn.storeGetRow(row2.get());
 	}
 	catch (const ReadRecordException&) {
 		txn.rollback();
@@ -1679,15 +1702,15 @@ DbTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 		throw ReadRecordException("updateWithSyncIndex"
 			, m_wrSeg->m_segDir.string(), baseId, subId);
 	}
-	sconf.m_rowSchema->parseRow(ctx->row2, &ctx->cols2); // old
+	sconf.m_rowSchema->parseRow(*row2, cols2.get()); // old
 	size_t i = 0;
 	for (; i < sconf.m_uniqIndices.size(); ++i) {
 		size_t indexId = sconf.m_uniqIndices[i];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
-		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
-		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
-		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			if (!txn.indexInsert(indexId, ctx->key1)) {
+		iSchema.selectParent(*cols2, key2.get()); // old
+		iSchema.selectParent(*cols1, key1.get()); // new
+		if (!valvec_equalTo(*key1, *key2)) {
+			if (!txn.indexInsert(indexId, *key1)) {
 				goto Fail;
 			}
 		}
@@ -1695,13 +1718,13 @@ DbTable::updateWithSyncIndex(llong subId, fstring row, DbContext* ctx) {
 	for (i = 0; i < sconf.m_uniqIndices.size(); ++i) {
 		size_t indexId = sconf.m_uniqIndices[i];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
-		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
-		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
-		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			txn.indexRemove(indexId, ctx->key1);
+		iSchema.selectParent(*cols2, key2.get()); // old
+		iSchema.selectParent(*cols1, key1.get()); // new
+		if (!valvec_equalTo(*key1, *key2)) {
+			txn.indexRemove(indexId, *key1);
 		}
 	}
-	updateSyncMultIndex(subId, txn.getTxn(), ctx);
+	updateSyncMultIndex(subId, cols1, cols2.get(), txn.getTxn(), ctx);
 	txn.storeUpdate(row);
 	if (!txn.commit()) {
 		llong baseId = m_rowNumVec.ende(2);
@@ -1716,10 +1739,10 @@ Fail:
 		--j;
 		size_t indexId = sconf.m_uniqIndices[j];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
-		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
-		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
-		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			txn.indexRemove(indexId, ctx->key1);
+		iSchema.selectParent(*cols2, key2.get()); // old
+		iSchema.selectParent(*cols1, key1.get()); // new
+		if (!valvec_equalTo(*key1, *key2)) {
+			txn.indexRemove(indexId, *key1);
 		}
 	}
 	txn.rollback();
@@ -1727,16 +1750,18 @@ Fail:
 }
 
 void
-DbTable::updateSyncMultIndex(llong subId, DbTransaction* txn, DbContext* ctx) {
+DbTable::updateSyncMultIndex(llong subId, ColumnVec *cols1, ColumnVec *cols2, DbTransaction* txn, DbContext* ctx) {
 	const SchemaConfig& sconf = *m_schema;
+    auto key1 = ctx->bufs.get();
+    auto key2 = ctx->bufs.get();
 	for (size_t i = 0; i < sconf.m_multIndices.size(); ++i) {
 		size_t indexId = sconf.m_multIndices[i];
 		const Schema& iSchema = sconf.getIndexSchema(indexId);
-		iSchema.selectParent(ctx->cols2, &ctx->key2); // old
-		iSchema.selectParent(ctx->cols1, &ctx->key1); // new
-		if (!valvec_equalTo(ctx->key1, ctx->key2)) {
-			txn->indexRemove(indexId, ctx->key2);
-			txn->indexInsert(indexId, ctx->key1);
+		iSchema.selectParent(*cols2, key2.get()); // old
+		iSchema.selectParent(*cols1, key1.get()); // new
+		if (!valvec_equalTo(*key1, *key2)) {
+			txn->indexRemove(indexId, *key2);
+			txn->indexInsert(indexId, *key1);
 		}
 	}
 }
@@ -1834,10 +1859,11 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
         BOOST_SCOPE_EXIT_END;
 		if (ctx->syncIndex) {
 			TransactionGuard txn(ctx->m_transaction.get(), subId);
-			valvec<byte> &row = ctx->row1, &key = ctx->key1;
-			ColumnVec& columns = ctx->cols1;
+            auto cols = ctx->cols.get();
+			auto row = ctx->bufs.get();
+            auto key = ctx->bufs.get();
 			try {
-				txn.storeGetRow(&row);
+				txn.storeGetRow(row.get());
 			}
 			catch (const ReadRecordException& ex) {
 #if 0//!defined(NDEBUG)
@@ -1851,11 +1877,11 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 				throw ReadRecordException("removeRow: pre remove index",
 					wrseg->m_segDir.string(), baseId, subId);
 			}
-			m_schema->m_rowSchema->parseRow(row, &columns);
+			m_schema->m_rowSchema->parseRow(*row, cols.get());
 			for (size_t i = 0; i < wrseg->m_indices.size(); ++i) {
 				const Schema& iSchema = m_schema->getIndexSchema(i);
-				iSchema.selectParent(columns, &key);
-				txn.indexRemove(i, key);
+				iSchema.selectParent(*cols, key.get());
+				txn.indexRemove(i, *key);
 			}
 			txn.storeRemove();
 			if (!txn.commit()) {
@@ -3193,7 +3219,6 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		return false;
 	if (PurgeStatus::none != tab->m_purgeStatus)
 		return false;
-	m_old_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 	// memory alloc should be out of lock scope
 	m_segs.reserve(tab->m_segments.size() + 1);
 	{
@@ -3231,8 +3256,10 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 				///< rarely but possible
 				assert(m_old_segArrayUpdateSeq < tab->m_segArrayUpdateSeq);
 				fprintf(stderr,
-"INFO: MergeParam::canMerge(): m_segArrayUpdateSeq: old = %zd, new = %zd\n",
-					m_old_segArrayUpdateSeq, tab->m_segArrayUpdateSeq);
+                        "INFO: MergeParam::canMerge(): m_segArrayUpdateSeq: old = %zd, new = %zd\n",
+					    m_old_segArrayUpdateSeq,
+                        tab->m_segArrayUpdateSeq
+                );
 				return false;
 			}
 		}
@@ -3245,6 +3272,7 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 		// used for violation check
 		this->m_tabSegNum = tab->m_segments.size();
 		DebugCheckRowNumVecNoLock(tab);
+	    m_old_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
 	}
 	size_t sumSegRows = 0;
 	for (auto& e : m_segs) sumSegRows += e.seg->getPhysicRows();
@@ -3277,8 +3305,14 @@ bool DbTable::MergeParam::canMerge(DbTable* tab) {
 	for(size_t j = 0; j < m_segs.size(); ) {
 		size_t k = j;
 		for (; k < m_segs.size(); ++k) {
-			if (m_segs[k].seg->getPhysicRows() > maxSegRows)
-				break;
+			if (m_segs[k].seg->getPhysicRows() > maxSegRows) {
+                if (m_segs[k].seg->getReadonlySegment()) {
+				    break;
+                }
+                else {
+                    assert(m_segs[k].seg->getColgroupSegment());
+                }
+            }
 		}
 		if (k - j > rngLen) {
 			rngBeg = j;
@@ -4269,6 +4303,11 @@ void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
 		MyRwLock lock(m_rwMutex, true);
 		m_bgTaskNum--;
 	}BOOST_SCOPE_EXIT_END;
+	ReadableSegmentPtr inputSeg;
+	{
+		MyRwLock lock(m_rwMutex, false);
+		inputSeg = m_segments[segIdx];
+	}
   auto compressToReadonly = [&]() {
 	auto segDir = getSegPath("rd", segIdx);
 	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
@@ -4303,19 +4342,19 @@ void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
 			, ex.what());
 	}
 #endif
-	if (this->m_isMerging || m_bgTaskNum > 1) {
-		return;
-	}
   };
+	if (inputSeg->getColgroupSegment()) {
+        if (this->m_isMerging || m_bgTaskNum > 1) {
+	        return;
+        }
+    }
 	MergeParam toMerge;
 	if (toMerge.canMerge(this)) {
-		ReadableSegmentPtr inputSeg;
-		{
-			MyRwLock lock(m_rwMutex, false);
-			inputSeg = m_segments[segIdx];
-		}
 		if (!inputSeg->getColgroupSegment()) {
 			compressToReadonly();
+            if (this->m_isMerging || m_bgTaskNum > 1) {
+	            return;
+            }
 		}
 		inputSeg.reset();
 		assert(this->m_isMerging);

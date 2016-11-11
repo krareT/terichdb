@@ -1104,6 +1104,17 @@ public:
         return true;
     }
 
+    uint64_t allocSeqId() override
+    {
+        assert(!m_isFreezed);
+        uint64_t seq;
+        {
+            TrbIndexRWLock::scoped_lock l(m_rwMutex, true);
+            seq = m_seqSeed++;
+        }
+        return seq;
+    }
+
     bool remove(fstring key, llong id, DbContext*) override
     {
         assert(!m_isFreezed);

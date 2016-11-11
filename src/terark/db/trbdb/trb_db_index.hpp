@@ -12,6 +12,7 @@ public:
 
     virtual bool removeWithSeqId(fstring key, llong id, uint64_t &seq, DbContext*) = 0;
     virtual bool insertWithSeqId(fstring key, llong id, uint64_t &seq, DbContext*) = 0;
+    virtual uint64_t allocSeqId() = 0;
 };
 typedef boost::intrusive_ptr<TrbWritableIndex> TrbWritableIndexPtr;
 

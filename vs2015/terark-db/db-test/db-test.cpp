@@ -7,11 +7,13 @@
 #include <terark/io/MemStream.hpp>
 #include <terark/io/RangeStream.hpp>
 #include <terark/num_to_str.hpp>
+#include <thread>
 #include <random>
 #include "TestRow.hpp"
 
 using namespace DbTest;
 using namespace terark::db;
+
 
 void doTest(const char* tableDir, size_t maxRowNum)
 {
@@ -257,6 +259,56 @@ void doTest(const char* tableDir, size_t maxRowNum)
     tab->syncFinishWriting();
 }
 
+void doTestMultiThread(const char* tableDir, size_t maxRowNum, size_t threadNum)
+{
+    using namespace terark;
+
+    DbTablePtr tab = TestRow::openTable(tableDir, true);
+    auto test = [&](size_t id)
+    {
+        DbContextPtr ctx = tab->createDbContext();
+        std::mt19937 mt(id);
+        valvec<llong> recIdvec;
+        valvec<byte_t>  recBuf;
+        NativeDataOutput<AutoGrownMemIO> rowBuilder;
+        TestRow recRow;
+
+        for(size_t i = 0; i < maxRowNum; ++i)
+        {
+            recRow.id = std::uniform_int_distribution<size_t>(1, maxRowNum)(mt);
+            int len = sprintf(recRow.fix.data, "%06lld", llong(recRow.id));
+            recRow.str0.assign("s0:").append(recRow.fix.data, len);
+            recRow.str1.assign("s1:").append(recRow.fix.data, len);
+            recRow.str2.assign("s2:").append(recRow.fix.data, len);
+            recRow.str3.assign("s3:").append(recRow.fix.data, len);
+            recRow.str4.assign("s4:").append(recRow.fix.data, len);
+            sprintf(recRow.fix2.data, "F2.%06lld", llong(recRow.id));
+            fstring binRow = recRow.encode(rowBuilder);
+            try
+            {
+                ctx->upsertRow(binRow);
+            }
+            catch(NeedRetryException const &)
+            {
+            }
+        }
+    };
+    std::vector<std::thread> thread_vec;
+    for(size_t i = 1; i < threadNum; ++i)
+    {
+        thread_vec.emplace_back(test, i);
+    }
+    test(0);
+    for(auto &t : thread_vec)
+    {
+        t.join();
+    }
+
+    // last writable segment will put to compressing queue
+    //tab->compact();
+    tab->syncFinishWriting();
+}
+
 int main(int argc, char* argv[])
 {
     if(argc < 2)
@@ -265,8 +317,8 @@ int main(int argc, char* argv[])
         return 1;
     }
     size_t maxRowNum = (size_t)strtoull(argv[1], NULL, 10);
-    //	doTest("MockDbTable", "db1", maxRowNum);
-    doTest("dfadb", maxRowNum);
+    doTestMultiThread("dfadb", maxRowNum, 4);
+    //doTest("dfadb", maxRowNum);
     DbTable::safeStopAndWaitForCompress();
     return 0;
 }

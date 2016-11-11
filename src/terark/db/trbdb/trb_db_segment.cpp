@@ -609,15 +609,22 @@ public:
     void storeUpdate(fstring row) override
     {
         assert(started == m_status);
-        assert(m_seq != std::numeric_limits<uint64_t>::max());
-        m_sconf.m_rowSchema->parseRow(row, &m_ctx->trbCols);
+        if(m_seq == std::numeric_limits<uint64_t>::max())
+        {
+            assert(dynamic_cast<TrbWritableIndex *>(m_seg->m_indices[m_seqIndex]->getWritableIndex()) != nullptr);
+            TrbWritableIndex *idx = static_cast<TrbWritableIndex *>(m_seg->m_indices[m_seqIndex]->getWritableIndex());
+            m_seq = idx->allocSeqId();
+        }
+        auto cols = m_ctx->cols.get();
+        auto buf = m_ctx->bufs.get();
+        m_sconf.m_rowSchema->parseRow(row, cols.get());
         size_t const colgroups_size = m_seg->m_colgroups.size();
         for(size_t i = m_seg->m_indices.size(); i < colgroups_size; ++i)
         {
             auto &store = m_seg->m_colgroups[i];
             auto &schema = m_sconf.getColgroupSchema(i);
-            schema.selectParent(m_ctx->trbCols, &m_ctx->trbBuf);
-            store->getUpdatableStore()->update(m_recId, m_ctx->trbBuf, m_ctx);
+            schema.selectParent(*cols, buf.get());
+            store->getUpdatableStore()->update(m_recId, *buf, m_ctx);
         }
         m_seg->m_logger->writableUpdateRow(m_ctx, m_seq, uint32_t(m_recId), row);
     }

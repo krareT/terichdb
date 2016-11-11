@@ -12,6 +12,55 @@ namespace terark { namespace db {
 typedef boost::intrusive_ptr<class DbTable> DbTablePtr;
 typedef boost::intrusive_ptr<class StoreIterator> StoreIteratorPtr;
 
+template<class T, class P>
+void DbContextObjCacheFreeExcessMem(T*) {
+}
+template<class P>
+void DbContextObjCacheFreeExcessMem(valvec<byte>* obj) {
+    static size_t constexpr limit_size = 1024 * 1204;
+    if (obj->size() > limit_size) {
+        obj->clear();
+    }
+}
+
+template<class T>
+class DbContextObjCache {
+private:
+    struct Wrapper {
+        DbContextObjCache* owner;
+        T x;
+    };
+    struct CacheItem {
+        CacheItem(Wrapper *o) : obj(o) {}
+        CacheItem(CacheItem const &) = delete;
+        CacheItem(CacheItem &&o) : obj(o.obj) {
+            o.obj = nullptr;
+        }
+        Wrapper* obj;
+
+        T* operator->() const { return &obj->x; }
+        T& operator*() const { return obj->x; }
+        T* get() const { return &obj->x; }
+
+        ~CacheItem() {
+            if (obj) {
+                DbContextObjCacheFreeExcessMem<T, void>(&obj->x);
+                obj->owner->pool.emplace_back(obj);
+            }
+        }
+    };
+    valvec<Wrapper*> pool;
+public:
+    CacheItem get() {
+        if (pool.empty()) {
+            return CacheItem(new Wrapper{this});
+        }
+        else {
+            return CacheItem(pool.pop_val());
+        }
+    }
+};
+
 class TERARK_DB_DLL DbContextLink : public RefCounter {
 	friend class DbTable;
 protected:
@@ -105,18 +154,9 @@ public:
 	valvec<llong>   m_rowNumVec; // copy of DbTable::m_rowNumVec
 	llong           m_mySnapshotVersion;
 	std::string  errMsg;
-	valvec<byte> buf1;
-	valvec<byte> buf2;
-	valvec<byte> row1;
-	valvec<byte> row2;
-	valvec<byte> key1;
-	valvec<byte> key2;
-	valvec<byte> userBuf; // TerarkDB will not use userBuf
-	valvec<byte> trbBuf;
+    DbContextObjCache<valvec<byte>> bufs;
+    DbContextObjCache<ColumnVec> cols;
 	valvec<uint32_t> offsets;
-	ColumnVec    cols1;
-	ColumnVec    cols2;
-	ColumnVec    trbCols;
 	valvec<llong> exactMatchRecIdvec;
     boost::intrusive_ptr<RefCounter> trbLog;
 	size_t regexMatchMemLimit;
