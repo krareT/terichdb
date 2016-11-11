@@ -53,7 +53,7 @@ private:
 public:
     CacheItem get() {
         if (pool.empty()) {
-            return CacheItem(new Wrapper{this});
+            return CacheItem(new Wrapper{this, {}});
         }
         else {
             return CacheItem(pool.pop_val());

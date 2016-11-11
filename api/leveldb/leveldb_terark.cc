@@ -320,10 +320,11 @@ Status
 DbImpl::Put(const WriteOptions& options, const Slice& key, const Slice& value) {
   terark::db::DbContext* ctx = GetDbContext();
   assert(NULL != ctx);
+  auto userBuf = ctx->bufs.get();
   try {
 	  TRACE_KEY_VAL(key, value);
-	  encodeKeyVal(ctx->userBuf, key, value);
-	  long long recId = ctx->upsertRow(ctx->userBuf);
+	  encodeKeyVal(*userBuf, key, value);
+	  long long recId = ctx->upsertRow(*userBuf);
 	  TERARK_RT_assert(recId >= 0, std::logic_error);
 	  return Status::OK();
   }
@@ -358,8 +359,9 @@ void
 WriteBatchHandler::Put(const Slice& key, const Slice& value) {
 	auto opctx = context_;
 	terark::db::DbContext* ctx = opctx->m_batchWriter.getCtx();
-	encodeKeyVal(ctx->userBuf, key, value);
-	opctx->m_batchWriter.upsertRow(ctx->userBuf);
+    auto userBuf = ctx->bufs.get();
+	encodeKeyVal(*userBuf, key, value);
+	opctx->m_batchWriter.upsertRow(*userBuf);
 }
 
 static const long g_logBatchRemoveNotFound =
@@ -423,16 +425,17 @@ Status
 DbImpl::Get(const ReadOptions& options, const Slice& key, std::string* value) {
   terark::db::DbContext* ctx = GetDbContext();
   assert(NULL != ctx);
+  auto userBuf = ctx->bufs.get();
   ctx->indexSearchExact(0, key, &ctx->exactMatchRecIdvec);
   if (!ctx->exactMatchRecIdvec.empty()) {
 	  auto recId = ctx->exactMatchRecIdvec[0];
 	  try {
-		  ctx->selectOneColgroup(recId, 1, &ctx->userBuf);
+		  ctx->selectOneColgroup(recId, 1, userBuf.get());
 	//	  fprintf(stderr
 	//		, "DEBUG: recId=%lld, colgroup[1]={size=%zd, content=%.*s}\n"
 	//		, recId, ctx->userBuf.size(), (int)ctx->userBuf.size(), ctx->userBuf.data());
 		  value->resize(0);
-		  value->append((char*)ctx->userBuf.data(), ctx->userBuf.size());
+		  value->append((char*)userBuf->data(), userBuf->size());
 		  return Status::OK();
 	  }
 	  catch (const std::exception&) {
