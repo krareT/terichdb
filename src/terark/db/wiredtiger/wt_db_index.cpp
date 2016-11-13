@@ -487,9 +487,10 @@ llong WtWritableIndex::indexStorageSize() const {
 }
 
 bool WtWritableIndex::insert(fstring key, llong id, DbContext* ctx) {
+    auto buf = ctx->bufs.get();
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	WT_ITEM item;
-	setKeyVal(m_wtCursor, key, id, &item, &ctx->buf1);
+	setKeyVal(m_wtCursor, key, id, &item, buf.get());
 	int err = m_wtCursor->insert(m_wtCursor);
 	if (err == WT_DUPLICATE_KEY) {
 	//	fprintf(stderr, "wiredtiger dupkey: %s\n", m_schema->toJsonStr(key).c_str());
@@ -508,14 +509,15 @@ bool WtWritableIndex::insert(fstring key, llong id, DbContext* ctx) {
 }
 
 bool WtWritableIndex::replace(fstring key, llong oldId, llong newId, DbContext* ctx) {
+    auto buf = ctx->bufs.get();
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	WT_CURSOR* cursor = m_wtReplace;
 	WT_ITEM item;
 	if (!m_isUnique) {
-		setKeyVal(cursor, key, oldId, &item, &ctx->buf1);
+		setKeyVal(cursor, key, oldId, &item, buf.get());
 		cursor->remove(cursor);
 	}
-	setKeyVal(cursor, key, newId, &item, &ctx->buf1);
+	setKeyVal(cursor, key, newId, &item, buf.get());
 	int err = cursor->insert(cursor);
 	if (err == WT_DUPLICATE_KEY) {
 		return false;
@@ -607,9 +609,10 @@ const {
 }
 
 bool WtWritableIndex::remove(fstring key, llong id, DbContext* ctx) {
+    auto buf = ctx->bufs.get();
 	tbb::mutex::scoped_lock lock(m_wtMutex);
 	WT_ITEM item;
-	setKeyVal(m_wtCursor, key, id, &item, &ctx->buf1);
+	setKeyVal(m_wtCursor, key, id, &item, buf.get());
 	int err = m_wtCursor->remove(m_wtCursor);
 	if (WT_NOTFOUND == err) {
 		fprintf(stderr

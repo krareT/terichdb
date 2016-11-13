@@ -1,8 +1,7 @@
 #pragma once
 
-#include <terark/db/db_index.hpp>
-#include <terark/fsa/nest_louds_trie.hpp>
-#include <terark/fast_zip_blob_store.hpp>
+#include <terark/db/db_store.hpp>
+#include <terark/zbs/fast_zip_blob_store.hpp>
 
 namespace terark {
 //	class Nest
@@ -10,7 +9,7 @@ namespace terark {
 
 namespace terark { namespace db { namespace dfadb {
 
-class TERARK_DB_DLL NestLoudsTrieStore : public ReadableStore {
+class NestLoudsTrieStore : public ReadableStore {
 public:
 	explicit NestLoudsTrieStore(const Schema& schema);
 	explicit NestLoudsTrieStore(const Schema& schema, BlobStore* blobStore);

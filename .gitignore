@@ -7,8 +7,10 @@
 *.obj
 *.ilk
 *.pdb
+*.sbr
 *.tlog
 *.lib
+*.bsc
 *.log
 *.idb
 *.ipdb

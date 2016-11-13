@@ -1,0 +1,3 @@
+some/dir
+    terark-db/vs2015/terark-db/terark.sln
+    terark/vs2015/terark-fsa/terark-core  -- copy this dir here

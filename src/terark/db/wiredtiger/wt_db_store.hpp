@@ -17,7 +17,7 @@ class TERARK_DB_DLL WtWritableStore : public ReadableStore, public WritableStore
 	mutable WT_SESSION*  m_wtSession;
 	mutable WT_CURSOR*   m_wtCursor;
 	mutable WT_CURSOR*   m_wtAppend;
-	struct SessionCursor : public boost::noncopyable {
+	struct SessionCursor : boost::noncopyable {
 		WtCursor insert;
 		WtCursor append;
 		~SessionCursor();
@@ -52,6 +52,7 @@ public:
 	void  remove(llong id, DbContext*) override;
 
 	void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
 	AppendableStore* getAppendableStore() override;
 	UpdatableStore* getUpdatableStore() override;

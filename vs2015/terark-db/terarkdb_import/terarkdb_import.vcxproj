@@ -75,7 +75,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..\..\..\..\terark\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Debug-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -84,7 +84,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\..\..\terark\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\..\3rdparty\getopt_win;..\..\..\src;..\..\..\..\terark\src;C:\osc\tbb\include;C:\osc\boost-home;$(IncludePath)</IncludePath>
     <LibraryPath>C:\osc\tbb\build\vs2010\intel64\Release-MT;C:\osc\boost-home\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -92,7 +92,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;_CRT_SECURE_NO_WARNINGS;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -104,7 +104,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -119,7 +119,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;_CRT_SECURE_NO_WARNINGS;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -135,7 +135,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TERARK_DB_USE_DLL;TERARK_USE_DLL;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -149,25 +149,11 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="stdafx.h" />
-    <ClInclude Include="targetver.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\..\..\terark\3rdparty\getopt_win\getopt.c" />
     <ClCompile Include="terarkdb_import.cpp" />
-    <ClCompile Include="stdafx.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\terark\vs2015\terark-fsa\terark-fsa\terark-fsa.vcxproj">
-      <Project>{c5ecd2a1-c18e-4c04-b2fa-c5c6f206f5ae}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\terark-db-dfadb\terark-db-dfadb.vcxproj">
-      <Project>{9271644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>
+    <ProjectReference Include="..\..\..\..\terark\vs2015\terark-fsa\terark-core\terark-core.vcxproj">
+      <Project>{c5ecd2a9-c18e-4c04-b2f1-c5d6f236f5ae}</Project>
     </ProjectReference>
     <ProjectReference Include="..\terark-db\terark-db.vcxproj">
       <Project>{9261644e-d0ad-43c5-ad8f-280b92f26b4d}</Project>

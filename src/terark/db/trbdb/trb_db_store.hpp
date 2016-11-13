@@ -30,7 +30,7 @@ protected:
 
     fstring readItem(size_type i) const;
     void storeItem(size_type i, fstring d);
-    bool removeItem(size_type i);
+    void removeItem(size_type i);
 
     friend class TrbStoreIterForward;
     friend class TrbStoreIterBackward;
@@ -55,6 +55,7 @@ public:
 	void  remove(llong id, DbContext*) override;
 
 	void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
 	AppendableStore* getAppendableStore() override;
 	UpdatableStore* getUpdatableStore() override;
@@ -90,6 +91,7 @@ public:
     void  remove(llong id, DbContext*) override;
 
     void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
     AppendableStore* getAppendableStore() override;
     UpdatableStore* getUpdatableStore() override;

@@ -59,9 +59,8 @@ public:
 		{ return 2 * fast_rank1(bits, rankCache, bitpos) - bitpos; }
 };
 
-// rank1   use 2-level cache, time is O(1), 2 memory access
-// select0 use 1-level cache, time is O(1+loglog(n))
-// select1 use binary search, slower than select0
+// rank   use 2-level cache, time is O(1), 2 memory access
+// select use 1-level cache, time is O(1+loglog(n))
 // rank_select_se, "_se" means "separated"
 // rank index is separated from bits
 class TERARK_DLL_EXPORT rank_select_se

@@ -33,12 +33,6 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="stdafx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\src\terark\db\db_index.hpp">
       <Filter>Header Files\terark\db</Filter>
     </ClInclude>
@@ -96,14 +90,8 @@
     <ClInclude Include="..\..\..\src\terark\db\delete_on_close_file_lock.hpp">
       <Filter>Header Files\terark\db</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\db\rocksdb-api.hpp">
-      <Filter>Header Files\terark\db</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="stdafx.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

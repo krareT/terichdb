@@ -40,6 +40,7 @@ public:
 
 	void remove(llong id, DbContext*) override;
 	void shrinkToFit() override;
+    void shrinkToSize(size_t size) override;
 
     void markFrozen() override;
 

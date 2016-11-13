@@ -97,6 +97,7 @@ struct AutoLoadSegmentLibraries : hash_strmap<void*> {
 			lib = dlopen(realname.c_str(), RTLD_NOW);
 			if (lib)
 				break;
+			fprintf(stderr, "dlopen(%s) = %s\n", realname.c_str(), dlerror());
 #endif
 		}
 		if (lib) {
@@ -439,48 +440,51 @@ const {
 void
 ColgroupSegment::getValueByPhysicId(size_t id, valvec<byte>* val, DbContext* ctx)
 const {
+    auto cols1 = ctx->cols.get();
+    auto cols2 = ctx->cols.get();
+    auto buf1 = ctx->bufs.get();
 	val->risk_set_size(0);
-	ctx->buf1.risk_set_size(0);
-	ctx->cols1.erase_all();
+    cols1->erase_all();
+    buf1->risk_set_size(0);
 
 	// getValueAppend to ctx->buf1
 	const size_t colgroupNum = m_colgroups.size();
 	for (size_t i = 0; i < colgroupNum; ++i) {
 		const Schema& iSchema = m_schema->getColgroupSchema(i);
 		if (iSchema.m_keepCols.has_any1()) {
-			size_t oldsize = ctx->buf1.size();
-			m_colgroups[i]->getValueAppend(id, &ctx->buf1, ctx);
-			iSchema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
+			size_t oldsize = buf1->size();
+			m_colgroups[i]->getValueAppend(id, buf1.get(), ctx);
+			iSchema.parseRowAppend(*buf1, oldsize, cols1.get());
 		}
 		else {
-			ctx->cols1.grow(iSchema.columnNum());
+			cols1->grow(iSchema.columnNum());
 		}
 	}
-	assert(ctx->cols1.size() == m_schema->m_colgroupSchemaSet->m_flattenColumnNum);
+	assert(cols1->size() == m_schema->m_colgroupSchemaSet->m_flattenColumnNum);
 
 	// combine columns to ctx->cols2
 	size_t baseColumnId = 0;
-	ctx->cols2.m_base = ctx->cols1.m_base;
-	ctx->cols2.m_cols.resize_fill(m_schema->columnNum());
+	cols2->m_base = cols1->m_base;
+	cols2->m_cols.resize_fill(m_schema->columnNum());
 	for (size_t i = 0; i < colgroupNum; ++i) {
 		const Schema& iSchema = m_schema->getColgroupSchema(i);
 		for (size_t j = 0; j < iSchema.columnNum(); ++j) {
 			if (iSchema.m_keepCols[j]) {
 				size_t parentColId = iSchema.parentColumnId(j);
-				ctx->cols2.m_cols[parentColId] = ctx->cols1.m_cols[baseColumnId + j];
+				cols2->m_cols[parentColId] = cols1->m_cols[baseColumnId + j];
 			}
 		}
 		baseColumnId += iSchema.columnNum();
 	}
 
 #if !defined(NDEBUG)
-	for (size_t i = 0; i < ctx->cols2.size(); ++i) {
-		assert(ctx->cols2.m_cols[i].isValid());
+	for (size_t i = 0; i < cols2->size(); ++i) {
+		assert(cols2->m_cols[i].isValid());
 	}
 #endif
 
 	// combine to val
-	m_schema->m_rowSchema->combineRow(ctx->cols2, val);
+	m_schema->m_rowSchema->combineRow(*cols2, val);
 }
 
 void
@@ -498,7 +502,7 @@ ColgroupWritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	size_t recIdvecSize = recIdvec->size();
 	llong* recIdvecData = recIdvec->data();
 	SpinRwLock lock;
-	if (m_isFreezed) {
+	if (!m_isFreezed) {
 		lock.acquire(m_segMutex, false);
 	}
 	if (m_deletionTime) {
@@ -609,22 +613,24 @@ ColgroupSegment::selectColumnsByPhysicId(llong physicId,
 							   valvec<byte>* colsData, DbContext* ctx)
 const {
 	assert(physicId >= 0);
+    auto cols = ctx->cols.get();
+    auto buf = ctx->bufs.get();
 	colsData->erase_all();
-	ctx->buf1.erase_all();
+	buf->erase_all();
 	ctx->offsets.resize_fill(m_colgroups.size(), UINT32_MAX);
 	auto offsets = ctx->offsets.data();
 	for(size_t i = 0; i < colsNum; ++i) {
 		assert(colsId[i] < m_schema->m_rowSchema->columnNum());
 		auto cp = m_schema->m_colproject[colsId[i]];
 		size_t colgroupId = cp.colgroupId;
-		size_t oldsize = ctx->buf1.size();
+		size_t oldsize = buf->size();
 		const Schema& schema = m_schema->getColgroupSchema(colgroupId);
 		if (offsets[colgroupId] == UINT32_MAX) {
-			offsets[colgroupId] = ctx->cols1.size();
-			m_colgroups[colgroupId]->getValueAppend(physicId, &ctx->buf1, ctx);
-			schema.parseRowAppend(ctx->buf1, oldsize, &ctx->cols1);
+			offsets[colgroupId] = cols->size();
+			m_colgroups[colgroupId]->getValueAppend(physicId, buf.get(), ctx);
+			schema.parseRowAppend(*buf, oldsize, cols.get());
 		}
-		fstring d = ctx->cols1[offsets[colgroupId] + cp.subColumnId];
+		fstring d = (*cols)[offsets[colgroupId] + cp.subColumnId];
 		if (i < colsNum-1)
 			schema.projectToNorm(d, cp.subColumnId, colsData);
 		else
@@ -670,10 +676,12 @@ const {
 		m_colgroups[colgroupId]->getValue(physicId, colsData, ctx);
 	}
 	else {
-		m_colgroups[colgroupId]->getValue(physicId, &ctx->buf1, ctx);
-		schema.parseRow(ctx->buf1, &ctx->cols1);
+        auto cols = ctx->cols.get();
+        auto buf = ctx->bufs.get();
+		m_colgroups[colgroupId]->getValue(physicId, buf.get(), ctx);
+		schema.parseRow(*buf, cols.get());
 		colsData->erase_all();
-		colsData->append(ctx->cols1[cp.subColumnId]);
+		colsData->append((*cols)[cp.subColumnId]);
 	}
 }
 
@@ -1906,25 +1914,24 @@ WritableStore* WritableSegment::getWritableStore() { return this; }
 void
 PlainWritableSegment::getValueAppend(llong recId, valvec<byte>* val, DbContext* ctx)
 const {
-	assert(&ctx->buf1 != val);
-	assert(&ctx->buf2 != val);
 	if (m_schema->m_updatableColgroups.empty()) {
 	//	m_wrtStore->getValueAppend(recId, val, ctx);
 		this->getWrtStoreData(recId, val, ctx);
 	}
 	else {
-		ctx->buf1.erase_all();
-		ctx->cols1.erase_all();
+        auto cols1 = ctx->cols.get();
+        auto cols2 = ctx->cols.get();
+        auto buf1 = ctx->bufs.get();
+        cols1->erase_all();
+        buf1->erase_all();
 	//	m_wrtStore->getValueAppend(recId, &ctx->buf1, ctx);
-		this->getWrtStoreData(recId, &ctx->buf1, ctx);
+		this->getWrtStoreData(recId, buf1.get(), ctx);
 		const size_t ProtectCnt = 100;
-		if (m_isFreezed || m_isDel.unused() > ProtectCnt) {
-			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
+		SpinRwLock lock;
+		if (!m_isFreezed && m_isDel.unused() < ProtectCnt) {
+			lock.acquire(m_segMutex, false);
 		}
-		else {
-			SpinRwLock  lock(m_segMutex, false);
-			this->getCombineAppend(recId, val, ctx->buf1, ctx->cols1, ctx->cols2);
-		}
+		this->getCombineAppend(recId, val, *buf1, *cols1, *cols2);
 	}
 }
 
@@ -1955,10 +1962,44 @@ void PlainWritableSegment::markFrozen() {
 void ColgroupWritableSegment::markFrozen() {
 	for (size_t cgId = 0; cgId < m_colgroups.size(); ++cgId) {
         auto readable_store = m_colgroups[cgId].get();
+        assert(readable_store);
         auto wtitable_store = readable_store->getWritableStore();
-        assert(readable_store && wtitable_store);
+        assert(wtitable_store);
         wtitable_store->shrinkToFit();
         readable_store->markFrozen();
+#if 0 && !defined(NDEBUG)
+        valvec<byte> v;
+        for(size_t i = 0, e = m_isDel.size(); i < e; ++i)
+        {
+            if(m_isDel.is0(i))
+            {
+                try
+                {
+                    m_colgroups[0]->getValue(i, &v, nullptr);
+                }
+                catch(...)
+                {
+                    assert(0);
+                }
+            }
+            else
+            {
+                do
+                {
+                    try
+                    {
+                        m_colgroups[0]->getValue(i, &v, nullptr);
+                    }
+                    catch(...)
+                    {
+                        break;
+                    }
+                    assert(0);
+                }
+                while(0);
+            }
+        }
+#endif
 	}
 	m_isFreezed = true;
 }
@@ -1973,7 +2014,8 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 	assert(!m_hasLockFreePointSearch);
 	IndexIterator* iter = ctx->getIndexIterNoLock(mySegIdx, indexId);
 	llong recId = -1;
-	int cmp = iter->seekLowerBound(key, &recId, &ctx->key2);
+    auto key2 = ctx->bufs.get();
+	int cmp = iter->seekLowerBound(key, &recId, key2.get());
 	if (cmp == 0) {
 		// now IndexIterator::m_isUniqueInSchema is just for this quick check
 		// faster than m_schema->getIndexSchema(indexId).m_isUnique
@@ -1995,7 +2037,7 @@ WritableSegment::indexSearchExactAppend(size_t mySegIdx, size_t indexId,
 			size_t oldsize = recIdvec->size();
 			do {
 				recIdvec->push_back(recId);
-			} while (iter->increment(&recId, &ctx->key2) && key == ctx->key2);
+			} while (iter->increment(&recId, key2.get()) && key == *key2);
 			size_t i = oldsize, j = oldsize;
 			size_t n = recIdvec->size();
 			llong* p = recIdvec->data();
@@ -2077,18 +2119,20 @@ void PlainWritableSegment::selectColumnsByWhole(llong recId,
 const {
 	assert(m_schema->m_updatableColgroups.empty());
 	colsData->erase_all();
-//	this->getValue(recId, &ctx->buf1, ctx);
-	this->getWrtStoreData(recId, &ctx->buf1, ctx);
+    auto cols = ctx->cols.get();
+    auto buf = ctx->bufs.get();
+//	this->getValue(recId, buf.get(), ctx);
+	this->getWrtStoreData(recId, buf.get(), ctx);
 	const Schema& schema = *m_schema->m_rowSchema;
-	schema.parseRow(ctx->buf1, &ctx->cols1);
-	assert(ctx->cols1.size() == schema.columnNum());
+	schema.parseRow(*buf, cols.get());
+	assert(cols->size() == schema.columnNum());
 	for(size_t i = 0; i < colsNum; ++i) {
 		size_t columnId = colsId[i];
 		assert(columnId < schema.columnNum());
 		if (i < colsNum-1)
-			schema.projectToNorm(ctx->cols1[columnId], columnId, colsData);
+			schema.projectToNorm((*cols)[columnId], columnId, colsData);
 		else
-			schema.projectToLast(ctx->cols1[columnId], columnId, colsData);
+			schema.projectToLast((*cols)[columnId], columnId, colsData);
 	}
 }
 
@@ -2099,7 +2143,8 @@ const {
 	colsData->erase_all();
 	const SchemaConfig& sconf = *m_schema;
 	const Schema& rowSchema = *sconf.m_rowSchema;
-	ctx->cols1.erase_all();
+	auto cols1 = ctx->cols.get();
+    cols1->erase_all();
 	for(size_t i = 0; i < colsNum; ++i) {
 		size_t columnId = colsIdvec[i];
 		assert(columnId < rowSchema.columnNum());
@@ -2120,14 +2165,15 @@ const {
 		}
 		else {
 			schema = sconf.m_wrtSchema.get();
-			if (ctx->cols1.empty()) {
+			if (cols1->empty()) {
+                auto buf1 = ctx->bufs.get();
 			//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
-				this->getWrtStoreData(recId, &ctx->buf1, ctx);
-				schema->parseRow(ctx->buf1, &ctx->cols1);
+                this->getWrtStoreData(recId, buf1.get(), ctx);
+				schema->parseRow(*buf1, cols1.get());
 			}
 			size_t subColumnId = sconf.m_rowSchemaColToWrtCol[columnId];
 			assert(subColumnId < sconf.m_wrtSchema->columnNum());
-			fstring coldata = ctx->cols1[subColumnId];
+			fstring coldata = (*cols1)[subColumnId];
 			if (i < colsNum-1)
 				rowSchema.projectToNorm(coldata, columnId, colsData);
 			else
@@ -2155,21 +2201,23 @@ const {
 		store->getValue(recId, colsData, ctx);
 	}
 	else {
+        auto cols = ctx->cols.get();
+        auto buf = ctx->bufs.get();
 		const Schema& wrtSchema = *m_schema->m_wrtSchema;
 	//	m_wrtStore->getValue(recId, &ctx->buf1, ctx);
-		this->getWrtStoreData(recId, &ctx->buf1, ctx);
-		wrtSchema.parseRow(ctx->buf1, &ctx->cols1);
-		assert(ctx->cols1.size() == wrtSchema.columnNum());
+		this->getWrtStoreData(recId, buf.get(), ctx);
+		wrtSchema.parseRow(*buf, cols.get());
+		assert(cols->size() == wrtSchema.columnNum());
 		colsData->erase_all();
 		if (m_schema->m_updatableColgroups.empty()) {
 			assert(m_schema->m_wrtSchema == m_schema->m_rowSchema);
 			assert(m_schema->m_rowSchemaColToWrtCol.empty());
-			wrtSchema.projectToLast(ctx->cols1[columnId], columnId, colsData);
+			wrtSchema.projectToLast((*cols)[columnId], columnId, colsData);
 		}
 		else {
 			size_t wrtColumnId = m_schema->m_rowSchemaColToWrtCol[columnId];
 			assert(wrtColumnId < wrtSchema.columnNum());
-			wrtSchema.projectToLast(ctx->cols1[wrtColumnId], columnId, colsData);
+			wrtSchema.projectToLast((*cols)[wrtColumnId], columnId, colsData);
 		}
 	}
 }
@@ -2369,15 +2417,17 @@ llong PlainWritableSegment::append(fstring row, DbContext* ctx) {
 		return store->append(row, ctx);
 	}
 	else {
-		sconf.m_rowSchema->parseRow(row, &ctx->cols1);
-		sconf.m_wrtSchema->selectParent(ctx->cols1, &ctx->buf1);
-		llong id1 = store->append(ctx->buf1, ctx);
+        auto cols = ctx->cols.get();
+        auto buf = ctx->bufs.get();
+		sconf.m_rowSchema->parseRow(row, cols.get());
+		sconf.m_wrtSchema->selectParent(*cols, buf.get());
+		llong id1 = store->append(*buf, ctx);
 		for (size_t colgroupId : sconf.m_updatableColgroups) {
 			store = m_colgroups[colgroupId]->getAppendableStore();
 			assert(nullptr != store);
 			const Schema& schema = sconf.getColgroupSchema(colgroupId);
-			schema.selectParent(ctx->cols1, &ctx->buf1);
-			llong id2 = store->append(ctx->buf1, ctx);
+			schema.selectParent(*cols, buf.get());
+			llong id2 = store->append(*buf, ctx);
 			TERARK_RT_assert(id1 == id2, std::logic_error);
 		}
 		return id1;
@@ -2393,15 +2443,17 @@ void PlainWritableSegment::update(llong id, fstring row, DbContext* ctx) {
 		store->update(id, row, ctx);
 	}
 	else {
-		sconf.m_rowSchema->parseRow(row, &ctx->cols1);
-		sconf.m_wrtSchema->selectParent(ctx->cols1, &ctx->buf1);
-		store->update(id, ctx->buf1, ctx);
+        auto cols = ctx->cols.get();
+        auto buf = ctx->bufs.get();
+		sconf.m_rowSchema->parseRow(row, cols.get());
+		sconf.m_wrtSchema->selectParent(*cols, buf.get());
+		store->update(id, *buf, ctx);
 		for (size_t colgroupId : sconf.m_updatableColgroups) {
 			store = m_colgroups[colgroupId]->getUpdatableStore();
 			assert(nullptr != store);
 			const Schema& schema = sconf.getColgroupSchema(colgroupId);
-			schema.selectParent(ctx->cols1, &ctx->buf1);
-			store->update(id, ctx->buf1, ctx);
+			schema.selectParent(*cols, buf.get());
+			store->update(id, *buf, ctx);
 		}
 	}
 }
@@ -2417,6 +2469,17 @@ void PlainWritableSegment::shrinkToFit() {
 		store->shrinkToFit();
 	}
 	m_wrtStore->getAppendableStore()->shrinkToFit();
+}
+
+void PlainWritableSegment::shrinkToSize(size_t size)
+{
+    for(size_t colgroupId : m_schema->m_updatableColgroups)
+    {
+        auto store = m_colgroups[colgroupId]->getAppendableStore();
+        assert(nullptr != store);
+        store->shrinkToSize(size);
+    }
+    m_wrtStore->getAppendableStore()->shrinkToSize(size);
 }
 
 void PlainWritableSegment::getWrtStoreData(llong subId, valvec<byte>* buf, DbContext* ctx)

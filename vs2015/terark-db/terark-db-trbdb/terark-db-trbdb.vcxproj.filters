@@ -33,15 +33,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="stdafx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_context.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
@@ -54,14 +45,14 @@
     <ClInclude Include="..\..\..\src\terark\db\trbdb\trb_db_store.hpp">
       <Filter>Header Files\terark\db\trbdb</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\terark\threaded_rb_tree.h">
+    <ClInclude Include="..\..\..\src\terark\threaded_rbtree.h">
+      <Filter>Header Files\terark</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\threaded_rbtree_hash.h">
       <Filter>Header Files\terark</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="stdafx.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

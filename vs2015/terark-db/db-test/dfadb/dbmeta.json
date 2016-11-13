@@ -29,10 +29,10 @@
 			"dictZipSampleRatio": 0.0
 		}
 	},
-	"CompressingWorkMemSize" : "10K",
-  "MaxWritingSegmentSize": "20K",
-  "//TableClass": "MockDbTable",
-  "WritableSegmentClass": "TrbColgroupSegment",
+	"CompressingWorkMemSize" : "10M",
+	"MaxWritingSegmentSize": "20M",
+	"//TableClass": "MockDbTable",
+	"WritableSegmentClass": "trb",
 	"TableIndex" : [
 		{ "fields": "id"  , "ordered" : true, "unique" : true },
 		{ "fields": "str0", "ordered" : true },

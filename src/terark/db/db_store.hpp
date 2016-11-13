@@ -105,6 +105,7 @@ public:
 	virtual ~AppendableStore();
 	virtual llong append(fstring row, DbContext*) = 0;
 	virtual void  shrinkToFit() = 0;
+    virtual void  shrinkToSize(size_t size) = 0;
 };
 
 class TERARK_DB_DLL UpdatableStore {
@@ -200,6 +201,13 @@ class TERARK_DB_DLL WriteThrottleException : public DbException {
 public:
 	template<class String>
 	WriteThrottleException(const String& msg) : DbException(msg) {}
+//	using DbException::DbException;
+};
+
+class TERARK_DB_DLL StoreInternalException : public DbException {
+public:
+	template<class String>
+    StoreInternalException(const String& msg) : DbException(msg) {}
 //	using DbException::DbException;
 };
 

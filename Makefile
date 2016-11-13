@@ -1,6 +1,7 @@
 DBG_FLAGS ?= -g3 -D_DEBUG
 RLS_FLAGS ?= -O3 -DNDEBUG -g3
-WITH_BMI2 ?= $(shell bash ./cpu_has_bmi2.sh)
+#WITH_BMI2 ?= $(shell bash ./cpu_has_bmi2.sh)
+WITH_BMI2 ?= 0
 
 ifeq "$(origin LD)" "default"
   LD := ${CXX}
@@ -12,7 +13,8 @@ endif
 COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o a && ./a && rm -f a a.exe)
 #$(error COMPILER=${COMPILER})
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
-BUILD_ROOT := build/${COMPILER}-${UNAME_MachineSystem}-bmi2-${WITH_BMI2}
+BUILD_NAME := ${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
+BUILD_ROOT := build/${BUILD_NAME}
 ddir:=${BUILD_ROOT}/dbg
 rdir:=${BUILD_ROOT}/rls
 
@@ -24,7 +26,6 @@ ifneq "${err}" "0"
 endif
 
 TERARK_INC := -Isrc
-LIB_TERARK_DIR ?= ../terark/lib
 
 include ${BUILD_ROOT}/env.mk
 
@@ -82,7 +83,9 @@ else
 endif
 
 ifeq (${WITH_BMI2},1)
-	CPU += -mbmi -mbmi2
+  CPU += -mbmi -mbmi2
+else
+  CPU += -mno-bmi -mno-bmi2
 endif
 
 COMMON_C_FLAGS  += -Wformat=2 -Wcomment
@@ -120,11 +123,10 @@ ifeq (, $(findstring ${BOOST_LIB}, /usr/lib64 /usr/lib /usr/local/lib))
   override LIBS += -L${BOOST_LIB}
 endif
 
-#override INCS += -I/usr/include
-
 LIBBOOST ?= \
 	  -lboost_filesystem${BOOST_SUFFIX} \
 	  -lboost_system${BOOST_SUFFIX}
+
 
 ifeq "1" "0"
 ifeq ($(shell test -d /usr/local/lib64 && echo 1),1)
@@ -190,31 +192,14 @@ DfaDB_lib := terark-db-dfadb
 TrbDB_lib := terark-db-trbdb
 Tiger_lib := terark-db-wiredtiger
 
-ifeq (DfaDB,${DFADB_TARGET})
-  LIB_TERARK_DIR = ../terark/lib
-  LIB_TERARK_INC = -I../terark/src
+ifeq (${WITH_BMI2},1)
+  CORE_HOME := ../terark
 else
-  ifeq (,${LIB_TERARK_DIR})
-    $(error LIB_TERARK_DIR must be defined when compiling without DfaDB)
-  endif
-  ifeq (,${DFADB_TARGET})
-    DFADB_TARGET=
-  else
-    $(error DFADB_TARGET must be empty or DfaDB)
-  endif
-  LIB_TERARK_INC += -Iterark-base/src
-#  zip_src := \
-#    terark-base/src/terark/io/BzipStream.cpp \
-#  terark-base/src/terark/io/GzipStream.cpp
-#  TerarkDB_src += $(wildcard terark-base/src/terark/*.cpp)
-#  TerarkDB_src += $(wildcard terark-base/src/terark/io/*.cpp)
-#  TerarkDB_src += $(wildcard terark-base/src/terark/util/*.cpp)
-#  TerarkDB_src += $(wildcard terark-base/src/terark/thread/*.cpp)
-#  TerarkDB_src := $(filter-out ${zip_src}, ${TerarkDB_src})
+  CORE_HOME := terark-base
 endif
-LIB_TERARK_D := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-d
-LIB_TERARK_R := -L${LIB_TERARK_DIR} -lterark-fsa_all-${COMPILER}-r
-override INCS := ${LIB_TERARK_INC} ${INCS}
+override INCS := -I${CORE_HOME}/src ${INCS}
+LIB_TERARK_D := -L${CORE_HOME}/${BUILD_ROOT}/lib -lterark-core-${COMPILER}-d
+LIB_TERARK_R := -L${CORE_HOME}/${BUILD_ROOT}/lib -lterark-core-${COMPILER}-r
 
 #function definition
 #@param:${1} -- targets var prefix, such as bdb_util | core
@@ -223,39 +208,39 @@ objs = $(addprefix ${${2}dir}/, $(addsuffix .o, $(basename ${${1}_src})))
 
 TerarkDB_d_o := $(call objs,TerarkDB,d)
 TerarkDB_r_o := $(call objs,TerarkDB,r)
-TerarkDB_d := lib/lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX}
-TerarkDB_r := lib/lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX}
-static_TerarkDB_d := lib/lib${TerarkDB_lib}-${COMPILER}-d.a
-static_TerarkDB_r := lib/lib${TerarkDB_lib}-${COMPILER}-r.a
+TerarkDB_d := ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-d${DLL_SUFFIX}
+TerarkDB_r := ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_TerarkDB_d := ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-d.a
+static_TerarkDB_r := ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-${COMPILER}-r.a
 
 DfaDB_d_o := $(call objs,DfaDB,d)
 DfaDB_r_o := $(call objs,DfaDB,r)
-DfaDB_d := lib/lib${DfaDB_lib}-${COMPILER}-d${DLL_SUFFIX}
-DfaDB_r := lib/lib${DfaDB_lib}-${COMPILER}-r${DLL_SUFFIX}
-static_DfaDB_d := lib/lib${DfaDB_lib}-${COMPILER}-d.a
-static_DfaDB_r := lib/lib${DfaDB_lib}-${COMPILER}-r.a
+DfaDB_d := ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-d${DLL_SUFFIX}
+DfaDB_r := ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_DfaDB_d := ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-d.a
+static_DfaDB_r := ${BUILD_ROOT}/lib/lib${DfaDB_lib}-${COMPILER}-r.a
 
 TrbDB_d_o := $(call objs,TrbDB,d)
 TrbDB_r_o := $(call objs,TrbDB,r)
-TrbDB_d := lib/lib${TrbDB_lib}-${COMPILER}-d${DLL_SUFFIX}
-TrbDB_r := lib/lib${TrbDB_lib}-${COMPILER}-r${DLL_SUFFIX}
-static_TrbDB_d := lib/lib${TrbDB_lib}-${COMPILER}-d.a
-static_TrbDB_r := lib/lib${TrbDB_lib}-${COMPILER}-r.a
+TrbDB_d := ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-d${DLL_SUFFIX}
+TrbDB_r := ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_TrbDB_d := ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-d.a
+static_TrbDB_r := ${BUILD_ROOT}/lib/lib${TrbDB_lib}-${COMPILER}-r.a
 
 Tiger_d_o := $(call objs,Tiger,d)
 Tiger_r_o := $(call objs,Tiger,r)
-Tiger_d := lib/lib${Tiger_lib}-${COMPILER}-d${DLL_SUFFIX}
-Tiger_r := lib/lib${Tiger_lib}-${COMPILER}-r${DLL_SUFFIX}
-static_Tiger_d := lib/lib${Tiger_lib}-${COMPILER}-d.a
-static_Tiger_r := lib/lib${Tiger_lib}-${COMPILER}-r.a
+Tiger_d := ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-d${DLL_SUFFIX}
+Tiger_r := ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_Tiger_d := ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-d.a
+static_Tiger_r := ${BUILD_ROOT}/lib/lib${Tiger_lib}-${COMPILER}-r.a
 
 LeveldbApi_lib := terark-db-leveldb-api
 LeveldbApi_d_o := $(call objs,LeveldbApi,d)
 LeveldbApi_r_o := $(call objs,LeveldbApi,r)
-LeveldbApi_d := lib/lib${LeveldbApi_lib}-${COMPILER}-d${DLL_SUFFIX}
-LeveldbApi_r := lib/lib${LeveldbApi_lib}-${COMPILER}-r${DLL_SUFFIX}
-static_LeveldbApi_d := lib/lib${LeveldbApi_lib}-${COMPILER}-d.a
-static_LeveldbApi_r := lib/lib${LeveldbApi_lib}-${COMPILER}-r.a
+LeveldbApi_d := ${BUILD_ROOT}/lib/lib${LeveldbApi_lib}-${COMPILER}-d${DLL_SUFFIX}
+LeveldbApi_r := ${BUILD_ROOT}/lib/lib${LeveldbApi_lib}-${COMPILER}-r${DLL_SUFFIX}
+static_LeveldbApi_d := ${BUILD_ROOT}/lib/lib${LeveldbApi_lib}-${COMPILER}-d.a
+static_LeveldbApi_r := ${BUILD_ROOT}/lib/lib${LeveldbApi_lib}-${COMPILER}-r.a
 
 ALL_TARGETS = ${MAYBE_DBB_DBG} ${MAYBE_DBB_RLS} TerarkDB LeveldbApi
 DBG_TARGETS = ${MAYBE_DBB_DBG} ${TerarkDB_d}
@@ -266,7 +251,7 @@ override CXXFLAGS += ${DEFS}
 
 .PHONY : default all TerarkDB LeveldbApi DfaDB TrbDB Tiger
 
-default : TerarkDB LeveldbApi ${DFADB_TARGET} TrbDB Tiger
+default : TerarkDB LeveldbApi TrbDB Tiger ${DFADB_TARGET}
 all : ${ALL_TARGETS}
 TerarkDB: ${TerarkDB_d} ${TerarkDB_r} ${static_TerarkDB_d} ${static_TerarkDB_r}
 DfaDB: ${DfaDB_d} ${DfaDB_r} ${static_DfaDB_d} ${static_DfaDB_r}
@@ -298,24 +283,31 @@ endif
 ${TerarkDB_d} : override LIBS := ${LIB_TERARK_D} ${LIBS} -ltbb
 ${TerarkDB_r} : override LIBS := ${LIB_TERARK_R} ${LIBS} -ltbb
 
-${DfaDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
-${DfaDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
+${DfaDB_d} : override INCS += -I../terark/src
+${DfaDB_r} : override INCS += -I../terark/src
+${DfaDB_d} : override LIBS := -L../terark/${BUILD_ROOT}/lib -lterark-zbs-${COMPILER}-d -lterark-fsa-${COMPILER}-d -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
+${DfaDB_r} : override LIBS := -L../terark/${BUILD_ROOT}/lib -lterark-zbs-${COMPILER}-r -lterark-fsa-${COMPILER}-r -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 
-${TrbDB_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
-${TrbDB_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
+${TrbDB_d} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
+${TrbDB_r} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 
-${Tiger_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb -lwiredtiger
-${Tiger_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb -lwiredtiger
+${Tiger_d} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb -lwiredtiger
+${Tiger_r} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb -lwiredtiger
 
-${LeveldbApi_d} : override LIBS := -Llib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
-${LeveldbApi_r} : override LIBS := -Llib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
+${LeveldbApi_d} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-d ${LIB_TERARK_D} ${LIBS} -ltbb
+${LeveldbApi_r} : override LIBS := -L${BUILD_ROOT}/lib -lterark-db-${COMPILER}-r ${LIB_TERARK_R} ${LIBS} -ltbb
 ${LeveldbApi_d} : ${TerarkDB_d}
 ${LeveldbApi_r} : ${TerarkDB_r}
 
 ${TerarkDB_d} ${TerarkDB_r} : LIBS += -lpthread
 
+ifeq (${WITH_BMI2},1)
 ${TerarkDB_d} : $(call objs,TerarkDB,d)
 ${TerarkDB_r} : $(call objs,TerarkDB,r)
+else
+${TerarkDB_d} : $(call objs,TerarkDB,d) ${CORE_HOME}/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX}
+${TerarkDB_r} : $(call objs,TerarkDB,r) ${CORE_HOME}/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}
+endif
 ${static_TerarkDB_d} : $(call objs,TerarkDB,d)
 ${static_TerarkDB_r} : $(call objs,TerarkDB,r)
 
@@ -339,9 +331,13 @@ ${LeveldbApi_r} : $(call objs,LeveldbApi,r)
 ${static_LeveldbApi_d} : $(call objs,LeveldbApi,d)
 ${static_LeveldbApi_r} : $(call objs,LeveldbApi,r)
 
-TarBall := pkg/${TerarkDB_lib}-${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}
+TarBall := pkg/${TerarkDB_lib}-${BUILD_NAME}
 .PHONY : pkg
 pkg: ${TarBall}.tgz
+scp: ${TarBall}.tgz.scp.done
+${TarBall}.tgz.scp.done : ${TarBall}.tgz
+	scp -P 22    $< root@nark.cc:/var/www/html/download/
+	touch $@
 
 ${TarBall}.tgz : ${TerarkDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} \
 				 ${TerarkDB_r} ${LeveldbApi_r} ${DfaDB_r} ${TrbDB_r} ${Tiger_r}
@@ -354,20 +350,21 @@ ${TarBall}.tgz : ${TerarkDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} 
 	mkdir -p ${TarBall}/include/terark/util
 	mkdir -p ${TarBall}/api/leveldb
 ifeq (${PKG_WITH_DBG},1)
-	cp -Ppa ../terark/lib/libterark-fsa_all{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${TerarkDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${DfaDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${TrbDB_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${Tiger_lib}{-${COMPILER},}-d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-*d${DLL_SUFFIX} ${TarBall}/lib
 endif
-	#rm -rf vs2015/terark-db/terark-db-schema-compile/{rls,dbg,build}
 	$(MAKE) -C vs2015/terark-db/terark-db-schema-compile
 	cp    vs2015/terark-db/terark-db-schema-compile/rls/*.exe ${TarBall}/bin
-	cp -Ppa ../terark/lib/libterark-fsa_all{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${TerarkDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${DfaDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${TrbDB_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
-	cp -Ppa lib/lib${Tiger_lib}{-${COMPILER},}-r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-fsa-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ../terark/${BUILD_ROOT}/lib/libterark-core-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TerarkDB_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${DfaDB_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${TrbDB_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
+	cp -Ppa ${BUILD_ROOT}/lib/lib${Tiger_lib}-*r${DLL_SUFFIX} ${TarBall}/lib
 	cp    src/terark/db/db_conf.hpp           ${TarBall}/include/terark/db
 	cp    src/terark/db/db_context.hpp        ${TarBall}/include/terark/db
 	cp    src/terark/db/db_index.hpp          ${TarBall}/include/terark/db
@@ -397,17 +394,22 @@ endif
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
 	tar czf ${TarBall}.tgz ${TarBall}
 
+ifeq (${WITH_BMI2},0)
+terark-base/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX} \
+terark-base/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-r${DLL_SUFFIX}:
+	$(MAKE) -C terark-base core
+endif
+
 %${DLL_SUFFIX}:
 	@echo "----------------------------------------------------------------------------------"
 	@echo "Creating dynamic library: $@"
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	@echo -e "OBJS:" $(addprefix "\n  ",$(sort $(filter %.o,$^)))
 	@echo -e "LIBS:" $(addprefix "\n  ",${LIBS})
-	@mkdir -p lib
+	@mkdir -p ${BUILD_ROOT}/lib
 	@rm -f $@
-	@rm -f $(subst -${COMPILER},, $@)
-	@ln -sf $(notdir $@) $(subst -${COMPILER},, $@)
 	@${LD} -shared $(sort $(filter %.o,$^)) ${LDFLAGS} ${LIBS} -o ${CYG_DLL_FILE} ${CYGWIN_LDFLAGS}
+	cd $(dir $@); ln -sf $(notdir $@) $(subst -${COMPILER},,$(notdir $@))
 ifeq (CYGWIN, ${UNAME_System})
 	@cp -l -f ${CYG_DLL_FILE} /usr/bin
 endif
@@ -418,18 +420,18 @@ endif
 	@echo BOOST_INC=${BOOST_INC} BOOST_SUFFIX=${BOOST_SUFFIX}
 	@echo -e "OBJS:" $(addprefix "\n  ",$(sort $(filter %.o,$^)))
 	@echo -e "LIBS:" $(addprefix "\n  ",${LIBS})
-	@mkdir -p lib
-	@rm -f $(subst -${COMPILER},, $@)
-	@ln -sf $(notdir $@) $(subst -${COMPILER},, $@)
+	@mkdir -p ${BUILD_ROOT}/lib
+	@rm -f $@
 	@${AR} rcs $@ $(filter %.o,$^)
+	cd $(dir $@); ln -sf $(notdir $@) $(subst -${COMPILER},,$(notdir $@))
 
 .PHONY : install
 install : TerarkDB
-	cp lib/* ${prefix}/lib/
+	cp ${BUILD_ROOT}/lib/* ${prefix}/lib/
 
 .PHONY : clean
 clean:
-	-rm -rf lib ${BUILD_ROOT} ${PRECOMPILED_HEADER_GCH}
+	-rm -rf ${BUILD_ROOT} ${PRECOMPILED_HEADER_GCH}
 
 .PHONY : depends
 depends : ${alldep}

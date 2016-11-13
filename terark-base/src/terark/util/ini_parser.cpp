@@ -8,8 +8,9 @@
 #include <assert.h>
 #include <string.h>
 
-#include <map>
 #include <set>
+#include <terark/hash_strmap.hpp>
+#include <terark/gold_hash_map.hpp>
 #include <vector>
 #include <limits>
 #include <limits.h>
@@ -86,8 +87,14 @@ protected:
 		{
 			return conf_parser_stricmp(key.c_str(), y.key.c_str()) < 0;
 		}
+		struct GetKey {
+			fstring operator()(const val_item& x) const { return x.key; }
+		};
 	};
-	typedef std::set<val_item> kvmap_t;
+	typedef gold_hash_tab<fstring, val_item
+		, hash_and_equal<fstring, fstring_func::hash, fstring_func::equal>
+		, val_item::GetKey
+		> kvmap_t;
 	struct section_item : public item_t
 	{
 		kvmap_t kvmap;
@@ -100,12 +107,13 @@ protected:
 		}
 		section_item(int lineno = INT_MAX) : item_t(lineno) {}
 	};
-	typedef std::map<std::string, section_item> sec_map_t;
+	typedef hash_strmap<section_item> sec_map_t;
 
 	struct comp_sec_ptr
 	{
-		bool operator()(const sec_map_t::value_type* left, const sec_map_t::value_type* right) const
-		{ return left->second.lineno < right->second.lineno; }
+		template<class Pair>
+		bool operator()(const Pair& left, const Pair& right) const
+		{ return left.second.lineno < right.second.lineno; }
 	};
 
 	sec_map_t m_sections;
@@ -199,7 +207,7 @@ public:
 			trim_right(section);
 			m_pos++;
 
-			sec_map_t::value_type kv(section, section_item(m_lineno));
+			std::pair<std::string, section_item> kv(section, section_item(m_lineno));
 			std::pair<sec_map_t::iterator, bool> ib = m_sections.insert(kv);
 			if (!ib.second)
 			{
@@ -322,16 +330,16 @@ public:
 			const_cast<std::string&>(ib.first->val) = val;
 	}
 
-	void write_comment(FILE* fp, int lineno)
+	void write_comment(FILE* fp, int lineno) const
 	{
-		comment_set_t::iterator iter = m_comments.find(comment_item(lineno, ""));
+		comment_set_t::const_iterator iter = m_comments.find(comment_item(lineno, ""));
 		if (m_comments.end() != iter)
 		{
 			fprintf(fp, "%s", (*iter).comment.c_str());
 		}
 	}
 
-	void write_comment_multi_line(FILE* fp, int beg_line, int end_line)
+	void write_comment_multi_line(FILE* fp, int beg_line, int end_line) const
 	{
 		comment_set_t::iterator lower = m_comments.lower_bound(comment_item(beg_line,""));
 		comment_set_t::iterator upper = m_comments.upper_bound(comment_item(end_line,""));
@@ -347,51 +355,51 @@ public:
 
 	  写文件时保留所有注释
 	 */
-	void write_file_with_comment(FILE* os)
+	void write_file_with_comment(FILE* os) const
 	{
 		if (m_sections.empty())
 		{
 			write_comment_multi_line(os, 0, INT_MAX);
 			return;
 		}
-		typedef std::vector<sec_map_t::value_type*> vsec_t;
+		typedef std::vector<std::pair<fstring, section_item> > vsec_t;
 		vsec_t vsec;
 		vsec.reserve(m_sections.size());
-		for (sec_map_t::iterator i = m_sections.begin(); i != m_sections.end(); ++i)
+		for (sec_map_t::const_iterator i = m_sections.begin(); i != m_sections.end(); ++i)
 		{
-			vsec.push_back(&*i);
+			vsec.push_back(std::make_pair(i->first, i->second));
 		}
 		std::sort(vsec.begin(), vsec.end(), comp_sec_ptr());
 
 		assert(!vsec.empty());
-		write_comment_multi_line(os, 0, vsec[0]->second.lineno);
+		write_comment_multi_line(os, 0, vsec[0].second.lineno);
 
-		for (vsec_t::iterator i = vsec.begin(); i != vsec.end(); ++i)
+		for (vsec_t::const_iterator i = vsec.begin(); i != vsec.end(); ++i)
 		{
 			// write section
-			fprintf(os, "[%s]", (**i).first.c_str());
-			write_comment(os, (**i).second.lineno);
+			fprintf(os, "[%s]", (*i).first.c_str());
+			write_comment(os, (*i).second.lineno);
 			fprintf(os, "\n");
 
-			if ((**i).second.kvmap.empty())
+			if ((*i).second.kvmap.empty())
 			{
-				write_comment_multi_line(os, (**i).second.lineno, i == vsec.end()-1 ? INT_MAX : i[1]->second.lineno);
+				write_comment_multi_line(os, (*i).second.lineno, i == vsec.end()-1 ? INT_MAX : i[1].second.lineno);
 				continue;
 			}
 
 			// write key-value pairs...
-			kvmap_t& kvm = (**i).second.kvmap;
+			const kvmap_t& kvm = (*i).second.kvmap;
 			typedef std::vector<const kvmap_t::value_type*> vkvm_t;
 			vkvm_t vkvm(kvm.size());
 			vkvm_t::iterator k = vkvm.begin();
-			for (kvmap_t::iterator j = kvm.begin(); j != kvm.end(); ++j, ++k)
+			for (kvmap_t::const_iterator j = kvm.begin(); j != kvm.end(); ++j, ++k)
 			{
 				*k = &*j;
 			}
 			std::sort(vkvm.begin(), vkvm.end(), compare_lineno());
 			k = vkvm.begin();
-			if (INT_MAX != (**i).second.lineno)
-				write_comment_multi_line(os, (**i).second.lineno+1, (**k).lineno);
+			if (INT_MAX != (*i).second.lineno)
+				write_comment_multi_line(os, (*i).second.lineno+1, (**k).lineno);
 
 			for (k = vkvm.begin(); k != vkvm.end(); ++k)
 			{

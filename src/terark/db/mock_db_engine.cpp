@@ -625,6 +625,12 @@ void MockWritableStore::shrinkToFit() {
 	m_rows.shrink_to_fit();
 }
 
+void MockWritableStore::shrinkToSize(size_t size)
+{
+    assert(size <= m_rows.size());
+    m_rows.resize(size);
+}
+
 AppendableStore* MockWritableStore::getAppendableStore() { return this; }
 UpdatableStore* MockWritableStore::getUpdatableStore() { return this; }
 WritableStore* MockWritableStore::getWritableStore() { return this; }

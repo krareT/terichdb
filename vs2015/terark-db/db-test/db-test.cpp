@@ -7,11 +7,13 @@
 #include <terark/io/MemStream.hpp>
 #include <terark/io/RangeStream.hpp>
 #include <terark/num_to_str.hpp>
+#include <thread>
 #include <random>
 #include "TestRow.hpp"
 
 using namespace DbTest;
 using namespace terark::db;
+
 
 void doTest(const char* tableDir, size_t maxRowNum)
 {
@@ -26,22 +28,20 @@ void doTest(const char* tableDir, size_t maxRowNum)
     NativeDataOutput<AutoGrownMemIO> rowBuilder;
     TestRow recRow;
 
-    size_t insertedRows = 0;
+    llong insertedRows = 0;
     febitvec bits(maxRowNum + 1);
     for(size_t i = 0; i < maxRowNum; ++i)
     {
         TestRow recRow;
-        recRow.id = std::uniform_int_distribution<size_t>(0, maxRowNum - 1)(mt);
-        int len = sprintf(recRow.fix.data, "%06lld", recRow.id);
-        recRow.str0 = std::string("s0:") + recRow.fix.data;
-        recRow.str1 = std::string("s1:") + recRow.fix.data;
-        recRow.str2 = std::string("s2:") + recRow.fix.data;
-        recRow.str3 = std::string("s3:") + recRow.fix.data;
-        recRow.str4 = std::string("s4:") + recRow.fix.data;
-        sprintf(recRow.fix2.data, "F2.%06lld", recRow.id);
-        rowBuilder.rewind();
-        rowBuilder << recRow;
-        fstring binRow(rowBuilder.written());
+        recRow.id = std::uniform_int_distribution<size_t>(1, maxRowNum)(mt);
+        int len = sprintf(recRow.fix.data, "%06lld", llong(recRow.id));
+        recRow.str0.assign("s0:").append(recRow.fix.data, len);
+        recRow.str1.assign("s1:").append(recRow.fix.data, len);
+        recRow.str2.assign("s2:").append(recRow.fix.data, len);
+        recRow.str3.assign("s3:").append(recRow.fix.data, len);
+        recRow.str4.assign("s4:").append(recRow.fix.data, len);
+        sprintf(recRow.fix2.data, "F2.%06lld", llong(recRow.id));
+        fstring binRow = recRow.encode(rowBuilder);
         if(bits[recRow.id])
         {
             if(!ctx->indexKeyExists(0, Schema::fstringOf(&recRow.id)))
@@ -144,7 +144,7 @@ void doTest(const char* tableDir, size_t maxRowNum)
                 assert(recBuf.size() == sizeof(llong));
                 llong keyId = Schema::numberOf<llong>(recBuf);
                 int len = sprintf(fix2.data, "F-%lld", keyId);
-                TERARK_RT_assert(len < sizeof(fix2.data), std::out_of_range);
+                TERARK_RT_assert(len < (int)sizeof(fix2.data), std::out_of_range);
                 tab->updateColumn(randomRecId, "fix2", fix2);
             }
         }
@@ -259,6 +259,56 @@ void doTest(const char* tableDir, size_t maxRowNum)
     tab->syncFinishWriting();
 }
 
+void doTestMultiThread(const char* tableDir, size_t maxRowNum, size_t threadNum)
+{
+    using namespace terark;
+
+    DbTablePtr tab = TestRow::openTable(tableDir, true);
+    auto test = [&](size_t id)
+    {
+        DbContextPtr ctx = tab->createDbContext();
+        std::mt19937 mt(id);
+        valvec<llong> recIdvec;
+        valvec<byte_t>  recBuf;
+        NativeDataOutput<AutoGrownMemIO> rowBuilder;
+        TestRow recRow;
+
+        for(size_t i = 0; i < maxRowNum; ++i)
+        {
+            recRow.id = std::uniform_int_distribution<size_t>(1, maxRowNum)(mt);
+            int len = sprintf(recRow.fix.data, "%06lld", llong(recRow.id));
+            recRow.str0.assign("s0:").append(recRow.fix.data, len);
+            recRow.str1.assign("s1:").append(recRow.fix.data, len);
+            recRow.str2.assign("s2:").append(recRow.fix.data, len);
+            recRow.str3.assign("s3:").append(recRow.fix.data, len);
+            recRow.str4.assign("s4:").append(recRow.fix.data, len);
+            sprintf(recRow.fix2.data, "F2.%06lld", llong(recRow.id));
+            fstring binRow = recRow.encode(rowBuilder);
+            try
+            {
+                ctx->upsertRow(binRow);
+            }
+            catch(NeedRetryException const &)
+            {
+            }
+        }
+    };
+    std::vector<std::thread> thread_vec;
+    for(size_t i = 1; i < threadNum; ++i)
+    {
+        thread_vec.emplace_back(test, i);
+    }
+    test(0);
+    for(auto &t : thread_vec)
+    {
+        t.join();
+    }
+
+    // last writable segment will put to compressing queue
+    //tab->compact();
+    tab->syncFinishWriting();
+}
+
 int main(int argc, char* argv[])
 {
     if(argc < 2)
@@ -267,8 +317,8 @@ int main(int argc, char* argv[])
         return 1;
     }
     size_t maxRowNum = (size_t)strtoull(argv[1], NULL, 10);
-    //	doTest("MockDbTable", "db1", maxRowNum);
-    doTest("dfadb", maxRowNum);
+    doTestMultiThread("dfadb", maxRowNum, 4);
+    //doTest("dfadb", maxRowNum);
     DbTable::safeStopAndWaitForCompress();
     return 0;
 }

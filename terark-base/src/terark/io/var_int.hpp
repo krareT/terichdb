@@ -227,6 +227,33 @@ TERARK_DLL_EXPORT uint64_t reverse_get_var_uint64(const unsigned char* buf, unsi
 TERARK_DLL_EXPORT int64_t reverse_get_var_int64(const unsigned char* buf, unsigned char const ** cur);
 #endif
 
+/// pos must be const byte_t* or byte_t*
+/// result should be size_t
+/// use macros is faster than an inline function
+#define FAST_READ_VAR_UINT32(pos, result) \
+  do { \
+		size_t _tmpUint_ = *pos++; \
+		result = _tmpUint_ & 0x7F; \
+		if ( terark_unlikely((_tmpUint_ & 0x80)) ) { \
+			_tmpUint_ = *pos++; \
+			result |= (_tmpUint_ & 0x7F) << 7; \
+			if ( terark_unlikely((_tmpUint_ & 0x80)) ) { \
+				_tmpUint_ = *pos++; \
+				result |= (_tmpUint_ & 0x7F) << 14; \
+				if ( terark_unlikely((_tmpUint_ & 0x80)) ) { \
+					_tmpUint_ = *pos++; \
+					result |= (_tmpUint_ & 0x7F) << 21; \
+					if ( terark_unlikely((_tmpUint_ & 0x80)) ) { \
+						_tmpUint_ = *pos++; \
+						result |= (_tmpUint_ & 0x7F) << 28; \
+						assert((_tmpUint_ & 0x80) == 0); \
+					} \
+				} \
+			} \
+		} \
+	} while (0)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 } // namespace terark
 
 #endif // __terark_io_var_int_h__

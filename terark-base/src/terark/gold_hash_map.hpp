@@ -58,7 +58,7 @@ template< class Key
 		, class NodeLayout = node_layout<Elem, unsigned/*LinkTp*/ >
 		, class HashTp = size_t
 		>
-class gold_hash_tab : dummy_bucket<typename NodeLayout::link_t>
+class gold_hash_tab : dummy_bucket<typename NodeLayout::link_t>, HashEqual, KeyExtractor
 {
 protected:
 	typedef typename NodeLayout::link_t LinkTp;
@@ -131,9 +131,6 @@ protected:
     LinkTp  freelist_freq;
 	bool    is_sorted;
 
-	HashEqual he;
-	KeyExtractor keyExtract;
-
 private:
 	void init() {
 		new(&m_nl)NodeLayout();
@@ -178,14 +175,14 @@ private:
 		if (intptr_t(pHash) == hash_cache_disabled) {
 			if (0 == freelist_size)
 				for (size_t j = 0, n = nElem; j < n; ++j) {
-					size_t i = he.hash(keyExtract(nl.data(j))) % nb;
+					size_t i = HashEqual::hash(getKeyExtractor()(nl.data(j))) % nb;
 					nl.link(j) = pb[i];
 					pb[i] = LinkTp(j);
 				}
 			else
 				for (size_t j = 0, n = nElem; j < n; ++j) {
 					if (delmark != nl.link(j)) {
-						size_t i = he.hash(keyExtract(nl.data(j))) % nb;
+						size_t i = HashEqual::hash(getKeyExtractor()(nl.data(j))) % nb;
 						nl.link(j) = pb[i];
 						pb[i] = LinkTp(j);
 					}
@@ -195,7 +192,7 @@ private:
 			HashTp* ph = pHash;
 			if (0 == freelist_size)
 				for (size_t j = 0, n = nElem; j < n; ++j) {
-					HashTp h = HashTp(he.hash(keyExtract(nl.data(j))));
+					HashTp h = HashTp(HashEqual::hash(getKeyExtractor()(nl.data(j))));
 					size_t i = h % nb;
 					ph[j] = h;
 					nl.link(j) = pb[i];
@@ -204,7 +201,7 @@ private:
 			else
 				for (size_t j = 0, n = nElem; j < n; ++j) {
 					if (delmark != nl.link(j)) {
-						HashTp h = HashTp(he.hash(keyExtract(nl.data(j))));
+						HashTp h = HashTp(HashEqual::hash(getKeyExtractor()(nl.data(j))));
 						size_t i = h % nb;
 						ph[j] = h;
 						nl.link(j) = pb[i];
@@ -258,19 +255,19 @@ private:
 public:
 	explicit gold_hash_tab(HashEqual he = HashEqual()
                          , KeyExtractor keyExtr = KeyExtractor())
-	  : he(he), keyExtract(keyExtr) {
+	  : HashEqual(he), KeyExtractor(keyExtr) {
 		init();
 	}
 	explicit gold_hash_tab(size_t cap
 						 , HashEqual he = HashEqual()
 						 , KeyExtractor keyExtr = KeyExtractor())
-	  : he(he), keyExtract(keyExtr) {
+	  : HashEqual(he), KeyExtractor(keyExtr) {
 		init();
 		rehash(cap);
 	}
 	/// ensured not calling HashEqual and KeyExtractor
 	gold_hash_tab(const gold_hash_tab& y)
-	  : he(y.he), keyExtract(y.keyExtract) {
+	  : HashEqual(y), KeyExtractor(y) {
 		nElem = y.nElem;
 		maxElem = y.nElem;
 		maxload = y.maxload;
@@ -347,15 +344,15 @@ public:
 
 		std::swap(load_factor, y.load_factor);
 		std::swap(is_sorted  , y.is_sorted);
-		std::swap(he         , y.he);
-		std::swap(keyExtract , y.keyExtract);
+		std::swap(static_cast<HashEqual&>(*this), static_cast<HashEqual&>(y));
+		std::swap(static_cast<KeyExtractor&>(*this) , static_cast<KeyExtractor&>(y));
 	}
 
 //	void setHashEqual(const HashEqual& he) { this->he = he; }
-//	void setKeyExtractor(const KeyExtractor& kEx) { this->keyExtract = kEx; }
+//	void setKeyExtractor(const KeyExtractor& kEx) { this->getKeyExtractor() = kEx; }
 
-	const HashEqual& getHashEqual() const { return this->he; }
-	const KeyExtractor& getKeyExtractor() const { return this->keyExtract; }
+	const HashEqual& getHashEqual() const { return *this; }
+	const KeyExtractor& getKeyExtractor() const { return *this; }
 
 	void clear() {
 		destroy();
@@ -380,12 +377,12 @@ public:
 				}
 				if (0 == freelist_size) {
 					for (size_t i = 0, n = nElem; i < n; ++i)
-						ph[i] = he.hash(keyExtract(m_nl.data(i)));
+						ph[i] = HashEqual::hash(getKeyExtractor()(m_nl.data(i)));
 				}
 				else {
 					for (size_t i = 0, n = nElem; i < n; ++i)
 						if (delmark != m_nl.link(i))
-							ph[i] = he.hash(keyExtract(m_nl.data(i)));
+							ph[i] = HashEqual::hash(getKeyExtractor()(m_nl.data(i)));
 				}
 				pHash = ph;
 			}
@@ -458,12 +455,12 @@ public:
 	inline HashTp hash_i(size_t i) const {
 		assert(i < nElem);
 		if (intptr_t(pHash) == hash_cache_disabled)
-			return HashTp(he.hash(keyExtract(m_nl.data(i))));
+			return HashTp(HashEqual::hash(getKeyExtractor()(m_nl.data(i))));
 		else
 			return pHash[i];
 	}
     inline HashTp hash_v(const Elem& e) const {
-        return HashTp(he.hash(keyExtract(e)));
+        return HashTp(HashEqual::hash(getKeyExtractor()(e)));
     }
 	bool   empty() const { return nElem == freelist_size; }
 	size_t  size() const { return nElem -  freelist_size; }
@@ -760,12 +757,12 @@ public:
 
 	template<class CompatibleObject>
 	std::pair<size_t, bool> insert_i(const CompatibleObject& obj) {
-		const Key& key = keyExtract(obj);
-		const HashTp h = HashTp(he.hash(key));
+		const Key& key = getKeyExtractor()(obj);
+		const HashTp h = HashTp(HashEqual::hash(key));
 		size_t i = h % nBucket;
 		for (LinkTp p = bucket[i]; tail != p; p = m_nl.link(p)) {
 			HSM_SANITY(p < nElem);
-			if (he.equal(key, keyExtract(m_nl.data(p))))
+			if (HashEqual::equal(key, getKeyExtractor()(m_nl.data(p))))
 				return std::make_pair(p, false);
 		}
 		if (terark_unlikely(nElem - freelist_size >= maxload)) {
@@ -833,13 +830,13 @@ public:
 	size_t risk_insert_on_slot(size_t slot) {
 		assert(slot < nElem);
 		assert(delmark != m_nl.link(slot));
-		const Key& key = keyExtract(m_nl.data(slot));
-		const HashTp h = HashTp(he.hash(key));
+		const Key& key = getKeyExtractor()(m_nl.data(slot));
+		const HashTp h = HashTp(HashEqual::hash(key));
 		size_t i = h % nBucket;
 		for (LinkTp p = bucket[i]; tail != p; p = m_nl.link(p)) {
 			assert(p != slot); // slot must not be reached
 			HSM_SANITY(p < nElem);
-			if (he.equal(key, keyExtract(m_nl.data(p))))
+			if (HashEqual::equal(key, getKeyExtractor()(m_nl.data(p))))
 				return p;
 		}
 		if (intptr_t(pHash) != hash_cache_disabled)
@@ -875,11 +872,11 @@ public:
 	//@}
 
 	size_t find_i(const Key& key) const {
-		const HashTp h = HashTp(he.hash(key));
+		const HashTp h = HashTp(HashEqual::hash(key));
 		const size_t i = h % nBucket;
 		for (LinkTp p = bucket[i]; tail != p; p = m_nl.link(p)) {
 			HSM_SANITY(p < nElem);
-			if (he.equal(key, keyExtract(m_nl.data(p))))
+			if (HashEqual::equal(key, getKeyExtractor()(m_nl.data(p))))
 				return p;
 		}
 		return nElem; // not found
@@ -887,11 +884,11 @@ public:
 
 	template<class CompatibleKey>
 	size_t find_i(const CompatibleKey& key) const {
-		const HashTp h = HashTp(he.hash(key));
+		const HashTp h = HashTp(HashEqual::hash(key));
 		const size_t i = h % nBucket;
 		for (LinkTp p = bucket[i]; tail != p; p = m_nl.link(p)) {
 			HSM_SANITY(p < nElem);
-			if (he.equal(key, keyExtract(m_nl.data(p))))
+			if (HashEqual::equal(key, getKeyExtractor()(m_nl.data(p))))
 				return p;
 		}
 		return nElem; // not found
@@ -899,11 +896,11 @@ public:
 
 	// return erased element count
 	size_t erase(const Key& key) {
-		const HashTp h = HashTp(he.hash(key));
+		const HashTp h = HashTp(HashEqual::hash(key));
 		const HashTp i = h % nBucket;
 		for (LinkTp p = bucket[i]; tail != p; p = m_nl.link(p)) {
 			HSM_SANITY(p < nElem);
-			if (he.equal(key, keyExtract(m_nl.data(p)))) {
+			if (HashEqual::equal(key, getKeyExtractor()(m_nl.data(p)))) {
 				erase_i_impl(p, i);
 				return 1;
 			}
@@ -1040,7 +1037,7 @@ public:
 		assert(nElem >= 1);
 		assert(idx < nElem);
 		assert(delmark != m_nl.link(idx));
-		return keyExtract(m_nl.data(idx));
+		return getKeyExtractor()(m_nl.data(idx));
 	}
 
 	const Key& end_key(size_t idxEnd) const {
@@ -1048,7 +1045,7 @@ public:
 		assert(idxEnd >= 1);
 		assert(idxEnd <= nElem);
 		assert(delmark != m_nl.link(nElem - idxEnd));
-		return keyExtract(m_nl.data(nElem - idxEnd));
+		return getKeyExtractor()(m_nl.data(nElem - idxEnd));
 	}
 
 	const Elem& elem_at(size_t idx) const {
@@ -1161,7 +1158,7 @@ protected:
 			if ((size_t*)(hash_cache_disabled) != pHash) {
 				assert(NULL != pHash);
 				for (size_t j = 0; j < n; ++j)
-					pHash[j] = he.hash(keyExtract(nl.data(i)));
+					pHash[j] = HashEqual::hash(getKeyExtractor()(nl.data(i)));
 			}
 			nElem = LinkTp(size.t);
 			maxElem = nElem;

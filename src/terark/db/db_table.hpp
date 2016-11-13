@@ -271,13 +271,13 @@ protected:
 	bool maybeCreateNewSegment(MyRwLock&);
 	void maybeCreateNewSegmentInWriteLock();
 	void doCreateNewSegmentInLock();
-	llong insertRowImpl(fstring row, DbContext*, MyRwLock&);
-	llong insertRowDoInsert(fstring row, DbContext*);
-	llong insertRowDoInsertNoCommit(llong subId, fstring row, DbContext*);
-	bool insertSyncIndex(llong subId, DbTransaction*, DbContext*);
-	bool updateCheckSegDup(size_t begSeg, size_t numSeg, DbContext*);
-	bool updateWithSyncIndex(llong newSubId, fstring row, DbContext*);
-	void updateSyncMultIndex(llong newSubId, DbTransaction*, DbContext*);
+	llong insertRowImpl(fstring row, ColumnVec *cols, DbContext*, MyRwLock&);
+	llong insertRowDoInsert(fstring row, ColumnVec *cols, DbContext*);
+	llong insertRowDoInsertNoCommit(llong subId, fstring row, ColumnVec *cols, DbContext*);
+	bool insertSyncIndex(llong subId, ColumnVec *cols, DbTransaction*, DbContext*);
+	bool updateCheckSegDup(size_t begSeg, size_t numSeg, ColumnVec *cols, DbContext*);
+	bool updateWithSyncIndex(llong newSubId, fstring row, ColumnVec *cols1, DbContext*);
+	void updateSyncMultIndex(llong newSubId, ColumnVec *cols1, ColumnVec *cols2, DbTransaction*, DbContext*);
 
 	llong doUpsertRow(fstring row, DbContext*);
 

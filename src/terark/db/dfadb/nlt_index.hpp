@@ -11,7 +11,7 @@ namespace terark {
 
 namespace terark { namespace db { namespace dfadb {
 
-class TERARK_DB_DLL NestLoudsTrieIndex : public ReadableIndex, public ReadableStore {
+class NestLoudsTrieIndex : public ReadableIndex, public ReadableStore {
 public:
 	explicit NestLoudsTrieIndex(const Schema& schema);
 	NestLoudsTrieIndex(const Schema& schema, SortableStrVec& strVec);

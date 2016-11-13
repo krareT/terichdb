@@ -285,14 +285,14 @@ public:
 #endif
 	;
 
+	virtual void flush_buffer(); // only write to m_os, not flush m_os
+
 protected:
 	size_t flush_and_write(const void* vbuf, size_t length);
 	void   flush_and_ensureWrite(const void* vbuf, size_t length);
 	void   flush_and_write_byte(byte b);
 
 	virtual size_t do_flush_and_write(const void* vbuf, size_t length);
-
-	virtual void flush_buffer(); // only write to m_os, not flush m_os
 
 protected:
 	IOutputStream* m_os;

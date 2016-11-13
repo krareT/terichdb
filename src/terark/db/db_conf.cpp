@@ -325,21 +325,22 @@ void Schema::parseRowAppend(fstring row, size_t start, ColumnVec* columns) const
 #if defined(NDEBUG)
   #define CHECK_CURR_LAST3(curr, last, len) \
 	if (terark_unlikely(curr + (len) > last)) { \
-		THROW_STD(out_of_range, "len=%ld remain=%ld", \
-			long(len), long(last-curr)); \
+		THROW_STD(out_of_range, "schema=%s colname=%s len=%ld remain=%ld", \
+			m_name.c_str(), colname.c_str(), long(len), long(last-curr)); \
 	}
 #else
   #define CHECK_CURR_LAST3(curr, last, len) \
+	if (terark_unlikely(curr + (len) > last)) { \
+    	fprintf(stderr, "ERROR: schema=%s colname=%s len=%ld remain=%ld\n", \
+			m_name.c_str(), colname.c_str(), long(len), long(last-curr)); \
+    } \
 	assert(terark_unlikely(curr + (len) <= last));
 #endif
 
 #define CHECK_CURR_LAST(len) CHECK_CURR_LAST3(curr, last, len)
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
-#ifndef NDEBUG
 		const fstring colname = m_columnsMeta.key(i);
-		(void)colname;
-#endif
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		size_t collen = 0;
 		size_t colpos = curr - base;
@@ -832,6 +833,7 @@ void Schema::byteLexConvert(byte* data, size_t size) const {
 	byte* last = data + size;
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
+		const fstring     colname = m_columnsMeta.key(i);
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		switch (colmeta.type) {
 		default:
@@ -1628,6 +1630,7 @@ int Schema::compareData(fstring x, fstring y) const {
 
 	size_t colnum = m_columnsMeta.end_i();
 	for (size_t i = 0; i < colnum; ++i) {
+		const fstring     colname = m_columnsMeta.key(i);
 		const ColumnMeta& colmeta = m_columnsMeta.val(i);
 		switch (colmeta.type) {
 		default:
@@ -2569,6 +2572,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 					);
 	m_writableSegmentClass = getJsonValue(meta, "WritableSegmentClass", std::string("WtWritableSegment"));
 	m_readonlySegmentClass = getJsonValue(meta, "ReadonlySegmentClass", std::string("DfaDbReadonlySegment"));
+#if !defined(TERARK_DB_SCHEMA_COMPILER)
 	if (g_AutoLoadSegmentDLLs().count("terark-db-dfadb") == 0) {
 		static std::set<std::string> dfadbNames = {"DfaDbReadonlySegment", "dfadb", "dfa"};
 		if (dfadbNames.count(m_readonlySegmentClass) == 0) {
@@ -2578,6 +2582,7 @@ void SchemaConfig::loadJsonString(fstring jstr) {
 				);
 		}
 	}
+#endif
 	const bool checkMongoType = getJsonValue(meta, "CheckMongoType", false);
 	const bool checkMysqlType = getJsonValue(meta, "CheckMysqlType", false);
 	const json& rowSchema = meta["RowSchema"];

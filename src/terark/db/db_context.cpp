@@ -70,7 +70,8 @@ static std::atomic<size_t> g_dbCtxLiveCnt;
 static std::atomic<size_t> g_dbCtxCreatedCnt;
 
 DbContext::DbContext(const DbTable* tab)
-  : m_tab(const_cast<DbTable*>(tab))
+    : m_tab(const_cast<DbTable*>(tab))
+    , syncOnCommit(false)
 {
 // must calling the constructor in lock tab->m_rwMutex
 	size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
@@ -211,9 +212,11 @@ IndexIterator* DbContext::getIndexIterNoLock(size_t segIdx, size_t indexId) {
 void DbContext::debugCheckUnique(fstring row, size_t uniqueIndexId) {
 	assert(this->segArrayUpdateSeq == m_tab->m_segArrayUpdateSeq);
 	const Schema& indexSchema = m_tab->getIndexSchema(uniqueIndexId);
-	m_tab->m_schema->m_rowSchema->parseRow(row, &cols1);
-	indexSchema.selectParent(cols1, &key1);
-	indexSearchExactNoLock(uniqueIndexId, key1, &exactMatchRecIdvec);
+    auto cols1 = cols.get();
+    auto key1 = bufs.get();
+	m_tab->m_schema->m_rowSchema->parseRow(row, cols1.get());
+	indexSchema.selectParent(*cols1, key1.get());
+	indexSearchExactNoLock(uniqueIndexId, *key1, &exactMatchRecIdvec);
 	assert(exactMatchRecIdvec.size() <= 1);
 }
 

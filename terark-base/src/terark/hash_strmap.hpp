@@ -121,7 +121,7 @@ template< class Value = ValueOut // ValueOut means empty value, just like a set
 		, class LinkTp = unsigned int // could be unsigned short for small map
 		, class HashTp = HSM_HashTp
 		>
-class hash_strmap : dummy_bucket<LinkTp>
+class hash_strmap : dummy_bucket<LinkTp>, HashFunc, KeyEqual
 {
 protected:
 	struct ValueRaw {
@@ -174,9 +174,6 @@ protected:
 		en_sort_by_val
 	} sort_flag;
 
-	HashFunc hash;
-	KeyEqual equal;
-
     template<class T>
     T* t_malloc(size_t count) {
         return (T*)malloc(sizeof(T) * count);
@@ -226,6 +223,9 @@ protected:
 public:
 	static size_t extralen(const char* ps, size_t End) { return ps[End-1] + 1; }
 	size_t extralen(size_t End) const { return strpool[End-1] + 1; }
+
+	HashTp hash(fstring x) const { return static_cast<const HashFunc&>(*this)(x); }
+	bool  equal(fstring x, fstring y) const { return static_cast<const KeyEqual&>(*this)(x, y); }
 
 private:
 	void move_value_on_raw(Node*, Node*, Value* vdest, Value* vsrc, ValueOut) {
@@ -453,16 +453,16 @@ public:
 
 public:
 	explicit hash_strmap(HashFunc hashfn = HashFunc(), KeyEqual equalfn = KeyEqual())
-	  : hash(hashfn), equal(equalfn) {
+	  : HashFunc(hashfn), KeyEqual(equalfn) {
 		init();
 	}
 	explicit hash_strmap(size_t cap, HashFunc hashfn = HashFunc(), KeyEqual equalfn = KeyEqual())
-	  : hash(hashfn), equal(equalfn) {
+	  : HashFunc(hashfn), KeyEqual(equalfn) {
 		init();
 		rehash(cap);
 	}
 	hash_strmap(const hash_strmap& y)
-	  : hash(y.hash), equal(y.equal) {
+	  : HashFunc(y), KeyEqual(y) {
 		pNodes = NULL;
 		nNodes = freelist_disabled==y.fastleng ? y.nNodes-y.nDeleted : y.nNodes;
 		maxNodes = y.nNodes;
@@ -647,8 +647,8 @@ public:
 
 		std::swap(load_factor, y.load_factor);
 		std::swap(sort_flag, y.sort_flag);
-		std::swap(hash     , y.hash);
-		std::swap(equal    , y.equal);
+		std::swap(static_cast<HashFunc&>(*this), static_cast<HashFunc&>(y));
+		std::swap(static_cast<KeyEqual&>(*this), static_cast<KeyEqual&>(y));
 	}
 
 	fstring whole_strpool() const { return fstring(strpool, lenpool); }
@@ -2710,6 +2710,8 @@ swap(terark::hash_strmap<Value, HashFunc, KeyEqual, ValuePlace, CopyStrategy, Li
 	x.swap(y);
 }
 
+#ifdef DONT_USE_TERARK_fast_hash_strmap
+#else
 template< class Key
 		, class Value
 		, class HashFunc
@@ -2725,6 +2727,7 @@ swap(terark::fast_hash_strmap<Key, Value, HashFunc, KeyEqual, ValuePlace, CopySt
 {
 	x.swap(y);
 }
+#endif
 
 } // namespace std
 

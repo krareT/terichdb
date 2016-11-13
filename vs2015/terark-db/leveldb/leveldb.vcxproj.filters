@@ -39,9 +39,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="..\..\..\..\leveldb_terark\util\arena.cc">
       <Filter>Source Files\util</Filter>
     </ClCompile>

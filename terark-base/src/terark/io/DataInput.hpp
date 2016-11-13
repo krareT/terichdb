@@ -412,13 +412,16 @@ unsigned int DataIO_load_check_version(Input& in, unsigned int curr_version, con
 #else
 #define DATA_IO_OPTIMIZE_VECTOR_LOAD(Class, Members)\
 	template<class DataIO, class Vector, class Bswap>\
-	void load_vector(DataIO& aDataIO, Vector& _vector_, Bswap) \
-	{												\
-		using namespace terark;						\
-		DataIO_load_vector_aux(aDataIO,				\
-			(Class*)NULL, _vector_, Bswap(),		\
-		(DataIO_is_realdump<DataIO, Class, 0, true> \
-		  (this) Members).is_dumpable());			\
+	void load_vector(DataIO& aDataIO, Vector& _vector_, Bswap)	\
+	{															\
+		using namespace terark;									\
+		size_t size = aDataIO.template load_as<var_size_t>().t; \
+		if (size) {												\
+			FastResizeVector(aDataIO, _vector_, size);			\
+			load_array(aDataIO									\
+				, static_cast<Class*>(&_vector_[0])				\
+				, size, Bswap());								\
+		}														\
 	}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // for DATA_IO_LOAD_SAVE_E, DataIO_load_vector should be defined
