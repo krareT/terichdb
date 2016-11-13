@@ -540,6 +540,7 @@ namespace terark { namespace db {
 		llong    m_compressingWorkMemSize;
 		llong    m_maxWritingSegmentSize;
 		size_t   m_minMergeSegNum;
+		size_t   m_suggestWritableSegNum;
 		size_t   m_bestUniqueIndexId;
 		size_t   m_writeThrottleBytesPerSecond;
 		double   m_purgeDeleteThreshold;

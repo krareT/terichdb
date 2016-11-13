@@ -71,7 +71,6 @@ DbTable::DbTable()
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
 	m_isMerging = false;
-	m_purgeStatus = PurgeStatus::none;
 	m_segments.reserve(DEFAULT_maxSegNum);
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
 	m_mergeSeqNum = 0;
@@ -1497,7 +1496,7 @@ llong DbTable::doUpsertRow(fstring row, DbContext* ctx) {
 				ctx->isUpsertOverwritten = 2;
 				if (checkPurgeDeleteNoLock(seg)) {
 					lock.upgrade_to_writer();
-					asyncPurgeDeleteInLock();
+					inLockPutPurgeDeleteTaskToQueue();
 					maybeCreateNewSegmentInWriteLock();
 				}
 				else {
@@ -1851,12 +1850,10 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 				return false;
 			}
 		}
-        BOOST_SCOPE_EXIT(wrseg, subId)
-        {
+        BOOST_SCOPE_EXIT(&wrseg, &subId){
             SpinRwLock wsLock(wrseg->m_segMutex);
             wrseg->m_deletedWrIdSet.push_back(uint32_t(subId));
-        }
-        BOOST_SCOPE_EXIT_END;
+        }BOOST_SCOPE_EXIT_END;
 		if (ctx->syncIndex) {
 			TransactionGuard txn(ctx->m_transaction.get(), subId);
             auto cols = ctx->cols.get();
@@ -1924,7 +1921,7 @@ bool DbTable::removeRow(llong id, DbContext* ctx) {
 		}
 		if (checkPurgeDeleteNoLock(seg)) {
 			lock.upgrade_to_writer();
-			asyncPurgeDeleteInLock();
+			inLockPutPurgeDeleteTaskToQueue();
 		}
 		return success;
 	}
@@ -1974,7 +1971,7 @@ void DbTable::delmarkSet1(llong id) {
 	if (success && seg->getReadonlySegment()) {
 		if (checkPurgeDeleteNoLock(seg)) {
 			lock.upgrade_to_writer();
-			asyncPurgeDeleteInLock();
+			inLockPutPurgeDeleteTaskToQueue();
 		}
 	}
 }
@@ -3111,6 +3108,7 @@ fstring getDotExtension(fstring fpath) {
 struct SegEntry {
 	ColgroupSegment* seg;
 	size_t idx;
+    double purgePriority;
 	SortableStrVec files;
 	febitvec newIsPurged;
 	size_t oldNumPurged;
@@ -3120,6 +3118,7 @@ struct SegEntry {
 
 	// constructor must be fast enough
 	SegEntry(ColgroupSegment* s, size_t i) : seg(s), idx(i) {
+        purgePriority = 0;
 		oldNumPurged = 0;
 		newNumPurged = 0;
 	}
@@ -3180,7 +3179,7 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 class DbTable::MergeParam {
 public:
 	valvec<SegEntry> m_segs;
-	bool   m_forcePurgeAndMerge = false;
+    bool m_forcePurgeAndMerge = false;
 	size_t m_tabSegNum = 0;
 	size_t m_newSegRows = 0;
 	size_t m_old_segArrayUpdateSeq = 0;
@@ -3190,7 +3189,6 @@ public:
 
 	std::string joinPathList() const;
 
-	bool canMerge(DbTable* tab);
 	void syncPurgeBits(double purgeThreshold);
 
 	ReadableIndex*
@@ -3211,128 +3209,6 @@ std::string DbTable::MergeParam::joinPathList() const {
 		str += "\n";
 	}
 	return str;
-}
-
-bool DbTable::MergeParam::canMerge(DbTable* tab) {
-	// most failed checks should fails here...
-	if (tab->m_isMerging)
-		return false;
-	if (PurgeStatus::none != tab->m_purgeStatus)
-		return false;
-	// memory alloc should be out of lock scope
-	m_segs.reserve(tab->m_segments.size() + 1);
-	{
-		MyRwLock lock(tab->m_rwMutex, false);
-		for (size_t i = 0; i < tab->m_segments.size(); ++i) {
-			auto seg = tab->m_segments[i].get();
-			auto mgseg = seg->getMergableSegment();
-			if (!mgseg)
-				break; // writable seg must be at top side
-			else
-				m_segs.emplace_back(mgseg, i);
-		}
-		if (m_segs.size() <= 1)
-			return false;
-		if (tab->m_wrSeg) {
-			if (tab->m_wrSeg->getPlainWritableSegment()) {
-			// for PlainWritableSegment, compress to readonly is prefered
-				if (m_segs.size() + 1 < tab->m_segments.size())
-					return false;
-			}
-			else {
-				assert(tab->m_wrSeg->getColgroupSegment());
-			}
-		}
-		if (tab->m_isMerging)
-			return false;
-		if (PurgeStatus::none != tab->m_purgeStatus)
-			return false;
-		if (!lock.upgrade_to_writer()) {
-			if (tab->m_isMerging) // check again
-				return false;
-			if (PurgeStatus::none != tab->m_purgeStatus)
-				return false;
-			if (m_old_segArrayUpdateSeq != tab->m_segArrayUpdateSeq) {
-				///< rarely but possible
-				assert(m_old_segArrayUpdateSeq < tab->m_segArrayUpdateSeq);
-				fprintf(stderr,
-                        "INFO: MergeParam::canMerge(): m_segArrayUpdateSeq: old = %zd, new = %zd\n",
-					    m_old_segArrayUpdateSeq,
-                        tab->m_segArrayUpdateSeq
-                );
-				return false;
-			}
-		}
-		if (tab->m_bgTaskNum > 1) {
-			return false;
-		}
-		tab->m_isMerging = true;
-		// if tab->m_isMerging is false, tab can create new segments
-		// then this->m_tabSegNum would be staled, this->m_tabSegNum is
-		// used for violation check
-		this->m_tabSegNum = tab->m_segments.size();
-		DebugCheckRowNumVecNoLock(tab);
-	    m_old_segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
-	}
-	size_t sumSegRows = 0;
-	for (auto& e : m_segs) sumSegRows += e.seg->getPhysicRows();
-	size_t largeSegRows = 2 * sumSegRows / m_segs.size();
-
-	// eleminate large segments and compute average of others
-	size_t smallsegNum = 0;
-	size_t smallsegRows = 0;
-	for (auto& e : m_segs) {
-		size_t rows = e.seg->getPhysicRows();
-		if (rows <= largeSegRows)
-			// use '<=' for very rare case: largeSegRows==0
-			smallsegNum++, smallsegRows += rows;
-	}
-	size_t avgSegRows = smallsegRows / smallsegNum;
-	size_t maxSegRows = avgSegRows * 7/4;
-	size_t minMergeSegNum = tab->m_schema->m_minMergeSegNum;
-	if (m_forcePurgeAndMerge) {
-		//maxSegRows = avgSegRows * 3;
-		maxSegRows = size_t(-1);
-		minMergeSegNum = 2;
-	}
-	else {
-		if (minMergeSegNum < 2)	minMergeSegNum = 2;
-		if (minMergeSegNum > 9)	minMergeSegNum = 9;
-	}
-
-	// find max range in which every seg rows < maxSegRows
-	size_t rngBeg = 0, rngLen = 0;
-	for(size_t j = 0; j < m_segs.size(); ) {
-		size_t k = j;
-		for (; k < m_segs.size(); ++k) {
-			if (m_segs[k].seg->getPhysicRows() > maxSegRows) {
-                if (m_segs[k].seg->getReadonlySegment()) {
-				    break;
-                }
-                else {
-                    assert(m_segs[k].seg->getColgroupSegment());
-                }
-            }
-		}
-		if (k - j > rngLen) {
-			rngBeg = j;
-			rngLen = k - j;
-		}
-		j = k + 1;
-	}
-	for (size_t j = 0; j < rngLen; ++j) {
-		m_segs[j] = m_segs[rngBeg + j];
-	}
-	m_segs.trim(rngLen);
-	if (rngLen < minMergeSegNum) {
-		tab->m_isMerging = false;
-		return false;
-	}
-	m_newSegRows = 0;
-	for (size_t j = 0; j < rngLen; ++j) {
-		m_newSegRows += m_segs[j].seg->m_isDel.size();
-	}
-	return true;
 }
 
 void DbTable::MergeParam::syncPurgeBits(double purgeThresholdRatio) {
@@ -4184,12 +4060,8 @@ void DbTable::compact() {
 		MyRwLock lock(m_rwMutex, true);
 		m_bgTaskNum--;
 	}BOOST_SCOPE_EXIT_END;
-	MergeParam toMerge;
-	toMerge.m_forcePurgeAndMerge = true;
-	if (toMerge.canMerge(this)) {
-		assert(this->m_isMerging);
-		this->merge(toMerge);
-	}
+    while(!autoConvMergePurge(true))
+        ;
 }
 
 void DbTable::syncFinishWriting() {
@@ -4212,7 +4084,7 @@ void DbTable::syncFinishWriting() {
 
 void DbTable::asyncPurgeDelete() {
 	MyRwLock lock(m_rwMutex, true);
-	asyncPurgeDeleteInLock();
+	inLockPutPurgeDeleteTaskToQueue();
 }
 
 void DbTable::dropTable() {
@@ -4298,71 +4170,322 @@ void DbTable::save(PathRef dir) const {
 	m_schema->saveJsonFile(jsonFile.string());
 }
 
-void DbTable::convWritableSegmentToReadonly(size_t segIdx) {
-	BOOST_SCOPE_EXIT(&m_rwMutex, &m_bgTaskNum){
+bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
+    BOOST_SCOPE_EXIT(&m_rwMutex, &m_bgTaskNum){
 		MyRwLock lock(m_rwMutex, true);
-		m_bgTaskNum--;
+		--m_bgTaskNum;
 	}BOOST_SCOPE_EXIT_END;
-	ReadableSegmentPtr inputSeg;
-	{
+	if (m_isMerging || m_bgTaskNum > 1)
+		return false;
+
+    MergeParam param;
+
+    bool convPlainWritableSegment = false;      //  1
+    bool mergeColgroupSegment = false;          //  2
+    bool convLargeWritableSegment = false;      //  3
+    bool mergeReadonlySegment = false;          //  4
+    bool convWritableSegment = false;           //  5
+    bool purgeReadonlySegment = false;          //  6
+    
+	double threshold = std::max(m_schema->m_purgeDeleteThreshold, 0.001);
+    auto &m_segs = param.m_segs;
+    param.m_forcePurgeAndMerge = forcePurgeAndMerge;
+	m_segs.reserve(m_segments.size() + 1);
+
+    auto getRows = [&](size_t i) {
+        auto seg = m_segs[i].seg;
+        if (seg->getReadonlySegment()) {
+            return seg->getReadonlySegment()->getPhysicRows()
+                - (seg->m_delcnt - seg->m_isPurged.max_rank1());
+        }
+        else {
+            return seg->m_isDel.size() - seg->m_delcnt;
+        }
+    };
+    auto getPurge = [&](size_t i)->double {
+        auto seg = m_segs[i].seg->getReadonlySegment();
+        if (seg) {
+			size_t newDelcnt = seg->m_delcnt - seg->m_isPurged.max_rank1();
+			size_t physicNum = seg->getPhysicRows();
+            if (newDelcnt > physicNum * threshold)
+                return newDelcnt * newDelcnt / physicNum;
+        }
+        return 0;
+    };
+    auto getLarge = [&](size_t i) {
+        auto seg = m_segs[i].seg;
+        if (seg->getWritableSegment() && seg->getColgroupSegment())
+            if(seg->getWritableSegment()->dataStorageSize() > m_schema->m_maxWritingSegmentSize * 2)
+                return true;
+        return false;
+    };
+    auto trimSegs = [&](size_t rngBeg, size_t rngLen) {
+	    for (size_t j = 0; j < rngLen; ++j) {
+		    m_segs[j] = m_segs[rngBeg + j];
+	    }
+	    m_segs.trim(rngLen);
+	    param.m_newSegRows = 0;
+	    for (size_t j = 0; j < rngLen; ++j) {
+		    param.m_newSegRows += m_segs[j].seg->m_isDel.size();
+	    }
+    };
+    
+	do {
 		MyRwLock lock(m_rwMutex, false);
-		inputSeg = m_segments[segIdx];
-	}
-  auto compressToReadonly = [&]() {
-	auto segDir = getSegPath("rd", segIdx);
-	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
-	ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
-	newSeg->convFrom(this, segIdx);
-	fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
-#if 0
-	fs::path wrSegPath = getSegPath("wr", segIdx);
-	try {
-	  if (fs::is_symlink(wrSegPath)) {
-		fs::path base = wrSegPath.parent_path();
-		fs::path target = fs::read_symlink(wrSegPath);
-		fs::path targetMergeDir = fs::canonical(target.parent_path(), base);
-		if (fs::exists(wrSegPath)) {
-			// do nothing
-		}
-		else if (fs::exists(targetMergeDir)) {
-			try { fs::remove_all(targetMergeDir); }
-			catch (const std::exception& ex) {
-				// windows can not delete a hardlink when another hardlink
-				// to the same file is in use
-				fprintf(stderr
-					, "ERROR: convWritableSegmentToReadonly: ex.what = %s\n"
-					, ex.what());
+	    if (m_isMerging)
+		    return false;
+        assert(!m_segments.empty());
+        if (m_segments.ende(1)->getPlainWritableSegment()) {
+            convPlainWritableSegment = true;
+        }
+		for (size_t i = 0; i < m_segments.size(); ++i) {
+			auto seg = m_segments[i]->getMergableSegment();
+			if (seg)
+				m_segs.emplace_back(seg, i);
+			else
+                break;
+        }
+		if (m_segs.size() <= 1)
+			break;
+	    param.m_old_segArrayUpdateSeq = m_segArrayUpdateSeq;
+		if (!lock.upgrade_to_writer()) {
+			if (m_isMerging) // check again
+				return false;
+			if (param.m_old_segArrayUpdateSeq != m_segArrayUpdateSeq) {
+				assert(param.m_old_segArrayUpdateSeq < m_segArrayUpdateSeq);
+				return true;
 			}
-		}
-		fs::remove(wrSegPath);
-	  }
-	} catch (const std::exception& ex) {
-		fprintf(stderr
-			, "WARN: convWritableSegmentToReadonly: ex.what = %s\n"
-			, ex.what());
-	}
-#endif
-  };
-	if (inputSeg->getColgroupSegment()) {
-        if (this->m_isMerging || m_bgTaskNum > 1) {
-	        return;
+        }
+	    if (m_bgTaskNum > 1)
+		    return false;
+		m_isMerging = true;
+		// if tab->m_isMerging is false, tab can create new segments
+		// then this->m_tabSegNum would be staled, this->m_tabSegNum is
+		// used for violation check
+		param.m_tabSegNum = m_segments.size();
+		DebugCheckRowNumVecNoLock(tab);
+	    param.m_old_segArrayUpdateSeq = m_segArrayUpdateSeq;
+    } while(false);
+
+    size_t findSegmentId = size_t(-1);
+	size_t rngBeg = 0, rngLen = 0;
+    if (convPlainWritableSegment) {
+		MyRwLock lock(m_rwMutex, false);
+		for (size_t i = 0; i < m_segments.size(); ++i) {
+            if (m_segments[i]->getPlainWritableSegment()) {
+                auto find = m_segTask.find(i);
+                if (find == m_segTask.end()) {
+                    findSegmentId = i;
+                    break;
+                }
+            }
         }
     }
-	MergeParam toMerge;
-	if (toMerge.canMerge(this)) {
-		if (!inputSeg->getColgroupSegment()) {
-			compressToReadonly();
-            if (this->m_isMerging || m_bgTaskNum > 1) {
-	            return;
+    if (findSegmentId == size_t(-1)) {
+        mergeColgroupSegment = m_segs.size() > 1;
+	    size_t sumSegRows = 0;
+	    for (size_t i = 0; i < m_segs.size(); ++i) {
+            if ((m_segs[i].purgePriority = getPurge(i)) > 0)
+                purgeReadonlySegment = true;
+            if (getLarge(i))
+                convLargeWritableSegment = true;
+            if (m_segs[i].seg->getWritableSegment())
+                convWritableSegment = true;
+            sumSegRows += getRows(i);
+        }
+	    size_t largeSegRows = 2 * sumSegRows / m_segs.size();
+
+	    // eleminate large segments and compute average of others
+	    size_t smallsegNum = 0;
+	    size_t smallsegRows = 0;
+	
+	    for (size_t i = 0; i < m_segs.size(); ++i) {
+		    size_t rows = getRows(i);
+		    if (rows <= largeSegRows)
+			    // use '<=' for very rare case: largeSegRows==0
+			    smallsegNum++, smallsegRows += rows;
+	    }
+	    size_t avgSegRows = smallsegRows / smallsegNum;
+	    size_t maxSegRows = avgSegRows * 7 / 4;
+	    size_t minMergeSegNum = m_schema->m_minMergeSegNum;
+	    size_t suggestWritableSegNum = m_schema->m_suggestWritableSegNum;
+	    if (forcePurgeAndMerge) {
+		    //maxSegRows = avgSegRows * 3;
+		    maxSegRows = size_t(-1);
+		    minMergeSegNum = 2;
+            suggestWritableSegNum = 0;
+	    }
+	    else {
+		    if (minMergeSegNum < 2)	minMergeSegNum = 2;
+		    if (minMergeSegNum > 9)	minMergeSegNum = 9;
+		    if (suggestWritableSegNum < 3)
+                minMergeSegNum = 2;
+            else
+                --suggestWritableSegNum;
+	    }
+
+	    // find max range in which every seg rows < maxSegRows
+	    for (size_t j = 0; j < m_segs.size(); ) {
+		    size_t k = j;
+		    for (; k < m_segs.size(); ++k) {
+			    if (getRows(k) > maxSegRows) {
+                    if (m_segs[k].seg->getReadonlySegment()) {
+				        break;
+                    }
+                    else {
+                        assert(m_segs[k].seg->getColgroupSegment());
+                    }
+                }
+		    }
+		    if (k - j > rngLen) {
+			    rngBeg = j;
+			    rngLen = k - j;
+		    }
+		    j = k + 1;
+	    }
+        size_t rdLen = 0, wrLen = 0;
+	    for (size_t j = 0; j < rngLen; ++j) {
+            if (m_segs[rngBeg + j].seg->getWritableSegment())
+                ++wrLen;
+            else
+                ++rdLen;
+	    }
+	    if (rngLen < minMergeSegNum) {
+            mergeColgroupSegment = wrLen >= suggestWritableSegNum;
+            if (wrLen + 1 < suggestWritableSegNum) {
+                size_t maxSegIndex = 0;
+                if (rdLen > suggestWritableSegNum) {
+                    for (size_t j = 1; j < m_segs.size(); ++j) {
+                        if (getRows(j) > getRows(maxSegIndex))
+                            maxSegIndex = j;
+	                }
+                }
+                if (maxSegIndex >= 2) {
+                    rngBeg = 0;
+                    rngLen = maxSegIndex - 1;
+                    mergeReadonlySegment = true;
+                }
             }
-		}
-		inputSeg.reset();
-		assert(this->m_isMerging);
-		this->merge(toMerge);
-	}
-	else {
-		compressToReadonly();
-	}
+	    }
+    }
+    
+    
+    auto convToReadonly = [&](size_t i) {
+        {
+		    MyRwLock lock(m_rwMutex, true);
+            auto find = m_segTask.find(i);
+            if (find != m_segTask.end()) {
+                assert(find->second == TaskStatus::conv);
+                return false;
+            }
+		    m_segTask[i] = TaskStatus::conv;
+        }
+        BOOST_SCOPE_EXIT(&m_rwMutex, &m_segTask, &i){
+		    MyRwLock lock(m_rwMutex, true);
+		    m_segTask.erase(i);
+	    }BOOST_SCOPE_EXIT_END;
+        auto segDir = getSegPath("rd", i);
+	    fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
+	    ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
+        newSeg->convFrom(this, i);
+	    fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
+        return true;
+    };
+
+    if (convPlainWritableSegment) {
+        m_isMerging = false;
+        return convToReadonly(findSegmentId);
+    }
+    if (mergeColgroupSegment) {
+        trimSegs(rngBeg, rngLen);
+        merge(param);
+        return true;
+    }
+    if (convLargeWritableSegment) {
+        assert(findSegmentId = size_t(-1));
+        {
+		    MyRwLock lock(m_rwMutex, false);
+		    for (size_t i = 0; i < m_segs.size(); ++i) {
+                if (getLarge(i)) {
+                    auto find = m_segTask.find(i);
+                    if (find == m_segTask.end()) {
+                        findSegmentId = i;
+                        break;
+                    }
+                }
+            }
+        }
+        m_isMerging = false;
+        if (findSegmentId == size_t(-1)) {
+            return false;
+        }
+        return convToReadonly(findSegmentId);
+    }
+    if (mergeReadonlySegment) {
+        trimSegs(rngBeg, rngLen);
+        merge(param);
+        return true;
+    }
+    if (convWritableSegment) {
+        {
+		    MyRwLock lock(m_rwMutex, false);
+		    for (size_t i = 0; i < m_segments.size(); ++i) {
+                if (m_segments[i]->getWritableSegment()) {
+                    auto find = m_segTask.find(i);
+                    if (find == m_segTask.end()) {
+                        findSegmentId = i;
+                        break;
+                    }
+                }
+            }
+        }
+        m_isMerging = false;
+        return convToReadonly(findSegmentId);
+    }
+    if (purgeReadonlySegment) {
+        assert(findSegmentId = size_t(-1));
+        {
+		    MyRwLock lock(m_rwMutex, false);
+		    for (size_t i = 0; i < m_segs.size(); ++i) {
+                if (findSegmentId == size_t(-1) || m_segs[i].purgePriority > m_segs[findSegmentId].purgePriority) {
+                    auto find = m_segTask.find(i);
+                    if (find == m_segTask.end()) {
+                        findSegmentId = i;
+                        break;
+                    }
+                }
+            }
+        }
+        m_isMerging = false;
+	    ReadableSegmentPtr srcSeg;
+        if (findSegmentId == size_t(-1)) {
+            return false;
+        }
+        else {
+		    MyRwLock lock(m_rwMutex, true);
+            auto find = m_segTask.find(findSegmentId);
+            if (find != m_segTask.end()) {
+                assert(find->second == TaskStatus::conv);
+                return false;
+            }
+            srcSeg = m_segments[findSegmentId];
+		    m_segTask[findSegmentId] = TaskStatus::conv;
+        }
+        BOOST_SCOPE_EXIT(&m_rwMutex, &m_segTask, &findSegmentId){
+		    MyRwLock lock(m_rwMutex, true);
+		    m_segTask.erase(findSegmentId);
+	    }BOOST_SCOPE_EXIT_END;
+        try {
+		    ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
+		    dest->purgeDeletedRecords(this, findSegmentId);
+	    }
+	    catch (std::exception const&) {
+		    //break; // would try in merge()
+	    }
+        return true;
+    }
+    m_isMerging = false;
+    return false;
 }
 
 void DbTable::freezeFlushWritableSegment(size_t segIdx) {
@@ -4379,68 +4502,6 @@ void DbTable::freezeFlushWritableSegment(size_t segIdx) {
 	seg->saveRecordStore(seg->m_segDir);
 	seg->saveIsDel(seg->m_segDir);
 	fprintf(stderr, "freezeFlushWritableSegment: %s done!\n", seg->m_segDir.string().c_str());
-}
-
-void DbTable::runPurgeDelete() {
-	BOOST_SCOPE_EXIT(&m_rwMutex, &m_purgeStatus, &m_bgTaskNum) {
-		MyRwLock lock(m_rwMutex, true);
-		m_purgeStatus = PurgeStatus::none;
-		m_bgTaskNum--;
-	} BOOST_SCOPE_EXIT_END;
-//	return; // skip purge delete, to test purge in merge
-	// try merge first, merge will do purge if possible
-	{
-		MergeParam toMerge;
-		if (toMerge.canMerge(this)) {
-			assert(this->m_isMerging);
-			this->merge(toMerge);
-			return;
-		}
-		else if (m_segments.size() > m_schema->m_minMergeSegNum*3) {
-			// too many segments, leave the purging in future merge
-			return;
-		}
-	}
-	{
-		MyRwLock lock(m_rwMutex, true);
-		if (this->m_isMerging) { // should be very rare
-			return;
-		}
-		if (PurgeStatus::inqueue != m_purgeStatus) {
-			fprintf(stderr, "ERROR: m_purgeStatus = %d, expect inqueue\n"
-						  , unsigned(m_purgeStatus));
-			return;
-		}
-		m_purgeStatus = PurgeStatus::purging;
-	}
-	double threshold = std::max(m_schema->m_purgeDeleteThreshold, 0.001);
-	size_t segIdx = size_t(-1);
-	ReadonlySegmentPtr srcSeg;
-	{
-		MyRwLock lock(m_rwMutex, false);
-		auto segs = m_segments.data();
-		for (size_t i = 0, n = m_segments.size(); i < n; ++i) {
-			if (auto r = segs[i]->getReadonlySegment()) {
-				size_t newDelcnt = r->m_delcnt - r->m_isPurged.max_rank1();
-				size_t physicNum = r->getPhysicRows();
-				if (newDelcnt > physicNum * threshold) {
-					segIdx = i;
-					srcSeg = r;
-					break;
-				}
-			}
-		}
-	}
-	if (size_t(-1) == segIdx) {
-		return;
-	}
-	try {
-		ReadonlySegmentPtr dest = myCreateReadonlySegment(srcSeg->m_segDir);
-		dest->purgeDeletedRecords(this, segIdx);
-	}
-	catch (const std::exception&) {
-		//break; // would try in merge()
-	}
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -4516,26 +4577,15 @@ public:
 tbb::tbb_thread g_flushThread(&FlushThreadFunc);
 CompressionThreadsList g_compressThreads;
 
-class SegWrToRdConvTask : public MyTask {
-	DbTablePtr m_tab;
-	size_t m_segIdx;
-
-public:
-	SegWrToRdConvTask(DbTablePtr tab, size_t segIdx)
-		: m_tab(tab), m_segIdx(segIdx) {}
-
-	void execute() override {
-		m_tab->convWritableSegmentToReadonly(m_segIdx);
-	}
-};
-
-class PurgeDeleteTask : public MyTask {
+class AutoTask : public MyTask {
 	DbTablePtr m_tab;
 public:
 	void execute() override {
-		m_tab->runPurgeDelete();
+		if (m_tab->autoConvMergePurge(false)) {
+            m_tab->putAutoTask();
+        }
 	}
-	PurgeDeleteTask(DbTablePtr tab) : m_tab(tab) {}
+	AutoTask(DbTablePtr tab) : m_tab(tab) {}
 };
 
 class WrSegFreezeFlushTask : public MyTask {
@@ -4547,7 +4597,7 @@ public:
 
 	void execute() override {
 		m_tab->freezeFlushWritableSegment(m_segIdx);
-		g_compressQueue.push_back(new SegWrToRdConvTask(m_tab, m_segIdx));
+		g_compressQueue.push_back(new AutoTask(m_tab));
 	}
 };
 
@@ -4573,7 +4623,15 @@ void DbTable::putToCompressionQueue(size_t segIdx) {
 	if (g_stopCompress) {
 		return;
 	}
-	g_compressQueue.push_back(new SegWrToRdConvTask(this, segIdx));
+	g_compressQueue.push_back(new AutoTask(this));
+	m_bgTaskNum++;
+}
+
+void DbTable::putAutoTask() {
+	if (g_stopCompress) {
+		return;
+	}
+	g_compressQueue.push_back(new AutoTask(this));
 	m_bgTaskNum++;
 }
 
@@ -4583,8 +4641,8 @@ bool DbTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
 	if (g_stopPutToFlushQueue) {
 		return false;
 	}
-	if (m_segments.size() > m_schema->m_minMergeSegNum*3) {
-		// too many segments, leave the purging in future merge
+	if (!m_segTask.empty()) {
+		// and conv running ...
 		return false;
 	}
 	auto maxDelcnt = seg->m_isDel.size() * m_schema->m_purgeDeleteThreshold;
@@ -4597,31 +4655,10 @@ bool DbTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
 inline
 bool DbTable::tryAsyncPurgeDeleteInLock(const ReadableSegment* seg) {
 	if (checkPurgeDeleteNoLock(seg)) {
-		asyncPurgeDeleteInLock();
+		inLockPutPurgeDeleteTaskToQueue();
 		return true;
 	}
 	return false;
-}
-
-void DbTable::asyncPurgeDeleteInLock() {
-	if (PurgeStatus::purging == m_purgeStatus) {
-		// do nothing
-		assert(!m_isMerging);
-	}
-	else if (PurgeStatus::inqueue == m_purgeStatus) {
-		// do nothing
-		assert(!m_isMerging);
-	}
-	else if (m_isMerging) {
-		m_purgeStatus = PurgeStatus::pending;
-	}
-	else if (PurgeStatus::pending == m_purgeStatus ||
-			 PurgeStatus::none    == m_purgeStatus) {
-		inLockPutPurgeDeleteTaskToQueue();
-	}
-	else {
-		// do nothing
-	}
 }
 
 void DbTable::inLockPutPurgeDeleteTaskToQueue() {
@@ -4629,8 +4666,7 @@ void DbTable::inLockPutPurgeDeleteTaskToQueue() {
 	if (g_stopPutToFlushQueue) {
 		return;
 	}
-	m_purgeStatus = PurgeStatus::inqueue;
-	g_compressQueue.push_back(new PurgeDeleteTask(this));
+	g_compressQueue.push_back(new AutoTask(this));
 	m_bgTaskNum++;
 }
 

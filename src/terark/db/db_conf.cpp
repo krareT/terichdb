@@ -2001,13 +2001,15 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 
 const llong  DEFAULT_compressingWorkMemSize = 2LL * 1024 * 1024 * 1024;
 const llong  DEFAULT_maxWritingSegmentSize  = 3LL * 1024 * 1024 * 1024;
-const size_t DEFAULT_minMergeSegNum         = TERARK_IF_DEBUG(2, 5);
+const size_t DEFAULT_minMergeSegNum         = 5;
+const size_t DEFAULT_suggestWritableSegNum  = 4;
 const double DEFAULT_purgeDeleteThreshold   = 0.10;
 
 SchemaConfig::SchemaConfig() {
 	m_compressingWorkMemSize = DEFAULT_compressingWorkMemSize;
 	m_maxWritingSegmentSize = DEFAULT_maxWritingSegmentSize;
 	m_minMergeSegNum = DEFAULT_minMergeSegNum;
+	m_suggestWritableSegNum = DEFAULT_suggestWritableSegNum;
 	m_writeThrottleBytesPerSecond = 0; // no limit
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
 	m_usePermanentRecordId = false;
@@ -2732,6 +2734,8 @@ if (colgroupsIter != meta.end()) {
 
 	m_minMergeSegNum = getJsonValue(
 		meta, "MinMergeSegNum", DEFAULT_minMergeSegNum);
+	m_suggestWritableSegNum = getJsonValue(
+		meta, "SuggestWritableSegNum", DEFAULT_suggestWritableSegNum);
 	m_writeThrottleBytesPerSecond = getJsonSizeValue(
 		meta, "WriteThrottleBytesPerSecond", 0);
 	m_purgeDeleteThreshold = getJsonValue(
