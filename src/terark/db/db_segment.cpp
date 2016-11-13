@@ -142,6 +142,7 @@ ReadableSegment::ReadableSegment() {
 	m_hasLockFreePointSearch = true;
 	m_bookUpdates = false;
 	m_withPurgeBits = false;
+    m_onConv = false;
 	m_isPurgedMmap = nullptr;
 }
 ReadableSegment::~ReadableSegment() {

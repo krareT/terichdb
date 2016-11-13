@@ -312,7 +312,7 @@ protected:
 	enum class TaskStatus : unsigned {
         error,
 		conv,
-		purg,
+		purge,
 	};
 
 //	DbContextLink* m_ctxListHead;
@@ -331,8 +331,7 @@ protected:
 	bool m_throwOnThrottle;
 	bool m_tobeDrop;
 	bool m_isMerging;
-    trb_hash_map<size_t, TaskStatus> m_segTask;
-
+    bool m_isPurging;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;
