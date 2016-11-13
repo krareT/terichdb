@@ -1358,7 +1358,7 @@ protected:
                                                        deref_key_t{&root_},
                                                        get_key_comp()
         );
-        return (offset == offset_empty || get_key_comp()(key, get_key_t()(*root_.value[offset].value()))) ? offset_empty : offset;
+        return (offset == offset_empty || get_key_comp()(key, get_key_t()(*root_.value[offset].value()))) ? root_.size : offset;
     }
 
     size_type remove_value_(std::true_type, key_type const &key)
