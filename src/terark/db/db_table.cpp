@@ -4587,7 +4587,7 @@ class AutoTask : public MyTask {
 	DbTablePtr m_tab;
 public:
 	void execute() override {
-		if (m_tab->autoConvMergePurge(false)) {
+		if (m_tab->autoConvMergePurge(false) && !g_stopPutToFlushQueue) {
             m_tab->putAutoTask();
         }
 	}
