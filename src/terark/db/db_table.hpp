@@ -248,6 +248,7 @@ public:
 	void putToFlushQueue(size_t segIdx);
 	void putToCompressionQueue(size_t segIdx);
     void putAutoTask();
+    bool isAutoTask() const;
 	///@}
 
 	///@{
@@ -332,6 +333,7 @@ protected:
 	bool m_tobeDrop;
 	bool m_isMerging;
     bool m_isPurging;
+    bool m_autoTask;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;

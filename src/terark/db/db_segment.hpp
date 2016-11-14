@@ -118,7 +118,7 @@ public:
 	bool        m_hasLockFreePointSearch;
 	bool        m_bookUpdates;
 	bool        m_withPurgeBits;  // just for ReadonlySegment
-    bool        m_onConv;
+    bool        m_onProcess;
 };
 typedef boost::intrusive_ptr<ReadableSegment> ReadableSegmentPtr;
 
