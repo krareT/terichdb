@@ -1130,13 +1130,13 @@ void DbTable::doCreateNewSegmentInLock() {
             oldwrseg->m_deletedWrIdSet.clear();
             return;
         }
-        oldwrseg->shrinkToSize(oldwrseg->m_isDel.size());
 	}
 	// createWritableSegment should be fast, other wise the lock time
 	// may be too long
 	putToFlushQueue(m_segments.size() - 1);
 	size_t newSegIdx = m_segments.size();
 	m_wrSeg = myCreateWritableSegment(getSegPath("wr", newSegIdx));
+    oldwrseg->shrinkToSize(oldwrseg->m_isDel.size());
 	oldwrseg->markFrozen();
 	assert(oldwrseg->m_isFreezed);
 	m_segments.push_back(m_wrSeg);
@@ -3579,7 +3579,10 @@ mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 			}
 		}
 	}
+    size_t count = fixedIndexRowLen ?  strVec.size() / fixedIndexRowLen : strVec.size();
 	ReadableStorePtr mergedstore = dseg->buildStore(schema, strVec);
+    assert(mergedstore->numDataRows() == count);
+    (void)count;
 	mergedstore->save(storeFilePath);
 	dseg->m_colgroups[colgroupId] = mergedstore;
 }
@@ -3667,6 +3670,11 @@ try{
 	for (auto& e : toMerge.m_segs) {
 		dseg->m_isDel.append(e.seg->m_isDel);
 		assert(e.seg->m_bookUpdates);
+#if 1 && !defined(NDEBUG)
+        for(size_t cgId = 0; cgId < m_schema->getColgroupNum(); ++cgId) {
+		    assert(e.seg->getPhysicRows() == e.seg->m_colgroups[cgId]->numDataRows());
+        }
+#endif
 	}
 	assert(dseg->m_isDel.size() == toMerge.m_newSegRows);
 	dseg->m_delcnt = dseg->m_isDel.popcnt();
@@ -3708,11 +3716,6 @@ try{
 			continue;
 		}
 		if (toMerge.m_forcePurgeAndMerge) {
-			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
-			continue;
-		}
-		if (toMerge.m_segs.back().seg->getWritableSegment()) {
-			// has ColgroupWritableSegment
 			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
 			continue;
 		}
@@ -4221,13 +4224,15 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
     };
     auto trimSegs = [&](size_t rngBeg, size_t rngLen) {
 	    for (size_t j = 0; j < rngLen; ++j) {
+            if (m_segs[j].seg != m_segments[rngBeg + j].get())
+                return false;
 		    m_segs[j] = m_segs[rngBeg + j];
 	    }
 	    m_segs.trim(rngLen);
 	    param.m_newSegRows = 0;
-	    for (size_t j = 0; j < rngLen; ++j) {
+	    for (size_t j = 0; j < rngLen; ++j)
 		    param.m_newSegRows += m_segs[j].seg->m_isDel.size();
-	    }
+        return true;
     };
     
 	do {
@@ -4280,7 +4285,6 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         }
     }
     if (findSegmentId == size_t(-1)) {
-        mergeColgroupSegment = m_segs.size() > 1;
 	    size_t sumSegRows = 0;
 	    for (size_t i = 0; i < m_segs.size(); ++i) {
             if ((m_segs[i].purgePriority = getPurge(i)) > 0)
@@ -4348,6 +4352,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             else
                 ++rdLen;
 	    }
+        mergeColgroupSegment = rngLen > 1;
 	    if (rngLen < minMergeSegNum) {
             mergeColgroupSegment = wrLen >= suggestWritableSegNum;
             if (wrLen == 0) {
@@ -4360,11 +4365,13 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
                 }
                 if (maxSegIndex >= 2) {
                     rngBeg = 0;
-                    rngLen = maxSegIndex - 1;
+                    rngLen = maxSegIndex;
                     mergeReadonlySegment = true;
                 }
             }
 	    }
+        if (mergeColgroupSegment && wrLen > 0)
+            param.m_forcePurgeAndMerge = true;
     }
 
     auto convToReadonly = [&](ReadableSegment *seg, size_t i) {
@@ -4380,8 +4387,11 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
 	    }BOOST_SCOPE_EXIT_END;
         auto segDir = getSegPath("rd", i);
 	    fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s\n", segDir.string().c_str());
-	    ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
-        newSeg->convFrom(this, i);
+		ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
+        if (seg->getColgroupSegment())
+		    newSeg->purgeDeletedRecords(this, i);
+        else
+            newSeg->convFrom(this, i);
 	    fprintf(stderr, "INFO: convWritableSegmentToReadonly: %s done!\n", segDir.string().c_str());
         return true;
     };
@@ -4396,11 +4406,10 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         return convToReadonly(seg.get(), findSegmentId);
     }
     if (mergeColgroupSegment) {
-        if (m_bgTaskNum > 1) {
+        if (m_bgTaskNum > 1 || !trimSegs(rngBeg, rngLen)) {
 		    m_isMerging = false;
             return false;
         }
-        trimSegs(rngBeg, rngLen);
         merge(param);
 		m_isMerging = false;
         return true;
@@ -4429,11 +4438,10 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         return convToReadonly(seg.get(), findSegmentId);
     }
     if (mergeReadonlySegment) {
-        if (m_bgTaskNum > 1) {
+        if (m_bgTaskNum > 1 || !trimSegs(rngBeg, rngLen)) {
 		    m_isMerging = false;
             return false;
         }
-        trimSegs(rngBeg, rngLen);
         merge(param);
 		m_isMerging = false;
         return true;
@@ -4462,9 +4470,10 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         return convToReadonly(seg.get(), findSegmentId);
     }
     if (purgeReadonlySegment) {
-        m_isMerging = false;
-        if (m_isPurging || m_bgTaskNum > 1)
+        if (m_isPurging || m_bgTaskNum > 1) {   
+            m_isMerging = false;
             return false;
+        }
 	    ReadableSegmentPtr seg;
         {
 		    MyRwLock lock(m_rwMutex, false);
@@ -4474,10 +4483,14 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
                     break;
                 }
             }
-            if (findSegmentId == size_t(-1))
+            if (findSegmentId == size_t(-1)) {
+                m_isMerging = false;
                 return false;
-            seg = m_segments[findSegmentId];
+            }
         }
+        seg = m_segments[findSegmentId];
+        m_isPurging = true;
+        m_isMerging = false;
         BOOST_SCOPE_EXIT(&m_rwMutex, &m_isPurging){
 		    MyRwLock lock(m_rwMutex, true);
 		    m_isPurging = false;

@@ -26,6 +26,7 @@ protected:
     };
     valvec<uint32_t> m_index;
     pool_type m_data;
+    size_t m_size;
     mutable TrbStoreRWLock m_rwMutex;
 
     fstring readItem(size_type i) const;

@@ -194,6 +194,7 @@ public:
 
 TrbWritableStore::TrbWritableStore(Schema const &)
     : m_data(256)
+    , m_size()
 {
 }
 
@@ -215,12 +216,17 @@ void TrbWritableStore::storeItem(size_type i, fstring d)
     {
         m_index.resize(i + 1, store_nil_index);
     }
+    else if(m_index[i] != store_nil_index)
+    {
+        removeItem(i);
+    }
     byte len_data[8];
     byte *end_ptr = save_var_uint32(len_data, uint32_t(d.size()));
     size_type len_len = size_type(end_ptr - len_data);
     size_type dst_len = pool_type::align_to(d.size() + len_len);
     m_index[i] = m_data.alloc(dst_len);
     byte *dst_ptr = m_data.at<data_object>(m_index[i]).data;
+    m_size += d.size();
     std::memcpy(dst_ptr, len_data, len_len);
     std::memcpy(dst_ptr + len_len, d.data(), d.size());
 }
@@ -232,6 +238,7 @@ void TrbWritableStore::removeItem(size_type i)
     size_type len = load_var_uint32(ptr, &end_ptr);
     m_data.sfree(m_index[i], pool_type::align_to(end_ptr - ptr + len));
     m_index[i] = store_nil_index;
+    m_size -= len;
 }
 
 void TrbWritableStore::save(PathRef) const
@@ -255,7 +262,7 @@ llong TrbWritableStore::dataStorageSize() const
 llong TrbWritableStore::dataInflateSize() const
 {
     //TrbStoreRWLock::scoped_lock l(m_rwMutex, false);
-    return m_data.size();
+    return m_size;
 }
 
 llong TrbWritableStore::numDataRows() const
