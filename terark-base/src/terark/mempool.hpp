@@ -2,6 +2,7 @@
 #define __penglei_mempool_hpp__
 
 #include "valvec.hpp"
+#include <boost/integer/static_log2.hpp>
 
 namespace terark {
 
@@ -17,10 +18,17 @@ namespace terark {
 template<int AlignSize>
 class MemPool : private valvec<unsigned char> {
 	BOOST_STATIC_ASSERT((AlignSize & (AlignSize-1)) == 0);
+	BOOST_STATIC_ASSERT(AlignSize >= 4);
     typedef valvec<unsigned char> mem;
+    typedef typename boost::mpl::if_c<AlignSize == 4, uint32_t, uint64_t>::type link_size_t;
+    
+    static const size_t huge_list_tail = ~size_t(0);
+    static const link_size_t free_list_tail = ~link_size_t(0);
+    static const size_t offset_shift = AlignSize == 4 ? boost::static_log2<AlignSize>::value : 0;
+
     struct link_t { // just for readable
-        size_t next;
-        explicit link_t(size_t l) : next(l) {}
+        link_size_t next;
+        explicit link_t(link_size_t l) : next(l) {}
     };
 	struct HugeLink {
 		size_t next;
@@ -30,8 +38,6 @@ class MemPool : private valvec<unsigned char> {
     size_t  fllen; // free list length
 	size_t  nFree; // number of free bytes
 	size_t  hugelist;
-
-    static const size_t list_tail = ~size_t(0);
 
 	void destroy_and_clean() {
 		mem::clear();
@@ -63,8 +69,8 @@ public:
             throw std::bad_alloc();
         }
 		nFree = 0;
-        std::uninitialized_fill_n(flarr, fllen, link_t(list_tail));
-		hugelist = list_tail;
+        std::uninitialized_fill_n(flarr, fllen, link_t(free_list_tail));
+		hugelist = huge_list_tail;
     }
     MemPool(const MemPool& y) : mem(y) {
         fllen = y.fllen;
@@ -125,16 +131,16 @@ public:
 
 	// keep flarr
     void clear() {
-		hugelist = list_tail;
+		hugelist = huge_list_tail;
 		nFree = 0;
-        std::uninitialized_fill_n(flarr, fllen, link_t(list_tail));
+        std::uninitialized_fill_n(flarr, fllen, link_t(free_list_tail));
 		mem::clear();
 	}
 
     void erase_all() {
-		hugelist = list_tail;
+		hugelist = huge_list_tail;
 		nFree = 0;
-        std::uninitialized_fill_n(flarr, fllen, link_t(list_tail));
+        std::uninitialized_fill_n(flarr, fllen, link_t(free_list_tail));
 		mem::erase_all();
 	}
 
@@ -149,14 +155,14 @@ public:
 	}
 
     template<class U> const U& at(size_t pos) const {
-        assert(pos < n);
+        assert((pos << offset_shift) < n);
     //  assert(pos + sizeof(U) < n);
-        return *(U*)(p + pos);
+        return *(U*)(p + (pos << offset_shift));
     }
     template<class U> U& at(size_t pos) {
-        assert(pos < n);
+        assert((pos << offset_shift) < n);
     //  assert(pos + sizeof(U) < n);
-        return *(U*)(p + pos);
+        return *(U*)(p + (pos << offset_shift));
     }
 
     // param request must be aligned by align_size
@@ -164,21 +170,21 @@ public:
         assert(request % align_size == 0);
         assert(request > 0);
 		request = std::max(sizeof(link_t), request);
-        size_t res = list_tail;
+        size_t res = huge_list_tail;
         if (request <= fllen * align_size) {
 			size_t idx = request / align_size - 1;
-			res = flarr[idx].next;
-			if (list_tail != res) {
+			if (free_list_tail != flarr[idx].next) {
 				assert(nFree >= request);
+			    res = size_t(flarr[idx].next) << offset_shift;
 				assert(res + request <= this->n);
-				flarr[idx] = at<link_t>(res);
+				flarr[idx] = at<link_t>(flarr[idx].next);
 				nFree -= request;
 			}
 		}
 		else { // find in freelist, use first match
 			res = hugelist;
 			size_t* prev = &hugelist;
-			while (list_tail != res) {
+			while (huge_list_tail != res) {
 			   	HugeLink* h = (HugeLink*)(p + res);
 				assert(res + h->size <= this->n);
 				if (h->size >= request) {
@@ -194,8 +200,9 @@ public:
 							assert(remain >= sizeof(link_t));
 							assert(remain >= align_size);
 							size_t idx = remain / align_size - 1;
+                            free_pos >>= offset_shift;
 							at<link_t>(free_pos) = flarr[idx];
-							flarr[idx].next = free_pos;
+							flarr[idx].next = link_size_t(free_pos);
 							*prev = h->next; // remove from hugelist
 						} else {
 							// replace h with h2, the 2nd part of h
@@ -214,12 +221,12 @@ public:
 				prev = &h->next;
 			}
 		}
-		if (list_tail == res) {
+		if (huge_list_tail == res) {
 			ensure_capacity(n + request);
 			res = n;
 			n += request;
 		}
-		return res;
+		return res >> offset_shift;
 	}
 
     size_t alloc3(size_t pos, size_t oldlen, size_t newlen) {
@@ -227,6 +234,7 @@ public:
         assert(newlen > 0);
         assert(oldlen % align_size == 0);
         assert(oldlen > 0);
+        pos <<= offset_shift;
 		oldlen = std::max(sizeof(link_t), oldlen);
 		newlen = std::max(sizeof(link_t), newlen);
         assert(pos < n);
@@ -234,29 +242,30 @@ public:
         if (pos + oldlen == n) {
             ensure_capacity(pos + newlen);
             n = pos + newlen;
-            return pos;
+            return pos >> offset_shift;
         }
         else if (newlen < oldlen) {
 			assert(oldlen - newlen >= sizeof(link_t));
 			assert(oldlen - newlen >= align_size);
 			sfree(pos + newlen, oldlen - newlen);
-			return pos;
+            return pos >> offset_shift;
 		}
 		else if (newlen == oldlen) {
 			// do nothing
-			return pos;
+            return pos >> offset_shift;
 		}
 		else {
             size_t newpos = alloc(newlen);
             memcpy(p + newpos, p + pos, std::min(oldlen, newlen));
             sfree(pos, oldlen);
-            return newpos;
+            return newpos >> offset_shift;
         }
     }
 
     void sfree(size_t pos, size_t len) {
         assert(len % align_size == 0);
         assert(len > 0);
+        pos <<= offset_shift;
         assert(pos < n);
 		len = std::max(sizeof(link_t), len);
         assert(pos + len <= n);
@@ -265,8 +274,8 @@ public:
         }
 	   	else if (len <= fllen * align_size) {
             size_t idx = len / align_size - 1;
-            at<link_t>(pos) = flarr[idx];
-            flarr[idx].next = pos;
+            at<link_t>(pos >> offset_shift) = flarr[idx];
+            flarr[idx].next = link_size_t(pos >> offset_shift);
 			nFree += len;
         }
 		else {
