@@ -4,7 +4,6 @@
 #include "db_store.hpp"
 #include "db_index.hpp"
 #include <tbb/queuing_rw_mutex.h>
-#include <terark/threaded_rbtree_hash.h>
 #include <atomic>
 
 #if defined(TBB_VERSION_MAJOR)
