@@ -47,7 +47,7 @@ class MemPool : private valvec<unsigned char> {
 		}
 		fllen = 0;
 		nFree = 0;
-		hugelist = list_tail;
+		hugelist = huge_list_tail;
 	}
 
 public:
@@ -107,7 +107,7 @@ public:
 		y.fllen = 0;
 		y.flarr = NULL;
 		y.nFree = 0;
-		y.hugelist = list_tail;
+		y.hugelist = huge_list_tail;
     }
     MemPool& operator=(MemPool&& y) noexcept {
         if (&y == this)
@@ -306,7 +306,7 @@ public:
 		self.flarr = NULL;
 		self.fllen = 0;
 		self.nFree = 0;
-		self.hugelist = list_tail;
+		self.hugelist = buge_list_tail;
 		dio >> var;  self.hugelist = var.t;
 		dio >> var;  self.nFree = var.t;
 		dio >> var;  self.fllen = var.t;
@@ -315,7 +315,7 @@ public:
 			self.flarr = NULL;
 			self.fllen = 0;
 			self.nFree = 0;
-			self.hugelist = list_tail;
+			self.hugelist = huge_list_tail;
 			throw std::bad_alloc();
 		}
 		for (size_t i = 0, n = self.fllen; i < n; ++i) {
