@@ -306,7 +306,7 @@ public:
 		self.flarr = NULL;
 		self.fllen = 0;
 		self.nFree = 0;
-		self.hugelist = buge_list_tail;
+		self.hugelist = huge_list_tail;
 		dio >> var;  self.hugelist = var.t;
 		dio >> var;  self.nFree = var.t;
 		dio >> var;  self.fllen = var.t;
