@@ -94,11 +94,15 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 			strVec, schema.m_dictZipSampleRatio));
 	}
 	else if (schema.m_useFastZip) {
+#if 0
 		std::unique_ptr<FastZipBlobStore> fzds(new FastZipBlobStore());
 		NestLoudsTrieConfig  conf;
 		initConfigFromSchema(conf, schema);
 		fzds->build_from(strVec, conf);
 		m_store.reset(fzds.release());
+#else
+		THROW_STD(invalid_argument, "schema.m_useFastZip is not supported any more");
+#endif
 	}
 	else {
 		m_store.reset(nltBuild(schema, strVec));
@@ -276,9 +280,11 @@ void NestLoudsTrieStore::save(PathRef path) const {
 	if (BaseDFA* dfa = dynamic_cast<BaseDFA*>(&*m_store)) {
 		dfa->save_mmap(fpath.c_str());
 	}
+#if 0
 	else if (auto zds = dynamic_cast<FastZipBlobStore*>(&*m_store)) {
 		zds->save_mmap(fpath);
 	}
+#endif
 	else if (auto zds = dynamic_cast<DictZipBlobStore*>(&*m_store)) {
 		zds->save_mmap(fpath);
 	}
