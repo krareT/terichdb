@@ -17,42 +17,51 @@ namespace terark {
 /// @see valvec
 template<int AlignSize>
 class MemPool : private valvec<unsigned char> {
-	BOOST_STATIC_ASSERT((AlignSize & (AlignSize-1)) == 0);
-	BOOST_STATIC_ASSERT(AlignSize >= 4);
+    BOOST_STATIC_ASSERT((AlignSize & (AlignSize-1)) == 0);
+    BOOST_STATIC_ASSERT(AlignSize >= 4);
     typedef valvec<unsigned char> mem;
     typedef typename boost::mpl::if_c<AlignSize == 4, uint32_t, uint64_t>::type link_size_t;
     
-    static const size_t huge_list_tail = ~size_t(0);
-    static const link_size_t free_list_tail = ~link_size_t(0);
+    static const size_t skip_list_level_max = 6;
+    static const size_t list_tail = ~link_size_t(0);
     static const size_t offset_shift = AlignSize == 4 ? boost::static_log2<AlignSize>::value : 0;
 
     struct link_t { // just for readable
         link_size_t next;
         explicit link_t(link_size_t l) : next(l) {}
     };
-	struct HugeLink {
-		size_t next;
-		size_t size;
-	};
-    link_t* flarr; // free list array
-    size_t  fllen; // free list length
-	size_t  nFree; // number of free bytes
-	size_t  hugelist;
+    struct huge_link_t {
+        link_size_t size;
+        link_size_t next[skip_list_level_max];
+    };
+    link_t* free_list_arr;  // free list array
+    size_t  free_list_len;  // free list length
+    size_t  fragment_size;  // number of free bytes
+    huge_link_t huge_list;  // skip list header
 
-	void destroy_and_clean() {
-		mem::clear();
-		if (flarr) {
-			free(flarr);
-			flarr = NULL;
-		}
-		fllen = 0;
-		nFree = 0;
-		hugelist = huge_list_tail;
-	}
+    size_t random_level() {
+        size_t level = 1;
+        while (rand() % 4 == 0 && level < skip_list_level_max)
+            ++level;
+        return level - 1;
+    }
+
+    void destroy_and_clean() {
+        mem::clear();
+        if (free_list_arr) {
+            free(free_list_arr);
+            free_list_arr = NULL;
+        }
+        free_list_len = 0;
+        fragment_size = 0;
+        huge_list.size = 0;
+        for(auto& next : huge_list.next)
+            next = list_tail;
+    }
 
 public:
-	      mem& get_data_byte_vec()       { return *this; }
-	const mem& get_data_byte_vec() const { return *this; }
+          mem& get_data_byte_vec()       { return *this; }
+    const mem& get_data_byte_vec() const { return *this; }
 
     static size_t align_to(size_t len) {
         return (len + align_size - 1) & ~size_t(align_size - 1);
@@ -61,98 +70,102 @@ public:
 
     explicit MemPool(size_t maxBlockSize) {
         assert(maxBlockSize >= align_size);
-        assert(maxBlockSize >= sizeof(HugeLink));
+        assert(maxBlockSize >= sizeof(huge_link_t));
         maxBlockSize = align_to(maxBlockSize);
-        fllen = maxBlockSize / align_size;
-        flarr = (link_t*)malloc(sizeof(link_t) * fllen);
-        if (NULL == flarr) {
+        free_list_len = maxBlockSize / align_size;
+        free_list_arr = (link_t*)malloc(sizeof(link_t) * free_list_len);
+        if (NULL == free_list_arr) {
             throw std::bad_alloc();
         }
-		nFree = 0;
-        std::uninitialized_fill_n(flarr, fllen, link_t(free_list_tail));
-		hugelist = huge_list_tail;
+        fragment_size = 0;
+        std::uninitialized_fill_n(free_list_arr, free_list_len, link_t(list_tail));
+        huge_list.size = 0;
+        for(auto& next : huge_list.next) next = list_tail;
     }
     MemPool(const MemPool& y) : mem(y) {
-        fllen = y.fllen;
-        flarr = (link_t*)malloc(sizeof(link_t) * fllen);
-        if (NULL == flarr) {
+        free_list_len = y.free_list_len;
+        free_list_arr = (link_t*)malloc(sizeof(link_t) * free_list_len);
+        if (NULL == free_list_arr) {
             throw std::bad_alloc();
         }
-		nFree = y.nFree;
-        memcpy(flarr, y.flarr, sizeof(link_t) * fllen);
-		hugelist = y.hugelist;
+        fragment_size = y.fragment_size;
+        memcpy(free_list_arr, y.free_list_arr, sizeof(link_t) * free_list_len);
+        huge_list = y.huge_list;
     }
     MemPool& operator=(const MemPool& y) {
         if (&y == this)
             return *this;
-		destroy_and_clean();
+        destroy_and_clean();
         MemPool(y).swap(*this);
         return *this;
     }
     ~MemPool() {
-        if (flarr) {
-            free(flarr);
-			flarr = NULL;
-		}
+        if (free_list_arr) {
+            free(free_list_arr);
+            free_list_arr = NULL;
+        }
     }
 
 #ifdef HSM_HAS_MOVE
     MemPool(MemPool&& y) noexcept : mem(y) {
-		assert(y.data() == NULL);
-		assert(y.size() == 0);
-        fllen = y.fllen;
-        flarr = y.flarr;
-		nFree = y.nFree;
-		hugelist = y.hugelist;
-		y.fllen = 0;
-		y.flarr = NULL;
-		y.nFree = 0;
-		y.hugelist = huge_list_tail;
+        assert(y.data() == NULL);
+        assert(y.size() == 0);
+        free_list_len = y.free_list_len;
+        free_list_arr = y.free_list_arr;
+        fragment_size = y.fragment_size;
+        huge_list = y.huge_list;
+        y.free_list_len = 0;
+        y.free_list_arr = NULL;
+        y.fragment_size = 0;
+        y.huge_list.size = 0;
+        for(auto& next : y.huge_list.next) next = list_tail;
     }
     MemPool& operator=(MemPool&& y) noexcept {
         if (&y == this)
             return *this;
         this->~MemPool();
-        new(this)MemPool(y);
+        ::new(this) MemPool(y);
         return *this;
     }
 #endif
 
-	using mem::data;
+    using mem::data;
     using mem::size; // bring to public...
 //  using mem::shrink_to_fit;
     using mem::reserve;
     using mem::capacity;
 
-	unsigned char byte_at(size_t pos) const {
-		assert(pos < n);
-		return p[pos];
-	}
+    unsigned char byte_at(size_t pos) const {
+        assert(pos < n);
+        return p[pos];
+    }
 
-	// keep flarr
+    // keep free_list_arr
     void clear() {
-		hugelist = huge_list_tail;
-		nFree = 0;
-        std::uninitialized_fill_n(flarr, fllen, link_t(free_list_tail));
-		mem::clear();
-	}
+        huge_list.size = 0;
+        for(auto& next : huge_list.next) next = list_tail;
+        fragment_size = 0;
+        std::uninitialized_fill_n(free_list_arr, free_list_len, link_t(list_tail));
+        mem::clear();
+    }
 
     void erase_all() {
-		hugelist = huge_list_tail;
-		nFree = 0;
-        std::uninitialized_fill_n(flarr, fllen, link_t(free_list_tail));
-		mem::erase_all();
-	}
+        huge_list.size = 0;
+        for(auto& next : huge_list.next) next = list_tail;
+        fragment_size = 0;
+        std::uninitialized_fill_n(free_list_arr, free_list_len, link_t(list_tail));
+        mem::erase_all();
+    }
 
     void resize_no_init(size_t newsize) {
         assert(newsize % align_size == 0);
-		assert(newsize >= mem::size());
+        assert(newsize >= mem::size());
         mem::resize_no_init(newsize);
     }
 
-	void shrink_to_fit() {
-		mem::shrink_to_fit();
-	}
+    void shrink_to_fit() {
+        mem::shrink_to_fit();
+    }
 
     template<class U> const U& at(size_t pos) const {
         assert((pos << offset_shift) < n);
@@ -169,172 +182,179 @@ public:
     size_t alloc(size_t request) {
         assert(request % align_size == 0);
         assert(request > 0);
-		request = std::max(sizeof(link_t), request);
-        size_t res = huge_list_tail;
-        if (request <= fllen * align_size) {
-			size_t idx = request / align_size - 1;
-			if (free_list_tail != flarr[idx].next) {
-				assert(nFree >= request);
-			    res = size_t(flarr[idx].next) << offset_shift;
-				assert(res + request <= this->n);
-				flarr[idx] = at<link_t>(flarr[idx].next);
-				nFree -= request;
-			}
-		}
-		else { // find in freelist, use first match
-			res = hugelist;
-			size_t* prev = &hugelist;
-			while (huge_list_tail != res) {
-			   	HugeLink* h = (HugeLink*)(p + res);
-				assert(res + h->size <= this->n);
-				if (h->size >= request) {
-					size_t remain = h->size - request;
-					if (remain) {
-						size_t free_pos = res + request;
-						if (res + h->size == this->n) {
-							// this is the top most block, shrink the heap
-							this->n = free_pos;
-							*prev = h->next; // remove from hugelist
-							nFree -= remain; // not in freelist
-						} else if (remain <= fllen * align_size) {
-							assert(remain >= sizeof(link_t));
-							assert(remain >= align_size);
-							size_t idx = remain / align_size - 1;
-                            free_pos >>= offset_shift;
-							at<link_t>(free_pos) = flarr[idx];
-							flarr[idx].next = link_size_t(free_pos);
-							*prev = h->next; // remove from hugelist
-						} else {
-							// replace h with h2, the 2nd part of h
-							HugeLink* h2 = (HugeLink*)(p + free_pos);
-							h2->next = h->next;
-							h2->size = remain;
-							*prev = free_pos; // replace linked in pointer
-						}
-					} else {
-						*prev = h->next; // remove from hugelist
-					}
-					nFree -= request;
-					break;
-				}
-				res = h->next;
-				prev = &h->next;
-			}
-		}
-		if (huge_list_tail == res) {
-			ensure_capacity(n + request);
-			res = n;
-			n += request;
-		}
-		return res >> offset_shift;
-	}
+        request = std::max(sizeof(link_t), request);
+        size_t res = list_tail;
+        if (request <= free_list_len * align_size) {
+            size_t idx = request / align_size - 1;
+            if (list_tail != free_list_arr[idx].next) {
+                assert(fragment_size >= request);
+                res = free_list_arr[idx].next;
+                assert((res << offset_shift) + request <= this->n);
+                free_list_arr[idx] = at<link_t>(free_list_arr[idx].next);
+                fragment_size -= request;
+            }
+        }
+        else { // find in freelist, use first match
+            assert(request >= sizeof(huge_link_t));
+            huge_link_t* update[skip_list_level_max];
+            huge_link_t* n1 = &huge_list;
+            huge_link_t* n2 = nullptr;
+            size_t k = huge_list.size;
+            while (k-- > 0) {
+                while (n1->next[k] != list_tail && (n2 = &at<huge_link_t>(n1->next[k]))->size < request)
+                    n1 = n2;
+                update[k] = n1;
+            }
+            if (n2 != nullptr && n2->size >= request) {
+                size_t remain = n2->size - request;
+                res = ((byte*)n2 - p) >> offset_shift;
+                for (k = 0; k < huge_list.size; ++k)
+                    if ((n1 = update[k])->next[k] == res)
+                        n1->next[k] = n2->next[k];
+                while (huge_list.next[huge_list.size - 1] == list_tail && --huge_list.size > 0)
+                    ;
+                if (remain)
+                    sfree(res + (request >> offset_shift), remain);
+                fragment_size -= request;
+            }
+        }
+        if (list_tail == res) {
+            ensure_capacity(n + request);
+            res = n >> offset_shift;
+            n += request;
+        }
+        return res;
+    }
 
     size_t alloc3(size_t pos, size_t oldlen, size_t newlen) {
         assert(newlen % align_size == 0);
         assert(newlen > 0);
         assert(oldlen % align_size == 0);
         assert(oldlen > 0);
-        pos <<= offset_shift;
-		oldlen = std::max(sizeof(link_t), oldlen);
-		newlen = std::max(sizeof(link_t), newlen);
-        assert(pos < n);
-        assert(pos + oldlen <= n);
-        if (pos + oldlen == n) {
-            ensure_capacity(pos + newlen);
-            n = pos + newlen;
-            return pos >> offset_shift;
+        oldlen = std::max(sizeof(link_t), oldlen);
+        newlen = std::max(sizeof(link_t), newlen);
+        assert((pos << offset_shift) < n);
+        assert((pos << offset_shift) + oldlen <= n);
+        if ((pos << offset_shift) + oldlen == n) {
+            ensure_capacity(n = (pos << offset_shift) + newlen);
+            return pos;
         }
         else if (newlen < oldlen) {
-			assert(oldlen - newlen >= sizeof(link_t));
-			assert(oldlen - newlen >= align_size);
-			sfree(pos + newlen, oldlen - newlen);
-            return pos >> offset_shift;
-		}
-		else if (newlen == oldlen) {
-			// do nothing
-            return pos >> offset_shift;
-		}
-		else {
+            assert(oldlen - newlen >= sizeof(link_t));
+            assert(oldlen - newlen >= align_size);
+            sfree(pos + (newlen >> offset_shift), oldlen - newlen);
+            return pos;
+        }
+        else if (newlen == oldlen) {
+            // do nothing
+            return pos;
+        }
+        else {
             size_t newpos = alloc(newlen);
-            memcpy(p + newpos, p + pos, std::min(oldlen, newlen));
+            memcpy(p + (newpos << offset_shift), p + (pos << offset_shift), std::min(oldlen, newlen));
             sfree(pos, oldlen);
-            return newpos >> offset_shift;
+            return newpos;
         }
     }
 
     void sfree(size_t pos, size_t len) {
         assert(len % align_size == 0);
         assert(len > 0);
-        pos <<= offset_shift;
-        assert(pos < n);
-		len = std::max(sizeof(link_t), len);
-        assert(pos + len <= n);
-        if (pos + len == n) {
-            n = pos;
+        assert((pos << offset_shift) < n);
+        len = std::max(sizeof(link_t), len);
+        assert((pos << offset_shift) + len <= n);
+        if ((pos << offset_shift) + len == n) {
+            n = pos << offset_shift;
         }
-	   	else if (len <= fllen * align_size) {
+        else if (len <= free_list_len * align_size) {
             size_t idx = len / align_size - 1;
-            at<link_t>(pos >> offset_shift) = flarr[idx];
-            flarr[idx].next = link_size_t(pos >> offset_shift);
-			nFree += len;
+            at<link_t>(pos) = free_list_arr[idx];
+            free_list_arr[idx].next = link_size_t(pos);
+            fragment_size += len;
         }
-		else {
-			HugeLink* h = (HugeLink*)(p + pos);
-			h->next = hugelist;
-			h->size = len;
-			hugelist = pos;
-			nFree += len;
-		}
+        else {
+            assert(len >= sizeof(huge_link_t));
+            huge_link_t* update[skip_list_level_max];
+            huge_link_t* n1 = &huge_list;
+            huge_link_t* n2;
+            size_t k = huge_list.size;
+            while (k-- > 0) {
+                while (n1->next[k] != list_tail && (n2 = &at<huge_link_t>(n1->next[k]))->size < len)
+                    n1 = n2;
+                update[k] = n1;
+            }
+            k = random_level();  
+            if (k >= huge_list.size) {
+                k = huge_list.size++;
+                update[k] = &huge_list;
+            };
+            n2 = &at<huge_link_t>(pos);
+            do {
+                n1 = update[k];
+                n2->next[k] = n1->next[k];
+                n1->next[k] = pos;
+            } while(k-- > 0);
+            n2->size = len;
+            fragment_size += len;
+        }
     }
 
-	size_t free_size() const { return nFree; }
+    size_t free_size() const { return fragment_size; }
 
     void swap(MemPool& y) {
         mem::swap(y);
-        std::swap(flarr, y.flarr);
-        std::swap(fllen, y.fllen);
-		std::swap(nFree, y.nFree);
-		std::swap(hugelist, y.hugelist);
+        std::swap(free_list_arr, y.free_list_arr);
+        std::swap(free_list_len, y.free_list_len);
+        std::swap(fragment_size, y.fragment_size);
+        std::swap(huge_list, y.huge_list);
     }
 
-	template<class DataIO>
-	friend void DataIO_loadObject(DataIO& dio, MemPool& self) {
-		typename DataIO::my_var_size_t var;
-		self.clear();
-		if (self.flarr)
-			::free(self.flarr);
-		self.flarr = NULL;
-		self.fllen = 0;
-		self.nFree = 0;
-		self.hugelist = huge_list_tail;
-		dio >> var;  self.hugelist = var.t;
-		dio >> var;  self.nFree = var.t;
-		dio >> var;  self.fllen = var.t;
-		self.flarr = (link_t*)malloc(sizeof(link_t) * self.fllen);
-		if (NULL == self.flarr) {
-			self.flarr = NULL;
-			self.fllen = 0;
-			self.nFree = 0;
-			self.hugelist = huge_list_tail;
-			throw std::bad_alloc();
-		}
-		for (size_t i = 0, n = self.fllen; i < n; ++i) {
-			dio >> var;
-			self.flarr[i].next = var.t;
-		}
-		dio >> static_cast<mem&>(self);
-	}
+    template<class DataIO>
+    friend void DataIO_loadObject(DataIO& dio, MemPool& self) {
+        typename DataIO::my_var_size_t var;
+        self.clear();
+        if (self.free_list_arr)
+            ::free(self.free_list_arr);
+        self.free_list_arr = NULL;
+        self.free_list_len = 0;
+        self.fragment_size = 0;
+        self.huge_list.size = 0;
+        for (auto& next : self.huge_list.next) next = list_tail;
+        dio >> var; self.huge_list.size = var.t;
+        for (auto& next : self.huge_list.next) {
+            dio >> var;
+            next = var.t;
+        }
+        dio >> var;  self.fragment_size = var.t;
+        dio >> var;  self.free_list_len = var.t;
+        self.free_list_arr = (link_t*)malloc(sizeof(link_t) * self.free_list_len);
+        if (NULL == self.free_list_arr) {
+            self.free_list_arr = NULL;
+            self.free_list_len = 0;
+            self.fragment_size = 0;
+            self.huge_list.size = 0;
+            for (auto& next : self.huge_list.next) next = list_tail;
+            throw std::bad_alloc();
+        }
+        for (size_t i = 0, n = self.free_list_len; i < n; ++i) {
+            dio >> var;
+            self.free_list_arr[i].next = var.t;
+        }
+        dio >> static_cast<mem&>(self);
+    }
 
-	template<class DataIO>
-	friend void DataIO_saveObject(DataIO& dio, const MemPool& self) {
-		typename DataIO::my_var_size_t var;
-		dio << typename DataIO::my_var_size_t(self.hugelist);
-		dio << typename DataIO::my_var_size_t(self.nFree);
-		dio << typename DataIO::my_var_size_t(self.fllen);
-		for (size_t i = 0, n = self.fllen; i < n; ++i)
-			dio << typename DataIO::my_var_size_t(self.flarr[i].next);
-		dio << static_cast<const mem&>(self);
-	}
+    template<class DataIO>
+    friend void DataIO_saveObject(DataIO& dio, const MemPool& self) {
+        typename DataIO::my_var_size_t var;
+        dio << typename DataIO::my_var_size_t(self.huge_list.size);
+        for (auto& next : self.huge_list.next)
+            dio << typename DataIO::my_var_size_t(next);
+        dio << typename DataIO::my_var_size_t(self.fragment_size);
+        dio << typename DataIO::my_var_size_t(self.free_list_len);
+        for (size_t i = 0, n = self.free_list_len; i < n; ++i)
+            dio << typename DataIO::my_var_size_t(self.free_list_arr[i].next);
+        dio << static_cast<const mem&>(self);
+    }
 };
 
 } // namespace terark
