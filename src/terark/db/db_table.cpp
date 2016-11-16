@@ -3446,6 +3446,9 @@ mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	for (auto& e : m_segs) {
 		auto srcStore = e.seg->m_colgroups[colgroupId];
 		assert(nullptr != srcStore);
+		size_t physicSubRows = e.seg->getPhysicRows();
+        if (physicSubRows == 0)
+            continue;
 		const byte_t* subBasePtr = srcStore->getRecordsBasePtr();
 		assert(nullptr != subBasePtr);
 		if (e.needsRePurge()) {
@@ -3465,7 +3468,6 @@ mergeFixedLenColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 			}
 		}
 		else {
-			size_t physicSubRows = e.seg->getPhysicRows();
 			assert(physicSubRows <= (size_t)srcStore->numDataRows());
 			memcpy(newBasePtr + fixlen * newPhysicId,
 				   subBasePtr , fixlen * physicSubRows);
@@ -3723,7 +3725,7 @@ try{
 		const std::string prefix = "colgroup-" + schema.m_name;
 		size_t newPartIdx = 0;
 		for (auto& e : toMerge.m_segs) {
-			if (e.needsRePurge()) {
+			if (e.seg->getWritableSegment() || e.needsRePurge()) {
 				assert(e.newIsPurged.size() >= 1);
 				assert(e.newIsPurged.size() == e.seg->m_isDel.size());
 				if (e.newIsPurged.size() == e.newNumPurged) {
@@ -4369,7 +4371,9 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
                 }
             }
 	    }
-        if (mergeColgroupSegment && wrLen > 0)
+        // all are colgroup segments
+        // needn't reuse old stores
+        if (mergeColgroupSegment && rdLen == 0)
             param.m_forcePurgeAndMerge = true;
     }
 
@@ -4502,9 +4506,11 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         {
 		    MyRwLock lock(m_rwMutex, false);
 		    for (size_t i = 0; i < m_segs.size(); ++i) {
-                if (findSegmentId == size_t(-1) || m_segs[i].purgePriority > m_segs[findSegmentId].purgePriority) {
-                    findSegmentId = i;
-                    break;
+                if (m_segs[i].purgePriority > 0) {
+                    if (findSegmentId == size_t(-1) || m_segs[i].purgePriority > m_segs[findSegmentId].purgePriority) {
+                        findSegmentId = i;
+                        break;
+                    }
                 }
             }
             if (findSegmentId == size_t(-1)) {
