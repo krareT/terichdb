@@ -1378,8 +1378,8 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		input->deleteSegment();
     }
     else {
-	    fs::path backupDir = renameToBackupFromDir(input->m_segDir);
         if (fs::is_symlink(m_segDir)) {
+	        fs::path backupDir = renameToBackupFromDir(tmpSegDir);
             fs::path Rela = ".." / input->m_segDir.parent_path().filename() / input->m_segDir.filename();
             if (fs::read_symlink(m_segDir) == Rela) {
                 fs::remove(m_segDir);
@@ -1389,21 +1389,25 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 			        , "ERROR: error symlink(%s)"
 			        , strDir.c_str());
             }
-        }
-	    try {
-            fs::rename(tmpSegDir, m_segDir);
-        }
-	    catch (const std::exception& ex) {
 		    fs::rename(backupDir, m_segDir);
-		    THROW_STD(logic_error
-			    , "ERROR: rename(%s.tmp, %s), ex.what = %s"
-			    , strDir.c_str(), strDir.c_str(), ex.what());
-	    }
-	    {
-		    MyRwLock lock(tab->m_rwMutex, true);
-		    input->m_segDir.swap(backupDir);
-		    input->deleteSegment(); // will delete backupDir
-	    }
+        }
+        else {
+	        fs::path backupDir = renameToBackupFromDir(input->m_segDir);
+	        try {
+                fs::rename(tmpSegDir, m_segDir);
+            }
+	        catch (const std::exception& ex) {
+		        fs::rename(backupDir, m_segDir);
+		        THROW_STD(logic_error
+			        , "ERROR: rename(%s.tmp, %s), ex.what = %s"
+			        , strDir.c_str(), strDir.c_str(), ex.what());
+	        }
+	        {
+		        MyRwLock lock(tab->m_rwMutex, true);
+		        input->m_segDir.swap(backupDir);
+		        input->deleteSegment(); // will delete backupDir
+	        }
+        }
     }
 }
 
