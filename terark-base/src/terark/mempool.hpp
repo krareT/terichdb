@@ -22,7 +22,7 @@ class MemPool : private valvec<unsigned char> {
     typedef valvec<unsigned char> mem;
     typedef typename boost::mpl::if_c<AlignSize == 4, uint32_t, uint64_t>::type link_size_t;
     
-    static const size_t skip_list_level_max = 6;
+    static const size_t skip_list_level_max = 8;    // data io depend on this, don't modify this value
     static const size_t list_tail = ~link_size_t(0);
     static const size_t offset_shift = AlignSize == 4 ? boost::static_log2<AlignSize>::value : 0;
 
@@ -34,10 +34,10 @@ class MemPool : private valvec<unsigned char> {
         link_size_t size;
         link_size_t next[skip_list_level_max];
     };
-    link_t* free_list_arr;  // free list array
-    size_t  free_list_len;  // free list length
-    size_t  fragment_size;  // number of free bytes
-    huge_link_t huge_list;  // skip list header
+    link_t* free_list_arr;
+    size_t  free_list_len;
+    size_t  fragment_size;
+    huge_link_t huge_list;
 
     size_t random_level() {
         size_t level = 1;
@@ -168,14 +168,14 @@ public:
     }
 
     template<class U> const U& at(size_t pos) const {
-        assert((pos << offset_shift) < n);
+        assert(pos < n);
     //  assert(pos + sizeof(U) < n);
-        return *(U*)(p + (pos << offset_shift));
+        return *(U*)(p + pos);
     }
     template<class U> U& at(size_t pos) {
-        assert((pos << offset_shift) < n);
+        assert(pos < n);
     //  assert(pos + sizeof(U) < n);
-        return *(U*)(p + (pos << offset_shift));
+        return *(U*)(p + pos);
     }
 
     // param request must be aligned by align_size
@@ -188,9 +188,9 @@ public:
             size_t idx = request / align_size - 1;
             if (list_tail != free_list_arr[idx].next) {
                 assert(fragment_size >= request);
-                res = free_list_arr[idx].next;
-                assert((res << offset_shift) + request <= this->n);
-                free_list_arr[idx] = at<link_t>(free_list_arr[idx].next);
+                res = size_t(free_list_arr[idx].next) << offset_shift;
+                assert(res + request <= this->n);
+                free_list_arr[idx] = at<link_t>(res);
                 fragment_size -= request;
             }
         }
@@ -201,26 +201,28 @@ public:
             huge_link_t* n2 = nullptr;
             size_t k = huge_list.size;
             while (k-- > 0) {
-                while (n1->next[k] != list_tail && (n2 = &at<huge_link_t>(n1->next[k]))->size < request)
+                while (n1->next[k] != list_tail && (n2 = &at<huge_link_t>(size_t(n1->next[k]) << offset_shift))->size < request)
                     n1 = n2;
                 update[k] = n1;
             }
             if (n2 != nullptr && n2->size >= request) {
+                assert((byte*)n2 >= p);
                 size_t remain = n2->size - request;
-                res = ((byte*)n2 - p) >> offset_shift;
+                res = size_t((byte*)n2 - p);
+                size_t res_shift = res >> offset_shift;
                 for (k = 0; k < huge_list.size; ++k)
-                    if ((n1 = update[k])->next[k] == res)
+                    if ((n1 = update[k])->next[k] == res_shift)
                         n1->next[k] = n2->next[k];
                 while (huge_list.next[huge_list.size - 1] == list_tail && --huge_list.size > 0)
                     ;
                 if (remain)
-                    sfree(res + (request >> offset_shift), remain);
+                    sfree(res + request, remain);
                 fragment_size -= request;
             }
         }
         if (list_tail == res) {
             ensure_capacity(n + request);
-            res = n >> offset_shift;
+            res = n;
             n += request;
         }
         return res;
@@ -233,16 +235,16 @@ public:
         assert(oldlen > 0);
         oldlen = std::max(sizeof(link_t), oldlen);
         newlen = std::max(sizeof(link_t), newlen);
-        assert((pos << offset_shift) < n);
-        assert((pos << offset_shift) + oldlen <= n);
-        if ((pos << offset_shift) + oldlen == n) {
-            ensure_capacity(n = (pos << offset_shift) + newlen);
+        assert(pos < n);
+        assert(pos + oldlen <= n);
+        if (pos + oldlen == n) {
+            ensure_capacity(n = pos + newlen);
             return pos;
         }
         else if (newlen < oldlen) {
             assert(oldlen - newlen >= sizeof(link_t));
             assert(oldlen - newlen >= align_size);
-            sfree(pos + (newlen >> offset_shift), oldlen - newlen);
+            sfree(pos + newlen, oldlen - newlen);
             return pos;
         }
         else if (newlen == oldlen) {
@@ -251,7 +253,7 @@ public:
         }
         else {
             size_t newpos = alloc(newlen);
-            memcpy(p + (newpos << offset_shift), p + (pos << offset_shift), std::min(oldlen, newlen));
+            memcpy(p + newpos, p + pos, std::min(oldlen, newlen));
             sfree(pos, oldlen);
             return newpos;
         }
@@ -260,16 +262,16 @@ public:
     void sfree(size_t pos, size_t len) {
         assert(len % align_size == 0);
         assert(len > 0);
-        assert((pos << offset_shift) < n);
+        assert(pos < n);
         len = std::max(sizeof(link_t), len);
-        assert((pos << offset_shift) + len <= n);
-        if ((pos << offset_shift) + len == n) {
-            n = pos << offset_shift;
+        assert(pos + len <= n);
+        if (pos + len == n) {
+            n = pos;
         }
         else if (len <= free_list_len * align_size) {
             size_t idx = len / align_size - 1;
             at<link_t>(pos) = free_list_arr[idx];
-            free_list_arr[idx].next = link_size_t(pos);
+            free_list_arr[idx].next = link_size_t(pos >> offset_shift);
             fragment_size += len;
         }
         else {
@@ -279,7 +281,7 @@ public:
             huge_link_t* n2;
             size_t k = huge_list.size;
             while (k-- > 0) {
-                while (n1->next[k] != list_tail && (n2 = &at<huge_link_t>(n1->next[k]))->size < len)
+                while (n1->next[k] != list_tail && (n2 = &at<huge_link_t>(size_t(n1->next[k]) << offset_shift))->size < len)
                     n1 = n2;
                 update[k] = n1;
             }
@@ -289,10 +291,11 @@ public:
                 update[k] = &huge_list;
             };
             n2 = &at<huge_link_t>(pos);
+            size_t pos_shift = pos >> offset_shift;
             do {
                 n1 = update[k];
                 n2->next[k] = n1->next[k];
-                n1->next[k] = pos;
+                n1->next[k] = pos_shift;
             } while(k-- > 0);
             n2->size = len;
             fragment_size += len;
