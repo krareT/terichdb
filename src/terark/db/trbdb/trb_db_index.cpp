@@ -235,6 +235,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
     struct normal_storage_type
     {
         typedef terark::MemPool<4> pool_type;
+        static size_t constexpr index_shift = 2;
         struct element_type
         {
             node_type node;
@@ -282,21 +283,21 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
 
         fstring key(size_type i) const
         {
-            byte const *pos = data.at<data_object>(index[i].offset).data;
+            byte const *pos = data.at<data_object>(index[i].offset << index_shift).data;
             uint32_t len;
             FAST_READ_VAR_UINT32(pos, len);
             return fstring(pos, len);
         }
         byte const *key_ptr(size_type i) const
         {
-            byte const *pos = data.at<data_object>(index[i].offset).data;
+            byte const *pos = data.at<data_object>(index[i].offset << index_shift).data;
             uint32_t len;
             FAST_READ_VAR_UINT32(pos, len);
             return pos;
         }
         size_type key_len(size_type i) const
         {
-            byte const *pos = data.at<data_object>(index[i].offset).data;
+            byte const *pos = data.at<data_object>(index[i].offset << index_shift).data;
             uint32_t len;
             FAST_READ_VAR_UINT32(pos, len);
             return len;
@@ -358,8 +359,10 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             byte *end_ptr = save_var_uint32(len_data, uint32_t(d.size()));
             size_type len_len = size_type(end_ptr - len_data);
             size_type dst_len = pool_type::align_to(d.size() + len_len);
-            index[i].offset = data.alloc(dst_len);
-            byte *dst_ptr = data.at<data_object>(index[i].offset).data;
+            size_type pos = data.alloc(dst_len);
+            assert(pos % 4 == 0);
+            index[i].offset = pos >> index_shift;
+            byte *dst_ptr = data.at<data_object>(pos).data;
             std::memcpy(dst_ptr, len_data, len_len);
             std::memcpy(dst_ptr + len_len, d.data(), d.size());
             threaded_rbtree_insert(root,
@@ -425,8 +428,10 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             byte *end_ptr = save_var_uint32(len_data, uint32_t(d.size()));
             size_type len_len = size_type(end_ptr - len_data);
             size_type dst_len = pool_type::align_to(d.size() + len_len);
-            index[i].offset = data.alloc(dst_len);
-            byte *dst_ptr = data.at<data_object>(index[i].offset).data;
+            size_type pos = data.alloc(dst_len);
+            assert(pos % 4 == 0);
+            index[i].offset = pos >> index_shift;
+            byte *dst_ptr = data.at<data_object>(pos).data;
             std::memcpy(dst_ptr, len_data, len_len);
             std::memcpy(dst_ptr + len_len, d.data(), d.size());
             threaded_rbtree_insert(root,
@@ -448,7 +453,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                    )
                )
             {
-                data.sfree(index[i].offset, dst_len);
+                data.sfree(index[i].offset << index_shift, dst_len);
                 index[i].offset = index[c].offset;
             }
             total += d.size();
@@ -486,7 +491,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                     }
                 }
             }
-            byte const *ptr = data.at<data_object>(index[i].offset).data, *end_ptr;
+            byte const *ptr = data.at<data_object>(index[i].offset << index_shift).data, *end_ptr;
             size_type len = load_var_uint32(ptr, &end_ptr);
             if(true
                && (
@@ -501,7 +506,7 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
                    )
                )
             {
-                data.sfree(index[i].offset, pool_type::align_to(end_ptr - ptr + len));
+                data.sfree(index[i].offset << index_shift, pool_type::align_to(end_ptr - ptr + len));
             }
             threaded_rbtree_remove(root,
                                    stack,

@@ -20,6 +20,7 @@ class TERARK_DB_DLL TrbWritableStore : public ReadableStore, public WritableStor
 protected:
     typedef std::size_t size_type;
     typedef terark::MemPool<4> pool_type;
+    static size_t constexpr index_shift = 2;
     struct data_object
     {
         byte data[1];
