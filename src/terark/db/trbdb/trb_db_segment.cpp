@@ -632,7 +632,15 @@ public:
     {
         assert(started == m_status);
         row->risk_set_size(0);
-        m_seg->ColgroupWritableSegment::getValueAppend(m_recId, row, m_ctx);
+        try
+        {
+            m_seg->ColgroupWritableSegment::getValueAppend(m_recId, row, m_ctx);
+        }
+        catch(TrbReadDeletedRecordException const &ex)
+        {
+            assert(ex.id == m_recId);
+            throw ReadDeletedRecordException(m_seg->m_segDir.string(), -1, ex.id);
+        }
     }
     void do_startTransaction() override
     {

@@ -12,16 +12,19 @@ namespace terark { namespace db {
 typedef boost::intrusive_ptr<class DbTable> DbTablePtr;
 typedef boost::intrusive_ptr<class StoreIterator> StoreIteratorPtr;
 
-template<class T, class P>
-void DbContextObjCacheFreeExcessMem(T*) {
-}
-template<class P>
-void DbContextObjCacheFreeExcessMem(valvec<byte>* obj) {
-    static size_t constexpr limit_size = 1024 * 1204;
-    if (obj->size() > limit_size) {
-        obj->clear();
+template<class T>
+struct DbContextObjCacheFreeExcessMem {
+    static void invoke(T*) {}
+};
+template<>
+struct DbContextObjCacheFreeExcessMem<valvec<byte>> {
+    static void invoke(valvec<byte>* obj) {
+        static size_t constexpr limit_size = 1024 * 1204;
+        if (obj->size() > limit_size) {
+            obj->clear();
+        }
     }
-}
+};
 
 template<class T>
 class DbContextObjCache {
@@ -44,7 +47,7 @@ private:
 
         ~CacheItem() {
             if (obj) {
-                DbContextObjCacheFreeExcessMem<T, void>(&obj->x);
+                DbContextObjCacheFreeExcessMem<T>::invoke(&obj->x);
                 obj->owner->pool.emplace_back(obj);
             }
         }

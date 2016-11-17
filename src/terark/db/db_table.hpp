@@ -4,7 +4,6 @@
 #include "db_store.hpp"
 #include "db_index.hpp"
 #include <tbb/queuing_rw_mutex.h>
-//#include <tbb/spin_rw_mutex.h>
 #include <atomic>
 
 #if defined(TBB_VERSION_MAJOR)
@@ -243,11 +242,12 @@ public:
 	size_t getSegmentIndexOfRecordIdNoLock(llong recId) const;
 
 	///@{ internal use only
-	void convWritableSegmentToReadonly(size_t segIdx);
+    bool autoConvMergePurge(bool forcePurgeAndMerge);
 	void freezeFlushWritableSegment(size_t segIdx);
-	void runPurgeDelete();
 	void putToFlushQueue(size_t segIdx);
 	void putToCompressionQueue(size_t segIdx);
+    void putAutoTask();
+    bool isAutoTask() const;
 	///@}
 
 	///@{
@@ -297,7 +297,6 @@ protected:
 
 	bool checkPurgeDeleteNoLock(const ReadableSegment* seg);
 	bool tryAsyncPurgeDeleteInLock(const ReadableSegment* seg);
-	void asyncPurgeDeleteInLock();
 	void inLockPutPurgeDeleteTaskToQueue();
 
 //	void registerDbContext(DbContext* ctx) const;
@@ -310,11 +309,10 @@ public:
 	mutable size_t m_tableScanningRefCount;
 	mutable std::atomic_size_t m_inprogressWritingCount;
 protected:
-	enum class PurgeStatus : unsigned {
-		none,
-		pending,
-		inqueue,
-		purging,
+	enum class TaskStatus : unsigned {
+        error,
+		conv,
+		purge,
 	};
 
 //	DbContextLink* m_ctxListHead;
@@ -333,7 +331,8 @@ protected:
 	bool m_throwOnThrottle;
 	bool m_tobeDrop;
 	bool m_isMerging;
-	PurgeStatus m_purgeStatus;
+    bool m_isPurging;
+    bool m_autoTask;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;

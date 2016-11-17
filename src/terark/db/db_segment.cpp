@@ -142,6 +142,7 @@ ReadableSegment::ReadableSegment() {
 	m_hasLockFreePointSearch = true;
 	m_bookUpdates = false;
 	m_withPurgeBits = false;
+    m_onProcess = false;
 	m_isPurgedMmap = nullptr;
 }
 ReadableSegment::~ReadableSegment() {
@@ -1351,13 +1352,6 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		input->m_bookUpdates = true;
 	}
 	std::string strDir = m_segDir.string();
-	std::string strThreadId = ThreadIdToString(tbb::this_tbb_thread::get_id());
-	fprintf(stderr
-		, "INFO: thread-%s: purging %s, rows = %zd, delcnt = %zd, purged = %zd\n"
-		, strThreadId.c_str(), strDir.c_str()
-		, input->m_isDel.size(), input->m_delcnt
-		, input->m_isPurged.max_rank1()
-		);
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
 	m_indices.resize(m_schema->getIndexNum());
@@ -1373,27 +1367,48 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 			m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), tmpSegDir);
 		}
 		completeAndReload(tab, segIdx, input.get());
-		assert(input->m_segDir == this->m_segDir);
 	}
 	catch (const std::exception& ex) {
 		fs::remove_all(tmpSegDir);
 		THROW_STD(logic_error, "generate new segment %s failed: %s"
 			, tmpSegDir.string().c_str(), ex.what());
 	}
-	fs::path backupDir = renameToBackupFromDir(input->m_segDir);
-	try { fs::rename(tmpSegDir, m_segDir); }
-	catch (const std::exception& ex) {
-		fs::rename(backupDir, m_segDir);
-		THROW_STD(logic_error
-			, "ERROR: thread-%s: rename(%s.tmp, %s), ex.what = %s"
-			, strThreadId.c_str()
-			, strDir.c_str(), strDir.c_str(), ex.what());
-	}
-	{
-		MyRwLock lock(tab->m_rwMutex, true);
-		input->m_segDir.swap(backupDir);
-		input->deleteSegment(); // will delete backupDir
-	}
+    if (input->getWritableSegment()) {
+        fs::rename(tmpSegDir, m_segDir);
+		input->deleteSegment();
+    }
+    else {
+        if (fs::is_symlink(m_segDir)) {
+	        fs::path backupDir = renameToBackupFromDir(tmpSegDir);
+            fs::path Rela = ".." / input->m_segDir.parent_path().filename() / input->m_segDir.filename();
+            if (fs::read_symlink(m_segDir) == Rela) {
+                fs::remove(m_segDir);
+            }
+            else {
+		        THROW_STD(logic_error
+			        , "ERROR: error symlink(%s)"
+			        , strDir.c_str());
+            }
+		    fs::rename(backupDir, m_segDir);
+        }
+        else {
+	        fs::path backupDir = renameToBackupFromDir(input->m_segDir);
+	        try {
+                fs::rename(tmpSegDir, m_segDir);
+            }
+	        catch (const std::exception& ex) {
+		        fs::rename(backupDir, m_segDir);
+		        THROW_STD(logic_error
+			        , "ERROR: rename(%s.tmp, %s), ex.what = %s"
+			        , strDir.c_str(), strDir.c_str(), ex.what());
+	        }
+	        {
+		        MyRwLock lock(tab->m_rwMutex, true);
+		        input->m_segDir.swap(backupDir);
+		        input->deleteSegment(); // will delete backupDir
+	        }
+        }
+    }
 }
 
 ReadableIndexPtr
@@ -1968,35 +1983,31 @@ void ColgroupWritableSegment::markFrozen() {
         wtitable_store->shrinkToFit();
         readable_store->markFrozen();
 #if 0 && !defined(NDEBUG)
-        valvec<byte> v;
-        for(size_t i = 0, e = m_isDel.size(); i < e; ++i)
-        {
-            if(m_isDel.is0(i))
-            {
-                try
-                {
-                    m_colgroups[0]->getValue(i, &v, nullptr);
-                }
-                catch(...)
-                {
-                    assert(0);
-                }
-            }
-            else
-            {
-                do
-                {
-                    try
-                    {
-                        m_colgroups[0]->getValue(i, &v, nullptr);
+        assert(readable_store->numDataRows() == m_isDel.size());
+		auto schema = &m_schema->getColgroupSchema(cgId);
+		if (!schema->m_isInplaceUpdatable) {
+            valvec<byte> v;
+            for(size_t i = 0, e = m_isDel.size(); i < e; ++i) {
+                if(m_isDel.is0(i)) {
+                    try {
+                        readable_store->getValue(i, &v, nullptr);
                     }
-                    catch(...)
-                    {
-                        break;
+                    catch(...) {
+                        assert(0);
                     }
-                    assert(0);
                 }
-                while(0);
+                else {
+                    do {
+                        try {
+                            readable_store->getValue(i, &v, nullptr);
+                        }
+                        catch(...) {
+                            break;
+                        }
+                        assert(0);
+                    }
+                    while(0);
+                }
             }
         }
 #endif

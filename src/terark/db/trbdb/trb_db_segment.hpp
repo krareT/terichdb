@@ -23,6 +23,9 @@ struct TrbReadDeletedRecordException
 {
     llong id;
 };
+struct TrbMemoryFullException
+{
+};
 
 struct TrbRWRowMutex : boost::noncopyable
 {

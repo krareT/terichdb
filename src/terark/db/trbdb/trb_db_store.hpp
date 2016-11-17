@@ -19,13 +19,15 @@ typedef tbb::spin_rw_mutex TrbStoreRWLock;
 class TERARK_DB_DLL TrbWritableStore : public ReadableStore, public WritableStore {
 protected:
     typedef std::size_t size_type;
-    typedef terark::MemPool<4> pool_type;
+    typedef terark::MemPool<8> pool_type;
+    static size_t constexpr index_shift = 3;
     struct data_object
     {
         byte data[1];
     };
     valvec<uint32_t> m_index;
     pool_type m_data;
+    size_t m_size;
     mutable TrbStoreRWLock m_rwMutex;
 
     fstring readItem(size_type i) const;

@@ -194,6 +194,7 @@ public:
 
 TrbWritableStore::TrbWritableStore(Schema const &)
     : m_data(256)
+    , m_size()
 {
 }
 
@@ -205,7 +206,7 @@ fstring TrbWritableStore::readItem(size_type i) const
 {
     assert(i < m_index.size());
     byte const *ptr;
-    size_type len = load_var_uint32(m_data.at<data_object>(m_index[i]).data, &ptr);
+    size_type len = load_var_uint32(m_data.at<data_object>(size_t(m_index[i]) << index_shift).data, &ptr);
     return fstring(ptr, len);
 }
 
@@ -215,12 +216,25 @@ void TrbWritableStore::storeItem(size_type i, fstring d)
     {
         m_index.resize(i + 1, store_nil_index);
     }
+    else if(m_index[i] != store_nil_index)
+    {
+        removeItem(i);
+    }
     byte len_data[8];
     byte *end_ptr = save_var_uint32(len_data, uint32_t(d.size()));
     size_type len_len = size_type(end_ptr - len_data);
     size_type dst_len = pool_type::align_to(d.size() + len_len);
-    m_index[i] = m_data.alloc(dst_len);
-    byte *dst_ptr = m_data.at<data_object>(m_index[i]).data;
+    size_t pos = m_data.alloc(dst_len);
+    assert(pos % 4 == 0);
+    size_t pos_shift = pos >> index_shift;
+    if(pos_shift >= store_nil_index)
+    {
+        m_data.sfree(pos, dst_len);
+        throw TrbMemoryFullException();
+    }
+    m_index[i] = uint32_t(pos_shift);
+    byte *dst_ptr = m_data.at<data_object>(pos).data;
+    m_size += d.size();
     std::memcpy(dst_ptr, len_data, len_len);
     std::memcpy(dst_ptr + len_len, d.data(), d.size());
 }
@@ -228,10 +242,12 @@ void TrbWritableStore::storeItem(size_type i, fstring d)
 void TrbWritableStore::removeItem(size_type i)
 {
     assert(i < m_index.size() && m_index[i] != store_nil_index);
-    byte const *ptr = m_data.at<data_object>(m_index[i]).data, *end_ptr;
+    size_t pos = size_t(m_index[i]) << index_shift;
+    byte const *ptr = m_data.at<data_object>(pos).data, *end_ptr;
     size_type len = load_var_uint32(ptr, &end_ptr);
-    m_data.sfree(m_index[i], pool_type::align_to(end_ptr - ptr + len));
+    m_data.sfree(pos, pool_type::align_to(end_ptr - ptr + len));
     m_index[i] = store_nil_index;
+    m_size -= len;
 }
 
 void TrbWritableStore::save(PathRef) const
@@ -255,7 +271,7 @@ llong TrbWritableStore::dataStorageSize() const
 llong TrbWritableStore::dataInflateSize() const
 {
     //TrbStoreRWLock::scoped_lock l(m_rwMutex, false);
-    return m_data.size();
+    return m_size;
 }
 
 llong TrbWritableStore::numDataRows() const
