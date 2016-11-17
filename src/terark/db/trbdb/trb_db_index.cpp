@@ -361,7 +361,13 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             size_type dst_len = pool_type::align_to(d.size() + len_len);
             size_type pos = data.alloc(dst_len);
             assert(pos % 4 == 0);
-            index[i].offset = uint32_t(pos >> index_shift);
+            size_type pos_shift = pos >> index_shift;
+            if(pos_shift >= node_type::nil_sentinel)
+            {
+                data.sfree(pos, dst_len);
+                throw TrbMemoryFullException();
+            }
+            index[i].offset = uint32_t(pos_shift);
             byte *dst_ptr = data.at<data_object>(pos).data;
             std::memcpy(dst_ptr, len_data, len_len);
             std::memcpy(dst_ptr + len_len, d.data(), d.size());
@@ -430,7 +436,13 @@ class TrbWritableIndexTemplate : public TrbWritableIndex
             size_type dst_len = pool_type::align_to(d.size() + len_len);
             size_type pos = data.alloc(dst_len);
             assert(pos % 4 == 0);
-            index[i].offset = uint32_t(pos >> index_shift);
+            size_type pos_shift = pos >> index_shift;
+            if(pos_shift >= node_type::nil_sentinel)
+            {
+                data.sfree(pos, dst_len);
+                throw TrbMemoryFullException();
+            }
+            index[i].offset = uint32_t(pos_shift);
             byte *dst_ptr = data.at<data_object>(pos).data;
             std::memcpy(dst_ptr, len_data, len_len);
             std::memcpy(dst_ptr + len_len, d.data(), d.size());

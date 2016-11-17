@@ -226,7 +226,13 @@ void TrbWritableStore::storeItem(size_type i, fstring d)
     size_type dst_len = pool_type::align_to(d.size() + len_len);
     size_t pos = m_data.alloc(dst_len);
     assert(pos % 4 == 0);
-    m_index[i] = uint32_t(pos >> index_shift);
+    size_t pos_shift = pos >> index_shift;
+    if(pos_shift >= store_nil_index)
+    {
+        m_data.sfree(pos, dst_len);
+        throw TrbMemoryFullException();
+    }
+    m_index[i] = uint32_t(pos_shift);
     byte *dst_ptr = m_data.at<data_object>(pos).data;
     m_size += d.size();
     std::memcpy(dst_ptr, len_data, len_len);
