@@ -2,9 +2,6 @@
 #include <terark/io/FileStream.hpp>
 #include <terark/io/DataIO.hpp>
 #include <terark/util/mmap.hpp>
-
-#undef min
-#undef max
 #include <terark/fsa/create_regex_dfa.hpp>
 #include <terark/fsa/dense_dfa.hpp>
 #include <terark/num_to_str.hpp>

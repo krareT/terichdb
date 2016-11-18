@@ -1,7 +1,7 @@
 #pragma once
 
 #include <terark/db/db_store.hpp>
-#include <terark/zbs/fast_zip_blob_store.hpp>
+#include <terark/zbs/dict_zip_blob_store.hpp>
 
 namespace terark {
 //	class Nest

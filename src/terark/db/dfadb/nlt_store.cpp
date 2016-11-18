@@ -1,7 +1,7 @@
 #include "nlt_store.hpp"
 #include <terark/int_vector.hpp>
-#include <terark/zbs/nest_louds_trie_blob_store.hpp>
 #include <terark/num_to_str.hpp>
+#include <terark/fsa/fsa.hpp>
 #include <typeinfo>
 #include <float.h>
 #include <mutex>
@@ -44,49 +44,22 @@ StoreIterator* NestLoudsTrieStore::createStoreIterBackward(DbContext*) const {
 	return nullptr; // not needed
 }
 
-template<class Class>
-static
-Class* doBuild(const NestLoudsTrieConfig& conf,
-			   const Schema& schema, SortableStrVec& strVec) {
-	std::unique_ptr<Class> trie(new Class());
-	trie->build_from(strVec, conf);
-	return trie.release();
-}
-
-static
-void initConfigFromSchema(NestLoudsTrieConfig& conf, const Schema& schema) {
-	conf.initFromEnv();
-	if (schema.m_sufarrMinFreq) {
-		conf.saFragMinFreq = (byte_t)schema.m_sufarrMinFreq;
-	}
-	if (schema.m_minFragLen) {
-		conf.minFragLen = schema.m_minFragLen;
-	}
-	if (schema.m_maxFragLen) {
-		conf.maxFragLen = schema.m_maxFragLen;
-	}
-	if (schema.m_nltDelims.size()) {
-		conf.setBestDelims(schema.m_nltDelims.c_str());
-	}
-	conf.nestLevel = schema.m_nltNestLevel;
-}
-
 static
 BlobStore* nltBuild(const Schema& schema, SortableStrVec& strVec) {
-	NestLoudsTrieConfig conf;
-	initConfigFromSchema(conf, schema);
+	const char* clazz = NULL;
 	switch (schema.m_rankSelectClass) {
-	case -256:
-		return doBuild<NestLoudsTrieBlobStore_IL>(conf, schema, strVec);
-	case +256:
-		return doBuild<NestLoudsTrieBlobStore_SE>(conf, schema, strVec);
-	case +512:
-		return doBuild<NestLoudsTrieBlobStore_SE_512>(conf, schema, strVec);
-	default:
+	case -256: clazz = "NestLoudsTrieBlobStore";
+		break;
+	case +256: clazz = "NestLoudsTrieBlobStore_SE";
+		break;
+	case +512: clazz = "NestLoudsTrieBlobStore_SE_512";
+		break;
+	default:   clazz = "NestLoudsTrieBlobStore_SE_512";
 		fprintf(stderr, "WARN: invalid schema(%s).rs = %d, use default: se_512\n"
 					  , schema.m_name.c_str(), schema.m_rankSelectClass);
-		return doBuild<NestLoudsTrieBlobStore_SE_512>(conf, schema, strVec);
+		break;
 	}
+	return NestLoudsTrieBlobStore_build(clazz, schema.m_nltNestLevel, strVec);
 }
 
 void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
