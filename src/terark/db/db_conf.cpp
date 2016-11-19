@@ -2004,6 +2004,7 @@ const llong  DEFAULT_maxWritingSegmentSize  = 3LL * 1024 * 1024 * 1024;
 const size_t DEFAULT_minMergeSegNum         = 5;
 const size_t DEFAULT_suggestWritableSegNum  = 4;
 const double DEFAULT_purgeDeleteThreshold   = 0.10;
+const double DEFAULT_cheapPurgeMultiple     = 5;
 
 SchemaConfig::SchemaConfig() {
 	m_compressingWorkMemSize = DEFAULT_compressingWorkMemSize;
@@ -2012,6 +2013,7 @@ SchemaConfig::SchemaConfig() {
 	m_suggestWritableSegNum = DEFAULT_suggestWritableSegNum;
 	m_writeThrottleBytesPerSecond = 0; // no limit
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
+    m_cheapPurgeMultiple = DEFAULT_cheapPurgeMultiple;
 	m_usePermanentRecordId = false;
 	m_enableSnapshot = false;
 }
@@ -2740,6 +2742,8 @@ if (colgroupsIter != meta.end()) {
 		meta, "WriteThrottleBytesPerSecond", 0);
 	m_purgeDeleteThreshold = getJsonValue(
 		meta, "PurgeDeleteThreshold", DEFAULT_purgeDeleteThreshold);
+    m_cheapPurgeMultiple = getJsonValue(
+		meta, "CheapPurgeMultiple", DEFAULT_cheapPurgeMultiple);
 
 	m_enableSnapshot = getJsonValue(meta, "EnableSnapshot", false);
 {
