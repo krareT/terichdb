@@ -99,6 +99,7 @@ public:
 
 protected:
     void initEmptySegment() override;
+	void markFrozen() override;
 
     ReadableIndex *openIndex(const Schema &, PathRef segDir) const override;
     ReadableIndex *createIndex(const Schema &, PathRef segDir) const override;

@@ -167,6 +167,7 @@ private:
     mutex_t m_mutex;
     uint32_t m_seed;
     Param m_param;
+    std::string m_fileName;
     FileStream m_fp;
     uint32_t m_logSize; // these two fields didn't need sync ...
     size_t m_logCount;  // we don't care add check point later
@@ -208,10 +209,17 @@ public:
         lock_t l(m_mutex);
         m_fp.flush();
     }
-
+    void markFrozen()
+    {
+        assert(m_fp.isOpen());
+        m_fp.flush();
+        m_fp.close();
+        if (boost::filesystem::file_size(m_fileName) == sizeof(TrbLogHeader))
+            boost::filesystem::remove(m_fileName);
+    }
     void initLog(PathRef path)
     {
-        m_fp.open(getFilePath(path, m_seed).c_str(), "wb");
+        m_fp.open((m_fileName = getFilePath(path, m_seed)).c_str(), "wb");
         assert(m_fp.isOpen());
         m_fp.disbuf();
         m_fp.write(&logHeader, sizeof logHeader);
@@ -221,13 +229,13 @@ public:
     {
         while(true)
         {
-            std::string fileName = getFilePath(path, m_seed);
-            if(!boost::filesystem::exists(fileName))
+            m_fileName = getFilePath(path, m_seed);
+            if(!boost::filesystem::exists(m_fileName))
             {
                 break;
             }
             ++m_seed;
-            if(boost::filesystem::file_size(fileName) == 0)
+            if(boost::filesystem::file_size(m_fileName) == 0)
             {
                 continue;
             }
@@ -236,9 +244,9 @@ public:
                 BadTrbLogException(std::string f) : std::logic_error("TrbSegment bad log : " + f)
                 {
                 }
-            } badLog(fileName);
+            } badLog(m_fileName);
 
-            MmapWholeFile file(fileName);
+            MmapWholeFile file(m_fileName);
             assert(file.base != nullptr);
             m_totalLogSize += file.size;
             LittleEndianDataInput<MemIO> in; in.set(file.base, file.size);
@@ -415,7 +423,7 @@ public:
                 {
                     fprintf(stderr,
                             "WARN: TrgSegment log incomplete , caused by unsafe shutdown . %s : %zd operation(s)\n",
-                            fileName.c_str(),
+                            m_fileName.c_str(),
                             seqHeap.size()
                     );
                 }
@@ -423,7 +431,7 @@ public:
                 {
                     fprintf(stderr,
                             "INFO: TrgSegment log incomplete , caused by unsafe shutdown . %s : %zd byte(s)\n",
-                            fileName.c_str(),
+                            m_fileName.c_str(),
                             in.end() - pos
                     );
                 }
@@ -775,6 +783,12 @@ void TrbColgroupSegment::initEmptySegment()
     }
 
     m_logger->initLog(m_segDir);
+}
+
+void TrbColgroupSegment::markFrozen()
+{
+    ColgroupWritableSegment::markFrozen();
+    m_logger->markFrozen();
 }
 
 ReadableIndex *TrbColgroupSegment::openIndex(const Schema &schema, PathRef) const
