@@ -331,7 +331,6 @@ protected:
 	bool m_throwOnThrottle;
 	bool m_tobeDrop;
 	bool m_isMerging;
-    bool m_isPurging;
     bool m_autoTask;
 
 	// constant once constructed

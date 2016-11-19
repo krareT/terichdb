@@ -71,7 +71,6 @@ DbTable::DbTable()
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
 	m_isMerging = false;
-    m_isPurging = false;
     m_autoTask = true;
 	m_segments.reserve(DEFAULT_maxSegNum);
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
@@ -1069,9 +1068,6 @@ const {
 
 bool DbTable::maybeCreateNewSegment(MyRwLock& lock) {
 	DebugCheckRowNumVecNoLock(this);
-	if (m_isMerging) {
-		return false;
-	}
 	if (m_inprogressWritingCount > 1) {
 		return false;
 	}
@@ -1082,9 +1078,6 @@ bool DbTable::maybeCreateNewSegment(MyRwLock& lock) {
 		// if upgrade_to_writer fails, it means the lock has been
 		// temporary released and re-acquired, so we need check
 		// the condition again
-		if (m_isMerging) {
-			return false;
-		}
 		if (m_inprogressWritingCount > 1) {
 			return false;
 		}
@@ -1099,9 +1092,6 @@ bool DbTable::maybeCreateNewSegment(MyRwLock& lock) {
 
 void DbTable::maybeCreateNewSegmentInWriteLock() {
 	DebugCheckRowNumVecNoLock(this);
-	if (m_isMerging) {
-		return;
-	}
 	if (m_inprogressWritingCount > 1) {
 		return;
 	}
@@ -1111,7 +1101,6 @@ void DbTable::maybeCreateNewSegmentInWriteLock() {
 }
 
 void DbTable::doCreateNewSegmentInLock() {
-	assert(!m_isMerging);
 	if (m_segments.size() == m_segments.capacity()) {
 		THROW_STD(invalid_argument,
 			"Reaching maxSegNum=%d", int(m_segments.capacity()));
@@ -3772,15 +3761,13 @@ try{
 //	assert(dseg->m_isDel.size() == dseg->m_isPurged.size());
 	assert(dseg->m_isDel.size() == toMerge.m_newSegRows);
 
-	// m_isMerging is true, m_segments will never be changed
-	// so lock is not needed
+	// stop creating new segment by m_inprogressWritingCount
+	// m_segments will never be changed
 	assert(m_isMerging);
-	assert(m_segments.size() == toMerge.m_tabSegNum);
-	if (m_segments.size() != toMerge.m_tabSegNum) {
-		THROW_STD(logic_error
-			, "Unexpected: m_segments.size = %zd , toMerge.m_tabSegNum = %zd"
-			, m_segments.size(), toMerge.m_tabSegNum);
-	}
+	IncrementGuard_size_t guard(m_inprogressWritingCount);
+    while(m_inprogressWritingCount > 1)
+        std::this_thread::yield();
+    
 	// newSegPathes don't include m_wrSeg
 	valvec<ReadableSegmentPtr> newSegs(m_segments.capacity(), valvec_reserve());
 	valvec<llong> newRowNumVec(m_rowNumVec.capacity(), valvec_reserve());
@@ -4425,10 +4412,6 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
     };
 
     if (convPlainWritableSegment) {
-        if (m_bgTaskNum > 2) {
-		    m_isMerging = false;
-            return false;
-        }
         ReadableSegmentPtr seg = m_segments[findSegmentId];
         m_isMerging = false;
         return processSegment(seg.get(), findSegmentId);
@@ -4475,10 +4458,6 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         return true;
     }
     if (convWritableSegment) {
-        if (m_bgTaskNum > 2) {
-		    m_isMerging = false;
-            return false;
-        }
         ReadableSegmentPtr seg;
         {
 		    MyRwLock lock(m_rwMutex, false);
@@ -4498,10 +4477,6 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         return processSegment(seg.get(), findSegmentId);
     }
     if (purgeReadonlySegment) {
-        if (m_isPurging || m_bgTaskNum > 1) {   
-            m_isMerging = false;
-            return false;
-        }
 	    ReadableSegmentPtr seg;
         {
 		    MyRwLock lock(m_rwMutex, false);
@@ -4519,12 +4494,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             }
         }
         seg = m_segments[findSegmentId];
-        m_isPurging = true;
         m_isMerging = false;
-        BOOST_SCOPE_EXIT(&m_rwMutex, &m_isPurging){
-		    MyRwLock lock(m_rwMutex, true);
-		    m_isPurging = false;
-	    }BOOST_SCOPE_EXIT_END;
         return processSegment(seg.get(), findSegmentId);
     }
     m_isMerging = false;
@@ -4688,7 +4658,7 @@ bool DbTable::checkPurgeDeleteNoLock(const ReadableSegment* seg) {
 	if (g_stopPutToFlushQueue) {
 		return false;
 	}
-	if (!m_isPurging) {
+	if (m_bgTaskNum > 0) {
 		return false;
 	}
 	auto maxDelcnt = seg->m_isDel.size() * m_schema->m_purgeDeleteThreshold;
