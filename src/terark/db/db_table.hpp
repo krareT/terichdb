@@ -309,11 +309,11 @@ public:
 	mutable size_t m_tableScanningRefCount;
 	mutable std::atomic_size_t m_inprogressWritingCount;
 protected:
-	enum class TaskStatus : unsigned {
-        error,
-		conv,
-		purge,
-	};
+    enum class MergeStatus : unsigned char {
+        None,
+        Merging,
+        Waiting,
+    };
 
 //	DbContextLink* m_ctxListHead;
 	valvec<llong>  m_rowNumVec;
@@ -330,8 +330,8 @@ protected:
 	std::atomic<ullong> m_accumulateWrittenBytes;
 	bool m_throwOnThrottle;
 	bool m_tobeDrop;
-	bool m_isMerging;
     bool m_autoTask;
+    MergeStatus m_merging;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;
