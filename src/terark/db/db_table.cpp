@@ -4171,8 +4171,6 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
 	}BOOST_SCOPE_EXIT_END;
 	if (m_bgTaskNum > 2)    //TODO use config
 		return false;
-    if (m_merging == MergeStatus::Waiting)
-        return false;
 
     MergeParam param;
 
@@ -4329,11 +4327,11 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             param.m_forcePurgeAndMerge = true;
     }
 
-    auto processSegment = [&](ReadableSegment *seg, size_t i) {
+    auto processSegment = [&](ReadableSegment *seg, size_t i, bool force) {
         m_segs.clear();
         {
 		    MyRwLock lock(m_rwMutex, true);
-            if (m_merging == MergeStatus::Waiting)
+            if (!force && m_merging == MergeStatus::Waiting)
                 return false;
             if (seg != m_segments[i].get())
                 return true;
@@ -4411,10 +4409,11 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             assert(findSegmentId < m_segments.size());
             seg = m_segments[findSegmentId];
         }
-        return processSegment(seg.get(), findSegmentId);
+        return processSegment(seg.get(), findSegmentId, true);
     }
     if (mergeColgroupSegment && m_merging == MergeStatus::None) {
-        return mergeSegments();
+        if (mergeSegments())
+            return true;
     }
     if (convWritableSegment) {
         ReadableSegmentPtr seg;
@@ -4431,7 +4430,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             return false;
         }
         seg = m_segs[findSegmentId].seg;
-        return processSegment(seg.get(), findSegmentId);
+        return processSegment(seg.get(), findSegmentId, mergeColgroupSegment);
     }
     if (mergeReadonlySegment && m_merging == MergeStatus::None) {
         return mergeSegments();
@@ -4455,7 +4454,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             }
         }
         seg = m_segs[findSegmentId].seg;
-        return processSegment(seg.get(), findSegmentId);
+        return processSegment(seg.get(), findSegmentId, false);
     }
     return false;
 }
@@ -4595,16 +4594,19 @@ void DbTable::putToCompressionQueue(size_t segIdx) {
 	if (g_stopCompress) {
 		return;
 	}
-	g_compressQueue.push_back(new AutoTask(this));
 	m_bgTaskNum++;
+	g_compressQueue.push_back(new AutoTask(this));
 }
 
 void DbTable::putAutoTask() {
 	if (g_stopCompress || !m_autoTask) {
 		return;
 	}
+    {
+	    MyRwLock lock(m_rwMutex, true);
+	    m_bgTaskNum++;
+    }
 	g_compressQueue.push_back(new AutoTask(this));
-	m_bgTaskNum++;
 }
 
 bool DbTable::isAutoTask() const {
@@ -4641,8 +4643,8 @@ void DbTable::inLockPutPurgeDeleteTaskToQueue() {
 	if (g_stopPutToFlushQueue) {
 		return;
 	}
-	g_compressQueue.push_back(new AutoTask(this));
 	m_bgTaskNum++;
+	g_compressQueue.push_back(new AutoTask(this));
 }
 
 // flush is the most urgent
