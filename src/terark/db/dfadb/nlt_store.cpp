@@ -1,11 +1,17 @@
 #include "nlt_store.hpp"
 #include <terark/int_vector.hpp>
 #include <terark/zbs/nest_louds_trie_blob_store.hpp>
+#include <terark/zbs/dict_zip_blob_store.hpp>
 #include <terark/num_to_str.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/rank_select.hpp>
 #include <typeinfo>
 #include <float.h>
 #include <mutex>
 #include <random>
+#include <boost/filesystem.hpp>
+
+namespace fs = boost::filesystem;
 
 namespace terark { namespace db { namespace dfadb {
 
@@ -18,6 +24,30 @@ NestLoudsTrieStore::NestLoudsTrieStore(const Schema& schema, BlobStore* blobStor
 }
 
 NestLoudsTrieStore::~NestLoudsTrieStore() {
+}
+
+
+llong NestLoudsTrieStore::dataFileSize() const {
+    const DictZipBlobStore* store = dynamic_cast<const DictZipBlobStore*>(m_store.get());
+    if (!store)
+        return 0;
+    return store->get_data().size();
+}
+llong NestLoudsTrieStore::dataDictSize() const {
+    const DictZipBlobStore* store = dynamic_cast<const DictZipBlobStore*>(m_store.get());
+    if (!store)
+        return 0;
+    return store->get_dict().size();
+}
+
+void NestLoudsTrieStore::setStorePath(PathRef path) {
+    DictZipBlobStore* store = dynamic_cast<DictZipBlobStore*>(m_store.get());
+    if (!store)
+        return;
+	std::string fpath = fstring(path.string()).endsWith(".nlt")
+					  ? path.string()
+					  : path.string() + ".nlt";
+    store->set_fpath(fpath);
 }
 
 llong NestLoudsTrieStore::dataStorageSize() const {
@@ -267,6 +297,49 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 	builder.reset(); // explicit destory builder, before lock.unlock
 }
 
+void NestLoudsTrieStore::build_by_purge(PathRef path,
+                                        const NestLoudsTrieStore* input,
+                                        const bm_uint_t* isDel,
+                                        const rank_select_se* isPurged,
+                                        size_t baseId) {
+	std::string fpath = fstring(path.string()).endsWith(".nlt")
+					  ? path.string()
+					  : path.string() + ".nlt";
+    const DictZipBlobStore* input_store = dynamic_cast<DictZipBlobStore const *>(input->m_store.get());
+    if (!input_store)
+		THROW_STD(invalid_argument, "Unexpected");
+    FileStream fp(fpath.c_str(), "wb");
+	fp.chsize(input_store->get_file_size());
+    if (isPurged) {
+	    input_store->purge_zip_data([isDel, isPurged, baseId](size_t id) {
+            return terark_bit_test(isDel, isPurged->select0(id + baseId));
+        }, [&fp](const void* data, size_t size) {
+		    fp.ensureWrite(data, size);
+	    });
+    }
+    else {   
+	    input_store->purge_zip_data([isDel, baseId](size_t id) {
+            return terark_bit_test(isDel, id + baseId);
+        }, [&fp](const void* data, size_t size) {
+		    fp.ensureWrite(data, size);
+	    });
+    }
+	fp.chsize(fp.tell());
+	fp.close();
+    std::string fOldDict = input_store->get_fpath() + "-dict";
+    std::string fNewDict = fpath + "-dict";
+	try {
+		fs::create_hard_link(fOldDict, fNewDict);
+	}
+	catch (const std::exception& ex) {
+		fprintf(stderr, "ERROR: ex.what = %s\n", ex.what());
+		FileStream dictFp(fNewDict, "wb");
+		dictFp.disbuf();
+		dictFp.cat(fOldDict);
+	}
+	m_store.reset(BlobStore::load_from(fpath, m_schema.m_mmapPopulate));
+}
+
 void NestLoudsTrieStore::load(PathRef path) {
 	std::string fpath = fstring(path.string()).endsWith(".nlt")
 					  ? path.string()
@@ -279,7 +352,7 @@ void NestLoudsTrieStore::save(PathRef path) const {
 						? path.string()
 						: path.string() + ".nlt";
 	if (BaseDFA* dfa = dynamic_cast<BaseDFA*>(&*m_store)) {
-		dfa->save_mmap(fpath.c_str());
+		dfa->save_mmap(fpath);
 	}
 #if 0
 	else if (auto zds = dynamic_cast<FastZipBlobStore*>(&*m_store)) {

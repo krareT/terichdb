@@ -74,6 +74,8 @@ public:
 	ReadableStore();
 	~ReadableStore();
 	inline  byte* getRecordsBasePtr() const { return m_recordsBasePtr; }
+    virtual llong dataFileSize() const; // these two functions for cheap purge , return 0 to force rebuild
+    virtual llong dataDictSize() const; // if DictSize * cheapPurgeMultiple >= FileSize , rebuild
 	virtual llong dataStorageSize() const = 0;
 	virtual llong dataInflateSize() const = 0;
 	virtual llong numDataRows() const = 0;
@@ -85,6 +87,8 @@ public:
 	virtual ReadableIndex* getReadableIndex();
 	virtual AppendableStore* getAppendableStore();
 	virtual UpdatableStore* getUpdatableStore();
+
+    virtual void setStorePath(PathRef);
 
 	void getValue(llong id, valvec<byte>* val, DbContext* ctx) const {
 		val->risk_set_size(0);
@@ -140,6 +144,8 @@ public:
 
 	size_t numParts() const { return m_parts.size(); }
 	ReadableStore* getPart(size_t i) const { return m_parts[i].get(); }
+
+    void setStorePath(PathRef) override;
 
 	void addpart(ReadableStore* store);
 	void addpartIfNonEmpty(ReadableStore* store);

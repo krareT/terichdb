@@ -50,11 +50,19 @@ ReadableStore::RegisterStoreFactory::RegisterStoreFactory
 }
 
 ReadableStore::ReadableStore()
-    : m_isFreezed(false)
+    : m_recordsBasePtr()
+    , m_isFreezed()
 {
-	m_recordsBasePtr = nullptr;
 }
+
 ReadableStore::~ReadableStore() {
+}
+
+llong ReadableStore::dataFileSize() const {
+    return 0;
+}
+llong ReadableStore::dataDictSize() const {
+    return 0;
 }
 
 ReadableStore* ReadableStore::openStore(const Schema& schema, PathRef segDir, fstring fname) {
@@ -99,6 +107,10 @@ AppendableStore* ReadableStore::getAppendableStore() {
 
 UpdatableStore* ReadableStore::getUpdatableStore() {
 	return nullptr;
+}
+
+void ReadableStore::setStorePath(PathRef) {
+    // nothing default ...
 }
 
 void ReadableStore::deleteFiles() {
@@ -399,6 +411,14 @@ void MultiPartStore::save(PathRef path) const {
 	for (size_t i = 0; i < m_parts.size(); ++i) {
 		snprintf(szNum, sizeof(szNum), ".%04zd", i);
 		m_parts[i]->save(path + szNum);
+	}
+}
+
+void MultiPartStore::setStorePath(PathRef path) {
+    char szNum[16];
+	for (size_t i = 0; i < m_parts.size(); ++i) {
+		snprintf(szNum, sizeof(szNum), ".%04zd", i);
+		m_parts[i]->setStorePath(path + szNum);
 	}
 }
 

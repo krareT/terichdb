@@ -84,6 +84,25 @@ const {
 	return nlt.release();
 }
 
+ReadableStore*
+DfaDbReadonlySegment::purgeDictZipStore(const Schema& schema,
+                                        PathRef pathWithPrefix,
+                                        const ReadableStore* inputStore,
+                                        const bm_uint_t* isDel,
+                                        const rank_select_se* isPurged,
+                                        size_t baseId)
+const {
+    const NestLoudsTrieStore* input = dynamic_cast<const NestLoudsTrieStore*>(inputStore);
+    if (!input) {
+	    THROW_STD(invalid_argument,
+		    "input must be NestLoudsTrieStore");
+    }
+	std::unique_ptr<NestLoudsTrieStore> nlt(new NestLoudsTrieStore(schema));
+	auto fpath = pathWithPrefix + ".nlt";
+	nlt->build_by_purge(fpath, input, isDel, isPurged, baseId);
+	return nlt.release();
+}
+
 std::mutex& DictZip_reduceMemMutex(); // defined in nlt_store.cpp
 void emptyCheckProtect(size_t sampleLenSum, fstring rec,
 					   DictZipBlobStore::ZipBuilder& builder);

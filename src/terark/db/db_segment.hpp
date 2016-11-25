@@ -48,6 +48,8 @@ public:
 	// index schema and index content features
 	virtual ReadableIndex* openIndex(const Schema&, PathRef path) const = 0;
 
+    void setStorePath(PathRef) override;
+
 	///@ if segDir==m_segDir, it is a flush
 	virtual void loadRecordStore(PathRef segDir) = 0;
 	virtual void saveRecordStore(PathRef segDir) const = 0;
@@ -206,7 +208,6 @@ public:
 	virtual ReadableIndex*
 			buildIndex(const Schema&, SortableStrVec& indexData)
 			const = 0;
-
 	virtual ReadableStore*
 			buildStore(const Schema&, SortableStrVec& storeData)
 			const = 0;
@@ -214,6 +215,10 @@ public:
 	virtual ReadableStore*
 			buildDictZipStore(const Schema&, PathRef dir, StoreIterator& inputIter,
 							  const bm_uint_t* isDel, const febitvec* isPurged)
+			const;
+	virtual ReadableStore*
+			purgeDictZipStore(const Schema&, PathRef pathWithPrefix, const ReadableStore* inputStore,
+							  const bm_uint_t* isDel, const rank_select_se* isPurged, size_t baseId)
 			const;
 
 	void compressMultipleColgroups(ReadableSegment* input, DbContext* ctx);
@@ -230,7 +235,10 @@ public:
 
 	ReadableIndexPtr purgeIndex(size_t indexId, ColgroupSegment* input, DbContext* ctx);
 	ReadableStorePtr purgeColgroup(size_t colgroupId, ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir);
-	ReadableStorePtr purgeColgroup_s(size_t colgroupId,
+    ReadableStorePtr purgeColgroupMultiPart(size_t colgroupId,
+		    const febitvec& newIsDel, size_t newDelcnt,
+		    ColgroupSegment* input, DbContext* ctx, PathRef destSegDir, size_t& newPartIdx);
+	ReadableStorePtr purgeColgroupRebuild(size_t colgroupId,
 			const febitvec& newIsDel, size_t newDelcnt,
 			ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir);
 

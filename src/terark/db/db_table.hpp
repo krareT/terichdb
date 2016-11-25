@@ -302,6 +302,9 @@ protected:
 //	void registerDbContext(DbContext* ctx) const;
 //	void unregisterDbContext(DbContext* ctx) const;
 
+    static
+    void moveStoreFiles(PathRef srcDir, PathRef destDir, const std::string& prefix, size_t& newPartIdx);
+
 	size_t throttleWrite();
 
 public:

@@ -3158,11 +3158,14 @@ SegEntry::reuseOldStoreFiles(PathRef destSegDir, const std::string& prefix, size
 			fs::create_hard_link(srcSegDir / fname.str(), destFpath);
 		}
 		catch (const std::exception& ex) {
-			fprintf(stderr, "FATAL: ex.what = %s\n", ex.what());
-			throw;
+			fprintf(stderr, "ERROR: ex.what = %s\n", ex.what());
+			FileStream dictFp(destFpath.string(), "wb");
+		    dictFp.disbuf();
+		    dictFp.cat((srcSegDir / fname.str()).string());
 		}
 		j++;
 	}
+    ++newPartIdx;
 }
 
 } // namespace
@@ -3577,8 +3580,7 @@ mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 	dseg->m_colgroups[colgroupId] = mergedstore;
 }
 
-static void
-moveStoreFiles(PathRef srcDir, PathRef destDir,
+void DbTable::moveStoreFiles(PathRef srcDir, PathRef destDir,
 			   const std::string& prefix, size_t& newPartIdx) {
 	size_t prevOldpartIdx = 0;
 	std::vector<std::string> fnames;
@@ -3626,6 +3628,7 @@ moveStoreFiles(PathRef srcDir, PathRef destDir,
 			throw;
 		}
 	}
+    ++newPartIdx;
 }
 
 // If segments to be merged have purged records, these physical records id
@@ -3719,13 +3722,8 @@ try{
 					// new store is empty, all records are purged
 					continue;
 				}
-				auto tmpDir1 = destSegDir / "temp-store";
-				fs::create_directory(tmpDir1);
-				auto store = dseg->purgeColgroup_s(cgId,
-					e.newIsPurged, e.newNumPurged, e.seg.get(), ctx.get(), tmpDir1);
-				store->save(tmpDir1 / prefix);
-				moveStoreFiles(tmpDir1, destSegDir, prefix, newPartIdx);
-				fs::remove_all(tmpDir1);
+				dseg->purgeColgroupMultiPart(cgId, e.newIsPurged, e.newNumPurged,
+                                             e.seg.get(), ctx.get(), destSegDir, newPartIdx);
 			} else {
 				if (e.seg->m_isPurged.max_rank1() == e.seg->m_isDel.size()) {
 					// old store is empty, all records are purged
@@ -3733,7 +3731,6 @@ try{
 				}
 				e.reuseOldStoreFiles(destSegDir, prefix, newPartIdx);
 			}
-			newPartIdx++;
 		}
 	}
 
@@ -4365,7 +4362,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         else
             newSeg->convFrom(this, i);
         fprintf(stderr
-		        , "INFO: %s %s, rows = %zd, delcnt = %zd, purged = %zd done!\n"
+		        , "INFO: %s: %s, rows = %zd, delcnt = %zd, purged = %zd done!\n"
 		        , processName
                 , strDir.c_str()
 		        , rows

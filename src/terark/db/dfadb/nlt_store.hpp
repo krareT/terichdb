@@ -5,6 +5,7 @@
 
 namespace terark {
 //	class Nest
+class rank_select_se;
 } // namespace terark
 
 namespace terark { namespace db { namespace dfadb {
@@ -14,6 +15,11 @@ public:
 	explicit NestLoudsTrieStore(const Schema& schema);
 	explicit NestLoudsTrieStore(const Schema& schema, BlobStore* blobStore);
 	~NestLoudsTrieStore();
+    
+    llong dataFileSize() const override;
+    llong dataDictSize() const override;
+
+    void setStorePath(PathRef) override;
 
 	llong dataStorageSize() const override;
 	llong dataInflateSize() const override;
@@ -25,6 +31,8 @@ public:
 	void build(const Schema&, SortableStrVec& strVec);
 	void build_by_iter(const Schema&, PathRef fpath, StoreIterator& iter,
 					   const bm_uint_t* isDel, const febitvec* isPurged);
+	void build_by_purge(PathRef fpath, const NestLoudsTrieStore* input,
+                        const bm_uint_t* isDel, const rank_select_se* isPurged, size_t baseId);
 	void load(PathRef path) override;
 	void save(PathRef path) const override;
 

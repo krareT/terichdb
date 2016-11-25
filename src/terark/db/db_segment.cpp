@@ -192,6 +192,18 @@ llong ReadableSegment::numDataRows() const {
 	return m_isDel.size();
 }
 
+void ReadableSegment::setStorePath(PathRef path) {
+    size_t const colgroups_size = m_colgroups.size();
+    for(size_t i = 0; i < colgroups_size; ++i)
+    {
+        auto store = m_colgroups[i].get();
+        if (store) {
+            const Schema& schema = m_schema->getColgroupSchema(i);
+            store->setStorePath(path / "colgroup-" + schema.m_name);
+        }
+    }
+}
+
 void ReadableSegment::saveIsDel(PathRef dir) const {
 	assert(m_isDel.popcnt() == m_delcnt);
 	if (m_isDelMmap && dir == m_segDir) {
@@ -896,6 +908,13 @@ ReadonlySegment::buildDictZipStore(const Schema&, PathRef, StoreIterator& iter,
 		"Not Implemented, Only Implemented by DfaDbReadonlySegment");
 }
 
+ReadableStore*
+ReadonlySegment::purgeDictZipStore(const Schema&, PathRef pathWithPrefix, const ReadableStore* inputStore, 
+                                   const bm_uint_t* isDel, const rank_select_se* isPueged, size_t baseId) const {
+	THROW_STD(invalid_argument,
+		"Not Implemented, Only Implemented by DfaDbReadonlySegment");
+}
+
 /*
 namespace {
 
@@ -1129,6 +1148,7 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 	completeAndReload(tab, segIdx, &*input);
 
 	fs::rename(tmpDir, m_segDir);
+    setStorePath(m_segDir);
 	input->deleteSegment();
 }
 
@@ -1375,11 +1395,13 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	}
     if (input->getWritableSegment()) {
         fs::rename(tmpSegDir, m_segDir);
+        setStorePath(m_segDir);
 		input->deleteSegment();
     }
     else {
         if (fs::is_symlink(m_segDir)) {
 	        fs::path backupDir = renameToBackupFromDir(tmpSegDir);
+            setStorePath(backupDir);
             fs::path Rela = ".." / input->m_segDir.parent_path().filename() / input->m_segDir.filename();
             if (fs::read_symlink(m_segDir) == Rela) {
                 fs::remove(m_segDir);
@@ -1390,11 +1412,14 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 			        , strDir.c_str());
             }
 		    fs::rename(backupDir, m_segDir);
+            setStorePath(m_segDir);
         }
         else {
 	        fs::path backupDir = renameToBackupFromDir(input->m_segDir);
+            input->setStorePath(backupDir);
 	        try {
                 fs::rename(tmpSegDir, m_segDir);
+                setStorePath(m_segDir);
             }
 	        catch (const std::exception& ex) {
 		        fs::rename(backupDir, m_segDir);
@@ -1405,6 +1430,7 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	        {
 		        MyRwLock lock(tab->m_rwMutex, true);
 		        input->m_segDir.swap(backupDir);
+                input->setStorePath(input->m_segDir);
 		        input->deleteSegment(); // will delete backupDir
 	        }
         }
@@ -1457,14 +1483,151 @@ ReadonlySegment::purgeIndex(size_t indexId, ColgroupSegment* input, DbContext* c
 ReadableStorePtr
 ReadonlySegment::purgeColgroup(size_t colgroupId, ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir) {
 	assert(m_isDel.size() == input->m_isDel.size());
-	return purgeColgroup_s(colgroupId, m_isDel, m_delcnt, input, ctx, tmpSegDir);
+    ReadableStore* store = input->m_colgroups[colgroupId].get();
+    if (dynamic_cast<MultiPartStore*>(store)) {
+        size_t newPartIdx = 0;
+	    return purgeColgroupMultiPart(colgroupId, m_isDel, m_delcnt, input, ctx, tmpSegDir, newPartIdx);
+    }
+    double cheapPurgeMultiple = ctx->m_tab->getSchemaConfig().m_cheapPurgeMultiple;
+    if (store->dataDictSize() * cheapPurgeMultiple >= store->dataFileSize())
+        return purgeColgroupRebuild(colgroupId, m_isDel, m_delcnt, input, ctx, tmpSegDir);
+    const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+    return purgeDictZipStore(schema,
+                             tmpSegDir / "colgroup-" + schema.m_name,
+                             store,
+                             m_isDel.bldata(),
+                             input->m_withPurgeBits ? &input->m_isPurged : nullptr,
+                             0);
+}
+
+ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
+                                                         const febitvec& newIsDel,
+                                                         size_t newDelcnt,
+                                                         ColgroupSegment* input,
+                                                         DbContext* ctx,
+                                                         PathRef destSegDir,
+                                                         size_t& newPartIdx) {
+    const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+    auto genPrefix = [&]{
+	    char szNum[16];
+		snprintf(szNum, sizeof(szNum), ".%04zd", newPartIdx++);
+        return "colgroup-" + schema.m_name + szNum;
+    };
+    assert(!schema.should_use_FixedLenStore());
+    double cheapPurgeMultiple = ctx->m_tab->getSchemaConfig().m_cheapPurgeMultiple;
+    ReadableStore* store = input->m_colgroups[colgroupId].get();
+    MultiPartStore* multiStore = dynamic_cast<MultiPartStore*>(store);
+    if (multiStore == nullptr) {
+        if (store->dataDictSize() * cheapPurgeMultiple >= store->dataFileSize()) {
+            ReadableStorePtr resStore;
+            auto prefix = "colgroup-" + schema.m_name;
+            auto tmpDir = destSegDir / "temp-store";
+            fs::create_directory(tmpDir);
+            resStore = purgeColgroupRebuild(colgroupId, newIsDel, newDelcnt, input, ctx, tmpDir);
+            resStore->save(tmpDir / prefix);
+            DbTable::moveStoreFiles(tmpDir, destSegDir, prefix, newPartIdx);
+            resStore->setStorePath(destSegDir);
+            fs::remove_all(tmpDir);
+            return resStore;
+        }
+        return purgeDictZipStore(schema,
+                                 destSegDir / genPrefix(),
+                                 store,
+                                 newIsDel.bldata(),
+                                 input->m_withPurgeBits ? &input->m_isPurged : nullptr,
+                                 0);
+    }
+    auto tmpDir = destSegDir / "temp-store";
+    if (schema.m_enableLinearScan)
+        fs::create_directory(tmpDir);
+    MultiPartStore* resMultiStore = new MultiPartStore();
+    llong baseId = 0;
+    for (size_t i = 0; i < multiStore->numParts(); ) {
+        auto srcPart = multiStore->getPart(i);
+        if (srcPart->dataDictSize() * cheapPurgeMultiple >= srcPart->dataFileSize()) {
+            std::unique_ptr<SeqReadAppendonlyStore> seqStore;
+            if (schema.m_enableLinearScan)
+                seqStore.reset(new SeqReadAppendonlyStore(tmpDir, schema));
+            SortableStrVec strVec;
+            size_t fixlen = schema.getFixedRowLen();
+            size_t maxMem = size_t(m_schema->m_compressingWorkMemSize);
+            auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
+                if (terark_unlikely(strVec.mem_size() >= maxMem)) {
+                    auto newPart = this->buildStore(schema, strVec);
+                    newPart->save(destSegDir / genPrefix());
+                    resMultiStore->addpart(newPart);
+                    strVec.clear();
+                }
+                size_t oldsize = strVec.size();
+                pushRecord(strVec, store, physicId, fixlen, ctx);
+                if (seqStore)
+                    seqStore->append(fstring(strVec.m_strpool).substr(oldsize), NULL);
+            };
+            const bm_uint_t* oldpurgeBits = input->m_isPurged.bldata();
+            const bm_uint_t* isDel = newIsDel.bldata();
+            assert(!oldpurgeBits || input->m_isPurged.size() == newIsDel.size());
+            do {
+                //llong logicId = baseId;
+                //llong partRows = srcPart->numDataRows();
+                //llong oldPhysicId = 0;
+                //while (oldPhysicId < partRows) {
+                //    if (!oldpurgeBits || !terark_bit_test(oldpurgeBits, logicId)) {
+                //        if (!terark_bit_test(isDel, logicId)) {
+                //            partsPushRecord(*srcPart, oldPhysicId);
+                //        }
+                //        ++oldPhysicId;
+                //    }
+                //    ++logicId;
+                //}
+                //assert(oldPhysicId == partRows);
+                auto isPurged = input->m_withPurgeBits ? &input->m_isPurged : nullptr;
+                size_t baseId_of_isDel = size_t(baseId);
+                size_t recNum = size_t(srcPart->numDataRows());
+	            for(size_t oldPhysicId = 0; oldPhysicId < recNum; oldPhysicId++) {
+                    size_t logicId = isPurged
+                        ? isPurged->select0(baseId_of_isDel + oldPhysicId)
+                        : baseId_of_isDel + oldPhysicId;
+		            if (!terark_bit_test(isDel, logicId)) {
+			            partsPushRecord(*srcPart, oldPhysicId);
+		            }
+	            }
+                baseId += srcPart->numDataRows();
+                ++i;
+            } while(i < multiStore->numParts() && ([&]{
+                srcPart = multiStore->getPart(i);
+                return srcPart->dataDictSize() * cheapPurgeMultiple >= srcPart->dataFileSize();
+            })());
+            if (strVec.str_size() > 0) {
+                auto newPart = this->buildStore(schema, strVec);
+                newPart->save(destSegDir / genPrefix());
+                resMultiStore->addpart(newPart);
+            }
+        }
+        else {
+            auto new_part = purgeDictZipStore(schema,
+                                              destSegDir / genPrefix(),
+                                              srcPart,
+                                              newIsDel.bldata(),
+                                              input->m_withPurgeBits ? &input->m_isPurged : nullptr,
+                                              size_t(baseId));
+            baseId += srcPart->numDataRows();
+            resMultiStore->addpart(new_part);
+            ++i;
+        }
+    }
+    if (schema.m_enableLinearScan)
+        fs::remove_all(tmpDir);
+    return resMultiStore->finishParts();
 }
 
 // should be a static/factory method in the future refactory
 ReadableStorePtr
-ReadonlySegment::purgeColgroup_s(size_t colgroupId,
-		const febitvec& newIsDel, size_t newDelcnt,
-		ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir) {
+ReadonlySegment::purgeColgroupRebuild(size_t colgroupId,
+                                      const febitvec& newIsDel,
+                                      size_t newDelcnt,
+                                      ColgroupSegment* input,
+                                      DbContext* ctx,
+                                      PathRef tmpSegDir) {
 	assert(newIsDel.size() == input->m_isDel.size());
 	assert(newIsDel.popcnt() == newDelcnt);
 	if (newIsDel.size() == newDelcnt) {

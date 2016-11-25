@@ -18,8 +18,11 @@ protected:
 	ReadableIndex* buildIndex(const Schema&, SortableStrVec& indexData) const override;
 	ReadableStore* buildStore(const Schema&, SortableStrVec& storeData) const override;
 	ReadableStore*
-	buildDictZipStore(const Schema&, PathRef dir, StoreIterator&iter,
+	buildDictZipStore(const Schema&, PathRef dir, StoreIterator& iter,
 		const bm_uint_t* isDel, const febitvec* isPurged) const override;
+	ReadableStore*
+	purgeDictZipStore(const Schema&, PathRef pathWithPrefix, const ReadableStore* input,
+        const bm_uint_t* isDel, const rank_select_se* isPurged, size_t baseId) const override;
 	void compressSingleColgroup(ReadableSegment* input, DbContext* ctx) override;
 	void compressSingleKeyValue(ReadableSegment* input, DbContext* ctx) override;
 };
