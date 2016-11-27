@@ -373,6 +373,29 @@ public:
         c = min_cap;
     }
 
+    void try_capacity(size_t min_cap, size_t max_cap) {
+		if (terark_likely(min_cap <= c)) {
+			// nothing to do
+			return;
+		}
+		if (max_cap < min_cap) {
+			max_cap = min_cap;
+		}
+		size_t cur_cap = max_cap;
+		for (;;) {
+			T* q = (T*)realloc(p, sizeof(T) * cur_cap);
+			if (q) {
+				p = q;
+				c = cur_cap;
+				return;
+			}
+			if (cur_cap == min_cap) {
+				throw std::bad_alloc();
+			}
+			cur_cap = min_cap + (cur_cap - min_cap) / 2;
+		}
+    }
+
 	T& ensure_set(size_t i, const T& x) {
 		if (i >= n) {
 			resize(i+1);

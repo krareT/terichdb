@@ -70,7 +70,8 @@ public:
 	size_t mem_size() const { return m_data.size(); }
 
 	void resize(size_t newsize) {
-		size_t bytes = (newsize * m_bits + 7 + 15*8) / 8;
+		size_t bytes = 0==newsize ? 0 : (m_bits*newsize + 7) / 8 + sizeof(size_t)-1 + 15;
+		bytes &= ~size_t(15); // align to 16
 		m_data.resize(bytes, 0);
 		m_size = newsize;
 	}

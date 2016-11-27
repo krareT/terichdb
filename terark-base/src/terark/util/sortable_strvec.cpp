@@ -148,7 +148,7 @@ void SortableStrVec::build_subkeys(valvec<SEntry>& subkeys) {
 	for(size_t i = 0; i < subkeys.size(); ++i) {
 		SEntry s = subkeys[i];
 		memcpyForward(base + offset, base + s.offset, s.length);
-		subkeys[i].offset = uint32_t(offset);
+		subkeys[i].offset = offset;
 		offset += s.length;
 	}
 	assert(offset <= m_strpool.size());
