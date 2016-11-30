@@ -74,6 +74,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
+            m_where = size_t(id + 1);
             if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));
@@ -89,6 +90,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
+            m_where = size_t(id + 1);
             if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));
@@ -159,6 +161,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
+            m_where = size_t(id);
             if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));
@@ -174,6 +177,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_index.size());
             }
+            m_where = size_t(id);
             if(o->m_index[id] != store_nil_index)
             {
                 fstring item = o->readItem(size_t(id));

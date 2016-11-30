@@ -1,4 +1,5 @@
 #include "db_store.hpp"
+#include <terark/rank_select.hpp>
 //#include "db_index.hpp"
 
 namespace terark { namespace db {
@@ -27,6 +28,61 @@ llong StoreIterator::seekLowerBound(llong id, valvec<byte>* val) {
 	}
 	return -1;
 }
+
+
+ForwardPartStoreIterator::ForwardPartStoreIterator(StoreIteratorPtr baseIter,
+                                                   size_t baseId,
+                                                   size_t storeSize,
+                                                   const bm_uint_t* isDel,
+                                                   const rank_select_se* isPurged)
+    : m_baseIter(baseIter)
+    , m_where(baseId)
+    , m_baseId(baseId)
+    , m_storeSize(storeSize)
+    , m_isDel(isDel)
+    , m_isPurged(isPurged)
+{
+    m_store.reset(baseIter->getStore());
+}
+
+ForwardPartStoreIterator::~ForwardPartStoreIterator() {
+}
+
+bool ForwardPartStoreIterator::increment(llong* id, valvec<byte>* val) {
+    while(m_where < m_storeSize)
+    {
+        size_t k = m_where++;
+        size_t logicId = m_isPurged
+            ? m_isPurged->select0(m_baseId + k)
+            : m_baseId + k;
+        if(!terark_bit_test(m_isDel, logicId))
+        {
+            bool res = m_baseIter->seekExact(k, val);
+            *id = k;
+            assert(res);
+            return res;
+        }
+    }
+    return false;
+}
+
+bool ForwardPartStoreIterator::seekExact(llong id, valvec<byte>* val) {
+    m_where = size_t(id++);
+    size_t logicId = m_isPurged
+        ? m_isPurged->select0(m_baseId + m_where)
+        : m_baseId + m_where;
+    if(!terark_bit_test(m_isDel, logicId))
+    {
+        bool res = m_baseIter->seekExact(m_where, val);
+        assert(res);
+        return res;
+    }
+    return false;
+}
+
+void ForwardPartStoreIterator::reset() {
+    m_where = m_baseId;
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 typedef hash_strmap< std::function<ReadableStore*(const Schema& schema)>

@@ -1816,6 +1816,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_storage.max_index());
             }
+            m_where = size_t(id) + 1;
             if(o->m_storage.node(id).is_used())
             {
                 fstring key = o->m_storage.key(size_t(id));
@@ -1831,6 +1832,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_storage.max_index());
             }
+            m_where = size_t(id) + 1;
             if(o->m_storage.node(id).is_used())
             {
                 fstring key = o->m_storage.key(size_t(id));
@@ -1902,6 +1904,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_storage.max_index());
             }
+            m_where = size_t(id);
             if(o->m_storage.node(id).is_used())
             {
                 fstring key = o->m_storage.key(size_t(id));
@@ -1917,6 +1920,7 @@ public:
                 THROW_STD(out_of_range, "Invalid id = %lld, rows = %zd"
                           , id, o->m_storage.max_index());
             }
+            m_where = size_t(id);
             if(o->m_storage.node(id).is_used())
             {
                 fstring key = o->m_storage.key(size_t(id));

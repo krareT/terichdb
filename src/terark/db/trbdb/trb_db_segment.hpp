@@ -18,6 +18,7 @@ namespace terark { namespace db { namespace trbdb {
 
 class TERARK_DB_DLL RowLockTransaction;
 class TrbLogger;
+class TrbStatus;
 
 struct TrbReadDeletedRecordException
 {
@@ -86,6 +87,7 @@ protected:
     friend class RowLockTransaction;
     mutable TrbRWRowMutex m_rowMutex;
     mutable TrbLogger *m_logger;
+    mutable TrbStatus *m_status;
 
 public:
 	class TrbDbTransaction; friend class TrbDbTransaction;

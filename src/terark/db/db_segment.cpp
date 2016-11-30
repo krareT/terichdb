@@ -1111,10 +1111,12 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 
 	DbContextPtr ctx;
 	ReadableSegmentPtr input;
+    size_t mergeSeqNum;
 	{
 		MyRwLock lock(tab->m_rwMutex, false);
 		ctx.reset(tab->createDbContextNoLock());
 		input = tab->m_segments[segIdx];
+        mergeSeqNum = tab->m_mergeSeqNum;
 	}
 	assert(input->getWritableStore() != nullptr);
 	assert(input->m_isFreezed);
@@ -1145,8 +1147,29 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 	else {
 		compressMultipleColgroups(input.get(), ctx.get());
 	}
-	completeAndReload(tab, segIdx, &*input);
-
+    
+    MyRwLock lock(tab->m_rwMergeMutex, false);
+    size_t finalSegIdx = segIdx;
+    if (mergeSeqNum != tab->m_mergeSeqNum) {
+		MyRwLock lock(tab->m_rwMutex, false);
+        bool miss = true;
+        for (size_t i = 0, e = tab->m_segments.size(); i < e; ++i) {
+            if (tab->m_segments[i]->getColgroupSegment() != input.get())
+                continue;
+            finalSegIdx = i;
+            miss = false;
+            break;
+        }
+        if (miss) {
+            fprintf(stderr
+			    , "ERROR: missing segment after merge ! %s\n"
+                , m_segDir.string().c_str());
+		    abort();
+        }
+    }
+	completeAndReload(tab, segIdx, input.get());
+    if (finalSegIdx != segIdx)
+        m_segDir = tab->getSegPath("rd", finalSegIdx);
 	fs::rename(tmpDir, m_segDir);
     setStorePath(m_segDir);
 	input->deleteSegment();
@@ -1362,9 +1385,11 @@ void
 ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	DbContextPtr ctx(tab->createDbContext());
 	ColgroupSegmentPtr input;
+    size_t mergeSeqNum;
 	{
 		MyRwLock lock(tab->m_rwMutex, false);
 		input = tab->m_segments[segIdx]->getColgroupSegment();
+        mergeSeqNum = tab->m_mergeSeqNum;
 		assert(NULL != input);
 		assert(input->m_isFreezed);
 		assert(!input->m_bookUpdates);
@@ -1386,13 +1411,34 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 		for (size_t i = m_indices.size(); i < m_colgroups.size(); ++i) {
 			m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), tmpSegDir);
 		}
-		completeAndReload(tab, segIdx, input.get());
 	}
 	catch (const std::exception& ex) {
 		fs::remove_all(tmpSegDir);
 		THROW_STD(logic_error, "generate new segment %s failed: %s"
 			, tmpSegDir.string().c_str(), ex.what());
 	}
+    MyRwLock lock(tab->m_rwMergeMutex, false);
+    size_t finalSegIdx = segIdx;
+    if (mergeSeqNum != tab->m_mergeSeqNum) {
+		MyRwLock lock(tab->m_rwMutex, false);
+        bool miss = true;
+        for (size_t i = 0, e = tab->m_segments.size(); i < e; ++i) {
+            if (tab->m_segments[i]->getColgroupSegment() != input.get())
+                continue;
+            finalSegIdx = i;
+            miss = false;
+            break;
+        }
+        if (miss) {
+            fprintf(stderr
+			    , "ERROR: missing segment after merge ! %s\n"
+                , m_segDir.string().c_str());
+		    abort();
+        }
+    }
+	completeAndReload(tab, finalSegIdx, input.get());
+    if (finalSegIdx != segIdx)
+        m_segDir = tab->getSegPath("rd", finalSegIdx);
     if (input->getWritableSegment()) {
         fs::rename(tmpSegDir, m_segDir);
         setStorePath(m_segDir);
@@ -1401,7 +1447,6 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
     else {
         if (fs::is_symlink(m_segDir)) {
 	        fs::path backupDir = renameToBackupFromDir(tmpSegDir);
-            setStorePath(backupDir);
             fs::path Rela = ".." / input->m_segDir.parent_path().filename() / input->m_segDir.filename();
             if (fs::read_symlink(m_segDir) == Rela) {
                 fs::remove(m_segDir);
@@ -1416,7 +1461,6 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
         }
         else {
 	        fs::path backupDir = renameToBackupFromDir(input->m_segDir);
-            input->setStorePath(backupDir);
 	        try {
                 fs::rename(tmpSegDir, m_segDir);
                 setStorePath(m_segDir);
@@ -1430,7 +1474,6 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	        {
 		        MyRwLock lock(tab->m_rwMutex, true);
 		        input->m_segDir.swap(backupDir);
-                input->setStorePath(input->m_segDir);
 		        input->deleteSegment(); // will delete backupDir
 	        }
         }
@@ -1508,10 +1551,11 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
                                                          PathRef destSegDir,
                                                          size_t& newPartIdx) {
     const Schema& schema = m_schema->getColgroupSchema(colgroupId);
+    auto prefix = "colgroup-" + schema.m_name;
     auto genPrefix = [&]{
 	    char szNum[16];
 		snprintf(szNum, sizeof(szNum), ".%04zd", newPartIdx++);
-        return "colgroup-" + schema.m_name + szNum;
+        return prefix + szNum;
     };
     assert(!schema.should_use_FixedLenStore());
     double cheapPurgeMultiple = ctx->m_tab->getSchemaConfig().m_cheapPurgeMultiple;
@@ -1520,7 +1564,6 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
     if (multiStore == nullptr) {
         if (store->dataDictSize() * cheapPurgeMultiple >= store->dataFileSize()) {
             ReadableStorePtr resStore;
-            auto prefix = "colgroup-" + schema.m_name;
             auto tmpDir = destSegDir / "temp-store";
             fs::create_directory(tmpDir);
             resStore = purgeColgroupRebuild(colgroupId, newIsDel, newDelcnt, input, ctx, tmpDir);
@@ -1538,13 +1581,43 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
                                  0);
     }
     auto tmpDir = destSegDir / "temp-store";
-    if (schema.m_enableLinearScan)
-        fs::create_directory(tmpDir);
-    MultiPartStore* resMultiStore = new MultiPartStore();
+    fs::create_directory(tmpDir);
+    MultiPartStorePtr resMultiStore = new MultiPartStore();
     llong baseId = 0;
     for (size_t i = 0; i < multiStore->numParts(); ) {
         auto srcPart = multiStore->getPart(i);
         if (srcPart->dataDictSize() * cheapPurgeMultiple >= srcPart->dataFileSize()) {
+            if (schema.m_dictZipSampleRatio >= 0.0) {
+                size_t totalInflateSize = srcPart->dataInflateSize(), totalDataRows = srcPart->numDataRows();
+                size_t j = i + 1;
+                for (; j < multiStore->numParts(); ++j) {
+                    auto itPart = multiStore->getPart(j);
+                    if (itPart->dataDictSize() * cheapPurgeMultiple >= itPart->dataFileSize()) {
+                        totalInflateSize += itPart->dataInflateSize();
+                        totalDataRows += itPart->numDataRows();
+                    }
+                    else {
+                        break;
+                    }
+                }
+		        double avgLen = 1.0 * totalInflateSize / totalDataRows;
+		        if (schema.m_dictZipSampleRatio > FLT_EPSILON || avgLen > 100) {
+                    MultiPartStorePtr subMultiStore = new MultiPartStore();
+                    for (; i < j; ++i)
+                        subMultiStore->addpart(multiStore->getPart(i));
+                    ForwardPartStoreIterator iter(subMultiStore->finishParts()->createStoreIterForward(ctx),
+                                                  baseId,
+                                                  totalDataRows,
+                                                  newIsDel.bldata(),
+                                                  input->m_withPurgeBits ? &input->m_isPurged : nullptr);
+			        auto newPart = buildDictZipStore(schema, tmpDir, iter, nullptr, nullptr);
+			        assert(llong(newIsDel.size() - newDelcnt) == newPart->numDataRows());
+                    DbTable::moveStoreFiles(tmpDir, destSegDir, prefix, newPartIdx);
+                    resMultiStore->addpart(newPart);
+                    baseId += totalDataRows;
+                    continue;
+		        }
+            }
             std::unique_ptr<SeqReadAppendonlyStore> seqStore;
             if (schema.m_enableLinearScan)
                 seqStore.reset(new SeqReadAppendonlyStore(tmpDir, schema));
@@ -1567,19 +1640,6 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
             const bm_uint_t* isDel = newIsDel.bldata();
             assert(!oldpurgeBits || input->m_isPurged.size() == newIsDel.size());
             do {
-                //llong logicId = baseId;
-                //llong partRows = srcPart->numDataRows();
-                //llong oldPhysicId = 0;
-                //while (oldPhysicId < partRows) {
-                //    if (!oldpurgeBits || !terark_bit_test(oldpurgeBits, logicId)) {
-                //        if (!terark_bit_test(isDel, logicId)) {
-                //            partsPushRecord(*srcPart, oldPhysicId);
-                //        }
-                //        ++oldPhysicId;
-                //    }
-                //    ++logicId;
-                //}
-                //assert(oldPhysicId == partRows);
                 auto isPurged = input->m_withPurgeBits ? &input->m_isPurged : nullptr;
                 size_t baseId_of_isDel = size_t(baseId);
                 size_t recNum = size_t(srcPart->numDataRows());
@@ -1615,9 +1675,10 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
             ++i;
         }
     }
-    if (schema.m_enableLinearScan)
-        fs::remove_all(tmpDir);
-    return resMultiStore->finishParts();
+    fs::remove_all(tmpDir);
+    resMultiStore->finishParts();
+    resMultiStore->setStorePath(destSegDir / prefix);
+    return resMultiStore;
 }
 
 // should be a static/factory method in the future refactory

@@ -465,8 +465,50 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
+class TrbStatus
+{
+public:
+    struct DATA
+    {
+        uint64_t timestamp;
+        uint64_t record_count;
+        uint64_t max_id;
+        uint64_t inflate_size;
+        uint64_t storage_size;
+    };
+    DATA *data;
+    tbb::spin_mutex mutex;
+    MmapWholeFile file;
 
+    TrbStatus() : data()
+    {
+    }
+    
+    void init(PathRef fpath)
+    {
+        data = nullptr;
+        std::string fileName = (fpath / "trb.status").string();
+        try
+        {
+            FileStream fs(fileName, "wb");
+            fs.chsize(sizeof(DATA));
+            fs.close();
+            MmapWholeFile(fileName, true, false).swap(file);
+            assert(file.size == sizeof(DATA));
+            data = reinterpret_cast<DATA *>(file.base);
+        }
+        catch(...)
+        {
+            fprintf(stderr,
+                    "ERROR: TrgSegment create status file fail %s .\n",
+                    fileName.c_str()
+            );
+        }
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -658,6 +700,24 @@ public:
     bool do_commit() override
     {
         m_lock.reset();
+        auto &status = *m_seg->m_status;
+        tbb::spin_mutex::scoped_lock l;
+        if(status.data && l.try_acquire(status.mutex))
+        {
+            using namespace std::chrono;
+            uint64_t inflate = 0, storage = 0;
+            size_t colgroups_size = m_seg->m_colgroups.size();
+            for(size_t i = 0; i < colgroups_size; ++i)
+            {
+                inflate += m_seg->m_colgroups[i]->dataInflateSize();
+                storage += m_seg->m_colgroups[i]->dataStorageSize();
+            }
+            status.data->timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+            status.data->max_id = m_seg->numDataRows();
+            status.data->record_count = m_seg->m_isDel.size() - m_seg->m_delcnt;
+            status.data->inflate_size = inflate;
+            status.data->storage_size = storage;
+        }
         return true;
     }
     void do_rollback() override
@@ -689,6 +749,7 @@ TrbColgroupSegment::TrbColgroupSegment()
 {
     m_hasLockFreePointSearch = true;
     m_logger = new TrbLogger();
+    m_status = new TrbStatus();
     TrbLogger::Param param;
     param.writableUpdateRow = [this](uint32_t subId, ColumnVec const &cols, valvec<byte> &buf)
     {
@@ -724,6 +785,7 @@ TrbColgroupSegment::TrbColgroupSegment()
 TrbColgroupSegment::~TrbColgroupSegment()
 {
     delete m_logger;
+    delete m_status;
 }
 
 void TrbColgroupSegment::load(PathRef path)
@@ -734,7 +796,8 @@ void TrbColgroupSegment::load(PathRef path)
     {
         m_isDel.set1(0, m_isDel.size());
     }
-
+    
+    m_status->init(path);
     m_logger->loadLog(m_segDir, m_schema->m_rowSchema.get());
 
     assert(!m_colgroups.empty());
@@ -781,7 +844,8 @@ void TrbColgroupSegment::initEmptySegment()
         assert(store);
         m_colgroups[i] = store;
     }
-
+    
+    m_status->init(m_segDir);
     m_logger->initLog(m_segDir);
 }
 

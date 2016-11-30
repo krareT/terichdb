@@ -309,14 +309,10 @@ protected:
 
 public:
 	mutable MyRwMutex m_rwMutex;
+	mutable MyRwMutex m_rwMergeMutex;
 	mutable size_t m_tableScanningRefCount;
 	mutable std::atomic_size_t m_inprogressWritingCount;
 protected:
-    enum class MergeStatus : unsigned char {
-        None,
-        Merging,
-        Waiting,
-    };
 
 //	DbContextLink* m_ctxListHead;
 	valvec<llong>  m_rowNumVec;
@@ -334,7 +330,7 @@ protected:
 	bool m_throwOnThrottle;
 	bool m_tobeDrop;
     bool m_autoTask;
-    MergeStatus m_merging;
+    bool m_merging;
 
 	// constant once constructed
 	boost::filesystem::path m_dir;

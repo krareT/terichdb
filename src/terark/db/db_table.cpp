@@ -70,7 +70,7 @@ DbTable::DbTable()
 {
 	m_tableScanningRefCount = 0;
 	m_tobeDrop = false;
-	m_merging = MergeStatus::None;
+	m_merging = false;
     m_autoTask = true;
 	m_segments.reserve(DEFAULT_maxSegNum);
 	m_rowNumVec.reserve(DEFAULT_maxSegNum+1);
@@ -3757,14 +3757,10 @@ try{
 	assert(dseg->m_isDel.size() == toMerge.m_newSegRows);
 
 	// stop creating new segment by m_inprogressWritingCount
-	// m_segments will never be changed
-	assert(m_merging == MergeStatus::Merging);
-    m_merging = MergeStatus::Waiting;
-    while(m_bgTaskNum > 1)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	IncrementGuard_size_t guard(m_inprogressWritingCount);
     while(m_inprogressWritingCount > 1)
         std::this_thread::yield();
+    MyRwLock lock(m_rwMergeMutex, true);
     
 	// newSegPathes don't include m_wrSeg
 	valvec<ReadableSegmentPtr> newSegs(m_segments.capacity(), valvec_reserve());
@@ -4012,7 +4008,7 @@ void DbTable::compact() {
 	for (;;) {
 		MyRwLock lock(m_rwMutex, true);
 		DebugCheckRowNumVecNoLock(this);
-		if (m_merging != MergeStatus::None) {
+		if (m_merging) {
 			lock.release();
 			tbb::this_tbb_thread::sleep(tbb::tick_count::interval_t(1.0));
 		//	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -4178,12 +4174,12 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
     bool purgeReadonlySegment = false;          //  5
     
 	double threshold = std::max(m_schema->m_purgeDeleteThreshold, 0.001);
-    auto &m_segs = param.m_segs;
+    auto &param_segs = param.m_segs;
     param.m_forcePurgeAndMerge = forcePurgeAndMerge;
-	m_segs.reserve(m_segments.size() + 1);
+	param_segs.reserve(m_segments.size() + 1);
 
-    auto getRows = [&](size_t i) {
-        ColgroupSegment* seg = m_segs[i].seg.get();
+    auto getSegmentRows = [&](size_t i) {
+        ColgroupSegment* seg = param_segs[i].seg.get();
         if (seg->getReadonlySegment()) {
             return seg->getReadonlySegment()->getPhysicRows()
                 - (seg->m_delcnt - seg->m_isPurged.max_rank1());
@@ -4192,8 +4188,8 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             return seg->m_isDel.size() - seg->m_delcnt;
         }
     };
-    auto getPurge = [&](size_t i)->double {
-        ReadonlySegment* seg = m_segs[i].seg->getReadonlySegment();
+    auto getPurgePriority = [&](size_t i)->double {
+        ReadonlySegment* seg = param_segs[i].seg->getReadonlySegment();
         if (seg) {
 			size_t newDelcnt = seg->m_delcnt - seg->m_isPurged.max_rank1();
 			size_t physicNum = seg->getPhysicRows();
@@ -4212,12 +4208,10 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
 		for (size_t i = 0; i < m_segments.size(); ++i) {
 			ColgroupSegment* seg = m_segments[i]->getMergableSegment();
 			if (seg)
-				m_segs.emplace_back(seg, i);
+				param_segs.emplace_back(seg, i);
 			else
                 break;
         }
-		//lock.upgrade_to_writer();
-		//DebugCheckRowNumVecNoLock(tab);
     } while(false);
 
     size_t findSegmentId = size_t(-1);
@@ -4236,21 +4230,21 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
     }
     if (findSegmentId == size_t(-1)) {
 	    size_t sumSegRows = 0;
-	    for (size_t i = 0; i < m_segs.size(); ++i) {
-            if ((m_segs[i].purgePriority = getPurge(i)) > 0)
+	    for (size_t i = 0; i < param_segs.size(); ++i) {
+            if ((param_segs[i].purgePriority = getPurgePriority(i)) > 0)
                 purgeReadonlySegment = true;
-            if (m_segs[i].seg->getWritableSegment())
+            if (param_segs[i].seg->getWritableSegment())
                 convWritableSegment = true;
-            sumSegRows += getRows(i);
+            sumSegRows += getSegmentRows(i);
         }
-	    size_t largeSegRows = 2 * sumSegRows / m_segs.size();
+	    size_t largeSegRows = 2 * sumSegRows / param_segs.size();
 
 	    // eleminate large segments and compute average of others
 	    size_t smallsegNum = 0;
 	    size_t smallsegRows = 0;
 	
-	    for (size_t i = 0; i < m_segs.size(); ++i) {
-		    size_t rows = getRows(i);
+	    for (size_t i = 0; i < param_segs.size(); ++i) {
+		    size_t rows = getSegmentRows(i);
 		    if (rows <= largeSegRows)
 			    // use '<=' for very rare case: largeSegRows==0
 			    smallsegNum++, smallsegRows += rows;
@@ -4275,15 +4269,15 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
 	    }
 
 	    // find max range in which every seg rows < maxSegRows
-	    for (size_t j = 0; j < m_segs.size(); ) {
+	    for (size_t j = 0; j < param_segs.size(); ) {
 		    size_t k = j;
-		    for (; k < m_segs.size(); ++k) {
-			    if (getRows(k) > maxSegRows) {
-                    if (m_segs[k].seg->getReadonlySegment()) {
+		    for (; k < param_segs.size(); ++k) {
+			    if (getSegmentRows(k) > maxSegRows) {
+                    if (param_segs[k].seg->getReadonlySegment()) {
 				        break;
                     }
                     else {
-                        assert(m_segs[k].seg->getColgroupSegment());
+                        assert(param_segs[k].seg->getColgroupSegment());
                     }
                 }
 		    }
@@ -4295,7 +4289,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
 	    }
         size_t rdLen = 0, wrLen = 0;
 	    for (size_t j = 0; j < rngLen; ++j) {
-            if (m_segs[rngBeg + j].seg->getWritableSegment())
+            if (param_segs[rngBeg + j].seg->getWritableSegment())
                 ++wrLen;
             else
                 ++rdLen;
@@ -4306,8 +4300,8 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             if (wrLen == 0) {
                 size_t maxSegIndex = 0;
                 if (rdLen > suggestWritableSegNum) {
-                    for (size_t j = 1; j < m_segs.size(); ++j) {
-                        if (getRows(j) > getRows(maxSegIndex))
+                    for (size_t j = 1; j < param_segs.size(); ++j) {
+                        if (getSegmentRows(j) > getSegmentRows(maxSegIndex))
                             maxSegIndex = j;
 	                }
                 }
@@ -4325,11 +4319,9 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
     }
 
     auto processSegment = [&](ReadableSegment *seg, size_t i, bool force) {
-        m_segs.clear();
+        param_segs.clear();
         {
 		    MyRwLock lock(m_rwMutex, true);
-            if (!force && m_merging == MergeStatus::Waiting)
-                return false;
             if (seg != m_segments[i].get())
                 return true;
             if (seg->m_onProcess)
@@ -4374,28 +4366,28 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
     auto mergeSegments = [&] {
         {
 		    MyRwLock lock(m_rwMutex, true);
-            if (m_merging != MergeStatus::None)
-                return false;
-            m_merging = MergeStatus::Merging;
+            if (m_merging)
+                return true;
+            m_merging = true;
 	        for (size_t j = 0; j < rngLen; ++j) {
                 size_t i = rngBeg + j;
-                if (m_segs[i].seg != m_segments[i] || m_segs[i].seg->m_onProcess) {
-                    m_merging = MergeStatus::None;
+                if (param_segs[i].seg != m_segments[i] || param_segs[i].seg->m_onProcess) {
+                    m_merging = false;
                     return true;
                 }
-		        m_segs[j] = m_segs[i];
+		        param_segs[j] = param_segs[i];
             }
 	        for (size_t j = 0; j < rngLen; ++j) {
-                m_segs[j].seg->m_onProcess = true;
+                param_segs[j].seg->m_onProcess = true;
             }
         }
-	    m_segs.trim(rngLen);
+	    param_segs.trim(rngLen);
 	    param.m_newSegRows = 0;
         for (size_t j = 0; j < rngLen; ++j)
-		    param.m_newSegRows += m_segs[j].seg->m_isDel.size();
+		    param.m_newSegRows += param_segs[j].seg->m_isDel.size();
         merge(param);
-        assert(m_merging == MergeStatus::Waiting);
-		m_merging = MergeStatus::None;
+        assert(m_merging);
+		m_merging = false;
         return true;
     };
 
@@ -4408,7 +4400,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         }
         return processSegment(seg.get(), findSegmentId, true);
     }
-    if (mergeColgroupSegment && m_merging == MergeStatus::None) {
+    if (mergeColgroupSegment && !m_merging) {
         if (mergeSegments())
             return true;
     }
@@ -4416,8 +4408,8 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         ReadableSegmentPtr seg;
         {
 		    MyRwLock lock(m_rwMutex, false);
-		    for (size_t i = 0; i < m_segs.size(); ++i) {
-                if (m_segs[i].seg->getWritableSegment() && !m_segs[i].seg->m_onProcess) {
+		    for (size_t i = 0; i < param_segs.size(); ++i) {
+                if (param_segs[i].seg->getWritableSegment() && !param_segs[i].seg->m_onProcess) {
                     findSegmentId = i;
                     break;
                 }
@@ -4426,10 +4418,10 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
         if (findSegmentId == size_t(-1)) {
             return false;
         }
-        seg = m_segs[findSegmentId].seg;
+        seg = param_segs[findSegmentId].seg;
         return processSegment(seg.get(), findSegmentId, mergeColgroupSegment);
     }
-    if (mergeReadonlySegment && m_merging == MergeStatus::None) {
+    if (mergeReadonlySegment && !m_merging) {
         return mergeSegments();
     }
     if (mergeColgroupSegment || mergeReadonlySegment)
@@ -4438,9 +4430,9 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
 	    ReadableSegmentPtr seg;
         {
 		    MyRwLock lock(m_rwMutex, false);
-		    for (size_t i = 0; i < m_segs.size(); ++i) {
-                if (m_segs[i].purgePriority > 0 && !m_segs[i].seg->m_onProcess) {
-                    if (findSegmentId == size_t(-1) || m_segs[i].purgePriority > m_segs[findSegmentId].purgePriority) {
+		    for (size_t i = 0; i < param_segs.size(); ++i) {
+                if (param_segs[i].purgePriority > 0 && !param_segs[i].seg->m_onProcess) {
+                    if (findSegmentId == size_t(-1) || param_segs[i].purgePriority > param_segs[findSegmentId].purgePriority) {
                         findSegmentId = i;
                         break;
                     }
@@ -4450,7 +4442,7 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
                 return false;
             }
         }
-        seg = m_segs[findSegmentId].seg;
+        seg = param_segs[findSegmentId].seg;
         return processSegment(seg.get(), findSegmentId, false);
     }
     return false;

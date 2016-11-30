@@ -19,6 +19,10 @@ namespace boost { namespace filesystem {
 //	class path;
 }}
 
+namespace terark {
+class rank_select_se;
+} // namespace terark
+
 namespace terark { namespace db {
 
 typedef const boost::filesystem::path& PathRef;
@@ -48,6 +52,24 @@ public:
 	virtual void reset() = 0;
 };
 typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
+
+class TERARK_DB_DLL ForwardPartStoreIterator : public StoreIterator {
+protected:
+    StoreIteratorPtr m_baseIter;
+    size_t m_where;
+    size_t m_baseId;
+    size_t m_storeSize;
+    const bm_uint_t* m_isDel;
+    const rank_select_se* m_isPurged;
+public:
+    ForwardPartStoreIterator(StoreIteratorPtr baseIter, size_t baseId, size_t storeSize,
+                             const bm_uint_t* isDel, const rank_select_se* isPurged);
+	virtual ~ForwardPartStoreIterator();
+	bool increment(llong* id, valvec<byte>* val) override;
+	bool seekExact(llong  id, valvec<byte>* val) override;
+	void reset() override;
+};
+typedef boost::intrusive_ptr<ForwardPartStoreIterator> ForwardPartStoreIteratorPtr;
 
 class TERARK_DB_DLL AppendableStore;
 class TERARK_DB_DLL UpdatableStore;
