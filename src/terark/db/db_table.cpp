@@ -3703,35 +3703,59 @@ try{
 			toMerge.mergeFixedLenColgroup(dseg.get(), cgId);
 			continue;
 		}
-		if (toMerge.m_newpurgeBits.size() > 0) {
-			assert(toMerge.m_newpurgeBits.size() == toMerge.m_newSegRows);
-			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
-			continue;
-		}
 		if (toMerge.m_forcePurgeAndMerge) {
 			toMerge.mergeAndPurgeColgroup(dseg.get(), cgId);
 			continue;
 		}
 		const std::string prefix = "colgroup-" + schema.m_name;
 		size_t newPartIdx = 0;
-		for (auto& e : toMerge.m_segs) {
-			if (e.seg->getWritableSegment() || e.needsRePurge()) {
-				assert(e.newIsPurged.size() >= 1);
-				assert(e.newIsPurged.size() == e.seg->m_isDel.size());
-				if (e.newIsPurged.size() == e.newNumPurged) {
-					// new store is empty, all records are purged
-					continue;
-				}
-				dseg->purgeColgroupMultiPart(cgId, e.newIsPurged, e.newNumPurged,
-                                             e.seg.get(), ctx.get(), destSegDir, newPartIdx);
-			} else {
-				if (e.seg->m_isPurged.max_rank1() == e.seg->m_isDel.size()) {
-					// old store is empty, all records are purged
-					continue;
-				}
-				e.reuseOldStoreFiles(destSegDir, prefix, newPartIdx);
-			}
+		if (toMerge.m_newpurgeBits.size() > 0) {
+            MultiPartStorePtr mergeMultiStore = new MultiPartStore();
+		    for (auto& e : toMerge.m_segs) {
+		        auto store = e.seg->m_colgroups[cgId].get();
+		        if (auto multiStore = dynamic_cast<MultiPartStore*>(store)) {
+			        for (size_t i = 0; i < multiStore->numParts(); ++i) {
+				        mergeMultiStore->addpart(multiStore->getPart(i));
+			        }
+		        }
+		        else {
+			        mergeMultiStore->addpart(store);
+		        }
+            }
+            assert(!toMerge.m_oldpurgeBits.empty());
+			dseg->purgeColgroupMultiPart(mergeMultiStore->finishParts(),
+                                         schema,
+                                         toMerge.m_newpurgeBits,
+                                         &toMerge.m_oldpurgeBits,
+                                         ctx.get(),
+                                         destSegDir,
+                                         newPartIdx);
 		}
+        else {
+		    for (auto& e : toMerge.m_segs) {
+			    if (e.seg->getWritableSegment() || e.needsRePurge()) {
+				    assert(e.newIsPurged.size() >= 1);
+				    assert(e.newIsPurged.size() == e.seg->m_isDel.size());
+				    if (e.newIsPurged.size() == e.newNumPurged) {
+					    // new store is empty, all records are purged
+					    continue;
+				    }
+				    dseg->purgeColgroupMultiPart(e.seg->m_colgroups[cgId].get(),
+                                                 schema,
+                                                 e.newIsPurged,
+                                                 e.seg->m_isPurged.empty() ? nullptr : &e.seg->m_isPurged,
+                                                 ctx.get(),
+                                                 destSegDir,
+                                                 newPartIdx);
+			    } else {
+				    if (e.seg->m_isPurged.max_rank1() == e.seg->m_isDel.size()) {
+					    // old store is empty, all records are purged
+					    continue;
+				    }
+				    e.reuseOldStoreFiles(destSegDir, prefix, newPartIdx);
+			    }
+		    }
+        }
 	}
 
 	if (toMerge.needsPurgeBits() || dseg->m_isDel.empty()) {

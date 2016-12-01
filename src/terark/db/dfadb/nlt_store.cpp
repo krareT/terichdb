@@ -329,6 +329,9 @@ void NestLoudsTrieStore::build_by_purge(PathRef path,
     std::string fOldDict = input_store->get_fpath() + "-dict";
     std::string fNewDict = fpath + "-dict";
 	try {
+		fprintf(stderr, "INFO: create_hard_link(%s, %s)\n"
+			, fOldDict.c_str()
+			, fNewDict.c_str());
 		fs::create_hard_link(fOldDict, fNewDict);
 	}
 	catch (const std::exception& ex) {

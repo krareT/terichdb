@@ -235,9 +235,9 @@ public:
 
 	ReadableIndexPtr purgeIndex(size_t indexId, ColgroupSegment* input, DbContext* ctx);
 	ReadableStorePtr purgeColgroup(size_t colgroupId, ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir);
-    ReadableStorePtr purgeColgroupMultiPart(size_t colgroupId,
-		    const febitvec& newIsDel, size_t newDelcnt,
-		    ColgroupSegment* input, DbContext* ctx, PathRef destSegDir, size_t& newPartIdx);
+    ReadableStorePtr purgeColgroupMultiPart(ReadableStore* store, const Schema& schema,
+		    const febitvec& newIsDel, const rank_select_se* isPurged,
+		    DbContext* ctx, PathRef destSegDir, size_t& newPartIdx);
 	ReadableStorePtr purgeColgroupRebuild(size_t colgroupId,
 			const febitvec& newIsDel, size_t newDelcnt,
 			ColgroupSegment* input, DbContext* ctx, PathRef tmpSegDir);
