@@ -1458,6 +1458,7 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
             }
 		    fs::rename(backupDir, m_segDir);
             setStorePath(m_segDir);
+		    input->deleteSegment();
         }
         else {
 	        fs::path backupDir = renameToBackupFromDir(input->m_segDir);
