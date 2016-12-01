@@ -1584,25 +1584,43 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
     auto tmpDir = destSegDir / "temp-store";
     fs::create_directory(tmpDir);
     MultiPartStorePtr resMultiStore = new MultiPartStore();
+    double maxCount = 1.0 * multiStore->numDataRows() / multiStore->numParts();
+    double minCount = maxCount * 4 / 7;
+    enum
+    {
+        DontRebuild = 0,
+        CanRebuild = 1,
+        ShouldRebuild = 2,
+        NeedRebuild = 3,
+    };
+    auto getRebuildInfo = [&](ReadableStore *store)->size_t {
+        if (store->dataDictSize() * cheapPurgeMultiple >= store->dataFileSize())
+            return NeedRebuild;
+        if (store->numDataRows() < minCount)
+            return ShouldRebuild;
+        if (store->numDataRows() < maxCount)
+            return CanRebuild;
+        return DontRebuild;
+    };
     llong baseId = 0;
     for (size_t i = 0; i < multiStore->numParts(); ) {
+        size_t j = i + 1;
         auto srcPart = multiStore->getPart(i);
-        if (srcPart->dataDictSize() * cheapPurgeMultiple >= srcPart->dataFileSize()) {
-            if (schema.m_dictZipSampleRatio >= 0.0) {
-                size_t totalInflateSize = srcPart->dataInflateSize(), totalDataRows = srcPart->numDataRows();
-                size_t j = i + 1;
-                for (; j < multiStore->numParts(); ++j) {
-                    auto itPart = multiStore->getPart(j);
-                    if (itPart->dataDictSize() * cheapPurgeMultiple >= itPart->dataFileSize()) {
-                        totalInflateSize += itPart->dataInflateSize();
-                        totalDataRows += itPart->numDataRows();
-                    }
-                    else {
-                        break;
-                    }
-                }
-		        double avgLen = 1.0 * totalInflateSize / totalDataRows;
-		        if (schema.m_dictZipSampleRatio > FLT_EPSILON || avgLen > 100) {
+        size_t status = getRebuildInfo(srcPart);
+        if (status >= CanRebuild) {
+            size_t totalInflateSize = srcPart->dataInflateSize(), totalDataRows = srcPart->numDataRows();
+            for (; j < multiStore->numParts(); ++j) {
+                auto itPart = multiStore->getPart(j);
+                size_t itStatus = getRebuildInfo(itPart);
+                if (itStatus == DontRebuild)
+                    break;
+                status = std::max(status, itStatus);
+                totalInflateSize += itPart->dataInflateSize();
+                totalDataRows += itPart->numDataRows();
+            }
+            if (status == NeedRebuild || (status == ShouldRebuild && j - i > 1)) {
+                if (schema.m_dictZipSampleRatio >= 0.0 &&
+                    (schema.m_dictZipSampleRatio > FLT_EPSILON || 1.0 * totalInflateSize / totalDataRows > 100)) {
                     MultiPartStorePtr subMultiStore = new MultiPartStore();
                     for (; i < j; ++i)
                         subMultiStore->addpart(multiStore->getPart(i));
@@ -1615,65 +1633,62 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
                     DbTable::moveStoreFiles(tmpDir, destSegDir, prefix, newPartIdx);
                     resMultiStore->addpart(newPart);
                     baseId += totalDataRows;
-                    continue;
-		        }
-            }
-            std::unique_ptr<SeqReadAppendonlyStore> seqStore;
-            if (schema.m_enableLinearScan)
-                seqStore.reset(new SeqReadAppendonlyStore(tmpDir, schema));
-            SortableStrVec strVec;
-            size_t fixlen = schema.getFixedRowLen();
-            size_t maxMem = size_t(m_schema->m_compressingWorkMemSize);
-            auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
-                if (terark_unlikely(strVec.mem_size() >= maxMem)) {
-                    auto newPart = this->buildStore(schema, strVec);
-                    newPart->save(destSegDir / genPrefix());
-                    resMultiStore->addpart(newPart);
-                    strVec.clear();
                 }
-                size_t oldsize = strVec.size();
-                pushRecord(strVec, store, physicId, fixlen, ctx);
-                if (seqStore)
-                    seqStore->append(fstring(strVec.m_strpool).substr(oldsize), NULL);
-            };
-            const bm_uint_t* oldpurgeBits = input->m_isPurged.bldata();
-            const bm_uint_t* isDel = newIsDel.bldata();
-            assert(!oldpurgeBits || input->m_isPurged.size() == newIsDel.size());
-            do {
-                auto isPurged = input->m_isPurged.empty() ? nullptr : &input->m_isPurged;
-                size_t baseId_of_isDel = size_t(baseId);
-                size_t recNum = size_t(srcPart->numDataRows());
-	            for(size_t oldPhysicId = 0; oldPhysicId < recNum; oldPhysicId++) {
-                    size_t logicId = isPurged
-                        ? isPurged->select0(baseId_of_isDel + oldPhysicId)
-                        : baseId_of_isDel + oldPhysicId;
-		            if (!terark_bit_test(isDel, logicId)) {
-			            partsPushRecord(*srcPart, oldPhysicId);
-		            }
-	            }
-                baseId += srcPart->numDataRows();
-                ++i;
-            } while(i < multiStore->numParts() && ([&]{
-                srcPart = multiStore->getPart(i);
-                return srcPart->dataDictSize() * cheapPurgeMultiple >= srcPart->dataFileSize();
-            })());
-            if (strVec.str_size() > 0) {
-                auto newPart = this->buildStore(schema, strVec);
-                newPart->save(destSegDir / genPrefix());
-                resMultiStore->addpart(newPart);
+                else {
+                    std::unique_ptr<SeqReadAppendonlyStore> seqStore;
+                    if (schema.m_enableLinearScan)
+                        seqStore.reset(new SeqReadAppendonlyStore(tmpDir, schema));
+                    SortableStrVec strVec;
+                    size_t fixlen = schema.getFixedRowLen();
+                    size_t maxMem = size_t(m_schema->m_compressingWorkMemSize);
+                    auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
+                        if (terark_unlikely(strVec.mem_size() >= maxMem)) {
+                            auto newPart = this->buildStore(schema, strVec);
+                            newPart->save(destSegDir / genPrefix());
+                            resMultiStore->addpart(newPart);
+                            strVec.clear();
+                        }
+                        size_t oldsize = strVec.size();
+                        pushRecord(strVec, store, physicId, fixlen, ctx);
+                        if (seqStore)
+                            seqStore->append(fstring(strVec.m_strpool).substr(oldsize), NULL);
+                    };
+                    const bm_uint_t* oldpurgeBits = input->m_isPurged.bldata();
+                    const bm_uint_t* isDel = newIsDel.bldata();
+                    assert(!oldpurgeBits || input->m_isPurged.size() == newIsDel.size());
+                    do {
+                        auto isPurged = input->m_isPurged.empty() ? nullptr : &input->m_isPurged;
+                        size_t baseId_of_isDel = size_t(baseId);
+                        size_t recNum = size_t(srcPart->numDataRows());
+	                    for(size_t oldPhysicId = 0; oldPhysicId < recNum; oldPhysicId++) {
+                            size_t logicId = isPurged
+                                ? isPurged->select0(baseId_of_isDel + oldPhysicId)
+                                : baseId_of_isDel + oldPhysicId;
+		                    if (!terark_bit_test(isDel, logicId)) {
+			                    partsPushRecord(*srcPart, oldPhysicId);
+		                    }
+	                    }
+                        baseId += srcPart->numDataRows();
+                        ++i;
+                    } while((i < j) && (srcPart = multiStore->getPart(i)));
+                    if (strVec.str_size() > 0) {
+                        auto newPart = this->buildStore(schema, strVec);
+                        newPart->save(destSegDir / genPrefix());
+                        resMultiStore->addpart(newPart);
+                    }
+                }
+                continue;
             }
         }
-        else {
-            auto new_part = purgeDictZipStore(schema,
-                                              destSegDir / genPrefix(),
-                                              srcPart,
-                                              newIsDel.bldata(),
-                                              input->m_isPurged.empty() ? nullptr : &input->m_isPurged,
-                                              size_t(baseId));
-            baseId += srcPart->numDataRows();
-            resMultiStore->addpart(new_part);
-            ++i;
-        }
+        auto new_part = purgeDictZipStore(schema,
+                                          destSegDir / genPrefix(),
+                                          srcPart,
+                                          newIsDel.bldata(),
+                                          input->m_isPurged.empty() ? nullptr : &input->m_isPurged,
+                                          size_t(baseId));
+        baseId += srcPart->numDataRows();
+        resMultiStore->addpart(new_part);
+        ++i;
     }
     fs::remove_all(tmpDir);
     resMultiStore->finishParts();
