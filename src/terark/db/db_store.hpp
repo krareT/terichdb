@@ -55,15 +55,14 @@ typedef boost::intrusive_ptr<StoreIterator> StoreIteratorPtr;
 
 class TERARK_DB_DLL ForwardPartStoreIterator : public StoreIterator {
 protected:
-    StoreIteratorPtr m_baseIter;
+    DbContext *m_ctx;
     size_t m_where;
     size_t m_baseId;
-    size_t m_storeSize;
     const bm_uint_t* m_isDel;
     const rank_select_se* m_isPurged;
 public:
-    ForwardPartStoreIterator(StoreIteratorPtr baseIter, size_t baseId, size_t storeSize,
-                             const bm_uint_t* isDel, const rank_select_se* isPurged);
+    ForwardPartStoreIterator(ReadableStore* store, size_t baseId, const bm_uint_t* isDel,
+                             const rank_select_se* isPurged, DbContext *ctx);
 	virtual ~ForwardPartStoreIterator();
 	bool increment(llong* id, valvec<byte>* val) override;
 	bool seekExact(llong  id, valvec<byte>* val) override;

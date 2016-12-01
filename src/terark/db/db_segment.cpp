@@ -1539,7 +1539,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ColgroupSegment* input, DbCont
                              tmpSegDir / "colgroup-" + schema.m_name,
                              store,
                              m_isDel.bldata(),
-                             input->m_withPurgeBits ? &input->m_isPurged : nullptr,
+                             input->m_isPurged.empty() ? nullptr : &input->m_isPurged,
                              0);
 }
 
@@ -1577,7 +1577,7 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
                                  destSegDir / genPrefix(),
                                  store,
                                  newIsDel.bldata(),
-                                 input->m_withPurgeBits ? &input->m_isPurged : nullptr,
+                                 input->m_isPurged.empty() ? nullptr : &input->m_isPurged,
                                  0);
     }
     auto tmpDir = destSegDir / "temp-store";
@@ -1605,13 +1605,12 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
                     MultiPartStorePtr subMultiStore = new MultiPartStore();
                     for (; i < j; ++i)
                         subMultiStore->addpart(multiStore->getPart(i));
-                    ForwardPartStoreIterator iter(subMultiStore->finishParts()->createStoreIterForward(ctx),
+                    ForwardPartStoreIterator iter(subMultiStore->finishParts(),
                                                   baseId,
-                                                  totalDataRows,
                                                   newIsDel.bldata(),
-                                                  input->m_withPurgeBits ? &input->m_isPurged : nullptr);
+                                                  input->m_isPurged.empty() ? nullptr : &input->m_isPurged,
+                                                  ctx);
 			        auto newPart = buildDictZipStore(schema, tmpDir, iter, nullptr, nullptr);
-			        assert(llong(newIsDel.size() - newDelcnt) == newPart->numDataRows());
                     DbTable::moveStoreFiles(tmpDir, destSegDir, prefix, newPartIdx);
                     resMultiStore->addpart(newPart);
                     baseId += totalDataRows;
@@ -1640,7 +1639,7 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
             const bm_uint_t* isDel = newIsDel.bldata();
             assert(!oldpurgeBits || input->m_isPurged.size() == newIsDel.size());
             do {
-                auto isPurged = input->m_withPurgeBits ? &input->m_isPurged : nullptr;
+                auto isPurged = input->m_isPurged.empty() ? nullptr : &input->m_isPurged;
                 size_t baseId_of_isDel = size_t(baseId);
                 size_t recNum = size_t(srcPart->numDataRows());
 	            for(size_t oldPhysicId = 0; oldPhysicId < recNum; oldPhysicId++) {
@@ -1668,7 +1667,7 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(size_t colgroupId,
                                               destSegDir / genPrefix(),
                                               srcPart,
                                               newIsDel.bldata(),
-                                              input->m_withPurgeBits ? &input->m_isPurged : nullptr,
+                                              input->m_isPurged.empty() ? nullptr : &input->m_isPurged,
                                               size_t(baseId));
             baseId += srcPart->numDataRows();
             resMultiStore->addpart(new_part);
@@ -1954,7 +1953,7 @@ void ReadonlySegment::loadRecordStore(PathRef segDir) {
 				++j;
 			}
 			m_colgroups[i] = parts->finishParts();
-			assert(parts->numParts() > 1);
+			//assert(parts->numParts() > 1);
 		}
 		else {
 			m_colgroups[i] = ReadableStore::openStore(schema, segDir, fname);

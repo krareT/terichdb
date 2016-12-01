@@ -29,27 +29,26 @@ llong StoreIterator::seekLowerBound(llong id, valvec<byte>* val) {
 	return -1;
 }
 
-
-ForwardPartStoreIterator::ForwardPartStoreIterator(StoreIteratorPtr baseIter,
+ForwardPartStoreIterator::ForwardPartStoreIterator(ReadableStore* store,
                                                    size_t baseId,
-                                                   size_t storeSize,
                                                    const bm_uint_t* isDel,
-                                                   const rank_select_se* isPurged)
-    : m_baseIter(baseIter)
-    , m_where(baseId)
+                                                   const rank_select_se* isPurged,
+                                                   DbContext *ctx)
+    : m_ctx(ctx)
+    , m_where()
     , m_baseId(baseId)
-    , m_storeSize(storeSize)
     , m_isDel(isDel)
     , m_isPurged(isPurged)
 {
-    m_store.reset(baseIter->getStore());
+    m_store.reset(store);
 }
 
 ForwardPartStoreIterator::~ForwardPartStoreIterator() {
 }
 
 bool ForwardPartStoreIterator::increment(llong* id, valvec<byte>* val) {
-    while(m_where < m_storeSize)
+    size_t num_data_rows = size_t(m_store->numDataRows());
+    while(m_where < num_data_rows)
     {
         size_t k = m_where++;
         size_t logicId = m_isPurged
@@ -57,10 +56,9 @@ bool ForwardPartStoreIterator::increment(llong* id, valvec<byte>* val) {
             : m_baseId + k;
         if(!terark_bit_test(m_isDel, logicId))
         {
-            bool res = m_baseIter->seekExact(k, val);
+            m_store->getValue(k, val, m_ctx);
             *id = k;
-            assert(res);
-            return res;
+            return true;
         }
     }
     return false;
@@ -73,15 +71,14 @@ bool ForwardPartStoreIterator::seekExact(llong id, valvec<byte>* val) {
         : m_baseId + m_where;
     if(!terark_bit_test(m_isDel, logicId))
     {
-        bool res = m_baseIter->seekExact(m_where, val);
-        assert(res);
-        return res;
+        m_store->getValue(m_where, val, m_ctx);
+        return true;
     }
     return false;
 }
 
 void ForwardPartStoreIterator::reset() {
-    m_where = m_baseId;
+    m_where = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -494,16 +491,14 @@ void MultiPartStore::addpartIfNonEmpty(ReadableStore* store) {
 ReadableStore* MultiPartStore::finishParts() {
 	assert(m_parts.size() > 0);
 	assert(m_rowNumVec.size() == 0);
+	syncRowNumVec();
 //	if (m_parts.size() == 0) {
 //		return new EmptyIndexStore();
 //	}
 	if (m_parts.size() == 1) {
 		return m_parts[0].get();
 	}
-	else {
-		syncRowNumVec();
-		return this;
-	}
+	return this;
 }
 
 void MultiPartStore::syncRowNumVec() {
