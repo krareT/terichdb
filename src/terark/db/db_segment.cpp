@@ -1167,9 +1167,8 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 		    abort();
         }
     }
-	completeAndReload(tab, segIdx, input.get());
-    if (finalSegIdx != segIdx)
-        m_segDir = tab->getSegPath("rd", finalSegIdx);
+	completeAndReload(tab, finalSegIdx, input.get());
+    m_segDir = tab->getSegPath("rd", finalSegIdx);
 	fs::rename(tmpDir, m_segDir);
     setStorePath(m_segDir);
 	input->deleteSegment();
@@ -1437,8 +1436,7 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
         }
     }
 	completeAndReload(tab, finalSegIdx, input.get());
-    if (finalSegIdx != segIdx)
-        m_segDir = tab->getSegPath("rd", finalSegIdx);
+    m_segDir = tab->getSegPath("rd", finalSegIdx);
     if (input->getWritableSegment()) {
         fs::rename(tmpSegDir, m_segDir);
         setStorePath(m_segDir);
