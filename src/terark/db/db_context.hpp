@@ -80,6 +80,7 @@ class TERARK_DB_DLL DbContext : public DbContextLink {
 	friend class DbTable;
 public:
 	explicit DbContext(const DbTable* tab);
+	DbContext(const DbTable* tab, bool syncSegs);
 	~DbContext();
 
 	void doSyncSegCtxNoLock(const DbTable* tab);

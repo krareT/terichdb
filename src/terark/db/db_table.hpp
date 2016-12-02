@@ -80,6 +80,7 @@ public:
 	StoreIterator* createStoreIterForward(DbContext*) const override;
 	StoreIterator* createStoreIterBackward(DbContext*) const override;
 	DbContext* createDbContext() const;
+	DbContext* createDbContextNoSync() const;
 	virtual DbContext* createDbContextNoLock() const;
 
 	llong existingRows(DbContext* = NULL) const;

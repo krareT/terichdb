@@ -70,31 +70,46 @@ static std::atomic<size_t> g_dbCtxLiveCnt;
 static std::atomic<size_t> g_dbCtxCreatedCnt;
 
 DbContext::DbContext(const DbTable* tab)
+    : DbContext(tab, true)
+{
+}
+
+DbContext::DbContext(const DbTable* tab, bool syncSegs)
     : m_tab(const_cast<DbTable*>(tab))
     , syncOnCommit(false)
 {
 // must calling the constructor in lock tab->m_rwMutex
-	size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
 //	tab->registerDbContext(this);
 	regexMatchMemLimit = 16*1024*1024; // 16MB
-	size_t indexNum = tab->getIndexNum();
-	size_t segNum = tab->getSegNum();
-	m_segCtx.resize(segNum, NULL);
-	SegCtx** sctx = m_segCtx.data();
-	for (size_t i = 0; i < segNum; ++i) {
-		sctx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
-	}
-	m_rowNumVec.assign(tab->m_rowNumVec);
+    if (syncSegs) {
+	    size_t oldtab_segArrayUpdateSeq = tab->getSegArrayUpdateSeq();
 
-	// record id is also used as a snapshot version
-	m_mySnapshotVersion = tab->m_rowNum - 1;
-	m_isUserDefineSnapshot = false;
+        size_t indexNum = tab->getIndexNum();
+        size_t segNum = tab->getSegNum();
+        m_segCtx.resize(segNum, NULL);
+        SegCtx** sctx = m_segCtx.data();
+        for (size_t i = 0; i < segNum; ++i) {
+	        sctx[i] = SegCtx::create(tab->getSegmentPtr(i), indexNum);
+        }
+        m_rowNumVec.assign(tab->m_rowNumVec);
 
-	segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
-	syncIndex = true;
-	isUpsertOverwritten = 0;
-	TERARK_RT_assert(tab->getSegArrayUpdateSeq() == oldtab_segArrayUpdateSeq,
-					 std::logic_error);
+        // record id is also used as a snapshot version
+        m_mySnapshotVersion = tab->m_rowNum - 1;
+        m_isUserDefineSnapshot = false;
+
+        segArrayUpdateSeq = tab->m_segArrayUpdateSeq;
+        syncIndex = true;
+        isUpsertOverwritten = 0;
+        TERARK_RT_assert(tab->getSegArrayUpdateSeq() == oldtab_segArrayUpdateSeq,
+                         std::logic_error);
+    }
+    else {
+        m_mySnapshotVersion = 0;
+        m_isUserDefineSnapshot = false;
+        segArrayUpdateSeq = 0;
+        syncIndex = true;
+        isUpsertOverwritten = 0;
+    }
 	g_dbCtxLiveCnt++;
 	g_dbCtxCreatedCnt++;
 	if (getEnvBool("TerarkDB_TrackBuggyObjectLife")) {

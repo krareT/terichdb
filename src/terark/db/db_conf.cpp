@@ -2003,6 +2003,7 @@ const llong  DEFAULT_compressingWorkMemSize = 2LL * 1024 * 1024 * 1024;
 const llong  DEFAULT_maxWritingSegmentSize  = 3LL * 1024 * 1024 * 1024;
 const size_t DEFAULT_minMergeSegNum         = 5;
 const size_t DEFAULT_suggestWritableSegNum  = 4;
+const size_t DEFAULT_suggestMultiPartStoreNum = 10;
 const double DEFAULT_purgeDeleteThreshold   = 0.10;
 const double DEFAULT_cheapPurgeMultiple     = 5;
 
@@ -2740,6 +2741,8 @@ if (colgroupsIter != meta.end()) {
 		meta, "SuggestWritableSegNum", DEFAULT_suggestWritableSegNum);
 	m_writeThrottleBytesPerSecond = getJsonSizeValue(
 		meta, "WriteThrottleBytesPerSecond", 0);
+    m_suggestMultiPartStoreNum = getJsonValue(
+		meta, "SuggestMultiPartStoreNum", DEFAULT_suggestMultiPartStoreNum);
 	m_purgeDeleteThreshold = getJsonValue(
 		meta, "PurgeDeleteThreshold", DEFAULT_purgeDeleteThreshold);
     m_cheapPurgeMultiple = getJsonValue(

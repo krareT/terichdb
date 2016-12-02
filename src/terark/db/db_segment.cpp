@@ -1109,12 +1109,11 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 	auto tmpDir = m_segDir + ".tmp";
 	fs::create_directories(tmpDir);
 
-	DbContextPtr ctx;
+	DbContextPtr ctx(tab->createDbContextNoSync());
 	ReadableSegmentPtr input;
     size_t mergeSeqNum;
 	{
 		MyRwLock lock(tab->m_rwMutex, false);
-		ctx.reset(tab->createDbContextNoLock());
 		input = tab->m_segments[segIdx];
         mergeSeqNum = tab->m_mergeSeqNum;
 	}
@@ -1383,7 +1382,7 @@ ThreadIdToString(BrainDeadThreadId id) {
 
 void
 ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
-	DbContextPtr ctx(tab->createDbContext());
+	DbContextPtr ctx(tab->createDbContextNoSync());
 	ColgroupSegmentPtr input;
     size_t mergeSeqNum;
 	{
@@ -1564,7 +1563,8 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
         return prefix + szNum;
     };
     assert(!schema.should_use_FixedLenStore());
-    double cheapPurgeMultiple = ctx->m_tab->getSchemaConfig().m_cheapPurgeMultiple;
+    double cheapPurgeMultiple = std::max(0.0, ctx->m_tab->getSchemaConfig().m_cheapPurgeMultiple);
+    size_t suggestMultiPartStoreNum = ctx->m_tab->getSchemaConfig().m_suggestMultiPartStoreNum;
     MultiPartStore* multiStore = dynamic_cast<MultiPartStore*>(store);
     ReadableStorePtr tmpMultiStoreHolder;
     if (multiStore == nullptr) {
@@ -1575,8 +1575,8 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
     auto tmpDir = destSegDir / "temp-store";
     fs::create_directory(tmpDir);
     MultiPartStorePtr resMultiStore = new MultiPartStore();
-    double maxCount = 1.0 * multiStore->numDataRows() / multiStore->numParts();
-    double minCount = maxCount * 4 / 7;
+    double maxCount = multiStore->numDataRows() / suggestMultiPartStoreNum;
+    double minCount = maxCount * 0.5;
     enum
     {
         DontRebuild     = 0,
@@ -1594,27 +1594,28 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
         return DontRebuild;
     };
     llong baseId = 0;
-    for (size_t i = 0; i < multiStore->numParts(); ) {
-        size_t j = i + 1;
-        auto srcPart = multiStore->getPart(i);
+    for (size_t rngBeg = 0; rngBeg < multiStore->numParts(); ) {
+        size_t rngEnd = rngBeg + 1;
+        auto srcPart = multiStore->getPart(rngBeg);
         size_t status = getRebuildInfo(srcPart);
         if (status >= CanRebuild) {
             size_t totalInflateSize = srcPart->dataInflateSize(), totalDataRows = srcPart->numDataRows();
-            for (; j < multiStore->numParts(); ++j) {
-                auto itPart = multiStore->getPart(j);
+            for (; rngEnd < multiStore->numParts(); ++rngEnd) {
+                auto itPart = multiStore->getPart(rngEnd);
                 size_t itStatus = getRebuildInfo(itPart);
                 if (itStatus == DontRebuild)
                     break;
                 status = std::max(status, itStatus);
+                if (rngEnd - rngBeg )
                 totalInflateSize += itPart->dataInflateSize();
                 totalDataRows += itPart->numDataRows();
             }
-            if (status == NeedRebuild || (status == ShouldRebuild && j - i > 1)) {
+            if (status == NeedRebuild || (status == ShouldRebuild && rngEnd - rngBeg > 1)) {
                 if (schema.m_dictZipSampleRatio >= 0.0 &&
                     (schema.m_dictZipSampleRatio > FLT_EPSILON || 1.0 * totalInflateSize / totalDataRows > 100)) {
                     MultiPartStorePtr subMultiStore = new MultiPartStore();
-                    for (; i < j; ++i)
-                        subMultiStore->addpart(multiStore->getPart(i));
+                    for (; rngBeg < rngEnd; ++rngBeg)
+                        subMultiStore->addpart(multiStore->getPart(rngBeg));
                     ForwardPartStoreIteratorPtr iter = new ForwardPartStoreIterator(subMultiStore->finishParts(),
                                                                                     baseId,
                                                                                     newIsDel.bldata(),
@@ -1658,8 +1659,8 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
 		                    }
 	                    }
                         baseId += srcPart->numDataRows();
-                        ++i;
-                    } while((i < j) && (srcPart = multiStore->getPart(i)));
+                        ++rngBeg;
+                    } while((rngBeg < rngEnd) && (srcPart = multiStore->getPart(rngBeg)));
                     if (strVec.str_size() > 0) {
                         auto newPart = this->buildStore(schema, strVec);
                         newPart->save(destSegDir / genPrefix());
@@ -1677,7 +1678,7 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
                                           size_t(baseId));
         baseId += srcPart->numDataRows();
         resMultiStore->addpart(new_part);
-        ++i;
+        ++rngBeg;
     }
     fs::remove_all(tmpDir);
     resMultiStore->finishParts();

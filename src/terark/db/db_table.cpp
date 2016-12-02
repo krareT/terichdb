@@ -990,6 +990,10 @@ DbContext* DbTable::createDbContext() const {
 	return this->createDbContextNoLock();
 }
 
+DbContext* DbTable::createDbContextNoSync() const {
+	return new DbContext(this, false);
+}
+
 DbContext* DbTable::createDbContextNoLock() const {
 	return new DbContext(this);
 }
@@ -3656,7 +3660,7 @@ try{
 	dseg->m_indices.resize(indexNum);
 	dseg->m_colgroups.resize(colgroupNum);
 	toMerge.syncPurgeBits(m_schema->m_purgeDeleteThreshold);
-	DbContextPtr ctx(this->createDbContext());
+	DbContextPtr ctx(this->createDbContextNoSync());
 	toMerge.m_ctx = ctx;
 	dseg->m_isDel.erase_all();
 	dseg->m_isDel.reserve(toMerge.m_newSegRows);

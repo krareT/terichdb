@@ -543,6 +543,7 @@ namespace terark { namespace db {
 		size_t   m_suggestWritableSegNum;
 		size_t   m_bestUniqueIndexId;
 		size_t   m_writeThrottleBytesPerSecond;
+        size_t   m_suggestMultiPartStoreNum;
 		double   m_purgeDeleteThreshold;
         double   m_cheapPurgeMultiple;
 		std::string m_writableSegmentClass;
