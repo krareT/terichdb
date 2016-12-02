@@ -299,9 +299,11 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 
 void NestLoudsTrieStore::build_by_purge(PathRef path,
                                         const NestLoudsTrieStore* input,
+                                        size_t throttleBytesPerSecond,
                                         const bm_uint_t* isDel,
                                         const rank_select_se* isPurged,
                                         size_t baseId) {
+    using namespace std::chrono;
 	std::string fpath = fstring(path.string()).endsWith(".nlt")
 					  ? path.string()
 					  : path.string() + ".nlt";
@@ -310,19 +312,39 @@ void NestLoudsTrieStore::build_by_purge(PathRef path,
 		THROW_STD(invalid_argument, "Unexpected");
     FileStream fp(fpath.c_str(), "wb");
 	fp.chsize(input_store->get_file_size());
+    std::function<void(const void* data, size_t size)> writeAppend;
+    if (throttleBytesPerSecond == 0) {
+        writeAppend = [&](const void* data, size_t size) {
+		    fp.ensureWrite(data, size);
+        };
+    }
+    else {
+        struct ThrottleWriteAppend {
+            ThrottleWriteAppend(FileStream& f, size_t t) : fp(f), throttle(t){}
+            FileStream& fp;
+            size_t throttle;
+            high_resolution_clock::time_point startTime = high_resolution_clock::now();
+            size_t wroteSize = 0;
+            void operator()(const void* data, size_t size) {
+		        fp.ensureWrite(data, size);
+                auto now = high_resolution_clock::now();
+                size_t throttleSize = size_t(duration_cast<duration<double>>(now - startTime).count() * throttle);
+                wroteSize += size;
+                if (wroteSize > throttleSize)
+                    std::this_thread::sleep_for(duration<double>(double(wroteSize - throttleSize) / throttle));
+            }
+        };
+        writeAppend = ThrottleWriteAppend{fp, throttleBytesPerSecond};
+    }
     if (isPurged) {
 	    input_store->purge_zip_data([isDel, isPurged, baseId](size_t id) {
             return terark_bit_test(isDel, isPurged->select0(id + baseId));
-        }, [&fp](const void* data, size_t size) {
-		    fp.ensureWrite(data, size);
-	    });
+        }, writeAppend);
     }
     else {   
 	    input_store->purge_zip_data([isDel, baseId](size_t id) {
             return terark_bit_test(isDel, id + baseId);
-        }, [&fp](const void* data, size_t size) {
-		    fp.ensureWrite(data, size);
-	    });
+        }, writeAppend);
     }
 	fp.chsize(fp.tell());
 	fp.close();

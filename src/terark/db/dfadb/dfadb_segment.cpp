@@ -88,6 +88,7 @@ ReadableStore*
 DfaDbReadonlySegment::purgeDictZipStore(const Schema& schema,
                                         PathRef pathWithPrefix,
                                         const ReadableStore* inputStore,
+                                        size_t throttleBytesPerSecond,
                                         const bm_uint_t* isDel,
                                         const rank_select_se* isPurged,
                                         size_t baseId)
@@ -99,7 +100,7 @@ const {
     }
 	std::unique_ptr<NestLoudsTrieStore> nlt(new NestLoudsTrieStore(schema));
 	auto fpath = pathWithPrefix + ".nlt";
-	nlt->build_by_purge(fpath, input, isDel, isPurged, baseId);
+	nlt->build_by_purge(fpath, input, throttleBytesPerSecond, isDel, isPurged, baseId);
 	return nlt.release();
 }
 

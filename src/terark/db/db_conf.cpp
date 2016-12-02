@@ -1999,13 +1999,14 @@ bool SchemaSet::Equal::operator()(const SchemaPtr& x, fstring y) const {
 ///////////////////////////////////////////////////////////////////////////////
 
 
-const llong  DEFAULT_compressingWorkMemSize = 2LL * 1024 * 1024 * 1024;
-const llong  DEFAULT_maxWritingSegmentSize  = 3LL * 1024 * 1024 * 1024;
-const size_t DEFAULT_minMergeSegNum         = 5;
-const size_t DEFAULT_suggestWritableSegNum  = 4;
-const size_t DEFAULT_suggestMultiPartStoreNum = 10;
-const double DEFAULT_purgeDeleteThreshold   = 0.10;
-const double DEFAULT_cheapPurgeMultiple     = 5;
+const llong  DEFAULT_compressingWorkMemSize         = 2LL * 1024 * 1024 * 1024;
+const llong  DEFAULT_maxWritingSegmentSize          = 3LL * 1024 * 1024 * 1024;
+const size_t DEFAULT_minMergeSegNum                 = 5;
+const size_t DEFAULT_suggestWritableSegNum          = 4;
+const size_t DEFAULT_purgeThrottleBytesPerSecond    = 100L * 1024 * 1024;
+const size_t DEFAULT_suggestMultiPartStoreNum       = 10;
+const double DEFAULT_purgeDeleteThreshold           = 0.10;
+const double DEFAULT_cheapPurgeMultiple             = 5;
 
 SchemaConfig::SchemaConfig() {
 	m_compressingWorkMemSize = DEFAULT_compressingWorkMemSize;
@@ -2013,6 +2014,7 @@ SchemaConfig::SchemaConfig() {
 	m_minMergeSegNum = DEFAULT_minMergeSegNum;
 	m_suggestWritableSegNum = DEFAULT_suggestWritableSegNum;
 	m_writeThrottleBytesPerSecond = 0; // no limit
+	m_purgeThrottleBytesPerSecond = DEFAULT_purgeThrottleBytesPerSecond;
 	m_purgeDeleteThreshold = DEFAULT_purgeDeleteThreshold;
     m_cheapPurgeMultiple = DEFAULT_cheapPurgeMultiple;
 	m_usePermanentRecordId = false;
@@ -2741,6 +2743,8 @@ if (colgroupsIter != meta.end()) {
 		meta, "SuggestWritableSegNum", DEFAULT_suggestWritableSegNum);
 	m_writeThrottleBytesPerSecond = getJsonSizeValue(
 		meta, "WriteThrottleBytesPerSecond", 0);
+	m_purgeThrottleBytesPerSecond = getJsonSizeValue(
+		meta, "PurgeThrottleBytesPerSecond", DEFAULT_purgeThrottleBytesPerSecond);
     m_suggestMultiPartStoreNum = getJsonValue(
 		meta, "SuggestMultiPartStoreNum", DEFAULT_suggestMultiPartStoreNum);
 	m_purgeDeleteThreshold = getJsonValue(

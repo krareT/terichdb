@@ -218,7 +218,8 @@ public:
 			const;
 	virtual ReadableStore*
 			purgeDictZipStore(const Schema&, PathRef pathWithPrefix, const ReadableStore* inputStore,
-							  const bm_uint_t* isDel, const rank_select_se* isPurged, size_t baseId)
+                              size_t throttleBytesPerSecond, const bm_uint_t* isDel,
+                              const rank_select_se* isPurged, size_t baseId)
 			const;
 
 	void compressMultipleColgroups(ReadableSegment* input, DbContext* ctx);

@@ -31,7 +31,7 @@ public:
 	void build(const Schema&, SortableStrVec& strVec);
 	void build_by_iter(const Schema&, PathRef fpath, StoreIterator& iter,
 					   const bm_uint_t* isDel, const febitvec* isPurged);
-	void build_by_purge(PathRef fpath, const NestLoudsTrieStore* input,
+	void build_by_purge(PathRef fpath, const NestLoudsTrieStore* input, size_t throttleBytesPerSecond,
                         const bm_uint_t* isDel, const rank_select_se* isPurged, size_t baseId);
 	void load(PathRef path) override;
 	void save(PathRef path) const override;

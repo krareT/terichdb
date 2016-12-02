@@ -909,8 +909,9 @@ ReadonlySegment::buildDictZipStore(const Schema&, PathRef, StoreIterator& iter,
 }
 
 ReadableStore*
-ReadonlySegment::purgeDictZipStore(const Schema&, PathRef pathWithPrefix, const ReadableStore* inputStore, 
-                                   const bm_uint_t* isDel, const rank_select_se* isPueged, size_t baseId) const {
+ReadonlySegment::purgeDictZipStore(const Schema&, PathRef pathWithPrefix, const ReadableStore* inputStore,
+                                   size_t throttleBytesPerSecond, const bm_uint_t* isDel,
+                                   const rank_select_se* isPurged, size_t baseId) const {
 	THROW_STD(invalid_argument,
 		"Not Implemented, Only Implemented by DfaDbReadonlySegment");
 }
@@ -1544,6 +1545,7 @@ ReadonlySegment::purgeColgroup(size_t colgroupId, ColgroupSegment* input, DbCont
     return purgeDictZipStore(schema,
                              tmpSegDir / "colgroup-" + schema.m_name,
                              store,
+                             ctx->m_tab->getSchemaConfig().m_purgeThrottleBytesPerSecond,
                              m_isDel.bldata(),
                              input->m_isPurged.empty() ? nullptr : &input->m_isPurged,
                              0);
@@ -1673,6 +1675,7 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
         auto new_part = purgeDictZipStore(schema,
                                           destSegDir / genPrefix(),
                                           srcPart,
+                                          ctx->m_tab->getSchemaConfig().m_purgeThrottleBytesPerSecond,
                                           newIsDel.bldata(),
                                           isPurged,
                                           size_t(baseId));
