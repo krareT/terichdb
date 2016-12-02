@@ -8,6 +8,8 @@
 #include <typeinfo>
 #include <float.h>
 #include <mutex>
+#include <thread>
+#include <chrono>
 #include <random>
 #include <boost/filesystem.hpp>
 
