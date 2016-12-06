@@ -180,7 +180,6 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 		assert(valueVec.m_index.size() == 0);
 		assert(valueVec.m_strpool.size() == 0);
 		iter->reset(); // free resources and seek to begin
-		std::lock_guard<std::mutex> lock(DictZip_reduceMemMutex());
 		auto fpath = tmpDir / ("colgroup-" + valueSchema.m_name + ".nlt");
 		emptyCheckProtect(sampleLenSum, val, *builder);
 		builder->prepare(newRowNum, fpath.string());
@@ -299,7 +298,6 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 	if (builder) {
 		assert(valueVec.m_index.size() == 0);
 		assert(valueVec.m_strpool.size() == 0);
-		std::lock_guard<std::mutex> lock(DictZip_reduceMemMutex());
 		auto fpath = tmpDir / ("colgroup-" + valueSchema.m_name + ".nlt");
 		emptyCheckProtect(sampleLenSum, val, *builder);
 		builder->prepare(newRowNum, fpath.string());

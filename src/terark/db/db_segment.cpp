@@ -1106,18 +1106,12 @@ ReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* ctx) 
 }
 
 void
-ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
+ReadonlySegment::convFrom(DbTable* tab, ReadableSegment* input) {
 	auto tmpDir = m_segDir + ".tmp";
 	fs::create_directories(tmpDir);
 
 	DbContextPtr ctx(tab->createDbContextNoSync());
-	ReadableSegmentPtr input;
-    size_t mergeSeqNum;
-	{
-		MyRwLock lock(tab->m_rwMutex, false);
-		input = tab->m_segments[segIdx];
-        mergeSeqNum = tab->m_mergeSeqNum;
-	}
+
 	assert(input->getWritableStore() != nullptr);
 	assert(input->m_isFreezed);
 	assert(input->m_updateList.empty());
@@ -1134,41 +1128,39 @@ ReadonlySegment::convFrom(DbTable* tab, size_t segIdx) {
 
 	if (colgroupNum == 1 && indexNum == 0) {
 		// single-value-only
-		compressSingleColgroup(input.get(), ctx.get());
+		compressSingleColgroup(input, ctx.get());
 	}
 	else if (colgroupNum == 1 && indexNum == 1) {
 		// single-key-only
-		compressSingleKeyIndex(input.get(), ctx.get());
+		compressSingleKeyIndex(input, ctx.get());
 	}
 	else if (colgroupNum == 2 && indexNum == 1) {
 		// key-value
-		compressSingleKeyValue(input.get(), ctx.get());
+		compressSingleKeyValue(input, ctx.get());
 	}
 	else {
-		compressMultipleColgroups(input.get(), ctx.get());
+		compressMultipleColgroups(input, ctx.get());
 	}
     
     MyRwLock lock(tab->m_rwMergeMutex, false);
-    size_t finalSegIdx = segIdx;
-    if (mergeSeqNum != tab->m_mergeSeqNum) {
+    size_t segIdx = size_t(-1);
+    {
 		MyRwLock lock(tab->m_rwMutex, false);
-        bool miss = true;
         for (size_t i = 0, e = tab->m_segments.size(); i < e; ++i) {
-            if (tab->m_segments[i]->getColgroupSegment() != input.get())
+            if (tab->m_segments[i]->getColgroupSegment() != input)
                 continue;
-            finalSegIdx = i;
-            miss = false;
+            segIdx = i;
             break;
         }
-        if (miss) {
+        if (segIdx == size_t(-1)) {
             fprintf(stderr
 			    , "ERROR: missing segment after merge ! %s\n"
                 , m_segDir.string().c_str());
 		    abort();
         }
     }
-	completeAndReload(tab, finalSegIdx, input.get());
-    m_segDir = tab->getSegPath("rd", finalSegIdx);
+	completeAndReload(tab, segIdx, input);
+    m_segDir = tab->getSegPath("rd", segIdx);
 	fs::rename(tmpDir, m_segDir);
     setStorePath(m_segDir);
 	input->deleteSegment();
@@ -1381,20 +1373,16 @@ ThreadIdToString(BrainDeadThreadId id) {
 }
 
 void
-ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
+ReadonlySegment::purgeDeletedRecords(DbTable* tab, ReadableSegment* inputSeg) {
 	DbContextPtr ctx(tab->createDbContextNoSync());
-	ColgroupSegmentPtr input;
-    size_t mergeSeqNum;
-	{
-		MyRwLock lock(tab->m_rwMutex, false);
-		input = tab->m_segments[segIdx]->getColgroupSegment();
-        mergeSeqNum = tab->m_mergeSeqNum;
-		assert(NULL != input);
-		assert(input->m_isFreezed);
-		assert(!input->m_bookUpdates);
-		input->m_updateList.reserve(1024);
-		input->m_bookUpdates = true;
-	}
+	ColgroupSegment* input = inputSeg->getColgroupSegment();
+
+	assert(NULL != input);
+	assert(input->m_isFreezed);
+	assert(!input->m_bookUpdates);
+	input->m_updateList.reserve(1024);
+	input->m_bookUpdates = true;
+
 	std::string strDir = m_segDir.string();
 	m_isDel = input->m_isDel; // make a copy, input->m_isDel[*] may be changed
 	m_delcnt = m_isDel.popcnt(); // recompute delcnt
@@ -1404,11 +1392,11 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 	fs::create_directories(tmpSegDir);
 	try {
 		for (size_t i = 0; i < m_indices.size(); ++i) {
-			m_indices[i] = purgeIndex(i, input.get(), ctx.get());
+			m_indices[i] = purgeIndex(i, input, ctx.get());
 			m_colgroups[i] = m_indices[i]->getReadableStore();
 		}
 		for (size_t i = m_indices.size(); i < m_colgroups.size(); ++i) {
-			m_colgroups[i] = purgeColgroup(i, input.get(), ctx.get(), tmpSegDir);
+			m_colgroups[i] = purgeColgroup(i, input, ctx.get(), tmpSegDir);
 		}
 	}
 	catch (const std::exception& ex) {
@@ -1417,26 +1405,24 @@ ReadonlySegment::purgeDeletedRecords(DbTable* tab, size_t segIdx) {
 			, tmpSegDir.string().c_str(), ex.what());
 	}
     MyRwLock lock(tab->m_rwMergeMutex, false);
-    size_t finalSegIdx = segIdx;
-    if (mergeSeqNum != tab->m_mergeSeqNum) {
+    size_t segIdx = size_t(-1);
+    {
 		MyRwLock lock(tab->m_rwMutex, false);
-        bool miss = true;
         for (size_t i = 0, e = tab->m_segments.size(); i < e; ++i) {
-            if (tab->m_segments[i]->getColgroupSegment() != input.get())
+            if (tab->m_segments[i]->getColgroupSegment() != input)
                 continue;
-            finalSegIdx = i;
-            miss = false;
+            segIdx = i;
             break;
         }
-        if (miss) {
+        if (segIdx == size_t(-1)) {
             fprintf(stderr
 			    , "ERROR: missing segment after merge ! %s\n"
                 , m_segDir.string().c_str());
 		    abort();
         }
     }
-	completeAndReload(tab, finalSegIdx, input.get());
-    m_segDir = tab->getSegPath("rd", finalSegIdx);
+	completeAndReload(tab, segIdx, input);
+    m_segDir = tab->getSegPath("rd", segIdx);
     if (input->getWritableSegment()) {
         fs::rename(tmpSegDir, m_segDir);
         setStorePath(m_segDir);
@@ -1490,8 +1476,14 @@ ReadonlySegment::purgeIndex(size_t indexId, ColgroupSegment* input, DbContext* c
 	SortableStrVec strVec;
 	const Schema& schema = m_schema->getIndexSchema(indexId);
 	const size_t  fixlen = schema.getFixedRowLen();
+    ReadableStorePtr store;
+	if (0 == fixlen && schema.m_enableLinearScan)
+		store = new SeqReadAppendonlyStore(input->m_segDir, schema);
+    else
+		store = input->m_indices[indexId]->getReadableStore();
+    size_t maxMem = store->dataInflateSize() + store->numDataRows() + 12;
+    auto memoryHandle = ctx->m_tab->m_memoryLimit.request(maxMem);
 	if (0 == fixlen && schema.m_enableLinearScan) {
-		ReadableStorePtr store = new SeqReadAppendonlyStore(input->m_segDir, schema);
 		StoreIteratorPtr iter = store->createStoreIterForward(ctx);
 		const bm_uint_t* purgeBits = input->m_isPurged.bldata();
 		valvec<byte_t> rec;
@@ -1507,13 +1499,12 @@ ReadonlySegment::purgeIndex(size_t indexId, ColgroupSegment* input, DbContext* c
 	}
 	else
 	{
-		const auto& store = *input->m_indices[indexId]->getReadableStore();
 		const bm_uint_t* purgeBits = input->m_isPurged.bldata();
 		llong physicId = 0;
 		for(llong logicId = 0; logicId < inputRowNum; ++logicId) {
 			if (!purgeBits || !terark_bit_test(purgeBits, logicId)) {
 				if (!terark_bit_test(isDel, logicId)) {
-					pushRecord(strVec, store, physicId, fixlen, ctx);
+					pushRecord(strVec, *store.get(), physicId, fixlen, ctx);
 				}
 				physicId++;
 			}
@@ -1621,6 +1612,9 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
                                                                                     newIsDel.bldata(),
                                                                                     isPurged,
                                                                                     ctx);
+                    size_t maxMem = size_t((schema.m_dictZipSampleRatio > FLT_EPSILON ?
+                                            schema.m_dictZipSampleRatio : 0.05) * totalInflateSize * 6);
+                    auto memoryHandle = ctx->m_tab->m_memoryLimit.request(maxMem);
 			        auto newPart = buildDictZipStore(schema, tmpDir, *iter, nullptr, nullptr);
                     DbTable::moveStoreFiles(tmpDir, destSegDir, prefix, newPartIdx);
                     resMultiStore->addpart(newPart);
@@ -1632,7 +1626,9 @@ ReadableStorePtr ReadonlySegment::purgeColgroupMultiPart(ReadableStore* store,
                         seqStore.reset(new SeqReadAppendonlyStore(tmpDir, schema));
                     SortableStrVec strVec;
                     size_t fixlen = schema.getFixedRowLen();
-                    size_t maxMem = size_t(m_schema->m_compressingWorkMemSize);
+                    size_t maxMem = std::min(totalInflateSize + totalDataRows * 12,
+                                             size_t(m_schema->m_compressingWorkMemSize));
+                    auto memoryHandle = ctx->m_tab->m_memoryLimit.request(maxMem);
                     auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
                         if (terark_unlikely(strVec.mem_size() >= maxMem)) {
                             auto newPart = this->buildStore(schema, strVec);
@@ -1729,6 +1725,9 @@ ReadonlySegment::purgeColgroupRebuild(size_t colgroupId,
 		double avgLen = 1.0 * colgroup.dataInflateSize() / colgroup.numDataRows();
 		if (schema.m_dictZipSampleRatio > FLT_EPSILON || avgLen > 100) {
 			StoreIteratorPtr iter = colgroup.ensureStoreIterForward(ctx);
+            size_t maxMem = size_t((schema.m_dictZipSampleRatio > FLT_EPSILON ?
+                                    schema.m_dictZipSampleRatio : 0.05) * colgroup.dataInflateSize() * 6);
+            auto memoryHandle = ctx->m_tab->m_memoryLimit.request(maxMem);
 			auto store = buildDictZipStore(schema, tmpSegDir, *iter, isDel, &input->m_isPurged);
 			assert(llong(newIsDel.size() - newDelcnt) == store->numDataRows());
 			return store;
@@ -1740,7 +1739,9 @@ ReadonlySegment::purgeColgroupRebuild(size_t colgroupId,
 	}
 	SortableStrVec strVec;
 	size_t fixlen = schema.getFixedRowLen();
-	size_t maxMem = size_t(m_schema->m_compressingWorkMemSize);
+	size_t maxMem = size_t(std::min(colgroup.dataInflateSize() + colgroup.numDataRows() * 12,
+                                    m_schema->m_compressingWorkMemSize));
+    auto memoryHandle = ctx->m_tab->m_memoryLimit.request(maxMem);
 	MultiPartStorePtr parts = new MultiPartStore();
 	auto partsPushRecord = [&](const ReadableStore& store, llong physicId) {
 		if (terark_unlikely(strVec.mem_size() >= maxMem)) {

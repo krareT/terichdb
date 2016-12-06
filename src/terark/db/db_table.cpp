@@ -3288,6 +3288,12 @@ mergeIndex(ReadonlySegment* dseg, size_t indexId, DbContext* ctx) {
 	hash_strmap<valvec<size_t> > key2id;
 	size_t baseLogicId = 0;
 #endif
+    size_t maxMem = 0;
+	for (auto& e : m_segs) {
+		auto indexStore = e.seg->m_indices[indexId]->getReadableStore();
+        maxMem =+ indexStore->dataInflateSize() + indexStore->numDataRows() * 12;
+    }
+    auto memoryHandle = m_ctx->m_tab->m_memoryLimit.request(maxMem);
 	for (auto& e : m_segs) {
 		auto seg = e.seg;
 		auto indexStore = seg->m_indices[indexId]->getReadableStore();
@@ -3535,21 +3541,26 @@ mergeAndPurgeColgroup(ReadonlySegment* dseg, size_t colgroupId) {
 		dseg->m_colgroups[colgroupId]->save(storeFilePath);
 		return;
 	}
+	llong sumLen = 0;
+	for (const auto& e : m_segs) {
+		sumLen += e.seg->m_colgroups[colgroupId]->dataInflateSize();
+	}
+	size_t oldphysicRowNum = m_oldpurgeBits.size() ?
+                             m_oldpurgeBits.max_rank0() : m_newSegRows;
 	if (schema.m_dictZipSampleRatio >= 0.0) {
-		llong sumLen = 0;
-		for (const auto& e : m_segs) {
-			sumLen += e.seg->m_colgroups[colgroupId]->dataInflateSize();
-		}
-		size_t oldphysicRowNum = m_oldpurgeBits.size() ?
-								 m_oldpurgeBits.max_rank0() : m_newSegRows;
 		assert(oldphysicRowNum > 0);
 		double sRatio = schema.m_dictZipSampleRatio;
 		double avgLen = 1.0 * sumLen / oldphysicRowNum;
 		if (sRatio > 0 || (sRatio < FLT_EPSILON && avgLen > 100)) {
+            size_t maxMem = size_t((schema.m_dictZipSampleRatio > FLT_EPSILON ?
+                                    schema.m_dictZipSampleRatio : 0.05) * sumLen * 6);
+            auto memoryHandle = m_ctx->m_tab->m_memoryLimit.request(maxMem);
 			mergeGdictZipColgroup(dseg, colgroupId);
 			return;
 		}
 	}
+    size_t maxMem = sumLen + oldphysicRowNum * 12;
+    auto memoryHandle = m_ctx->m_tab->m_memoryLimit.request(maxMem);
 	valvec<byte> rec;
 	SortableStrVec strVec;
 	const size_t fixedIndexRowLen = schema.getFixedRowLen();
@@ -4346,8 +4357,9 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             param.m_forcePurgeAndMerge = true;
     }
 
-    auto processSegment = [&](ReadableSegment *seg, size_t i, bool force) {
+    auto processSegment = [&](ReadableSegment* seg, size_t i, bool force) {
         param_segs.clear();
+        size_t mergeSeqNum;
         {
 		    MyRwLock lock(m_rwMutex, true);
             if (seg != m_segments[i].get())
@@ -4355,8 +4367,9 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
             if (seg->m_onProcess)
                 return false;
             seg->m_onProcess = true;
+            mergeSeqNum = m_mergeSeqNum;
         }
-        auto segDir = getSegPath("rd", i);
+        auto segDir = getSegPath2(m_dir, mergeSeqNum, "rd", i);
 		ReadonlySegmentPtr newSeg = myCreateReadonlySegment(segDir);
         char const *processName =
             seg->getReadonlySegment()
@@ -4378,9 +4391,9 @@ bool DbTable::autoConvMergePurge(bool forcePurgeAndMerge) {
 		        , purged
 		);
         if (seg->getColgroupSegment())
-		    newSeg->purgeDeletedRecords(this, i);
+		    newSeg->purgeDeletedRecords(this, seg);
         else
-            newSeg->convFrom(this, i);
+            newSeg->convFrom(this, seg);
         fprintf(stderr
 		        , "INFO: %s: %s, rows = %zd, delcnt = %zd, purged = %zd done!\n"
 		        , processName

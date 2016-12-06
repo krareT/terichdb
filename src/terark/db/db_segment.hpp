@@ -184,8 +184,8 @@ public:
 
 	ReadonlySegment* getReadonlySegment() const override;
 
-	void convFrom(class DbTable*, size_t segIdx);
-	void purgeDeletedRecords(class DbTable*, size_t segIdx);
+	void convFrom(class DbTable*, ReadableSegment* input);
+	void purgeDeletedRecords(class DbTable*, ReadableSegment* input);
 
 	void getValueAppend(llong id, valvec<byte>* val, DbContext*) const override;
 	void indexSearchExactAppend(size_t mySegIdx, size_t indexId,

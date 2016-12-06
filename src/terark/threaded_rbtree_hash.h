@@ -263,11 +263,13 @@ public:
         }
         bool operator == (iterator const &other) const
         {
-            return offset == other.offset && self == other.self;
+            assert(self == other.self);
+            return offset == other.offset;
         }
         bool operator != (iterator const &other) const
         {
-            return offset != other.offset || self != other.self;
+            assert(self == other.self);
+            return offset != other.offset;
         }
     protected:
         friend class threaded_rbtree_hash;
@@ -313,11 +315,13 @@ public:
         }
         bool operator == (const_iterator const &other) const
         {
-            return offset == other.offset && self == other.self;
+            assert(self == other.self);
+            return offset == other.offset;
         }
         bool operator != (const_iterator const &other) const
         {
-            return offset != other.offset || self != other.self;
+            assert(self == other.self);
+            return offset != other.offset;
         }
     protected:
         friend class threaded_rbtree_hash;
@@ -358,11 +362,13 @@ public:
         }
         bool operator == (local_iterator const &other) const
         {
-            return offset == other.offset && self == other.self;
+            assert(self == other.self);
+            return offset == other.offset;
         }
         bool operator != (local_iterator const &other) const
         {
-            return offset != other.offset || self != other.self;
+            assert(self == other.self);
+            return offset != other.offset;
         }
     protected:
         friend class threaded_rbtree_hash;
@@ -408,11 +414,13 @@ public:
         }
         bool operator == (const_local_iterator const &other) const
         {
-            return offset == other.offset && self == other.self;
+            assert(self == other.self);
+            return offset == other.offset;
         }
         bool operator != (const_local_iterator const &other) const
         {
-            return offset != other.offset || self != other.self;
+            assert(self == other.self);
+            return offset != other.offset;
         }
     protected:
         friend class threaded_rbtree_hash;

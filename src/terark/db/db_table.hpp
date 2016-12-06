@@ -3,6 +3,7 @@
 
 #include "db_store.hpp"
 #include "db_index.hpp"
+#include "memory_limit.hpp"
 #include <tbb/queuing_rw_mutex.h>
 #include <atomic>
 
@@ -309,6 +310,7 @@ protected:
 	size_t throttleWrite();
 
 public:
+    MemoryLimit m_memoryLimit;
 	mutable MyRwMutex m_rwMutex;
 	mutable MyRwMutex m_rwMergeMutex;
 	mutable size_t m_tableScanningRefCount;

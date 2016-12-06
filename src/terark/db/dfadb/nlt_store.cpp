@@ -142,10 +142,6 @@ void NestLoudsTrieStore::build(const Schema& schema, SortableStrVec& strVec) {
 	}
 }
 
-std::mutex& DictZip_reduceMemMutex() {
-	static std::mutex m;
-	return m;
-}
 void emptyCheckProtect(size_t sampleLenSum, fstring rec,
 					   DictZipBlobStore::ZipBuilder& builder) {
 	if (0 == sampleLenSum) {
@@ -200,9 +196,6 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 	// 4. using lock, the concurrent large memory using durations in
 	//    multi threads are serialized, then the peak memory usage
 	//    is reduced
-	std::mutex& reduceMemMutex = DictZip_reduceMemMutex();
-	// the lock will be hold for a long time, maybe several minutes
-	std::unique_lock<std::mutex> lock(reduceMemMutex, std::defer_lock);
 
 	valvec<byte> rec;
 	std::mt19937_64 random;
@@ -222,7 +215,6 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 			}
 		}
 		emptyCheckProtect(sampled, rec, *builder);
-		lock.lock(); // start lock
 		builder->prepare(recId + 1, fpath.string());
 		iter.reset();
 		while (iter.increment(&recId, &rec)) {
@@ -268,7 +260,6 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				, __FILE__, __LINE__, physicId, physicNum, logicNum);
 		}
 		emptyCheckProtect(sampled, rec, *builder);
-		lock.lock(); // start lock
 		builder->prepare(newPhysicId, fpath.string());
 		iter.reset();
 		physicId = 0;
