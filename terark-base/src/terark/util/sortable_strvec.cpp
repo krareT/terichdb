@@ -2,6 +2,11 @@
 #include <terark/radix_sort.hpp>
 #include <terark/gold_hash_map.hpp>
 
+#if defined(__GNUC__) && !defined(__CYGWIN__)
+#include <parallel/algorithm>
+#define parallel_sort __gnu_parallel::sort
+#endif
+
 // memcpy on gcc-4.9+ linux fails on some corner case
 // so use memmove, it is always ok
 // #define memcpyForward memcpy
@@ -30,6 +35,13 @@ void SortableStrVec::swap(SortableStrVec& y) {
 
 void SortableStrVec::push_back(fstring str) {
 	assert(str.size() < MAX_STR_LEN);
+	assert(m_index.size() < UINT32_MAX);
+	if (terark_unlikely(str.size() >= MAX_STR_LEN)) {
+		THROW_STD(length_error, "str too long, size = %zd", str.size());
+	}
+	if (terark_unlikely(m_index.size() >= UINT32_MAX)) {
+		THROW_STD(length_error, "m_index too large, size = %zd", m_index.size());
+	}
 	SEntry tmp;
 	tmp.offset = m_strpool.size();
 	tmp.length = uint32_t(str.size());
@@ -83,12 +95,21 @@ void SortableStrVec::sort() {
 		minRadixSortStrLen = atof(env);
 	}
 	if (avgLen < minRadixSortStrLen) {
-		std::sort(m_index.begin(), m_index.end(),
-		[pool](const SEntry& x, const SEntry& y) {
+		auto cmp = [pool](const SEntry& x, const SEntry& y) {
 			fstring sx(pool + x.offset, x.length);
 			fstring sy(pool + y.offset, y.length);
 			return sx < sy;
-		});
+		};
+#if defined(__GNUC__) && !defined(__CYGWIN__)
+		const size_t paralell_threshold = (16<<20);
+		if (m_index.size() > paralell_threshold &&
+			getEnvBool("SortableStrVec_enableParallelSort", false))
+		{
+			parallel_sort(m_index.begin(), m_index.end(), cmp);
+		}
+		else
+#endif
+		std::sort(m_index.begin(), m_index.end(), cmp);
 	} else { // use radix sort
 		auto getChar = [pool](const SEntry& x,size_t i){return pool[x.offset+i];};
 		auto getSize = [](const SEntry& x) { return x.length; };
@@ -148,7 +169,7 @@ void SortableStrVec::build_subkeys(valvec<SEntry>& subkeys) {
 	for(size_t i = 0; i < subkeys.size(); ++i) {
 		SEntry s = subkeys[i];
 		memcpyForward(base + offset, base + s.offset, s.length);
-		subkeys[i].offset = uint32_t(offset);
+		subkeys[i].offset = offset;
 		offset += s.length;
 	}
 	assert(offset <= m_strpool.size());

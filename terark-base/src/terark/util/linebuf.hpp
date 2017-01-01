@@ -30,6 +30,15 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 	char* begin() const { return p; }
 	char* end()   const { return p + n; }
 
+	void swap(LineBuf& y) {
+		std::swap(capacity, y.capacity);
+		std::swap(n, y.n);
+		std::swap(p, y.p);
+	}
+
+	void clear();
+	void erase_all() { n = 0; }
+
 	///@{
 	///@return removed bytes
 	size_t trim();  // remove all trailing spaces, including '\r' and '\n'

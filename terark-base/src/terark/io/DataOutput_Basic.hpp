@@ -14,8 +14,8 @@
 	template<class T> MyType& operator& (pass_by_value<T> x) { return operator<<(x.val); }
 	template<class T> MyType& operator<<(pass_by_value<T> x) { return operator<<(x.val); }
 
-	template<class T> MyType& operator& (boost::reference_wrapper<T> x) { return operator<<(x.get()); }
-	template<class T> MyType& operator<<(boost::reference_wrapper<T> x) { return operator<<(x.get()); }
+	template<class T> MyType& operator& (reference_wrapper<T> x) { return operator<<(x.get()); }
+	template<class T> MyType& operator<<(reference_wrapper<T> x) { return operator<<(x.get()); }
 
 	template<int Dim> MyType& operator<<(const char (&x)[Dim]) { return this->save(x, Dim); }
 	template<int Dim> MyType& operator<<(const byte (&x)[Dim]) { return this->save(x, Dim); }

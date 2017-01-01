@@ -15,9 +15,25 @@
 #ifdef _MSC_VER
 	#define strtoll     _strtoi64
 	#define strtoull    _strtoui64
+    #define strncasecmp _strnicmp
 #endif
 
 namespace terark {
+
+lcast_from_str::operator bool() const {
+	char* q;
+	long val = strtol(p, &q, 10);
+	if (q > p) {
+		if (0 == val) return false;
+	//	if (1 == val) return true; // strict
+		return true; // relaxed
+	}
+	else {
+		if (strncasecmp(p, "false", 5) == 0) return false;
+		if (strncasecmp(p, "true" , 4) == 0) return true;
+	}
+	throw std::invalid_argument("bad lcast string to bool: " + std::string(p, n));
+}
 
 lcast_from_str::operator char() const {
 	char* q;
@@ -25,7 +41,7 @@ lcast_from_str::operator char() const {
 	if (q > p && l >= CHAR_MIN && l <= CHAR_MAX) {
 		return l;
 	}
-	throw std::invalid_argument("bad lcast string to char");
+	throw std::invalid_argument("bad lcast string to char: " + std::string(p, n));
 }
 
 lcast_from_str::operator signed char() const {
@@ -34,7 +50,7 @@ lcast_from_str::operator signed char() const {
 	if (q > p && l >= SCHAR_MIN && l <= SCHAR_MAX) {
 		return l;
 	}
-	throw std::invalid_argument("bad lcast string to schar");
+	throw std::invalid_argument("bad lcast string to schar: " + std::string(p, n));
 }
 
 lcast_from_str::operator unsigned char() const {
@@ -43,11 +59,11 @@ lcast_from_str::operator unsigned char() const {
 	if (q > p && l >= 0 && l <= UCHAR_MAX) {
 		return l;
 	}
-	throw std::invalid_argument("bad lcast string to uchar");
+	throw std::invalid_argument("bad lcast string to uchar: " + std::string(p, n));
 }
 
 lcast_from_str::operator short() const {
-       	return atoi(p);
+	return atoi(p);
 }
 
 lcast_from_str::operator unsigned short() const {

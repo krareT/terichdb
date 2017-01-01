@@ -8,9 +8,6 @@
 
 namespace terark {
 
-typedef size_t bm_uint_t;
-static const size_t WordBits = sizeof(bm_uint_t) * 8;
-
 template<int TotalBitsMaybeUnaligned, class BlockT = bm_uint_t>
 class static_bitmap {
 public:

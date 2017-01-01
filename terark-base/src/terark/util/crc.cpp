@@ -28,10 +28,6 @@
 namespace terark {
 
 BadCrc32cException::~BadCrc32cException() {}
-BadCrc32cException::
-BadCrc32cException(fstring msg, uint32_t old_crc32, uint32_t new_crc32)
-  : super(msg.c_str()), m_old_crc32(old_crc32), m_new_crc32(new_crc32) {}
-
 
 /*
  * Copyright (c) 2015, Intel Corporation

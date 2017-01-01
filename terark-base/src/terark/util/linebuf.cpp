@@ -8,14 +8,13 @@
 #include <stdlib.h>
 #include <stdexcept>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-
 #ifdef _MSC_VER
 #include <io.h>
 #else
 #include <unistd.h>
 #endif
+
+#include <terark/util/stat.hpp>
 
 namespace terark {
 
@@ -26,6 +25,18 @@ LineBuf::LineBuf()
 LineBuf::~LineBuf() {
    	if (p)
 	   	free(p);
+}
+
+void LineBuf::clear() {
+	if (p) {
+		free(p);
+		p = NULL;
+		n = capacity = 0;
+	}
+	else {
+		assert(0 == n);
+		assert(0 == capacity);
+	}
 }
 
 ptrdiff_t LineBuf::getline(FILE* f) {
@@ -121,8 +132,8 @@ bool LineBuf::read_binary_tuple(int32_t* offsets, size_t arity, FILE* f) {
 
 LineBuf& LineBuf::read_all(FILE* fp) {
 	int fd = fileno(fp);
-	struct stat st;
-	if (::fstat(fd, &st) < 0) {
+	struct ll_stat st;
+	if (::ll_fstat(fd, &st) < 0) {
 		THROW_STD(runtime_error, "fstat failed");
 	}
 	if (p) free(p);

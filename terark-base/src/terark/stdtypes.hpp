@@ -61,6 +61,9 @@ typedef unsigned long  ulong;
 typedef unsigned long long ullong;
 typedef long long llong;
 
+typedef size_t bm_uint_t;
+static const size_t WordBits = sizeof(bm_uint_t) * 8;
+
 #if !defined(BOOST_NO_INT64_T)
 typedef uint64_t stream_position_t;
 typedef int64_t  stream_offset_t;

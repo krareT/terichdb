@@ -33,6 +33,7 @@ public:
             parent = o.parent;
             size = o.size;
             o.parent = nullptr;
+		return *this;
         }
         MemoryLimitHandle(MemoryLimitHandle const &) = delete;
         MemoryLimitHandle& operator = (MemoryLimitHandle const&) = delete;

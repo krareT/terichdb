@@ -23,7 +23,7 @@
 #include <terark/parallel_lib.hpp>
 #include "hash_common.hpp"
 #include <utility> // for std::identity
-#include <boost/ref.hpp>
+#include <terark/util/function.hpp> // for reference_wrapper
 #include <boost/current_function.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/type_traits/has_trivial_constructor.hpp>
@@ -1250,7 +1250,7 @@ public:
 		return this->insert_i(std::make_pair(key, val));
 	}
 	Value& operator[](const Key& key) {
-		typedef boost::reference_wrapper<const Key> key_cref;
+		typedef reference_wrapper<const Key> key_cref;
 		typedef std::pair<key_cref , Value> key_by_ref;
 		typedef std::pair<const Key, Value> key_by_val;
 		std::pair<size_t, bool> ib =
