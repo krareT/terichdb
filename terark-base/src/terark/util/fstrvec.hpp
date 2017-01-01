@@ -2,6 +2,7 @@
 #define __terark_fstrvec_hpp__
 
 #include <terark/valvec.hpp>
+#include <terark/util/throw.hpp>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,8 @@ struct default_offset_op {
 	}
 	Offset make(size_t y) const { return Offset(y); }
 	static const Offset maxpool = Offset(-1);
+// msvc compile error:
+//	BOOST_STATIC_ASSERT(Offset(0) < Offset(-1)); // must be unsigned
 };
 
 // just allow operations at back
@@ -62,75 +65,94 @@ public:
 		offsets.push_back(OffsetOp::make(strpool.size()));
 	}
 
+#define basic_fstrvec_check_overflow(StrLen) \
+	assert(strpool.size() + StrLen < maxpool); \
+	if (maxpool <= UINT32_MAX) { \
+		if (strpool.size() + StrLen > maxpool) { \
+			THROW_STD(length_error \
+				, "strpool.size() = %zd, StrLen = %zd" \
+				, strpool.size(), size_t(StrLen)); \
+		} \
+	}
+#define basic_fstrvec_check_range(range, ExtraLen) \
+	if (range.first > range.second) { \
+		THROW_STD(invalid_argument, \
+			"invalid ptr_range{ %p , %p }", range.first, range.second); \
+	} \
+	basic_fstrvec_check_overflow(size_t(range.second + ExtraLen - range.first))
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 	template<class String>
 	typename void_<typename String::iterator>::type
    	push_back(const String& str) {
-		assert(strpool.size() + str.size() <= maxpool);
+		basic_fstrvec_check_overflow(str.size());
 		strpool.append(str.begin(), str.end());
 		offsets.push_back(OffsetOp::make(strpool.size()));
 	}
 	void push_back(std::pair<const Char*, const Char*> range) {
-		assert(range.first <= range.second);
-		assert(strpool.size() + (range.second - range.first) <= maxpool);
+		basic_fstrvec_check_range(range, 0);
 		strpool.append(range.first, range.second);
 		offsets.push_back(OffsetOp::make(strpool.size()));
 	}
 	template<class String>
 	typename void_<typename String::iterator>::type
    	push_back(const String& str, Char lastChar) {
-		assert(strpool.size() + str.size() <= maxpool);
+		basic_fstrvec_check_overflow(str.size()+1);
 		strpool.append(str.begin(), str.end());
 		strpool.push_back(lastChar);
 		offsets.push_back(OffsetOp::make(strpool.size()));
 	}
 	void push_back(std::pair<const Char*, const Char*> range, Char lastChar) {
-		assert(range.first <= range.second);
-		assert(strpool.size() + (range.second - range.first) <= maxpool);
+		basic_fstrvec_check_range(range, 1);
 		strpool.append(range.first, range.second);
 		strpool.push_back(lastChar);
 		offsets.push_back(OffsetOp::make(strpool.size()));
 	}
 	void emplace_back(const Char* str, size_t len) {
-		assert(strpool.size() + len <= maxpool);
+		basic_fstrvec_check_overflow(len);
 		strpool.append(str, len);
 		offsets.push_back(OffsetOp::make(strpool.size()));
 	}
-	template<class InputIterator>
-	void emplace_back(InputIterator first, InputIterator last) {
-		strpool.append(first, last);
+	template<class ForwardIterator>
+	void emplace_back(ForwardIterator first, ForwardIterator last) {
+		size_t len = std::distance(first, last);
+		basic_fstrvec_check_overflow(len);
+		strpool.append(first, len);
 		offsets.push_back(OffsetOp::make(strpool.size()));
 	}
 
 	void back_append(std::pair<const Char*, const Char*> range) {
 		assert(range.first <= range.second);
-		assert(strpool.size() + (range.second - range.first) <= maxpool);
+		basic_fstrvec_check_range(range, 0);
 		assert(offsets.size() >= 2);
 		strpool.append(range.first, range.second);
 		OffsetOp::inc(offsets.back(), range.second - range.first);
 	}
-	template<class InputIterator>
-	void back_append(InputIterator first, InputIterator last) {
+	template<class ForwardIterator>
+	void back_append(ForwardIterator first, ForwardIterator last) {
 		assert(offsets.size() >= 2);
-		strpool.append(first, last);
+		size_t len = std::distance(first, last);
+		basic_fstrvec_check_overflow(len);
+		strpool.append(first, len);
 		OffsetOp::inc(offsets.back(), last - first);
 	}
 	template<class String>
 	typename void_<typename String::iterator>::type
 	back_append(const String& str) {
-		assert(strpool.size() + str.size() <= maxpool);
 		assert(offsets.size() >= 2);
+		basic_fstrvec_check_overflow(str.size());
 		strpool.append(str.data(), str.size());
 		OffsetOp::inc(offsets.back(), str.size());
 	}
 	void back_append(const Char* str, size_t len) {
-		assert(strpool.size() + len <= maxpool);
+		basic_fstrvec_check_overflow(len);
 		assert(offsets.size() >= 2);
 		strpool.append(str, len);
 		OffsetOp::inc(offsets.back(), len);
 	}
 	void back_append(Char ch) {
-		assert(strpool.size() + 1 <= maxpool);
 		assert(offsets.size() >= 2);
+		basic_fstrvec_check_overflow(1);
 		strpool.push_back(ch);
 		OffsetOp::inc(offsets.back(), 1);
 	}
@@ -295,12 +317,15 @@ public:
 
 typedef basic_fstrvec<char, unsigned int > fstrvec;
 typedef basic_fstrvec<char, unsigned long> fstrvecl;
+typedef basic_fstrvec<char, unsigned long long> fstrvecll;
 
 typedef basic_fstrvec<wchar_t, unsigned int > wfstrvec;
 typedef basic_fstrvec<wchar_t, unsigned long> wfstrvecl;
+typedef basic_fstrvec<wchar_t, unsigned long long> wfstrvecll;
 
 typedef basic_fstrvec<uint16_t, unsigned int > fstrvec16;
 typedef basic_fstrvec<uint16_t, unsigned long> fstrvec16l;
+typedef basic_fstrvec<uint16_t, unsigned long long> fstrvec16ll;
 
 } // namespace terark
 

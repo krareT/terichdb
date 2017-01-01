@@ -50,6 +50,7 @@
 #  define terark_unlikely(x)  __builtin_expect(x, 0)
 #  define terark_no_return    __attribute__((noreturn))
 #  define terark_warn_unused_result  __attribute__((warn_unused_result))
+#  define flatten_inline __attribute__((flatten))
 
 #else
 
@@ -64,6 +65,7 @@
 #  define terark_likely(x)    x
 #  define terark_unlikely(x)  x
 #  define terark_warn_unused_result
+#  define flatten_inline
 
 #endif
 

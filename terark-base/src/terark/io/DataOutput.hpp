@@ -26,7 +26,7 @@
 # include <boost/detail/endian.hpp>
 #endif
 #include <boost/cstdint.hpp>
-#include <boost/ref.hpp>
+#include <terark/util/function.hpp> // for reference_wrapper
 
 #if !defined(BOOST_BIG_ENDIAN) && !defined(BOOST_LITTLE_ENDIAN)
 	#error must define byte endian

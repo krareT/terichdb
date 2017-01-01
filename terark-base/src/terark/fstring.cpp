@@ -178,6 +178,17 @@ bool getEnvBool(const char* envName, bool Default) {
 	if (const char* env = getenv(envName)) {
 		if (atoi(env))
 			return true;
+#if defined(_MSC_VER)
+		#define strcasecmp stricmp
+#endif
+		if (strcasecmp(envName, "true") == 0)
+			return true;
+		if (strcasecmp(envName, "false") == 0)
+			return false;
+		fprintf(stderr
+			, "WARN: terark::getEnvBool(invalid: \"%s\"), treat as false\n"
+			, env
+		);
 	}
 	return Default;
 }

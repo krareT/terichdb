@@ -49,8 +49,8 @@ template<class T> MyType& operator>>(pass_by_value<T> x) { return (*this) >> x.v
 //@}
 //-------------------------------------------------------------------------------------------------
 
-template<class T> MyType& operator& (boost::reference_wrapper<T> x) { return (*this) >> x.get(); }
-template<class T> MyType& operator>>(boost::reference_wrapper<T> x) { return (*this) >> x.get(); }
+template<class T> MyType& operator& (reference_wrapper<T> x) { return (*this) >> x.get(); }
+template<class T> MyType& operator>>(reference_wrapper<T> x) { return (*this) >> x.get(); }
 
 template<int Dim> MyType& operator>>(char (&x)[Dim]) { return this->load(x, Dim); }
 template<int Dim> MyType& operator>>(unsigned char (&x)[Dim]) { return this->load(x, Dim); }

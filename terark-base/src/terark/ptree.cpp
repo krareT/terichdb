@@ -11,7 +11,7 @@ namespace objbox {
 
 #define int_to_str num_to_str
 
-void array_for_each(std::string& path, obj_array* arr, const boost::function<void(fstring, obj&)>& op) {
+void array_for_each(std::string& path, obj_array* arr, const function<void(fstring, obj&)>& op) {
 	op(path, *arr);
 	for(long i = 0, n = arr->size(); i < n; ++i) {
 		long oldsize = path.size();
@@ -85,7 +85,7 @@ TERARK_PTREE_METHOD_IMPL_get(obj_ldouble, long double)
 
 ///@param bool on_node(name, obj** value): if return true, go on, else break
 obj_ptr*
-ptree::set(fstring path, const boost::function<bool(fstring, obj**)>& on_node) {
+ptree::set(fstring path, const function<bool(fstring, obj**)>& on_node) {
 	ptrdiff_t i = 0;
 	ptree* x = this;
 	while (i < path.n) {
@@ -128,7 +128,7 @@ ptree::set(fstring path, const boost::function<bool(fstring, obj**)>& on_node) {
 static bool AlwaysTrue(fstring, obj**) { return true; }
 
 obj_ptr* ptree::add(fstring path) {
-	return set(path, boost::function<bool(fstring, obj**)>(&AlwaysTrue));
+	return set(path, function<bool(fstring, obj**)>(&AlwaysTrue));
 }
 
 template<class Obj, class Ref = Obj>
@@ -166,7 +166,7 @@ void ptree::set(fstring path, fstring val) {
 TERARK_PTREE_METHOD_IMPL_set(long long)
 TERARK_PTREE_METHOD_IMPL_set(long double)
 
-void ptree::for_each_loop(std::string& path, const boost::function<void(fstring, obj&)>& op) {
+void ptree::for_each_loop(std::string& path, const function<void(fstring, obj&)>& op) {
 	op(path, *this);
 	for (size_t i = 0; i != children.end_i(); ++i) {
 		if (children.is_deleted(i)) continue;
@@ -183,7 +183,7 @@ void ptree::for_each_loop(std::string& path, const boost::function<void(fstring,
 	}
 }
 
-void ptree::for_each(fstring base_dir, const boost::function<void(fstring, obj&)>& op) {
+void ptree::for_each(fstring base_dir, const function<void(fstring, obj&)>& op) {
 	std::string path(base_dir.p, base_dir.n);
 	for_each_loop(path, op);
 }

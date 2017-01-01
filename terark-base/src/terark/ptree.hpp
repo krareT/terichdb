@@ -5,7 +5,7 @@
 #include <terark/hash_strmap.hpp>
 #include <terark/gold_hash_map.hpp>
 //#include <tr1/unordered_map>
-#include <boost/function.hpp>
+#include <terark/util/function.hpp>
 
 namespace terark {
 	namespace objbox {
@@ -27,16 +27,16 @@ namespace terark {
 		long double get(fstring path, long double Default) const;
 
 		obj_ptr* add(fstring path);
-		obj_ptr* set(fstring path, const boost::function<bool(fstring, obj**)>& on_node);
+		obj_ptr* set(fstring path, const function<bool(fstring, obj**)>& on_node);
 		void set(fstring path, const std::string& val);
 		void set(fstring path, const char* val);
 		void set(fstring path, fstring     val);
 		void set(fstring path, long long   val);
 		void set(fstring path, long double val);
 
-		void for_each(fstring base_dir, const boost::function<void(fstring name, obj&)>& op);
+		void for_each(fstring base_dir, const function<void(fstring name, obj&)>& op);
 	private:
-		void for_each_loop(std::string& path, const boost::function<void(fstring name, obj&)>& op);
+		void for_each_loop(std::string& path, const function<void(fstring name, obj&)>& op);
 	};
 
 	class TERARK_DLL_EXPORT php_object : public obj {

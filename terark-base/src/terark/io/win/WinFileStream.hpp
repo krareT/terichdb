@@ -9,10 +9,11 @@
 #endif
 
 #include <terark/util/refcount.hpp>
-#include "IOException.hpp"
-#include "IStream.hpp"
+#include <terark/io/IOException.hpp>
+#include <terark/io/IStream.hpp>
 
 #if !defined(_WINDOWS_) && !defined(_INC_WINDOWS)
+#   define NOMINMAX
 #   define WIN32_LEAN_AND_MEAN
 #	include <windows.h>
 #endif

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #if defined(_MSC_VER)
+#  define NOMINMAX
 #  define WIN32_LEAN_AND_MEAN
 #  include <Windows.h>
 #else

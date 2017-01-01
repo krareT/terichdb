@@ -105,10 +105,10 @@ public:
 #endif
 
 	template<class T> TestFixedSizeOutput& operator&(pass_by_value<T> x) { return *this << x.val; }
-	template<class T> TestFixedSizeOutput& operator&(boost::reference_wrapper<T> x) { return *this << x.get(); }
+	template<class T> TestFixedSizeOutput& operator&(reference_wrapper<T> x) { return *this << x.get(); }
 
 	template<class T> TestFixedSizeOutput& operator<<(pass_by_value<T> x) { return *this << x.val; }
-	template<class T> TestFixedSizeOutput& operator<<(boost::reference_wrapper<T> x) { return *this << x.get(); }
+	template<class T> TestFixedSizeOutput& operator<<(reference_wrapper<T> x) { return *this << x.get(); }
 
 	template<class T> TestFixedSizeOutput& operator&(const T* x) { return *this << *x; }
 	template<class T> TestFixedSizeOutput& operator&(T* x) { return *this << *x; }

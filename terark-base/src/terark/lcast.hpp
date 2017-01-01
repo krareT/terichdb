@@ -16,6 +16,9 @@ class TERARK_DLL_EXPORT lcast_from_str {
 	lcast_from_str& operator=(const lcast_from_str& y);
 
 public:
+	template<class T> T cast() const { return static_cast<T>(*this); }
+
+	operator bool() const;
 	operator char() const;
 	operator signed char() const;
 	operator unsigned char() const;
@@ -32,7 +35,7 @@ public:
 	operator double() const;
 	operator long double() const;
 
-	operator const std::string() const { return p; }
+	operator const std::string() const { return std::string(p, n); }
 
 // non-parameter-dependent friends
 friend const lcast_from_str lcast(const fstring s);
@@ -78,6 +81,8 @@ class TERARK_DLL_EXPORT hexlcast_from_str {
 	hexlcast_from_str& operator=(const hexlcast_from_str& y);
 
 public:
+	template<class T> T cast() const { return static_cast<T>(*this); }
+
 	operator char() const;
 	operator signed char() const;
 	operator unsigned char() const;
@@ -90,7 +95,7 @@ public:
 	operator long long() const;
 	operator unsigned long long() const;
 
-	operator const std::string() const { return p; }
+	operator const std::string() const { return std::string(p, n); }
 
 // non-parameter-dependent friends
 friend const hexlcast_from_str hexlcast(const fstring s);

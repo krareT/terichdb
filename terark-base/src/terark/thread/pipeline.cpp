@@ -19,6 +19,7 @@
 	#include <boost/thread.hpp>
 	#include <boost/bind.hpp>
 	#if defined(_WIN32) || defined(_WIN64) || defined(_MSC_VER)
+		#define NOMINMAX
 		#define WIN32_LEAN_AND_MEAN
 		#include <Windows.h>
 		#undef min

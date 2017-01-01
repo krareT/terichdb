@@ -10,6 +10,10 @@ class TERARK_DLL_EXPORT SortableStrVec {
 public:
 #pragma pack(push, 4)
 #if TERARK_WORD_BITS == 64
+	struct OffsetLength {
+		uint64_t offset : 40; //  1T
+		uint64_t length : 24; // 16M
+	};
 	struct SEntry {
 		uint64_t offset : 40; //  1T
 		uint64_t length : 24; // 16M
@@ -18,6 +22,10 @@ public:
 	};
 	static const size_t MAX_STR_POOL = (size_t(1) << 40) - 1; // 1T-1
 #else
+	struct OffsetLength {
+		uint32_t offset;
+		uint32_t length;
+	};
 	struct SEntry {
 		uint32_t offset;
 		uint32_t length;
