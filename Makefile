@@ -381,14 +381,16 @@ ifeq (${PKG_WITH_DEP},1)
 	cp    /opt/include/wiredtiger.h           ${TarBall}/include/
 	cp -r /opt/include/tbb                    ${TarBall}/include/
 	cp -r /opt/include/boost                  ${TarBall}/include/
-	cp -r /opt/lib/libwiredtiger*.so*         ${TarBall}/lib/
+	cp -a /opt/lib/libwiredtiger-*.so*        ${TarBall}/lib/
+	cp -a /opt/lib/libwiredtiger.so*          ${TarBall}/lib/
+	cp -a /opt/lib/libwiredtiger_snappy.so*   ${TarBall}/lib/
   ifeq (Darwin,${UNAME_System})
-	cp -r /opt/lib/libwiredtiger*.dylib*      ${TarBall}/lib/
+	cp -a /opt/lib/libwiredtiger*.dylib*      ${TarBall}/lib/
   endif
-	cp -r /opt/lib/libtbb*${DLL_SUFFIX}*      ${TarBall}/lib/
-	cp -r /opt/lib/libboost_filesystem*${DLL_SUFFIX}*  ${TarBall}/lib/
-	cp -r /opt/lib/libboost_date_time*${DLL_SUFFIX}*   ${TarBall}/lib/
-	cp -r /opt/lib/libboost_system*${DLL_SUFFIX}*      ${TarBall}/lib/
+	cp -a /opt/${COMPILER}/lib64/libtbb*${DLL_SUFFIX}*      ${TarBall}/lib/
+	cp -a /opt/${COMPILER}/lib64/libboost_filesystem*${DLL_SUFFIX}*  ${TarBall}/lib/
+	#cp -a /opt/${COMPILER}/lib64/libboost_date_time*${DLL_SUFFIX}*   ${TarBall}/lib/
+	cp -a /opt/${COMPILER}/lib64/libboost_system*${DLL_SUFFIX}*      ${TarBall}/lib/
 endif
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
