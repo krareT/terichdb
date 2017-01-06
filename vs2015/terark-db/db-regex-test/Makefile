@@ -37,7 +37,8 @@ ifeq ($(shell uname), Linux)
   override LIBS += -lrt
 endif
 
-COMPILER := $(shell ${CXX} ${DB_HOME}/tools/configure/compiler.cpp -o a.exe && ./a.exe && rm -f a.exe)
+tmpfile := $(shell mktemp compiler-XXXXXX)
+COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o ${tmpfile} && ./${tmpfile} && rm -f ${tmpfile}*)
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
 UNAME_System := $(shell uname | sed 's/^\([0-9a-zA-Z]*\).*/\1/')
 COMPILER_LAZY = ${COMPILER}
