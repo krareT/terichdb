@@ -11,7 +11,7 @@ endif
 # Makefile is stupid to parsing $(shell echo ')')
 #COMPILER := $(shell ${CXX} --version | head -1 | sed 's/\(\S\+\)\s\+([^()]*)\s\+\([0-9]\+.[0-9]\+\).*/\1-\2/')
 tmpfile := $(shell mktemp compiler-XXXXXX)
-COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o ${tmpfile} && ./${tmpfile} && rm -f ${tmpfile}*)
+COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o ${tmpfile}.exe && ./${tmpfile}.exe && rm -f ${tmpfile}*)
 #$(error COMPILER=${COMPILER})
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
 BUILD_NAME := ${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}

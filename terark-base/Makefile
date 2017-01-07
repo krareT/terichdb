@@ -9,7 +9,7 @@ endif
 
 # Makefile is stupid to parsing $(shell echo ')')
 tmpfile := $(shell mktemp compiler-XXXXXX)
-COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o ${tmpfile} && ./${tmpfile} && rm -f ${tmpfile}*)
+COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o ${tmpfile}.exe && ./${tmpfile}.exe && rm -f ${tmpfile}*)
 #$(error COMPILER=${COMPILER})
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
 BUILD_NAME := ${UNAME_MachineSystem}-${COMPILER}-bmi2-${WITH_BMI2}

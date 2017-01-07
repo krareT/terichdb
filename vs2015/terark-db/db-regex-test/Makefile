@@ -38,7 +38,7 @@ ifeq ($(shell uname), Linux)
 endif
 
 tmpfile := $(shell mktemp compiler-XXXXXX)
-COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o ${tmpfile} && ./${tmpfile} && rm -f ${tmpfile}*)
+COMPILER := $(shell ${CXX} tools/configure/compiler.cpp -o ${tmpfile}.exe && ./${tmpfile}.exe && rm -f ${tmpfile}*)
 UNAME_MachineSystem := $(shell uname -m -s | sed 's:[ /]:-:g')
 UNAME_System := $(shell uname | sed 's/^\([0-9a-zA-Z]*\).*/\1/')
 COMPILER_LAZY = ${COMPILER}
