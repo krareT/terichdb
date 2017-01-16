@@ -2,7 +2,7 @@
 #include <terark/radix_sort.hpp>
 #include <terark/gold_hash_map.hpp>
 
-#if defined(__GNUC__) && !defined(__CYGWIN__)
+#if defined(__GNUC__) && !defined(__CYGWIN__) && !defined(__clang__)
 #include <parallel/algorithm>
 #define parallel_sort __gnu_parallel::sort
 #endif
@@ -100,7 +100,7 @@ void SortableStrVec::sort() {
 			fstring sy(pool + y.offset, y.length);
 			return sx < sy;
 		};
-#if defined(__GNUC__) && !defined(__CYGWIN__)
+#if defined(__GNUC__) && !defined(__CYGWIN__) && !defined(__clang__)
 		const size_t paralell_threshold = (16<<20);
 		if (m_index.size() > paralell_threshold &&
 			getEnvBool("SortableStrVec_enableParallelSort", false))

@@ -920,7 +920,7 @@ public:
 		assert(pos <= this->n);
 		assert(pos + cnt <= this->n);
 		STDEXT_destroy_range(p + pos, p + pos + cnt);
-		memmove(p + pos, p + pos + cnt, sizeof(T) * (n - cnt));
+		memmove(p + pos, p + pos + cnt, sizeof(T) * (n - cnt - pos));
 		n -= cnt;
 		return pos;
 	}
