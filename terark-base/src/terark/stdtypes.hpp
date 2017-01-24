@@ -143,7 +143,7 @@ private:											\
 #	define TERARK_IF_DEBUG(Then, Else)  Else
 #	define TERARK_RT_assert(exp, ExceptionT)  \
 	if (terark_unlikely(!(exp))) { \
-		string_appender<> oss;\
+		terark::string_appender<> oss;\
 		oss << "expression=\"" << #exp << "\", exception=\"" << #ExceptionT << "\"\n" \
 			<< __FILE__ ":" BOOST_STRINGIZE(__LINE__) ", in function: " \
 			<< BOOST_CURRENT_FUNCTION; \

@@ -27,8 +27,9 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 
 	bool  empty() const { return 0 == n; }
 	size_t size() const { return n; }
+	char*  data() const { return p; }
 	char* begin() const { return p; }
-	char* end()   const { return p + n; }
+	char*   end() const { return p + n; }
 
 	void swap(LineBuf& y) {
 		std::swap(capacity, y.capacity);
@@ -124,8 +125,8 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 	///  on return, offsets[arity] saves tuple data length
 	bool read_binary_tuple(int32_t* offsets, size_t arity, FILE* f);
 
-	LineBuf& read_all(FILE*);
-	LineBuf& read_all(fstring fname);
+	LineBuf& read_all(FILE*, size_t align = 0);
+	LineBuf& read_all(fstring fname, size_t align = 0);
 };
 
 } // namespace terark

@@ -221,12 +221,12 @@ struct basic_fstring {
 	   	return basic_fstring(p+Beg, End-Beg);
 	}
 
-	bool match_at(ptrdiff_t pos, Char ch) const {
+	bool matchAt(ptrdiff_t pos, Char ch) const {
 		assert(pos >= 0);
 		assert(pos <= n);
 		return pos < n && p[pos] == ch;
 	}
-	bool match_at(ptrdiff_t pos, basic_fstring needle) const {
+	bool matchAt(ptrdiff_t pos, basic_fstring needle) const {
 		assert(pos >= 0);
 		assert(pos <= n);
 		if (pos + needle.n > n) return false;

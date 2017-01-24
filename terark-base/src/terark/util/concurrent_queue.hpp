@@ -153,7 +153,15 @@ public:
 		while (m_queue.size() >= m_maxSize) m_pushCond.wait(lock);
 		assert(m_queue.size() <  m_maxSize);
 		m_queue.push(value); // require this method
-		m_popCond.notify_all();
+		m_popCond.notify_one();
+	}
+	void push_by_swap(value_type& value) {
+		UniqueLock lock(m_mtx);
+		m_pushCond.wait(lock, is_not_full(m_queue, m_maxSize));
+		assert(m_queue.size() < m_maxSize);
+		m_queue.push(value_type()); // require this method
+		m_queue.back().swap(value);
+		m_popCond.notify_one();
 	}
 	void pop(value_type& result)
 	{
@@ -162,7 +170,15 @@ public:
 		assert(!m_queue.empty());
 		result = m_queue.front(); // front, not back()!!
 		m_queue.pop(); // require this method
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
+	}
+	void pop_by_swap(value_type& result) {
+		UniqueLock lock(m_mtx);
+		m_popCond.wait(lock, is_not_empty(m_queue));
+		assert(!m_queue.empty());
+		result.swap(m_queue.front()); // front, not back()!!
+		m_queue.pop(); // require this method
+		m_pushCond.notify_one();
 	}
 	bool push(const value_type& value, int timeout)
 	{
@@ -170,7 +186,16 @@ public:
 		if (!m_pushCond.wait_for(lock, MilliSec(timeout), is_not_full(m_queue, m_maxSize))) return false;
 		assert(m_queue.size() < m_maxSize);
 		m_queue.push(value); // require this method
-		m_popCond.notify_all();
+		m_popCond.notify_one();
+		return true;
+	}
+	bool push_by_swap(value_type& value, int timeout) {
+		UniqueLock lock(m_mtx);
+		if (!m_pushCond.wait_for(lock, MilliSec(timeout), is_not_full(m_queue, m_maxSize))) return false;
+		assert(m_queue.size() < m_maxSize);
+		m_queue.push(value_type()); // require this method
+		m_queue.back().swap(value);
+		m_popCond.notify_one();
 		return true;
 	}
 	bool pop(value_type& result, int timeout)
@@ -180,7 +205,16 @@ public:
 		assert(!m_queue.empty());
 		result = m_queue.front();
 		m_queue.pop(); // require this method
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
+		return true;
+	}
+	bool pop_by_swap(value_type& result, int timeout) {
+		UniqueLock lock(m_mtx);
+		if (!m_popCond.wait_for(lock, MilliSec(timeout), is_not_empty(m_queue))) return false;
+		assert(!m_queue.empty());
+		result.swap(m_queue.front());
+		m_queue.pop(); // require this method
+		m_pushCond.notify_one();
 		return true;
 	}
 	value_type pop()
@@ -211,7 +245,15 @@ public:
 		while (m_queue.size() >= m_maxSize) m_pushCond.wait(lock);
 		assert(m_queue.size() < m_maxSize);
 		m_queue.push_back(value); // require this method
-		m_popCond.notify_all();
+		m_popCond.notify_one();
+	}
+	void push_back_by_swap(value_type& value) {
+		UniqueLock lock(m_mtx);
+		while (m_queue.size() >= m_maxSize) m_pushCond.wait(lock);
+		assert(m_queue.size() < m_maxSize);
+		m_queue.push_back(value_type());
+		m_queue.back().swap(value);
+		m_popCond.notify_one();
 	}
 	void pop_front(value_type& result)
 	{
@@ -220,7 +262,15 @@ public:
 		assert(!m_queue.empty());
 		result = m_queue.front();
 		m_queue.pop_front(); // require this method
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
+	}
+	void pop_front_by_swap(value_type& result) {
+		UniqueLock lock(m_mtx);
+		while (m_queue.empty()) m_popCond.wait(lock);
+		assert(!m_queue.empty());
+		result.swap(m_queue.front());
+		m_queue.pop_front(); // require this method
+		m_pushCond.notify_one();
 	}
 	bool push_back(const value_type& value, int timeout)
 	{
@@ -228,7 +278,16 @@ public:
 		if (!m_pushCond.wait_for(lock, MilliSec(timeout), is_not_full(m_queue, m_maxSize))) return false;
 		assert(m_queue.size() < m_maxSize);
 		m_queue.push_back(value); // require this method
-		m_popCond.notify_all();
+		m_popCond.notify_one();
+		return true;
+	}
+	bool push_back_by_swap(value_type& value, int timeout) {
+		UniqueLock lock(m_mtx);
+		if (!m_pushCond.wait_for(lock, MilliSec(timeout), is_not_full(m_queue, m_maxSize))) return false;
+		assert(m_queue.size() < m_maxSize);
+		m_queue.push_back(value_type()); // require this method
+		m_queue.back().swap(value);
+		m_popCond.notify_one();
 		return true;
 	}
 	bool pop_front(value_type& result, int timeout)
@@ -238,7 +297,7 @@ public:
 		assert(!m_queue.empty());
 		result = m_queue.front();
 		m_queue.pop_front(); // require this method
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
 		return true;
 	}
 	value_type pop_front()
@@ -256,7 +315,7 @@ public:
 		while (m_queue.size() >= m_maxSize) m_pushCond.wait(lock);
 		assert(m_queue.size() < m_maxSize);
 		m_queue.push_front(value); // require this method
-		m_popCond.notify_all();
+		m_popCond.notify_one();
 	}
 	void pop_back(value_type& result)
 	{
@@ -265,7 +324,7 @@ public:
 		assert(!m_queue.empty());
 		result = m_queue.back();
 		m_queue.pop_back(); // require this method
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
 	}
 	bool push_front(const value_type& value, int timeout)
 	{
@@ -273,7 +332,7 @@ public:
 		if (!m_pushCond.wait_for(lock, MilliSec(timeout), is_not_full(m_queue, m_maxSize))) return false;
 		assert(m_queue.size() < m_maxSize);
 		m_queue.push_front(value); // require this method
-		m_popCond.notify_all();
+		m_popCond.notify_one();
 		return true;
 	}
 	bool pop_back(value_type& result, int timeout)
@@ -283,7 +342,7 @@ public:
 		assert(!m_queue.empty());
 		result = m_queue.back();
 		m_queue.pop_back(); // require this method
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
 		return true;
 	}
 	value_type pop_back()
@@ -322,7 +381,7 @@ public:
 		m_pushCond.wait_for(lock, is_not_full(m_queue, m_maxSize));
 		assert(m_queue.size() < m_maxSize);
 		typename Container::iterator iter = m_queue.insert(value); // require this method
-		m_popCond.notify_all();
+		m_popCond.notify_one();
 		return iter;
 	}
 
@@ -342,7 +401,7 @@ public:
 		// do not return res.first, it is the insert position.
 		// because in concurrent case, the insert position is
 		// not ensured valid in different lock area.
-		m_popCond.notify_all();
+		m_popCond.notify_one();
 		return res.second;
 	}
 
@@ -383,7 +442,7 @@ private:
 			result.push_back(*ii.first);
 			m_queue.erase(ii.first); // require this method
 		}
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
 		return bRet;
 	}
 public:
@@ -413,7 +472,7 @@ public:
 		assert(!m_queue.empty());
 		value = *m_queue.begin();
 		m_queue.erase(m_queue.begin());
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
 	}
 	void remove_end_elem(value_type& value)
 	{
@@ -423,7 +482,7 @@ public:
 		typename Container::iterator iter = m_queue.end();
 		value = *--iter;
 		m_queue.erase(iter);
-		m_pushCond.notify_all();
+		m_pushCond.notify_one();
 	}
 	value_type remove_begin_elem()
 	{

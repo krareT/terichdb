@@ -130,34 +130,55 @@ bool LineBuf::read_binary_tuple(int32_t* offsets, size_t arity, FILE* f) {
 	return true; // len can be 0
 }
 
-LineBuf& LineBuf::read_all(FILE* fp) {
+LineBuf& LineBuf::read_all(FILE* fp, size_t align) {
 	int fd = fileno(fp);
 	struct ll_stat st;
 	if (::ll_fstat(fd, &st) < 0) {
 		THROW_STD(runtime_error, "fstat failed");
 	}
 	if (p) free(p);
-	p = (char*)malloc(st.st_size + 1);
+	size_t cap;
+	if (align) {
+		if (align & (align-1)) {
+			THROW_STD(invalid_argument
+				, "invalid(align = %zd), must be power of 2", align);
+		}
+		cap = align_up(st.st_size + 1, align);
+	#if defined(_MSC_VER)
+		p = (char*)_aligned_malloc(cap, align);
+	#else
+		int err = posix_memalign((void**)&p, align, cap);
+		if (err) {
+			THROW_STD(invalid_argument
+				, "posix_memalign(align=%zd, size=%lld) = %s"
+				, align, llong(st.st_size), strerror(err));
+		}
+	#endif
+	}
+	else {
+		cap = st.st_size + 1;
+		p = (char*)malloc(cap);
+	}
 	if (NULL == p) {
 		n = 0;
 		capacity = 0;
 		THROW_STD(invalid_argument,
 			"file too large(size=%lld)", llong(st.st_size));
 	}
-	capacity = st.st_size + 1;
+	capacity = cap;
 	n = fread(p, 1, st.st_size, fp);
 	p[n] = '\0';
 	return *this;
 }
 
-LineBuf& LineBuf::read_all(fstring fname) {
+LineBuf& LineBuf::read_all(fstring fname, size_t align) {
 	Auto_fclose f(fopen(fname.c_str(), "r"));
 	if (!f) {
 		THROW_STD(invalid_argument,
 			"ERROR: fopen(%.*s, r) = %s",
 			fname.ilen(), fname.data(), strerror(errno));
 	}
-	read_all(f);
+	read_all(f, align);
 	return *this;
 }
 
