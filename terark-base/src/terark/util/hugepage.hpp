@@ -61,6 +61,10 @@ void use_hugepage_resize_no_init(valvec<T>* vec, size_t newsize) {
 		fprintf(stderr, "WARN: %s: madvise(MADV_HUGEPAGE) = %s\n",
 			BOOST_CURRENT_FUNCTION, strerror(errno));
 	}
+	else {
+	//	fprintf(stderr, "INFO: %s: madvise(MADV_HUGEPAGE) = success\n",
+	//		BOOST_CURRENT_FUNCTION);
+	}
 #endif
 }
 

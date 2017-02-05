@@ -1,7 +1,7 @@
 #ifndef __terark_rank_select_basic_hpp__
 #define __terark_rank_select_basic_hpp__
 
-#include "bitmap.hpp"
+#include <terark/bitmap.hpp>
 #include <terark/util/throw.hpp>
 
 #ifdef __BMI2__

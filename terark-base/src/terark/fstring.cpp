@@ -176,18 +176,19 @@ template struct basic_fstring<uint16_t>;
 
 bool getEnvBool(const char* envName, bool Default) {
 	if (const char* env = getenv(envName)) {
-		if (atoi(env))
-			return true;
+		if (isdigit(env[0])) {
+			return atoi(env) != 0;
+		}
 #if defined(_MSC_VER)
 		#define strcasecmp stricmp
 #endif
-		if (strcasecmp(envName, "true") == 0)
+		if (strcasecmp(env, "true") == 0)
 			return true;
-		if (strcasecmp(envName, "false") == 0)
+		if (strcasecmp(env, "false") == 0)
 			return false;
 		fprintf(stderr
-			, "WARN: terark::getEnvBool(invalid: \"%s\"), treat as false\n"
-			, env
+			, "WARN: terark::getEnvBool(\"%s\") = \"%s\" is invalid, treat as false\n"
+			, envName, env
 		);
 	}
 	return Default;
