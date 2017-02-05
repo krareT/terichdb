@@ -178,6 +178,7 @@ core_src := \
    $(wildcard src/terark/io/*.cpp) \
    $(wildcard src/terark/util/*.cpp) \
    $(wildcard src/terark/thread/*.cpp) \
+   $(wildcard src/terark/succinct/*.cpp) \
    ${obsoleted_src}
 
 core_src := $(filter-out ${zip_src}, ${core_src})
