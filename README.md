@@ -44,10 +44,14 @@ sudo wget https://raw.githubusercontent.com/Terark/terark-db/master/online_insta
 
 ### 4.1.Dependencies
 
-  - libboost_system.so(1.60.0) (boost_1_60_0)
-  - libboost_filesystem(1.60.0)(Could be found in boost_1_60_0)
+  - libboost_system.so(1.63.0) (boost_1_63_0)
+  - libboost_filesystem(1.63.0)(Could be found in boost_1_63_0)
   - libwiredtiger.so(v2.8.0)
   - libtbb.so(tbb44_20160128)
+  - libgflags
+  - libsnappy
+  - libz
+  - libzstd
 
 ### 4.2.Compiler Support
 
