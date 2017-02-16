@@ -202,4 +202,32 @@ long getEnvLong(const char* envName, long Default) {
 	return Default;
 }
 
+double getEnvDouble(const char* envName, double Default) {
+  if (const char* env = getenv(envName)) {
+    return strtof(env, NULL);
+  }
+  return Default;
+}
+
+unsigned long long ParseSizeXiB(const char* str) {
+    char* endp = NULL;
+    double val = strtod(str, &endp);
+    char scale = *endp;
+    if ('k' == scale || 'K' == scale)
+        return uint64_t(val * (1ull << 10));
+    else if ('m' == scale || 'M' == scale)
+        return uint64_t(val * (1ull << 20));
+    else if ('g' == scale || 'G' == scale)
+        return uint64_t(val * (1ull << 30));
+    else if ('t' == scale || 'T' == scale)
+        return uint64_t(val * (1ull << 40));
+    else if ('p' == scale || 'P' == scale)
+        return uint64_t(val * (1ull << 50));
+    else
+        return uint64_t(val);
+}
+unsigned long long ParseSizeXiB(terark::fstring str) {
+  return ParseSizeXiB(str.c_str());
+}
+
 } // namespace terark

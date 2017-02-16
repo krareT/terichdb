@@ -76,6 +76,7 @@ public:
 		m_size = newsize;
 	}
 
+	size_t back() const { assert(m_size > 0); return get(m_size-1); }
 	size_t operator[](size_t idx) const { return get(idx); }
 	size_t get(size_t idx) const {
 		assert(idx < m_size);
@@ -121,6 +122,10 @@ public:
 			max_val >>= 1;
 		}
 		assert(bits <= sizeof(Uint) * 8);
+		resize_with_uintbits(num, bits);
+	}
+
+	void resize_with_uintbits(size_t num, size_t bits) {
 #if TERARK_WORD_BITS == 64
 		// allowing bits > 58 will incure performance punish in get/set.
 		// 58 bit can span 9 bytes, but this only happens when start bit index
@@ -131,11 +136,19 @@ public:
 #endif
 		clear();
 		m_bits = bits;
-		m_mask = sizeof(Uint)*8 == bits ? Uint(-1) : (Uint(1)<<bits)-1;
+		m_mask = sizeof(size_t)*8 == bits ? size_t(-1) : (size_t(1)<<bits)-1;
 		m_size = num;
 		if (num) {
 			m_data.resize_fill(compute_mem_size(bits, num));
 		}
+	}
+
+	void push_back(size_t val) {
+		assert(m_bits > 0);
+		if (compute_mem_size(m_bits, m_size) < m_data.size()) {
+			m_data.resize(m_data.size() * 2);
+		}
+		set_wire(m_size++, val);
 	}
 
 	static size_t compute_mem_size(size_t bits, size_t num) {

@@ -396,6 +396,13 @@ public:
 		}
     }
 
+    T& ensure_get(size_t i) {
+		if (i < n)
+			return p[i];
+		else
+			return *grow(1);
+    }
+
 	T& ensure_set(size_t i, const T& x) {
 		if (i >= n) {
 			resize(i+1);
