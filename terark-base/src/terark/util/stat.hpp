@@ -20,8 +20,10 @@
 	// VC stat on large file will fail
 	#define ll_stat _stat64
 	#define ll_fstat _fstat64
+	#define ll_lseek _lseeki64
 #else
 	#define ll_stat  stat
 	#define ll_fstat fstat
+	#define ll_lseek lseek
 #endif
 
