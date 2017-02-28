@@ -1,5 +1,5 @@
-#ifndef __terark_db_seg_db_hpp__
-#define __terark_db_seg_db_hpp__
+#ifndef __terichdb_seg_db_hpp__
+#define __terichdb_seg_db_hpp__
 
 #include "db_table.hpp"
 
@@ -38,4 +38,4 @@ typedef boost::intrusive_ptr<DataBase> DataBasePtr;
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_seg_db_hpp__
+#endif // __terichdb_seg_db_hpp__

@@ -1,5 +1,5 @@
-#ifndef __terark_db_db_store_hpp__
-#define __terark_db_db_store_hpp__
+#ifndef __terichdb_db_store_hpp__
+#define __terichdb_db_store_hpp__
 
 #include "db_conf.hpp"
 #include "db_context.hpp"
@@ -213,4 +213,4 @@ public:
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_db_store_hpp__
+#endif // __terichdb_db_store_hpp__

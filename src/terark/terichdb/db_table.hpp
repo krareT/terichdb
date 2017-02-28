@@ -1,5 +1,5 @@
-#ifndef __terark_db_table_store_hpp__
-#define __terark_db_table_store_hpp__
+#ifndef __terichdb_table_store_hpp__
+#define __terichdb_table_store_hpp__
 
 #include "db_store.hpp"
 #include "db_index.hpp"
@@ -526,4 +526,4 @@ void DbContext::trySyncSegCtxSpeculativeLock(const DbTable* tab) {
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_table_store_hpp__
+#endif // __terichdb_table_store_hpp__

@@ -1,5 +1,5 @@
-#ifndef __terark_db_db_conf_hpp__
-#define __terark_db_db_conf_hpp__
+#ifndef __terichdb_db_conf_hpp__
+#define __terichdb_db_conf_hpp__
 
 #include <terark/hash_strmap.hpp>
 #include <terark/gold_hash_map.hpp>
@@ -596,4 +596,4 @@ namespace terark { namespace terichdb {
 
 } } // namespace terark::terichdb
 
-#endif //__terark_db_db_conf_hpp__
+#endif //__terichdb_db_conf_hpp__

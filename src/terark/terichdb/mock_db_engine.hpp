@@ -1,5 +1,5 @@
-#ifndef __terark_db_mock_db_index_hpp__
-#define __terark_db_mock_db_index_hpp__
+#ifndef __terichdb_mock_db_index_hpp__
+#define __terichdb_mock_db_index_hpp__
 
 #include <terark/terichdb/db_table.hpp>
 #include <terark/terichdb/db_segment.hpp>
@@ -150,4 +150,4 @@ protected:
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_mock_db_index_hpp__
+#endif // __terichdb_mock_db_index_hpp__

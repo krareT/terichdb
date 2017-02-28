@@ -17,6 +17,6 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 	return TRUE;
 }
 
-extern "C" void __declspec(dllexport) terark_db_dfadb()
+extern "C" void __declspec(dllexport) terichdb_dfadb()
 {
 }

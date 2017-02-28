@@ -1,6 +1,6 @@
 #pragma once
-#ifndef __terark_db_json_hpp__
-#define __terark_db_json_hpp__
+#ifndef __terichdb_json_hpp__
+#define __terichdb_json_hpp__
 
 #include <nlohmann/json.hpp>
 #include <terark/gold_hash_map.hpp>
@@ -28,4 +28,4 @@ namespace terark {
 //	using nlohmann::_json;
 }
 
-#endif // __terark_db_json_hpp__
+#endif // __terichdb_json_hpp__

@@ -1,5 +1,5 @@
-#ifndef __terark_db_db_index_hpp__
-#define __terark_db_db_index_hpp__
+#ifndef __terichdb_db_index_hpp__
+#define __terichdb_db_index_hpp__
 
 #include "db_store.hpp"
 
@@ -146,4 +146,4 @@ public:
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_db_index_hpp__
+#endif // __terichdb_db_index_hpp__

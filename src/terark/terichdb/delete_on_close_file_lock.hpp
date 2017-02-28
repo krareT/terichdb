@@ -1,5 +1,5 @@
-#ifndef __terark_db_delete_on_close_file_lock_hpp__
-#define __terark_db_delete_on_close_file_lock_hpp__
+#ifndef __terichdb_delete_on_close_file_lock_hpp__
+#define __terichdb_delete_on_close_file_lock_hpp__
 
 #include <stdio.h>
 #include <boost/filesystem.hpp>
@@ -18,4 +18,4 @@ public:
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_delete_on_close_file_lock_hpp__
+#endif // __terichdb_delete_on_close_file_lock_hpp__

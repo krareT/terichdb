@@ -1,5 +1,5 @@
-#ifndef __terark_db_dll_decl_hpp__
-#define __terark_db_dll_decl_hpp__
+#ifndef __terichdb_dll_decl_hpp__
+#define __terichdb_dll_decl_hpp__
 
 #if defined(_MSC_VER)
 
@@ -29,4 +29,4 @@
 
 #endif /* _MSC_VER */
 
-#endif //__terark_db_dll_decl_hpp__
+#endif //__terichdb_dll_decl_hpp__

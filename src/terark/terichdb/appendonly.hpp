@@ -1,5 +1,5 @@
-#ifndef __terark_db_appendonly_hpp__
-#define __terark_db_appendonly_hpp__
+#ifndef __terichdb_appendonly_hpp__
+#define __terichdb_appendonly_hpp__
 
 #include "db_store.hpp"
 
@@ -73,4 +73,4 @@ private:
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_appendonly_hpp__
+#endif // __terichdb_appendonly_hpp__

@@ -1,5 +1,5 @@
-#ifndef __terark_db_segment_hpp__
-#define __terark_db_segment_hpp__
+#ifndef __terichdb_segment_hpp__
+#define __terichdb_segment_hpp__
 
 #include "db_index.hpp"
 #include "db_store.hpp"
@@ -436,4 +436,4 @@ typedef boost::intrusive_ptr<ColgroupWritableSegment> SmartWritableSegmentPtr;
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_segment_hpp__
+#endif // __terichdb_segment_hpp__

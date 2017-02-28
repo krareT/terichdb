@@ -1,5 +1,5 @@
-#ifndef __terark_db_db_context_hpp__
-#define __terark_db_db_context_hpp__
+#ifndef __terichdb_db_context_hpp__
+#define __terichdb_db_context_hpp__
 
 #include "db_conf.hpp"
 
@@ -179,4 +179,4 @@ typedef boost::intrusive_ptr<DbContext> DbContextPtr;
 
 } } // namespace terark::terichdb
 
-#endif // __terark_db_db_context_hpp__
+#endif // __terichdb_db_context_hpp__
