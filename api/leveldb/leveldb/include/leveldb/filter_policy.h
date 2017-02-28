@@ -21,13 +21,13 @@
 #define leveldb rocksdb
 #endif
 #include <string>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 
 namespace leveldb {
 
 class Slice;
 
-class TERARK_DB_DLL FilterPolicy {
+class TERICHDB_DLL FilterPolicy {
  public:
   virtual ~FilterPolicy();
 
@@ -68,11 +68,11 @@ class TERARK_DB_DLL FilterPolicy {
 // ignores trailing spaces, it would be incorrect to use a
 // FilterPolicy (like NewBloomFilterPolicy) that does not ignore
 // trailing spaces in keys.
-TERARK_DB_DLL
+TERICHDB_DLL
 extern const FilterPolicy* NewBloomFilterPolicy(int bits_per_key);
 
 #if HAVE_BASHOLEVELDB
-TERARK_DB_DLL
+TERICHDB_DLL
 extern const FilterPolicy* NewBloomFilterPolicy2(int bits_per_key);
 #endif
 

@@ -44,14 +44,14 @@
 #include "basho/perf_count.h"
 #endif
 
-#include <terark/db/db_table.hpp>
+#include <terark/terichdb/db_table.hpp>
 #include <boost/filesystem.hpp>
 #include <tbb/enumerable_thread_specific.h>
 #undef min
 #undef max
 
-using terark::db::DbTablePtr;
-using terark::db::DbContextPtr;
+using terark::terichdb::DbTablePtr;
+using terark::terichdb::DbContextPtr;
 using terark::gold_hash_map;
 
 namespace fs = boost::filesystem;
@@ -104,7 +104,7 @@ class DbImpl;
 /* Context for operations (including snapshots, write batches, transactions) */
 class OperationContext {
 public:
-  OperationContext(terark::db::DbTable* tab, terark::db::DbContext* ctx)
+  OperationContext(terark::terichdb::DbTable* tab, terark::terichdb::DbContext* ctx)
    : m_batchWriter(tab, ctx), m_removeNotFound(0) {}
 
   ~OperationContext() {
@@ -132,7 +132,7 @@ public:
 #endif
   WT_SESSION *GetSession() { return session_; }
 */
-  terark::db::BatchWriter m_batchWriter;
+  terark::terichdb::BatchWriter m_batchWriter;
   size_t m_removeNotFound;
 //  terark::valvec<unsigned char> m_rowBuf;
 //  terark::valvec<long long> m_exactRecIdvec;
@@ -180,7 +180,7 @@ class ColumnFamilyHandleImpl : public ColumnFamilyHandle {
 
 class IteratorImpl : public Iterator {
 public:
-  IteratorImpl(terark::db::DbTable *db);
+  IteratorImpl(terark::terichdb::DbTable *db);
   virtual ~IteratorImpl();
 
   // An iterator is either positioned at a key/value pair, or
@@ -211,9 +211,9 @@ public:
 
 private:
   void iterIncrement();
-  terark::db::DbTable*  m_tab;
-  terark::db::DbContextPtr     m_ctx;
-  terark::db::IndexIteratorPtr m_iter;
+  terark::terichdb::DbTable*  m_tab;
+  terark::terichdb::DbContextPtr     m_ctx;
+  terark::terichdb::IndexIteratorPtr m_iter;
   long long m_recId;
   terark::valvec<unsigned char> m_posKey;
   terark::valvec<unsigned char> m_key, m_val;
@@ -356,9 +356,9 @@ public:
   void SuspendCompactions() override;
   void ResumeCompactions() override;
 
-  terark::db::DbContext* GetDbContext();
+  terark::terichdb::DbContext* GetDbContext();
 
-  terark::db::DbTablePtr m_tab;
+  terark::terichdb::DbTablePtr m_tab;
 private:
   tbb::enumerable_thread_specific<DbContextPtr> m_ctx;
 

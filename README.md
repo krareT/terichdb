@@ -1,7 +1,7 @@
-## 1.TerarkDB
-TerarkDB is an open source NoSQL data store based on terark storage engine.
+## 1.TerichDB
+TerichDB is an open source NoSQL data store based on terark storage engine.
 
-TerarkDB is:
+TerichDB is:
 
 - Read optimized, faster than ever.
 - Data is highly compressed and decompressed is not required before read.
@@ -34,13 +34,13 @@ TerarkDB is:
 ### 3.1.Linux & MacOS
 
 ```
-sudo wget https://raw.githubusercontent.com/Terark/terark-db/master/online_install.py && (python online_install.py; rm online_install.py)
+sudo wget https://raw.githubusercontent.com/Terark/terichdb/master/online_install.py && (python online_install.py; rm online_install.py)
 ```
 
 ### 3.2.Windows
 [windows installation guide](http://terark.com/docs/2)
 
-## 4.Compile TerarkDB
+## 4.Compile TerichDB
 
 ### 4.1.Dependencies
 
@@ -60,15 +60,15 @@ sudo wget https://raw.githubusercontent.com/Terark/terark-db/master/online_insta
 - Windows : `vs2015`
 
 ### 4.3.`dfadb` alternative
-1. TerarkDB is open source but our core data structures and algorithms(`dfadb`) are not yet.
+1. TerichDB is open source but our core data structures and algorithms(`dfadb`) are not yet.
 2. `dfadb` is supported by a library named `terark-fsa-*` in our released packages.
-3. Developers who want to build their own TerarkDB, should place the `terark-fsa-*` library into their library search path(e.g. `/usr/local/lib`).
-4. User compiled TerarkDB can only uses limited APIs, and need to set `"ReadonlySegmentClass" : "MockReadonlySegment"` in `dbmeta.json`([TerarkDB's schema file](http://terark.com/docs/4)).
+3. Developers who want to build their own TerichDB, should place the `terark-fsa-*` library into their library search path(e.g. `/usr/local/lib`).
+4. User compiled TerichDB can only uses limited APIs, and need to set `"ReadonlySegmentClass" : "MockReadonlySegment"` in `dbmeta.json`([TerichDB's schema file](http://terark.com/docs/4)).
 
 ## 5. Notes
-- UNIX `fork()` should not be called in the applications using TerarkDB, this would cause undefined behaviors.
+- UNIX `fork()` should not be called in the applications using TerichDB, this would cause undefined behaviors.
 
 ## 6.License
-TerarkDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
+TerichDB follows [Free Software Foundation's GNU AGPL v3.0](http://www.gnu.org/licenses/agpl-3.0.html)
 
 For commercial purposes, please  [contact us](http://www.terark.com).

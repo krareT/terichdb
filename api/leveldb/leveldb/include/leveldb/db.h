@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <vector>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 #include "iterator.h"
 #include "options.h"
 #include "write_batch.h"
@@ -34,13 +34,13 @@ class WriteBatch;
 
 #ifdef HAVE_ROCKSDB
 struct FlushOptions;
-class TERARK_DB_DLL ColumnFamilyHandle {
+class TERICHDB_DLL ColumnFamilyHandle {
  public:
   virtual ~ColumnFamilyHandle() {}
 };
 extern const std::string kDefaultColumnFamilyName;
  
-struct TERARK_DB_DLL ColumnFamilyDescriptor {
+struct TERICHDB_DLL ColumnFamilyDescriptor {
   std::string name;
   ColumnFamilyOptions options;
   ColumnFamilyDescriptor()
@@ -54,13 +54,13 @@ struct TERARK_DB_DLL ColumnFamilyDescriptor {
 // Abstract handle to particular state of a DB.
 // A Snapshot is an immutable object and can therefore be safely
 // accessed from multiple threads without any external synchronization.
-class TERARK_DB_DLL Snapshot {
+class TERICHDB_DLL Snapshot {
  protected:
   virtual ~Snapshot();
 };
 
 // A range of keys
-struct TERARK_DB_DLL Range {
+struct TERICHDB_DLL Range {
   Slice start;          // Included in the range
   Slice limit;          // Not included in the range
 
@@ -72,7 +72,7 @@ struct TERARK_DB_DLL Range {
 // Abstract holder for a DB value.
 // This allows callers to manage their own value buffers and have
 // DB values copied directly into those buffers.
-class TERARK_DB_DLL Value {
+class TERICHDB_DLL Value {
  public:
   virtual Value& assign(const char* data, size_t size) = 0;
 
@@ -84,7 +84,7 @@ class TERARK_DB_DLL Value {
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
 // any external synchronization.
-class TERARK_DB_DLL DB {
+class TERICHDB_DLL DB {
  public:
   // Open the database with the specified "name".
   // Stores a pointer to a heap-allocated database in *dbptr and returns
@@ -326,14 +326,14 @@ class TERARK_DB_DLL DB {
 
 // Destroy the contents of the specified database.
 // Be very careful using this method.
-TERARK_DB_DLL
+TERICHDB_DLL
 Status DestroyDB(const std::string& name, const Options& options);
 
 // If a DB cannot be opened, you may attempt to call this method to
 // resurrect as much of the contents of the database as possible.
 // Some data may be lost, so be careful when calling this function
 // on a database that contains important information.
-TERARK_DB_DLL
+TERICHDB_DLL
 Status RepairDB(const std::string& dbname, const Options& options);
 
 };  // namespace leveldb

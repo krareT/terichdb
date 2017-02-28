@@ -24,11 +24,11 @@
 #include <stddef.h>
 #include <string.h>
 #include <string>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 
 namespace leveldb {
 
-class TERARK_DB_DLL Slice {
+class TERICHDB_DLL Slice {
  public:
 	typedef const char* iterator;
 	typedef const char* const_iterator;
@@ -99,7 +99,7 @@ class TERARK_DB_DLL Slice {
 #ifdef HAVE_ROCKSDB
 // A set of Slices that are virtually concatenated together.  'parts' points
 // to an array of Slices.  The number of elements in the array is 'num_parts'.
-struct TERARK_DB_DLL SliceParts {
+struct TERICHDB_DLL SliceParts {
   SliceParts(const Slice* _parts, int _num_parts) :
       parts(_parts), num_parts(_num_parts) { }
 

@@ -126,7 +126,7 @@ class StringValue : public Value {
 #endif
 
 Status DestroyDB(const std::string& name, const Options& options) {
-  fs::path dbdir = fs::path(name) / "TerarkDB";
+  fs::path dbdir = fs::path(name) / "TerichDB";
   if (!fs::exists(dbdir))
     return Status::OK();
   fs::remove_all(dbdir);
@@ -262,7 +262,7 @@ static const char g_keyValueSchema[] = R"({
 )";
 Status
 DB::Open(const Options &options, const std::string &name, leveldb::DB** dbptr) {
-	fs::path dbdir = fs::path(name) / "TerarkDB";
+	fs::path dbdir = fs::path(name) / "TerichDB";
 	fs::path metaPath = dbdir / "dbmeta.json";
 	if (fs::exists(dbdir)) {
 		if (options.error_if_exists) {
@@ -295,7 +295,7 @@ DB::Open(const Options &options, const std::string &name, leveldb::DB** dbptr) {
 } // namespace leveldb
 
 DbImpl::DbImpl(const fs::path& dbdir) {
-	m_tab = terark::db::DbTable::open(dbdir);
+	m_tab = terark::terichdb::DbTable::open(dbdir);
 }
 
 DbImpl::~DbImpl() {
@@ -318,7 +318,7 @@ encodeKeyVal(terark::valvec<unsigned char>& buf,
 // Note: consider setting options.sync = true.
 Status
 DbImpl::Put(const WriteOptions& options, const Slice& key, const Slice& value) {
-  terark::db::DbContext* ctx = GetDbContext();
+  terark::terichdb::DbContext* ctx = GetDbContext();
   assert(NULL != ctx);
   auto userBuf = ctx->bufs.get();
   try {
@@ -340,7 +340,7 @@ DbImpl::Put(const WriteOptions& options, const Slice& key, const Slice& value) {
 Status
 DbImpl::Delete(const WriteOptions& options, const Slice& key)
 {
-  terark::db::DbContext* ctx = GetDbContext();
+  terark::terichdb::DbContext* ctx = GetDbContext();
   assert(NULL != ctx);
   ctx->indexSearchExact(0, key, &ctx->exactMatchRecIdvec);
   if (!ctx->exactMatchRecIdvec.empty()) {
@@ -358,7 +358,7 @@ DbImpl::Delete(const WriteOptions& options, const Slice& key)
 void
 WriteBatchHandler::Put(const Slice& key, const Slice& value) {
 	auto opctx = context_;
-	terark::db::DbContext* ctx = opctx->m_batchWriter.getCtx();
+	terark::terichdb::DbContext* ctx = opctx->m_batchWriter.getCtx();
     auto userBuf = ctx->bufs.get();
 	encodeKeyVal(*userBuf, key, value);
 	opctx->m_batchWriter.upsertRow(*userBuf);
@@ -369,7 +369,7 @@ static const long g_logBatchRemoveNotFound =
 
 void WriteBatchHandler::Delete(const Slice& key) {
 	auto opctx = context_;
-	terark::db::DbContext* ctx = opctx->m_batchWriter.getCtx();
+	terark::terichdb::DbContext* ctx = opctx->m_batchWriter.getCtx();
 	ctx->indexSearchExact(0, key, &ctx->exactMatchRecIdvec);
 	if (!ctx->exactMatchRecIdvec.empty()){
 		long long recId = ctx->exactMatchRecIdvec[0];
@@ -423,7 +423,7 @@ DbImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 // May return some other Status on an error.
 Status
 DbImpl::Get(const ReadOptions& options, const Slice& key, std::string* value) {
-  terark::db::DbContext* ctx = GetDbContext();
+  terark::terichdb::DbContext* ctx = GetDbContext();
   assert(NULL != ctx);
   auto userBuf = ctx->bufs.get();
   ctx->indexSearchExact(0, key, &ctx->exactMatchRecIdvec);
@@ -497,7 +497,7 @@ SnapshotImpl::SnapshotImpl(DbImpl *db) :
 // state.  The caller must call ReleaseSnapshot(result) when the
 // snapshot is no longer needed.
 const Snapshot* DbImpl::GetSnapshot() {
-  THROW_STD(invalid_argument, "terark-db-leveldb-api doesn't support snapshot");
+  THROW_STD(invalid_argument, "terichdb-leveldb-api doesn't support snapshot");
   return NULL;
 }
 
@@ -506,7 +506,7 @@ const Snapshot* DbImpl::GetSnapshot() {
 void
 DbImpl::ReleaseSnapshot(const Snapshot* snapshot)
 {
-  THROW_STD(invalid_argument, "terark-db-leveldb-api doesn't support snapshot");
+  THROW_STD(invalid_argument, "terichdb-leveldb-api doesn't support snapshot");
   SnapshotImpl *si =
     static_cast<SnapshotImpl*>(const_cast<Snapshot*>(snapshot));
   if (si != NULL) {
@@ -598,7 +598,7 @@ OperationContext* DbImpl::GetContext(const ReadOptions &options) {
     return GetContext();
   }
   THROW_STD(invalid_argument,
-    "terark-db-leveldb-api doesn't support snapshot, "
+    "terichdb-leveldb-api doesn't support snapshot, "
     "ReadOptions.snapshot should alsway be NULL"
     );
   auto si = static_cast<const SnapshotImpl*>(options.snapshot);
@@ -606,11 +606,11 @@ OperationContext* DbImpl::GetContext(const ReadOptions &options) {
   return si->GetContext();
 }
 
-terark::db::DbContext* DbImpl::GetDbContext() {
+terark::terichdb::DbContext* DbImpl::GetDbContext() {
   DbContextPtr& refctx = m_ctx.local();
   if (!refctx) {
 	refctx.reset(m_tab->createDbContext());
-    if (terark::getEnvBool("TerarkDB_TrackBuggyObjectLife")) {
+    if (terark::getEnvBool("TerichDB_TrackBuggyObjectLife")) {
 	  fprintf(stderr, "DEBUG: thread DbContext object number = %zd\n", m_ctx.size());
     }
   }
@@ -620,7 +620,7 @@ terark::db::DbContext* DbImpl::GetDbContext() {
 std::atomic<size_t> g_iterLiveCnt;
 std::atomic<size_t> g_iterCreatedCnt;
 
-IteratorImpl::IteratorImpl(terark::db::DbTable *db) {
+IteratorImpl::IteratorImpl(terark::terichdb::DbTable *db) {
 	m_tab = db;
 	m_ctx = db->createDbContext();
 	m_recId = -1;
@@ -628,7 +628,7 @@ IteratorImpl::IteratorImpl(terark::db::DbTable *db) {
 	m_direction = Direction::forward;
 	g_iterLiveCnt++;
 	g_iterCreatedCnt++;
-    if (terark::getEnvBool("TerarkDB_TrackBuggyObjectLife")) {
+    if (terark::getEnvBool("TerichDB_TrackBuggyObjectLife")) {
 	  fprintf(stderr
 		, "DEBUG: teark-db-leveldb-api: dbdir=%s : %s : Iterator live count = %zd, created = %zd\n"
 		, db->getDir().string().c_str(), BOOST_CURRENT_FUNCTION

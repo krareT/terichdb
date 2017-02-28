@@ -22,7 +22,7 @@
 #include <vector>
 #include <stdarg.h>
 #include <stdint.h>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 #if HAVE_BASHOLEVELDB
 #include "perf_count.h"
 #endif
@@ -39,7 +39,7 @@ class SequentialFile;
 class Slice;
 class WritableFile;
 
-class TERARK_DB_DLL Env {
+class TERICHDB_DLL Env {
  public:
   Env() { }
   virtual ~Env();
@@ -171,7 +171,7 @@ class TERARK_DB_DLL Env {
 };
 
 // A file abstraction for reading sequentially through a file
-class TERARK_DB_DLL SequentialFile {
+class TERICHDB_DLL SequentialFile {
  public:
   SequentialFile() { }
   virtual ~SequentialFile();
@@ -202,7 +202,7 @@ class TERARK_DB_DLL SequentialFile {
 };
 
 // A file abstraction for randomly reading the contents of a file.
-class TERARK_DB_DLL RandomAccessFile {
+class TERICHDB_DLL RandomAccessFile {
  public:
   RandomAccessFile() { }
   virtual ~RandomAccessFile();
@@ -228,7 +228,7 @@ class TERARK_DB_DLL RandomAccessFile {
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
 // at a time to the file.
-class TERARK_DB_DLL WritableFile {
+class TERICHDB_DLL WritableFile {
  public:
   WritableFile() { }
   virtual ~WritableFile();
@@ -245,7 +245,7 @@ class TERARK_DB_DLL WritableFile {
 };
 
 // An interface for writing log messages.
-class TERARK_DB_DLL Logger {
+class TERICHDB_DLL Logger {
  public:
   Logger() { }
   virtual ~Logger();
@@ -261,7 +261,7 @@ class TERARK_DB_DLL Logger {
 
 
 // Identifies a locked file.
-class TERARK_DB_DLL FileLock {
+class TERICHDB_DLL FileLock {
  public:
   FileLock() { }
   virtual ~FileLock();
@@ -272,7 +272,7 @@ class TERARK_DB_DLL FileLock {
 };
 
 // Log the specified data to *info_log if info_log is non-NULL.
-TERARK_DB_DLL
+TERICHDB_DLL
 extern void Log(Logger* info_log, const char* format, ...)
 #   if defined(__GNUC__) || defined(__clang__)
     __attribute__((__format__ (__printf__, 2, 3)))
@@ -280,19 +280,19 @@ extern void Log(Logger* info_log, const char* format, ...)
     ;
 
 // A utility routine: write "data" to the named file.
-TERARK_DB_DLL
+TERICHDB_DLL
 extern Status WriteStringToFile(Env* env, const Slice& data,
                                 const std::string& fname);
 
 // A utility routine: read contents of named file into *data
-TERARK_DB_DLL
+TERICHDB_DLL
 extern Status ReadFileToString(Env* env, const std::string& fname,
                                std::string* data);
 
 // An implementation of Env that forwards all calls to another Env.
 // May be useful to clients who wish to override just part of the
 // functionality of another Env.
-class TERARK_DB_DLL EnvWrapper : public Env {
+class TERICHDB_DLL EnvWrapper : public Env {
  public:
   // Initialize an EnvWrapper that delegates all calls to *t
   explicit EnvWrapper(Env* t) : target_(t) { }

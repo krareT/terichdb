@@ -2,7 +2,7 @@
 # coding=utf-8
 
 """
- install terarkdb online.
+ install terichdb online.
 
  @author royguo@terark.com
  @date 2016-07-21
@@ -20,11 +20,11 @@ import shutil
 """ Default Install PATH """
 INSTALL_PATH = "/usr/local"
 
-# TerarkDB Release Information
-TERARKDB_INFO = None
+# TerichDB Release Information
+TERICHDB_INFO = None
 # Current OS Platform
 PLATFORM = None
-# Selected TerarkDB Version
+# Selected TerichDB Version
 VERSION = None
 # BMI Support Flag
 BMI = False
@@ -32,16 +32,16 @@ BMI = False
 PACKAGE_NAME = None
 
 
-def select_terarkdb_version():
-    global TERARKDB_INFO
+def select_terichdb_version():
+    global TERICHDB_INFO
     global VERSION
     ver = raw_input('Please select a release version[e.g. 0.13.8], leave empty for latest version ...\n')
     while True:
         if ver is None or not ver.strip():
-            print 'use default version : ', TERARKDB_INFO[0]
-            VERSION = TERARKDB_INFO[0]
+            print 'use default version : ', TERICHDB_INFO[0]
+            VERSION = TERICHDB_INFO[0]
             break
-        elif ver in TERARKDB_INFO:
+        elif ver in TERICHDB_INFO:
             print 'use version : ', ver
             VERSION = ver
             break
@@ -97,28 +97,28 @@ def check_BMI_support():
 
 
 def check_package_info():
-    global TERARKDB_INFO
-    print 'Checking TerarkDB releases ...'
+    global TERICHDB_INFO
+    print 'Checking TerichDB releases ...'
     try:
-        resp = urllib2.urlopen("http://terark.com/download/terarkdb/releases")
+        resp = urllib2.urlopen("http://terark.com/download/terichdb/releases")
         jsonstr = resp.read()
         resp.close()
-        TERARKDB_INFO = json.loads(jsonstr)
-        TERARKDB_INFO = [str(i) for i in sorted(TERARKDB_INFO, reverse=True)]
-        print 'Available versions : \t', TERARKDB_INFO
+        TERICHDB_INFO = json.loads(jsonstr)
+        TERICHDB_INFO = [str(i) for i in sorted(TERICHDB_INFO, reverse=True)]
+        print 'Available versions : \t', TERICHDB_INFO
     except RuntimeError, e:
         print e
 
 
 def download_package():
-    global TERARKDB_INFO
+    global TERICHDB_INFO
     global VERSION
     global PLATFORM
     global BMI
     global PACKAGE_NAME
 
     selection = []
-    resp = urllib2.urlopen("http://terark.com/download/terarkdb/release/" + VERSION)
+    resp = urllib2.urlopen("http://terark.com/download/terichdb/release/" + VERSION)
     jsonstr = resp.read()
     resp.close()
     pkgs = json.loads(jsonstr)
@@ -126,10 +126,10 @@ def download_package():
         if (BMI and pkg['name'].find('bmi2-1') > -1) or (not BMI and pkg['name'].find('bmi2-0') > -1):
             selection.append({"name": pkg['name'].split('/')[1], "url": pkg['url']})
 
-    print "Please select TerarkDB package fit for your system :"
+    print "Please select TerichDB package fit for your system :"
 
     if len(selection) == 0:
-      print 'There is no packages available for your system under the selected TerarkDB version, please retry with another version.'
+      print 'There is no packages available for your system under the selected TerichDB version, please retry with another version.'
       exit(0)
 
     for i in range(len(selection)):
@@ -163,11 +163,11 @@ def install_package():
     global INSTALL_PATH
     print 'Decompressing, may take a few seconds... '
 
-    if os.path.exists("terarkdb_tmp"):
-        shutil.rmtree("terarkdb_tmp")
+    if os.path.exists("terichdb_tmp"):
+        shutil.rmtree("terichdb_tmp")
     if PACKAGE_NAME.endswith("tgz"):
         tar = tarfile.open(PACKAGE_NAME, "r:gz")
-        tar.extractall("terarkdb_tmp")
+        tar.extractall("terichdb_tmp")
         tar.close()
     else:
         print 'Unexpected package name, exit!'
@@ -193,17 +193,17 @@ def install_package():
     if os.path.exists(basepath):
         shutil.rmtree(basepath)
 
-    shutil.move("terarkdb_tmp/pkg/" + PACKAGE_NAME[0:-4], basepath)
+    shutil.move("terichdb_tmp/pkg/" + PACKAGE_NAME[0:-4], basepath)
 
     if os.path.exists(basepath):
         print """
             **************************************************************************************************
 
-            TerarkDB is installed successfully:
+            TerichDB is installed successfully:
 
             \t %s/
                                 \_api/          Third-party APIs, e.g. LevelDB API.
-                                \_include/      TerarkDB native API.
+                                \_include/      TerichDB native API.
                                 \_lib/          Libraries
                                 \_bin/          Useful tools, e.g. Schema to C++ Structure converter.
 
@@ -229,13 +229,13 @@ def install_package():
 
 def cleanup():
     os.remove(PACKAGE_NAME)
-    shutil.rmtree("terarkdb_tmp")
+    shutil.rmtree("terichdb_tmp")
     print 'Finish installation\n\n'
 
 
 if __name__ == '__main__':
     check_package_info()
-    select_terarkdb_version()
+    select_terichdb_version()
     check_platform()
     check_compiler()
     check_BMI_support()

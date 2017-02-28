@@ -1,0 +1,141 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\terark">
+      <UniqueIdentifier>{f0b50340-b699-433f-8615-91506e6f51da}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\terark\terichdb">
+      <UniqueIdentifier>{c3e366f4-e257-4477-b67b-5490e53f9e10}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark">
+      <UniqueIdentifier>{13635243-d206-43bb-bd92-31b2cc702bda}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\terark\terichdb">
+      <UniqueIdentifier>{63670d04-8922-42d1-af12-dee2f8216179}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\nlohmann">
+      <UniqueIdentifier>{63c92b33-47f6-4eef-a698-02c8ec25e05a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\src\terark\terichdb\db_index.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\db_store.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\db_conf.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\db_table.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\mock_db_engine.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\record_data.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\seg_db.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\db_segment.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\seq_num_index.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\json.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\db_context.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\intkey_index.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\nlohmann\json.hpp">
+      <Filter>Header Files\nlohmann</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\zip_int_store.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\fixed_len_key_index.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\fixed_len_store.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\appendonly.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\db_dll_decl.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\terark\terichdb\delete_on_close_file_lock.hpp">
+      <Filter>Header Files\terark\terichdb</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\db_index.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\db_store.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\db_conf.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\db_table.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\mock_db_engine.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\db_segment.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\seq_num_index.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\db_context.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\intkey_index.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\zip_int_store.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\fixed_len_key_index.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\fixed_len_store.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\appendonly.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\terark\terichdb\delete_on_close_file_lock.cpp">
+      <Filter>Source Files\terark\terichdb</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

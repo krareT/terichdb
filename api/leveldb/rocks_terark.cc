@@ -80,19 +80,19 @@ DB::ListColumnFamilies(
 	std::vector<std::string> *column_families)
 {
 	std::vector<std::string> cf;
-	fs::path dbdir = fs::path(name) / "TerarkDB";
+	fs::path dbdir = fs::path(name) / "TerichDB";
 	fs::path metaPath = dbdir / "dbmeta.json";
 	if (!fs::exists(metaPath)) {
 		fprintf(stderr, "ERROR: not exists: %s\n", metaPath.string().c_str());
 		return Status::InvalidArgument("ListColumnFamilies: dbmeta.json is missing", dbdir.string());
 	}
 	try {
-		terark::db::SchemaConfigPtr sconf = new terark::db::SchemaConfig();
+		terark::terichdb::SchemaConfigPtr sconf = new terark::terichdb::SchemaConfig();
 		sconf->loadJsonFile(metaPath.string());
 		column_families->resize(0);
 		size_t cgNum = sconf->getColgroupNum();
 		for (size_t i = 0; i < cgNum; ++i) {
-			const terark::db::Schema& schema = sconf->getColgroupSchema(i);
+			const terark::terichdb::Schema& schema = sconf->getColgroupSchema(i);
 			column_families->push_back(schema.m_name);
 		}
 	}

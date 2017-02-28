@@ -12,7 +12,7 @@
 
 #include <stdint.h>
 #include <string>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 
 namespace leveldb {
 
@@ -22,7 +22,7 @@ class Slice;
 // used as keys in an sstable or a database.  A Comparator implementation
 // must be thread-safe since leveldb may invoke its methods concurrently
 // from multiple threads.
-class TERARK_DB_DLL Comparator {
+class TERICHDB_DLL Comparator {
  public:
   virtual ~Comparator();
 

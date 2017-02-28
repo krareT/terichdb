@@ -27,7 +27,7 @@
 #endif
 
 #include <string>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 #include "status.h"
 
 namespace leveldb {
@@ -38,7 +38,7 @@ class ColumnFamilyHandle;
 struct SliceParts;
 #endif
 
-class TERARK_DB_DLL WriteBatch {
+class TERICHDB_DLL WriteBatch {
  public:
 #ifdef HAVE_ROCKSDB
   explicit WriteBatch(size_t reserved_bytes = 0);
@@ -68,7 +68,7 @@ class TERARK_DB_DLL WriteBatch {
 #endif
 
   // Support for iterating over the contents of a batch.
-  class TERARK_DB_DLL Handler {
+  class TERICHDB_DLL Handler {
    public:
     virtual ~Handler();
 #ifdef HAVE_ROCKSDB

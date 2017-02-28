@@ -19,12 +19,12 @@
 #endif
 
 #include <string>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 #include "slice.h"
 
 namespace leveldb {
 
-class TERARK_DB_DLL Status {
+class TERICHDB_DLL Status {
  public:
   // Create a success status.
   Status() : state_(NULL) { }

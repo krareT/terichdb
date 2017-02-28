@@ -20,13 +20,13 @@
 #define leveldb rocksdb
 #endif
 
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 #include "slice.h"
 #include "status.h"
 
 namespace leveldb {
 
-class TERARK_DB_DLL Iterator {
+class TERICHDB_DLL Iterator {
  public:
   Iterator();
   virtual ~Iterator();
@@ -96,11 +96,11 @@ class TERARK_DB_DLL Iterator {
 };
 
 // Return an empty iterator (yields nothing).
-TERARK_DB_DLL
+TERICHDB_DLL
 extern Iterator* NewEmptyIterator();
 
 // Return an empty iterator with the specified status.
-TERARK_DB_DLL
+TERICHDB_DLL
 extern Iterator* NewErrorIterator(const Status& status);
 
 }  // namespace leveldb

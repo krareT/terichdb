@@ -25,7 +25,7 @@
 
 #include <memory>
 #include <stdint.h>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 #include "slice.h"
 
 namespace leveldb {
@@ -34,13 +34,13 @@ class Cache;
 
 // Create a new cache with a fixed size capacity.  This implementation
 // of Cache uses a least-recently-used eviction policy.
-TERARK_DB_DLL Cache* NewLRUCache(size_t capacity);
+TERICHDB_DLL Cache* NewLRUCache(size_t capacity);
 #ifdef HAVE_ROCKSDB
-TERARK_DB_DLL Cache* NewLRUCache(size_t capacity, int numSharedBits);
-TERARK_DB_DLL Cache* NewLRUCache(size_t capacity, int numSharedBits, int removeScanCountLimit);
+TERICHDB_DLL Cache* NewLRUCache(size_t capacity, int numSharedBits);
+TERICHDB_DLL Cache* NewLRUCache(size_t capacity, int numSharedBits, int removeScanCountLimit);
 #endif
 
-class TERARK_DB_DLL Cache {
+class TERICHDB_DLL Cache {
  public:
   Cache() : rep_(NULL) { }
 

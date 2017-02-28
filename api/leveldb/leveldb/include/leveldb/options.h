@@ -12,7 +12,7 @@
 
 #include <memory>
 #include <stddef.h>
-#include <terark/db/db_dll_decl.hpp>
+#include <terark/terichdb/db_dll_decl.hpp>
 
 namespace leveldb {
 
@@ -38,7 +38,7 @@ enum CompressionType {
 };
 
 // Options to control the behavior of a database (passed to DB::Open)
-struct TERARK_DB_DLL Options {
+struct TERICHDB_DLL Options {
   // It is known that during compaction, the disk IO capacity is all taken
   // by the compaction thread, this leads to extremly BAD performance.
   // Limit compaction IO speed to this, in MB
@@ -191,17 +191,17 @@ struct TERARK_DB_DLL Options {
 };
 
 #ifdef HAVE_ROCKSDB
-struct TERARK_DB_DLL ColumnFamilyOptions : public Options {
+struct TERICHDB_DLL ColumnFamilyOptions : public Options {
   ColumnFamilyOptions() : Options() {}
 };
 
-struct TERARK_DB_DLL DBOptions : public Options {
+struct TERICHDB_DLL DBOptions : public Options {
   DBOptions() : Options() {}
 };
 #endif
 
 // Options that control read operations
-struct TERARK_DB_DLL ReadOptions {
+struct TERICHDB_DLL ReadOptions {
   // If true, all data read from underlying storage will be
   // verified against corresponding checksums.
   // Default: false
@@ -227,7 +227,7 @@ struct TERARK_DB_DLL ReadOptions {
 };
 
 // Options that control write operations
-struct TERARK_DB_DLL WriteOptions {
+struct TERICHDB_DLL WriteOptions {
   // If true, the write will be flushed from the operating system
   // buffer cache (by calling WritableFile::Sync()) before the write
   // is considered complete.  If this flag is true, writes will be
@@ -253,7 +253,7 @@ struct TERARK_DB_DLL WriteOptions {
 
 #ifdef HAVE_ROCKSDB
 // Options that control flush operations
-struct TERARK_DB_DLL FlushOptions {
+struct TERICHDB_DLL FlushOptions {
   // If true, the flush will wait until the flush is done.
   // Default: true
   bool wait;
