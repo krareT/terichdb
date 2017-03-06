@@ -244,7 +244,7 @@ void NestLoudsTrieStore::load(PathRef path) {
 	std::string fpath = fstring(path.string()).endsWith(".nlt")
 					  ? path.string()
 					  : path.string() + ".nlt";
-	m_store.reset(BlobStore::load_from(fpath, m_schema.m_mmapPopulate));
+	m_store.reset(BlobStore::load_from_mmap(fpath, m_schema.m_mmapPopulate));
 }
 
 void NestLoudsTrieStore::save(PathRef path) const {
