@@ -332,12 +332,17 @@ ${LeveldbApi_r} : $(call objs,LeveldbApi,r)
 ${static_LeveldbApi_d} : $(call objs,LeveldbApi,d)
 ${static_LeveldbApi_r} : $(call objs,LeveldbApi,r)
 
+TarBallBaseName := ${TerichDB_lib}-${BUILD_NAME}
 TarBall := pkg/${TerichDB_lib}-${BUILD_NAME}
 .PHONY : pkg
 pkg: ${TarBall}.tgz
 scp: ${TarBall}.tgz.scp.done
+oss: ${TarBall}.tgz.oss.done
 ${TarBall}.tgz.scp.done : ${TarBall}.tgz
 	scp -P 22    $< root@nark.cc:/var/www/html/download/
+	touch $@
+${TarBall}.tgz.oss.done : ${TarBall}.tgz
+	ossutil cp $< oss://terark-downloads/terichdb/$(notdir $<)
 	touch $@
 
 ${TarBall}.tgz : ${TerichDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} \
@@ -395,7 +400,7 @@ ifeq (${PKG_WITH_DEP},1)
 endif
 	echo $(shell date "+%Y-%m-%d %H:%M:%S") > ${TarBall}/package.buildtime.txt
 	echo $(shell git log | head -n1) >> ${TarBall}/package.buildtime.txt
-	tar czf ${TarBall}.tgz ${TarBall}
+	cd pkg; tar czf ${TarBallBaseName}.tgz ${TarBallBaseName}
 
 ifeq (${WITH_BMI2},0)
 terark-base/${BUILD_ROOT}/lib/libterark-core-${COMPILER}-d${DLL_SUFFIX} \
