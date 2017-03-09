@@ -342,7 +342,7 @@ ${TarBall}.tgz.scp.done : ${TarBall}.tgz
 	scp -P 22    $< root@nark.cc:/var/www/html/download/
 	touch $@
 ${TarBall}.tgz.oss.done : ${TarBall}.tgz
-	ossutil cp $< oss://terark-downloads/terichdb/$(notdir $<)
+	ossutil cp $< oss://terark-downloads/terichdb/$(notdir $<) -f
 	touch $@
 
 ${TarBall}.tgz : ${TerichDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} \
