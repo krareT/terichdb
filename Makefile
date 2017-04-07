@@ -345,7 +345,7 @@ ${TarBall}.tgz.oss.done : ${TarBall}.tgz
 ifeq (${REVISION},)
 	$(error var REVISION must be defined for target oss)
 endif
-	ossutil cp $< oss://terark-downloads/terichdb/${REVISION}/$(notdir $<) -f
+	ossutil.sh cp $< oss://terark-downloads/terichdb/${REVISION}/$(notdir $<) -f
 	touch $@
 
 ${TarBall}.tgz : ${TerichDB_d} ${LeveldbApi_d} ${DfaDB_d} ${TrbDB_d} ${Tiger_d} \
