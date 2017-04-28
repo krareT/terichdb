@@ -236,7 +236,7 @@ NestLoudsTrieStore::build_by_iter(const Schema& schema, PathRef fpath,
 				, __FILE__, __LINE__, physicId, physicNum, logicNum);
 		}
 	}
-	m_store.reset(builder->finish());
+	m_store.reset(builder->finish_and_free_dict());
 	builder.reset(); // explicit destory builder, before lock.unlock
 }
 
