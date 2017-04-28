@@ -177,7 +177,9 @@ DfaDbReadonlySegment::compressSingleColgroup(ReadableSegment* input, DbContext* 
 				builder->addRecord(val);
 		}
 		iter = nullptr;
-		m_colgroups[0] = new NestLoudsTrieStore(valueSchema, builder->finish_and_free_dict());
+		m_colgroups[0] = new NestLoudsTrieStore(valueSchema, builder->finish(
+            DictZipBlobStore::ZipBuilder::FinishFreeDict | DictZipBlobStore::ZipBuilder::FinishWriteDictFile
+        ));
 	}
 	else if (store) {
 		m_colgroups[0] = std::move(store);
@@ -299,7 +301,9 @@ DfaDbReadonlySegment::compressSingleKeyValue(ReadableSegment* input, DbContext* 
 			}
 		}
 		iter = nullptr;
-		m_colgroups[1] = new NestLoudsTrieStore(valueSchema, builder->finish_and_free_dict());
+		m_colgroups[1] = new NestLoudsTrieStore(valueSchema, builder->finish(
+            DictZipBlobStore::ZipBuilder::FinishFreeDict | DictZipBlobStore::ZipBuilder::FinishWriteDictFile
+        ));
 	}
 	else if (store) {
 		m_colgroups[1] = std::move(store);
