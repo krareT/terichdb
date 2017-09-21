@@ -406,7 +406,6 @@ size_t rank_select_mixed_se_512::one_seq_len_dx(size_t bitpos) const {
         bm_uint_t y = ~(x >> mod);
         size_t ctz = fast_ctz(y);
         if (ctz < WordBits - mod) {
-            // last zero bit after bitpos is in x
             return ctz;
         }
         assert(ctz == WordBits - mod);
@@ -440,7 +439,6 @@ size_t rank_select_mixed_se_512::zero_seq_len_dx(size_t bitpos) const {
         if (x & (bm_uint_t(1) << mod)) return 0;
         bm_uint_t y = x >> mod;
         if (y) {
-            // last zero bit after bitpos is in x
             return fast_ctz(y);
         }
         j += 2;
@@ -462,6 +460,75 @@ size_t rank_select_mixed_se_512::zero_seq_len_dx(size_t bitpos) const {
 
 template size_t TERARK_DLL_EXPORT rank_select_mixed_se_512::zero_seq_len_dx<0>(size_t bitpos) const;
 template size_t TERARK_DLL_EXPORT rank_select_mixed_se_512::zero_seq_len_dx<1>(size_t bitpos) const;
+
+template<size_t dimensions>
+size_t rank_select_mixed_se_512::one_seq_revlen_dx(size_t endpos) const {
+    assert(endpos <= m_size[dimensions]);
+    size_t j, sum;
+    if (endpos%WordBits != 0) {
+        j = (endpos-1) / WordBits * 2 + dimensions;
+        bm_uint_t x = m_words[j];
+		if ( !(x & (bm_uint_t(1) << (endpos-1)%WordBits)) ) return 0;
+		bm_uint_t y = ~(x << (WordBits - endpos%WordBits));
+        size_t clz = fast_clz(y);
+        assert(clz <= endpos%WordBits);
+        assert(clz >= 1);
+        if (clz < endpos%WordBits) {
+            return clz;
+        }
+        sum = clz;
+    }
+    else {
+        if (endpos == 0) return 0;
+        j = (endpos-1) / WordBits * 2 + dimensions + 2;
+        sum = 0;
+    }
+    while (j >= 2) {
+        j -= 2;
+        bm_uint_t y = ~m_words[j];
+        if (0 == y)
+            sum += WordBits;
+        else
+            return sum + fast_clz(y);
+    }
+    return sum;
+}
+
+template size_t TERARK_DLL_EXPORT rank_select_mixed_se_512::one_seq_revlen_dx<0>(size_t endpos) const;
+template size_t TERARK_DLL_EXPORT rank_select_mixed_se_512::one_seq_revlen_dx<1>(size_t endpos) const;
+
+template<size_t dimensions>
+size_t rank_select_mixed_se_512::zero_seq_revlen_dx(size_t endpos) const {
+    assert(endpos <= m_size[dimensions]);
+    size_t j, sum;
+    if (endpos%WordBits != 0) {
+        j = (endpos-1) / WordBits * 2 + dimensions;
+        bm_uint_t x = m_words[j];
+		if (x & (bm_uint_t(1) << (endpos-1)%WordBits)) return 0;
+		bm_uint_t y = x << (WordBits - endpos%WordBits);
+        if (y) {
+            return fast_clz(y);
+        }
+        sum = endpos%WordBits;
+    }
+    else {
+        if (endpos == 0) return 0;
+        j = (endpos-1) / WordBits * 2 + dimensions + 2;
+        sum = 0;
+    }
+    while (j >= 2) {
+        j -= 2;
+        bm_uint_t y = m_words[j];
+        if (0 == y)
+            sum += WordBits;
+        else
+            return sum + fast_clz(y);
+    }
+    return sum;
+}
+
+template size_t TERARK_DLL_EXPORT rank_select_mixed_se_512::zero_seq_revlen_dx<0>(size_t endpos) const;
+template size_t TERARK_DLL_EXPORT rank_select_mixed_se_512::zero_seq_revlen_dx<1>(size_t endpos) const;
 
 template<size_t dimensions>
 size_t rank_select_mixed_se_512::select0_dx(size_t Rank0) const {

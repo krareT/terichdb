@@ -465,7 +465,7 @@ template<class BaseClass>
 void OutputBufferBase<BaseClass>::flush_and_write_byte(byte b)
 {
 	assert(m_pos == m_end);
-	do_flush_and_write(&b, 1);
+	flush_and_ensureWrite(&b, 1);
 }
 
 template<class BaseClass>

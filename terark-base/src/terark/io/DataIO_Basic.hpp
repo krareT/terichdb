@@ -62,7 +62,7 @@ IsDump_false Deduce_DataIO_is_dump(DataIO*, T&);
 
 #define DataIO_is_dump_by_sizeof(DataIO, T) \
   ( sizeof(MplBoolTrueToSizeOne(Deduce_DataIO_is_dump( \
-    (DataIO*)(NULL), DataIO_ReturnObjRef<T>()))) == 1 )
+    (DataIO*)(NULL), DataIO_ReturnObjRef((T*)(NULL))))) == 1 )
 
 template<class DataIO, class T1, class T2>
 boost::mpl::bool_<

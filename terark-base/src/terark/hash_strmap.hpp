@@ -749,9 +749,14 @@ public:
 		newBucketSize = __hsm_stl_next_prime(newBucketSize);
 		if (newBucketSize != nBucket) {
 			// shrink or enlarge
-			if (bucket != &tail) {
-				free(bucket);
-			}
+      if (nBucket != 1) {
+        assert(NULL != bucket);
+        free(bucket);
+      }
+      else {
+        assert(tail == *bucket);
+      }
+
 			bucket = (LinkTp*)malloc(sizeof(LinkTp) * newBucketSize);
 			if (NULL == bucket) { // how to handle?
 				assert(0); // immediately fail on debug mode

@@ -92,6 +92,18 @@ inline SizeT align_down(SizeT size, AlignT align_size)
 	return size - size % align_size;
 }
 
+// StaticUintBits<255>::value = 8
+// StaticUintBits<256>::value = 9
+template<size_t x>
+struct StaticUintBits {
+	enum { value = StaticUintBits< (x >> 1) >::value + 1 };
+};
+template<>
+struct StaticUintBits<0> { enum { value = 0 }; };
+
+template<class IntX, class IntY>
+inline IntX ceiled_div(IntX x, IntY y) { return (x + y - 1) / y; }
+
 #define TERARK_HAS_BSET(set, subset) (((set) & (subset)) == (subset))
 
 /*

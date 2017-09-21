@@ -83,10 +83,10 @@ void DataIO_load_vector(DataIO& dio, T*, Vector& x, Bswap) {
 }
 template<class DataIO, class T, class Vector, class Bswap>
 void DataIO_load_add_vector(DataIO& dio, T*, Vector& x, Bswap) {
-	if (size_t size = dio.template load_as<var_size_t>().t) {
+	if (size_t addsize = dio.template load_as<var_size_t>().t) {
 		size_t oldsize = x.size();
-		FastResizeVector(dio, x, oldsize + size);
-		DataIO_load_array(dio, &*x.begin() + oldsize, size, Bswap());
+		FastResizeVector(dio, x, oldsize + addsize);
+		DataIO_load_array(dio, &*x.begin() + oldsize, addsize, Bswap());
 	}
 }
 

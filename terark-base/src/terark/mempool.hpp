@@ -3,6 +3,7 @@
 
 #include "valvec.hpp"
 #include <boost/integer/static_log2.hpp>
+#include <boost/mpl/if.hpp>
 
 namespace terark {
 

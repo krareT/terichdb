@@ -12,6 +12,7 @@ class TERARK_DLL_EXPORT rank_select_simple
     size_t    m_max_rank1;
 public:
     typedef boost::mpl::false_ is_mixed;
+    typedef uint32_t index_t;
     rank_select_simple();
     rank_select_simple(size_t n, bool val = false);
     rank_select_simple(size_t n, valvec_no_init);

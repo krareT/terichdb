@@ -15,6 +15,7 @@ class TERARK_DLL_EXPORT rank_select_se_512_tpl
     : public RankSelectConstants<512>, public febitvec {
 public:
     typedef boost::mpl::false_ is_mixed;
+    typedef rank_cache_base_t index_t;
     rank_select_se_512_tpl();
     rank_select_se_512_tpl(size_t n, bool val = false);
     rank_select_se_512_tpl(size_t n, valvec_no_init);
@@ -45,7 +46,7 @@ protected:
     struct TERARK_DLL_EXPORT RankCache512 {
         rank_cache_base_t base;
         uint64_t          rela;
-        explicit RankCache512(uint32_t l1) {
+        explicit RankCache512(index_t l1) {
             static_assert(sizeof(RankCache512) == sizeof(rank_cache_base_t) + sizeof(rela), "bad RankCache512 size");
             base = l1;
             rela = 0;
@@ -55,18 +56,18 @@ protected:
 #pragma pack(pop)
     void nullize_cache();
     RankCache512* m_rank_cache;
-    uint32_t*  m_sel0_cache;
-    uint32_t*  m_sel1_cache;
+    index_t*   m_sel0_cache;
+    index_t*   m_sel1_cache;
     size_t     m_max_rank0;
     size_t     m_max_rank1;
 public:
     const RankCache512* get_rank_cache() const { return m_rank_cache; }
-    const uint32_t* get_sel0_cache() const { return m_sel0_cache; }
-    const uint32_t* get_sel1_cache() const { return m_sel1_cache; }
+    const index_t* get_sel0_cache() const { return m_sel0_cache; }
+    const index_t* get_sel1_cache() const { return m_sel1_cache; }
     static inline size_t fast_rank0(const bm_uint_t* bits, const RankCache512* rankCache, size_t bitpos);
     static inline size_t fast_rank1(const bm_uint_t* bits, const RankCache512* rankCache, size_t bitpos);
-    static inline size_t fast_select0(const bm_uint_t* bits, const uint32_t* sel0, const RankCache512* rankCache, size_t id);
-    static inline size_t fast_select1(const bm_uint_t* bits, const uint32_t* sel1, const RankCache512* rankCache, size_t id);
+    static inline size_t fast_select0(const bm_uint_t* bits, const index_t* sel0, const RankCache512* rankCache, size_t id);
+    static inline size_t fast_select1(const bm_uint_t* bits, const index_t* sel1, const RankCache512* rankCache, size_t id);
 
     size_t excess1(size_t bp) const { return 2*rank1(bp) - bp; }
     static size_t fast_excess1(const bm_uint_t* bits, const RankCache512* rankCache, size_t bitpos)
@@ -109,7 +110,7 @@ fast_rank1(const bm_uint_t* bits, const RankCache512* rankCache, size_t bitpos) 
 
 template<class rank_cache_base_t>
 inline size_t rank_select_se_512_tpl<rank_cache_base_t>::
-fast_select0(const bm_uint_t* bits, const uint32_t* sel0, const RankCache512* rankCache, size_t Rank0) {
+fast_select0(const bm_uint_t* bits, const index_t* sel0, const RankCache512* rankCache, size_t Rank0) {
     size_t lo = sel0[Rank0 / LineBits];
     size_t hi = sel0[Rank0 / LineBits + 1];
     while (lo < hi) {
@@ -157,7 +158,7 @@ fast_select0(const bm_uint_t* bits, const uint32_t* sel0, const RankCache512* ra
 
 template<class rank_cache_base_t>
 inline size_t rank_select_se_512_tpl<rank_cache_base_t>::
-fast_select1(const bm_uint_t* bits, const uint32_t* sel1, const RankCache512* rankCache, size_t Rank1) {
+fast_select1(const bm_uint_t* bits, const index_t* sel1, const RankCache512* rankCache, size_t Rank1) {
     size_t lo = sel1[Rank1 / LineBits];
     size_t hi = sel1[Rank1 / LineBits + 1];
     while (lo < hi) {

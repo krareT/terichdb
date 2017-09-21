@@ -68,8 +68,17 @@ bool operator> (fstring16 x, fstring16 y) { return   y < x ; }
 bool operator<=(fstring16 x, fstring16 y) { return !(y < x); }
 bool operator>=(fstring16 x, fstring16 y) { return !(x < y); }
 
-
 #ifdef _MSC_VER
+// boost 1.62- returns const Char*
+// boost 1.63+ returns std::pair<const Char*, const Char*>
+// make the brain dead boost happy
+template<class Iter>
+static inline
+const Iter fuck_boost(std::pair<Iter,Iter> p) { return p.first; }
+template<class Iter>
+static inline
+const Iter fuck_boost(Iter p) { return p; }
+
 TERARK_DLL_EXPORT
 char*
 terark_fstrstr(const char* haystack, size_t haystack_len
@@ -77,8 +86,8 @@ terark_fstrstr(const char* haystack, size_t haystack_len
 {
 	const char* hay_end = haystack + haystack_len;
 	const char* needle_end = needle + needle_len;
-	const char* q = boost::algorithm::boyer_moore_horspool_search(
-		haystack, hay_end, needle, needle_end);
+	const char* q = fuck_boost(boost::algorithm::boyer_moore_horspool_search(
+		haystack, hay_end, needle, needle_end));
 	if (q == hay_end)
 		return NULL;
 	else
@@ -93,8 +102,8 @@ terark_fstrstr(const uint16_t* haystack, size_t haystack_len
 #if defined(_MSC_VER)
 	const uint16_t* hay_end = haystack + haystack_len;
 	const uint16_t* needle_end = needle + needle_len;
-	const uint16_t* q = boost::algorithm::boyer_moore_horspool_search(
-		haystack, hay_end, needle, needle_end);
+	const uint16_t* q = fuck_boost(boost::algorithm::boyer_moore_horspool_search(
+		haystack, hay_end, needle, needle_end));
 	if (q == needle_end)
 		return NULL;
 	else

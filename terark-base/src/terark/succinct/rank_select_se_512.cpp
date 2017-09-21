@@ -58,13 +58,13 @@ rank_select_se_512_tpl<rank_cache_base_t>::rank_select_se_512_tpl(const rank_sel
     }
     if (y.m_sel0_cache) {
         assert(m_rank_cache);
-        m_sel0_cache = (uint32_t*)this->m_words
-                     + (y.m_sel0_cache - (uint32_t*)y.m_words);
+        m_sel0_cache = (index_t*)this->m_words
+                     + (y.m_sel0_cache - (index_t*)y.m_words);
     }
     if (y.m_sel1_cache) {
         assert(m_rank_cache);
-        m_sel1_cache = (uint32_t*)this->m_words
-                     + (y.m_sel1_cache - (uint32_t*)y.m_words);
+        m_sel1_cache = (index_t*)this->m_words
+                     + (y.m_sel1_cache - (index_t*)y.m_words);
     }
     m_max_rank0 = y.m_max_rank0;
     m_max_rank1 = y.m_max_rank1;
@@ -128,7 +128,7 @@ void rank_select_se_512_tpl<rank_cache_base_t>::risk_mmap_from(unsigned char* ba
     m_max_rank1 = m_rank_cache[nlines].base;
     m_max_rank0 = m_size - m_max_rank1;
     size_t select0_slots = (m_max_rank0 + LineBits - 1) / LineBits;
-    uint32_t* select_index = (uint32_t*)(m_rank_cache + nlines + 1);
+    index_t* select_index = (index_t*)(m_rank_cache + nlines + 1);
     if (flags & (1 << 0))
         m_sel0_cache = select_index, select_index += select0_slots + 1;
     if (flags & (1 << 1))
@@ -178,21 +178,21 @@ void rank_select_se_512_tpl<rank_cache_base_t>::build_cache(bool speed_select0, 
         //    printf("i = %zd, j = %zd, r = %zd\n", i, j, r);
         }
         rela &= uint64_t(-1) >> 1; // set unused bit as zero
-        rank_cache[i].base = uint32_t(Rank1);
+        rank_cache[i].base = index_t(Rank1);
         rank_cache[i].rela = rela;
         Rank1 += r;
     }
-    rank_cache[nlines] = RankCache512(uint32_t(Rank1));
+    rank_cache[nlines] = RankCache512(index_t(Rank1));
     m_max_rank0 = m_size - Rank1;
     m_max_rank1 = Rank1;
-//    printf("size = %zd, nlines = %zd\n", m_size, nlines);
-//    printf("max_rank1 = %zd, max_rank0 = %zd\n", m_max_rank1, m_max_rank0);
+//  printf("size = %zd, nlines = %zd\n", m_size, nlines);
+//  printf("max_rank1 = %zd, max_rank0 = %zd\n", m_max_rank1, m_max_rank0);
     size_t select0_slots = (m_max_rank0 + LineBits - 1) / LineBits;
     size_t select1_slots = (m_max_rank1 + LineBits - 1) / LineBits;
-    size_t u32_slots = ( (speed_select0 ? select0_slots + 1 : 0)
-                       + (speed_select1 ? select1_slots + 1 : 0)
-                       + 1
-                       ) & ~size_t(1);
+    size_t u32_slots = (1
+        + (speed_select0 ? select0_slots + 1 : 0) * (sizeof(index_t) / sizeof(uint32_t))
+        + (speed_select1 ? select1_slots + 1 : 0) * (sizeof(index_t) / sizeof(uint32_t))
+        ) & ~size_t(1);
     size_t flag_as_u32_slots = 2;
     reserve(m_capacity + 32 * (u32_slots + flag_as_u32_slots));
     rank_cache = m_rank_cache = (RankCache512*)(m_words + ceiled_bits/WordBits);
@@ -202,9 +202,9 @@ void rank_select_se_512_tpl<rank_cache_base_t>::build_cache(bool speed_select0, 
         std::fill(start, finish, 0);
     }
 
-    uint32_t* select_index = (uint32_t*)(rank_cache + nlines + 1);
+    index_t* select_index = (index_t*)(rank_cache + nlines + 1);
     if (speed_select0) {
-        uint32_t* sel0_cache = select_index;
+        index_t* sel0_cache = select_index;
         sel0_cache[0] = 0;
         for(size_t j = 1; j < select0_slots; ++j) {
             size_t k = sel0_cache[j - 1];
@@ -216,7 +216,7 @@ void rank_select_se_512_tpl<rank_cache_base_t>::build_cache(bool speed_select0, 
         select_index += select0_slots + 1;
     }
     if (speed_select1) {
-        uint32_t* sel1_cache = select_index;
+        index_t* sel1_cache = select_index;
         sel1_cache[0] = 0;
         for(size_t j = 1; j < select1_slots; ++j) {
             size_t k = sel1_cache[j - 1];

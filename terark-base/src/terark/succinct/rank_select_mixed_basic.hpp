@@ -14,6 +14,7 @@ protected:
 	};
 public:
     typedef boost::mpl::true_ is_mixed;
+    typedef typename super::index_t index_t;
     typedef typename super::bldata_t bldata_t;
 	typedef rank_select_mixed_dimensions<super, 0> rank_select_view_0;
 	typedef rank_select_mixed_dimensions<super, 1> rank_select_view_1;
@@ -78,6 +79,8 @@ public:
 
 	size_t  one_seq_len(size_t bitpos) const { return this->template  one_seq_len_dx<dimensions>(bitpos); }
 	size_t zero_seq_len(size_t bitpos) const { return this->template zero_seq_len_dx<dimensions>(bitpos); }
+    size_t  one_seq_revlen(size_t endpos) const { return this->template  one_seq_revlen_dx<dimensions>(endpos); }
+    size_t zero_seq_revlen(size_t endpos) const { return this->template zero_seq_revlen_dx<dimensions>(endpos); }
 
     void build_cache(bool speed_select0, bool speed_select1) {
         this->template build_cache_dx<dimensions>(speed_select0, speed_select1);

@@ -265,7 +265,6 @@ struct basic_fstring {
 
 	template<class Vec>
 	size_t split(const Char delim, Vec* F, size_t max_fields = ~size_t(0)) const {
-	//	assert(n >= 0);
 		F->resize(0);
 		if (' ' == delim) {
 		   	// same as awk, skip first blank field, and skip dup blanks
@@ -276,7 +275,7 @@ struct basic_fstring {
 				const Char* next = col;
 				while (next < End && !isspace((unsigned char)(*next))) ++next;
 				F->push_back(typename Vec::value_type(col, next));
-				while (next < End &&  isspace(*next)) ++next; // skip blanks
+				while (next < End &&  isspace((unsigned char)(*next))) ++next; // skip blanks
 				col = next;
 			}
 			if (col < End)
@@ -301,9 +300,9 @@ struct basic_fstring {
 		assert(n >= 0);
 		size_t dlen = terark_fstrlen(delims);
 		if (0 == dlen) // empty delims redirect to blank delim
-			return split(' ', F);
+			return split(' ', F, max_fields);
 		if (1 == dlen)
-			return split(delims[0], F);
+			return split(delims[0], F, max_fields);
 		F->resize(0);
 		const Char *col = p, *End = p + n;
 		while (col <= End && F->size()+1 < max_fields) {
@@ -315,6 +314,81 @@ struct basic_fstring {
 		if (col <= End)
 			F->push_back(typename Vec::value_type(col, End));
 		return F->size();
+	}
+
+	template<class Func>
+	size_t split_f3(const Char delim, Func F, size_t max_fields = ~size_t(0)) const {
+		size_t nFields = 0;
+		if (' ' == delim) {
+			// same as awk, skip first blank field, and skip dup blanks
+			const Char *col = p, *End = p + n;
+			while (col < End && isspace((unsigned char)(*col)))
+				++col; // skip first blank field
+			while (col < End && nFields + 1 < max_fields) {
+				const Char* next = col;
+				while (next < End && !isspace((unsigned char)(*next))) ++next;
+				F(col, next, nFields);
+				while (next < End &&  isspace((unsigned char)(*next))) ++next; // skip blanks
+				col = next;
+				nFields++;
+			}
+			if (col < End) {
+				F(col, End, nFields);
+				nFields++;
+			}
+		}
+		else {
+			const Char *col = p, *End = p + n;
+			while (col <= End && nFields + 1 < max_fields) {
+				const Char* next = col;
+				while (next < End && delim != *next) ++next;
+				F(col, next, nFields);
+				col = next + 1;
+				nFields++;
+			}
+			if (col <= End) {
+				F(col, End, nFields);
+				nFields++;
+			}
+		}
+		return nFields;
+	}
+
+	template<class Func>
+	size_t split_f3(const Char* delims, Func F, size_t max_fields = ~size_t(0)) {
+		size_t dlen = terark_fstrlen(delims);
+		if (0 == dlen) // empty delims redirect to blank delim
+			return split_f3<Func>(' ', F, max_fields);
+		if (1 == dlen)
+			return split_f3<Func>(delims[0], F, max_fields);
+		size_t nFields = 0;
+		const Char *col = p, *End = p + n;
+		while (col <= End && nFields + 1 < max_fields) {
+			const Char* next = terark_fstrstr(col, End - col, delims, dlen);
+			if (NULL == next) next = End;
+			F(col, next, nFields);
+			col = next + dlen;
+			nFields++;
+		}
+		if (col <= End) {
+			F(col, End, nFields);
+			nFields++;
+		}
+		return nFields;
+	}
+
+private:
+	template<class Func2>
+	struct Func2_to_Func3 {
+		const Func2* f2;
+		Func2_to_Func3(const Func2& f) : f2(&f) {}
+		void operator()(const Char* beg, const Char* end, size_t/*nFields*/)
+		const { (*f2)(beg, end); }
+	};
+public:
+	template<class Delim, class Func>
+	size_t split_f2(Delim delim, Func F, size_t max_fields = ~size_t(0)) {
+		return split_f3(delim, Func2_to_Func3<Func>(F), max_fields);
 	}
 };
 
@@ -502,7 +576,7 @@ struct fstring_func {
 	struct equal_align {
 		HSM_FORCE_INLINE
 		bool operator()(const fstring x, const fstring y) const {
-			if (terark_unlikely(x.n != y.n))
+			if (x.n != y.n)
 				return false;
 			ptrdiff_t c = x.n - (SP_ALIGN-1);
 			ptrdiff_t i = 0;
@@ -519,7 +593,7 @@ struct fstring_func {
 	struct equal { // align or not align
 		HSM_FORCE_INLINE
 		bool operator()(const fstring x, const fstring y) const {
-			if (terark_unlikely(x.n != y.n))
+			if (x.n != y.n)
 				return false;
 			if (((intptr_t(x.p) | intptr_t(y.p)) & (SP_ALIGN-1)) == 0) {
 				ptrdiff_t c = x.n - (SP_ALIGN-1);

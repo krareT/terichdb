@@ -240,13 +240,72 @@ size_t rank_select_il::zero_seq_len(size_t bitpos) const {
 }
 
 size_t rank_select_il::one_seq_revlen(size_t endpos) const {
-    THROW_STD(invalid_argument, "Not Implemented");
-    return 0;
+    assert(endpos <= this->size());
+    size_t j, k, sum;
+    if (endpos % WordBits != 0) {
+        j = (endpos-1) / LineBits;
+        bm_uint_t x = m_lines[j].words[(endpos-1)%LineBits / WordBits];
+        if (!(x & (bm_uint_t(1) << (endpos-1)%WordBits))) return 0;
+        bm_uint_t y = ~(x << (WordBits - endpos%WordBits));
+        size_t clz = fast_clz(y);
+        assert(clz <= endpos%WordBits);
+        assert(clz >= 1);
+        if (clz < endpos%WordBits) {
+            return clz;
+        }
+        k = (endpos-1) % LineBits / WordBits - 1;
+        sum = clz;
+    }
+    else {
+        if (endpos == 0) return 0;
+        j = (endpos-1) / LineBits;
+        k = (endpos-1) % LineBits / WordBits;
+        sum = 0;
+    }
+    for (; j != size_t(-1); --j) {
+        for (; k != size_t(-1); --k) {
+            bm_uint_t y = ~m_lines[j].words[k];
+            if (0 == y)
+                sum += WordBits;
+            else
+                return sum + fast_clz(y);
+        }
+        k = 3;
+    }
+    return sum;
 }
 
 size_t rank_select_il::zero_seq_revlen(size_t endpos) const {
-    THROW_STD(invalid_argument, "Not Implemented");
-    return 0;
+    assert(endpos <= this->size());
+    size_t j, k, sum;
+    if (endpos % WordBits != 0) {
+        j = (endpos-1) / LineBits;
+        bm_uint_t x = m_lines[j].words[(endpos-1)%LineBits / WordBits];
+		if (x & (bm_uint_t(1) << (endpos-1)%WordBits)) return 0;
+		bm_uint_t y = x << (WordBits - endpos%WordBits);
+		if (y) {
+			return fast_clz(y);
+		}
+        k = (endpos-1) % LineBits / WordBits - 1;
+        sum = endpos%WordBits;
+    }
+    else {
+        if (endpos == 0) return 0;
+        j = (endpos-1) / LineBits;
+        k = (endpos-1) % LineBits / WordBits;
+        sum = 0;
+    }
+    for (; j != size_t(-1); --j) {
+        for (; k != size_t(-1); --k) {
+            bm_uint_t y = m_lines[j].words[k];
+            if (0 == y)
+                sum += WordBits;
+            else
+                return sum + fast_clz(y);
+        }
+        k = 3;
+    }
+    return sum;
 }
 
 size_t rank_select_il::select0(size_t Rank0) const {

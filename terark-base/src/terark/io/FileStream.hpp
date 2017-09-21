@@ -75,7 +75,7 @@ public:
 	bool eof() const throw() { return !!feof(m_fp); }
 	int  getByte() throw() { return fgetc(m_fp); }
 #endif
-	byte readByte() throw(EndOfFileException);
+	byte readByte();
 	void writeByte(byte b);
 
 	void ensureRead(void* vbuf, size_t length);
@@ -106,7 +106,7 @@ private:
 	size_t reader_remain_bytes() const { FILE* fp = m_fp; return fp->_IO_read_end - fp->_IO_read_ptr; }
 	size_t writer_remain_bytes() const { FILE* fp = m_fp; return fp->_IO_write_end - fp->_IO_write_ptr; }
 #endif
-	byte readByte_slow() throw(EndOfFileException);
+	byte readByte_slow();
 	void writeByte_slow(byte b);
 	void ensureRead_slow(void* vbuf, size_t length);
 	void ensureWrite_slow(const void* vbuf, size_t length);
@@ -134,7 +134,7 @@ public:
 
 #if defined(__GLIBC__)
 
-inline byte FileStream::readByte() throw(EndOfFileException) {
+inline byte FileStream::readByte() {
 	assert(m_fp);
 	FILE* fp = m_fp;
 	if (fp->_IO_read_ptr < fp->_IO_read_end) {
@@ -178,7 +178,7 @@ inline void FileStream::ensureWrite(const void* vbuf, size_t length) {
 
 #elif defined(_MSC_VER) && _MSC_VER <= 1800
 
-inline byte FileStream::readByte() throw(EndOfFileException) {
+inline byte FileStream::readByte() {
 	assert(m_fp);
 	FILE* fp = m_fp;
 	if (fp->_cnt > 0) {
@@ -226,7 +226,7 @@ inline void FileStream::ensureWrite(const void* vbuf, size_t length) {
 
 #else
 
-inline byte FileStream::readByte() throw(EndOfFileException)
+inline byte FileStream::readByte()
 {
 	assert(m_fp);
 #ifdef __USE_MISC

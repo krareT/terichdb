@@ -31,6 +31,7 @@ protected:
 
 public:
     typedef boost::mpl::false_ is_mixed;
+    typedef uint32_t index_t;
     rank_select_il();
     explicit
     rank_select_il(size_t bits, bool val = false);

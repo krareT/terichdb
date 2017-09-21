@@ -7,6 +7,7 @@
 
 namespace terark {
 
+// memory layout is binary compatible to SortedUintVec
 class UintVecMin0 {
 protected:
 	valvec<byte> m_data;
@@ -32,6 +33,11 @@ public:
 
 	void clear() { m_data.clear(); nullize(); }
 
+    void shrink_to_fit() {
+        resize(m_size);
+        m_data.shrink_to_fit();
+    }
+
 	void swap(UintVecMin0& y) {
 		m_data.swap(y.m_data);
 		std::swap(m_bits, y.m_bits);
@@ -45,6 +51,7 @@ public:
 	}
 
 	void risk_set_data(byte* Data, size_t num, size_t bits) {
+		assert(m_bits <= 64);
 #if TERARK_WORD_BITS == 64
 		// allowing bits > 58 will incur performance punish in get/set.
 		// 58 bit can span 9 bytes, but this only happens when start bit index
@@ -70,6 +77,7 @@ public:
 	size_t mem_size() const { return m_data.size(); }
 
 	void resize(size_t newsize) {
+		assert(m_bits <= 64);
 		size_t bytes = 0==newsize ? 0 : (m_bits*newsize + 7) / 8 + sizeof(size_t)-1 + 15;
 		bytes &= ~size_t(15); // align to 16
 		m_data.resize(bytes, 0);
@@ -80,10 +88,20 @@ public:
 	size_t operator[](size_t idx) const { return get(idx); }
 	size_t get(size_t idx) const {
 		assert(idx < m_size);
+		assert(m_bits <= 64);
 		return fast_get(m_data.data(), m_bits, m_mask, idx);
+	}
+	void get2(size_t idx, size_t aVals[2]) const {
+		const byte*  data = m_data.data();
+		const size_t bits = m_bits;
+		const size_t mask = m_mask;
+		assert(m_bits <= 64);
+		aVals[0] = fast_get(data, bits, mask, idx);
+		aVals[1] = fast_get(data, bits, mask, idx+1);
 	}
 	static
 	size_t fast_get(const byte* data, size_t bits, size_t mask, size_t idx) {
+		assert(bits <= 64);
 		size_t bit_idx = bits * idx;
 		size_t byte_idx = bit_idx / 8;
 		size_t val = unaligned_load<size_t>(data + byte_idx);
@@ -93,6 +111,7 @@ public:
 	void set_wire(size_t idx, size_t val) {
 		assert(idx < m_size);
 		assert(val <= m_mask);
+		assert(m_bits <= 64);
 		size_t bits = m_bits; // load member into a register
 		size_t mask = m_mask;
 		size_t bit_idx = bits * idx;
@@ -116,16 +135,13 @@ public:
 	void resize_with_wire_max_val(size_t num, Uint max_val) {
 		BOOST_STATIC_ASSERT(boost::is_unsigned<Uint>::value);
 	//	assert(max_val > 0);
-		size_t bits = 0;
-		while (max_val) {
-			bits++;
-			max_val >>= 1;
-		}
-		assert(bits <= sizeof(Uint) * 8);
+		assert(m_bits <= 64);
+    size_t bits = compute_uintbits(max_val);
 		resize_with_uintbits(num, bits);
 	}
 
 	void resize_with_uintbits(size_t num, size_t bits) {
+		assert(m_bits <= 64);
 #if TERARK_WORD_BITS == 64
 		// allowing bits > 58 will incure performance punish in get/set.
 		// 58 bit can span 9 bytes, but this only happens when start bit index
@@ -144,25 +160,42 @@ public:
 	}
 
 	void push_back(size_t val) {
-		assert(m_bits > 0);
-		if (compute_mem_size(m_bits, m_size) < m_data.size()) {
-			m_data.resize(m_data.size() * 2);
+		assert(m_bits <= 64);
+		if (compute_mem_size(m_bits, m_size+1) >= m_data.size()) {
+			m_data.resize(std::max(size_t(32), m_data.size()) * 2);
 		}
-		set_wire(m_size++, val);
+		size_t idx = m_size++;
+		set_wire(idx, val);
 	}
 
 	static size_t compute_mem_size(size_t bits, size_t num) {
+		assert(bits <= 64);
 		size_t usingsize = (bits * num + 7)/8;
 		size_t touchsize =  usingsize + sizeof(uint64_t)-1;
 		size_t alignsize = (touchsize + 15) &  ~size_t(15); // align to 16
 		return alignsize;
 	}
 
+    static size_t compute_uintbits(size_t value) {
+        size_t bits = 0;
+        while (value) {
+            bits++;
+            value >>= 1;
+        }
+        return bits;
+    }
+
+    static size_t compute_mem_size_by_max_val(size_t max_val, size_t num) {
+      size_t bits = compute_uintbits(max_val);
+      return compute_mem_size(bits, num);
+    }
+
 	template<class Int>
 	Int build_from(const valvec<Int>& y) { return build_from(y.data(), y.size()); }
 	template<class Int>
 	Int build_from(const Int* src, size_t num) {
 		BOOST_STATIC_ASSERT(sizeof(Int) <= sizeof(size_t));
+		assert(m_bits <= 64);
 		if (0 == num) {
 			clear();
 			return 0;
@@ -185,6 +218,7 @@ public:
 
 template<class Int>
 class ZipIntVector : private UintVecMin0 {
+	typedef Int int_value_t;
 	Int  m_min_val;
 public:
 	template<class Int2>
@@ -217,12 +251,20 @@ public:
 	void set(size_t idx, Int val) {
 		assert(val >= Int(m_min_val));
 		assert(val <= Int(m_min_val + m_mask));
-		UintVecMin0::set_wire(idx, m_min_val + val);
+		UintVecMin0::set_wire(idx, val - m_min_val);
 	}
 	Int operator[](size_t idx) const { return get(idx); }
 	Int get(size_t idx) const {
 		assert(idx < m_size);
 		return fast_get(m_data.data(), m_bits, m_mask, m_min_val, idx);
+	}
+	void get2(size_t idx, Int aVals[2]) const {
+		const byte*  data = m_data.data();
+		const size_t bits = m_bits;
+		const size_t mask = m_mask;
+		Int minVal = m_min_val;
+		aVals[0] = fast_get(data, bits, mask, minVal, idx);
+		aVals[1] = fast_get(data, bits, mask, minVal, idx+1);
 	}
 	static
 	Int fast_get(const byte* data, size_t bits, size_t mask,

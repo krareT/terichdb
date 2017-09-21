@@ -184,7 +184,7 @@ size_t FileStream::write(const void* buf, size_t size) throw()
 
 #if defined(__GLIBC__) || defined(_MSC_VER) && _MSC_VER <= 1800
 
-byte FileStream::readByte_slow() throw(EndOfFileException)
+byte FileStream::readByte_slow()
 {
 	assert(m_fp);
 #ifdef __USE_MISC

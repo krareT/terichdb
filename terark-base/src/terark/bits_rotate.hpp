@@ -4,6 +4,7 @@
 #if defined(_MSC_VER)
 // Seems Visual C++ didn't optimize rotate shift, so use intrinsics
 #include <stdlib.h> // for rol/ror intrinsics
+#include <intrin.h>
 #endif
 
 #include <boost/static_assert.hpp>

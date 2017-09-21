@@ -481,13 +481,106 @@ void febitvec::shrink_to_fit() {
 		m_capacity = 0;
 	}
 	size_t ceiled_bits = (m_size + AllocUnitBits-1) & ~(AllocUnitBits-1);
-	m_words = (bm_uint_t*)realloc(m_words, ceiled_bits/8);
-	assert(NULL != m_words);
-	if (NULL == m_words) {
+	bm_uint_t* p = (bm_uint_t*)realloc(m_words, ceiled_bits/8);
+	assert(NULL != p);
+	if (NULL == p) {
 		// realloc is required to return non-null on shrink
 		abort();
 	}
+	m_words = p;
 	m_capacity = ceiled_bits;
+}
+
+template<class Uint>
+static inline
+void s_push_uint(Uint* base, size_t bitpos, size_t width, Uint val) {
+#if !defined(NDEBUG)
+	if (width < sizeof(Uint) * 8) { assert(val >> width == 0); }
+#endif
+	Uint* p = base + (bitpos / (sizeof(Uint) * 8));
+	const size_t offset = bitpos % (sizeof(Uint) * 8);
+	if (offset) {
+		p[0] = (p[0] & ~(Uint(-1) << offset)) | (val << offset);
+		if (bitpos + width > sizeof(Uint) * 8) {
+			p[1] = val >> (sizeof(Uint) * 8 - offset);
+		}
+	}
+	else {
+		p[0] = val;
+	}
+}
+
+template<class Uint>
+void febitvec::push_uint_tpl(size_t width, Uint val) {
+	assert(width <= sizeof(Uint) * 8);
+	size_t oldsize = m_size;
+	if (terark_likely(oldsize + width <= m_capacity)) {
+		s_set_uint((Uint*)(m_words), oldsize, width, val);
+		m_size += width;
+	}
+	else {
+		resize_no_init(oldsize + width);
+		bits_range_set0(m_words, oldsize, m_size);
+		s_set_uint((Uint*)(m_words), oldsize, width, val);
+	}
+}
+
+void febitvec::push_uint(size_t width, uint val) {
+	push_uint_tpl(width, val);
+}
+
+void febitvec::push_uint(size_t width, ullong val) {
+	push_uint_tpl(width, val);
+}
+
+template<class Uint>
+void febitvec::set_uint_tpl(size_t bitpos, size_t width, Uint val) {
+	assert(bitpos + width <= m_size);
+	s_set_uint_tpl((Uint*)(m_words), bitpos, width, val);
+}
+
+template<class Uint>
+void febitvec::s_set_uint_tpl(Uint* base, size_t bitpos, size_t width, Uint val) {
+	const Uint UintBits = Uint(sizeof(Uint) * 8);
+#if !defined(NDEBUG)
+	if (width < UintBits) { assert(val >> width == 0); }
+#endif
+	assert(width <= UintBits);
+	auto p = base + bitpos / UintBits;
+	auto offset = bitpos % UintBits;
+	if (offset + width < UintBits) {
+		p[0] = ( p[0] & ( ~(Uint(-1) << offset) |
+					       (Uint(-1) << (offset + width)) ) )
+			 | val << offset;
+		assert(s_get_uint(base, bitpos, width) == val);
+	}
+	else {
+		p[0] = ( p[0] & ( ~(Uint(-1) << offset) ) ) | val << offset;
+		if (offset + width > UintBits) {
+			auto off2 = (offset + width) % UintBits;
+			p[1] = ( p[1] & (Uint(-1) << off2) ) | val >> (UintBits - offset);
+			assert(s_get_uint(base, bitpos, width) == val);
+		}
+		else {
+			assert(s_get_uint(base, bitpos, width) == val);
+		}
+	}
+}
+
+void febitvec::set_uint(size_t bitpos, size_t width, uint val) {
+	set_uint_tpl(bitpos, width, val);
+}
+
+void febitvec::set_uint(size_t bitpos, size_t width, ullong val) {
+	set_uint_tpl(bitpos, width, val);
+}
+
+void febitvec::s_set_uint(uint* base, size_t bitpos, size_t width, uint val) {
+	s_set_uint_tpl(base, bitpos, width, val);
+}
+
+void febitvec::s_set_uint(ullong* base, size_t bitpos, size_t width, ullong val) {
+	s_set_uint_tpl(base, bitpos, width, val);
 }
 
 } // namespace terark

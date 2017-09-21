@@ -16,6 +16,7 @@
 #include <boost/type_traits.hpp>
 #include <boost/static_assert.hpp>
 #include <boost/mpl/bool.hpp>
+#include <boost/utility.hpp>
 
 #include <terark/util/autofree.hpp>
 #include "config.hpp"

@@ -17,7 +17,7 @@ namespace terark {
 inline char MplBoolTrueToSizeOne(boost::mpl::true_);
 inline long MplBoolTrueToSizeOne(boost::mpl::false_);
 
-template<class T> T& DataIO_ReturnObjRef();
+template<class T> T& DataIO_ReturnObjRef(T*);
 
 struct DummyDataIO {};
 
@@ -27,7 +27,7 @@ boost::mpl::true_ Deduce_DataIO_need_bswap(DataIO*, T&);
 
 #define DataIO_need_bswap_by_sizeof(DataIO, T) \
   ( sizeof(MplBoolTrueToSizeOne(Deduce_DataIO_need_bswap( \
-    (DataIO*)(NULL), DataIO_ReturnObjRef<T>()))) == 1 )
+    (DataIO*)(NULL), DataIO_ReturnObjRef((T*)(NULL))))) == 1 )
 
 template<class D>boost::mpl::false_ Deduce_DataIO_need_bswap(D*,char&);
 template<class D>boost::mpl::false_ Deduce_DataIO_need_bswap(D*,signed char&);

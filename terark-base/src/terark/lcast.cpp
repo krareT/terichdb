@@ -117,7 +117,7 @@ lcast_from_str::operator long long() const {
 
 lcast_from_str::operator unsigned long long() const {
 	char* q;
-	unsigned long long l = strtol(p, &q, 10);
+	unsigned long long l = strtoull(p, &q, 10);
 	if (q == p) {
 		throw std::invalid_argument("bad lcast");
 	}

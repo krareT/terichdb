@@ -96,6 +96,20 @@ size_t LineBuf::chomp() {
 	return n0 - n;
 }
 
+void LineBuf::push_back_slow_path(char ch) {
+	assert(n + 1 == capacity || 0 == capacity);
+	// 13/8 = 1.625 ~ 1.618
+	size_t newcap = std::max<size_t>(32, align_up(capacity*13/8, 16));
+	char* q = (char*)realloc(p, capacity);
+	if (NULL == q) {
+		throw std::bad_alloc();
+	}
+	capacity = newcap;
+	p = q;
+	p[n++] = ch;
+	p[n] = '\0';
+}
+
 bool LineBuf::read_binary_tuple(int32_t* offsets, size_t arity, FILE* f) {
 	assert(NULL != offsets);
 	offsets[0] = 0;

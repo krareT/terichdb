@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <utility>
 #include "../config.hpp"
+#include "../fstring.hpp"
 
 namespace terark {
 
@@ -50,6 +51,10 @@ public:
 	void swap(MmapWholeFile& y) {
 		std::swap(base, y.base);
 		std::swap(size, y.size);
+	}
+
+	fstring memory() const {
+		return fstring{(const char*)base, (ptrdiff_t)size};
 	}
 };
 

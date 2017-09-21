@@ -43,6 +43,9 @@
 
 #endif /* _MSC_VER */
 
+#if defined(__GNUC__) && __GNUC__*1000 + __GNUC_MINOR__ >= 7001
+#  define no_break_fallthrough __attribute__ ((fallthrough))
+#endif
 
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
 
@@ -60,6 +63,10 @@
 
 #if defined(_MSC_VER) && _MSC_VER >= 1400
 #  define terark_no_alias __declspec(noalias)
+#endif
+
+#if defined(_MSC_VER) && _MSC_VER >= 1910 // vs2017
+#  define no_break_fallthrough [[fallthrough]]
 #endif
 
 #  define terark_likely(x)    x
@@ -101,7 +108,15 @@
   #define TERARK_IF_WORD_BITS_64(Then, Else) Else
 #endif
 
+#if defined(_MSC_VER)
+  #define TERARK_IF_MSVC(Then, Else) Then
+#else
+  #define TERARK_IF_MSVC(Then, Else) Else
+#endif
 
+#if !defined(no_break_fallthrough)
+  #define no_break_fallthrough  /* fall through */
+#endif
 
 #endif // __terark_config_h__
 

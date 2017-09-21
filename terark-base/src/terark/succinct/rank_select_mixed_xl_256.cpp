@@ -397,7 +397,6 @@ size_t rank_select_mixed_xl_256::one_seq_len_dx(size_t bitpos) const {
         bm_uint_t y = ~(x >> bitpos % WordBits);
         size_t ctz = fast_ctz(y);
         if (ctz < WordBits - bitpos % WordBits) {
-            // last zero bit after bitpos is in x
             return ctz;
         }
         assert(ctz == WordBits - bitpos % WordBits);
@@ -434,7 +433,6 @@ size_t rank_select_mixed_xl_256::zero_seq_len_dx(size_t bitpos) const {
         if (x & (bm_uint_t(1) << bitpos % WordBits)) return 0;
         bm_uint_t y = x >> bitpos % WordBits;
         if (y) {
-            // last zero bit after bitpos is in x
             return fast_ctz(y);
         }
         k = (bitpos % LineBits / WordBits + 1) * 2 + dimensions;
@@ -460,6 +458,83 @@ size_t rank_select_mixed_xl_256::zero_seq_len_dx(size_t bitpos) const {
 
 template size_t TERARK_DLL_EXPORT rank_select_mixed_xl_256::zero_seq_len_dx<0>(size_t bitpos) const;
 template size_t TERARK_DLL_EXPORT rank_select_mixed_xl_256::zero_seq_len_dx<1>(size_t bitpos) const;
+
+template<size_t dimensions>
+size_t rank_select_mixed_xl_256::one_seq_revlen_dx(size_t endpos) const {
+    assert(endpos <= m_size[dimensions]);
+    size_t j, k, sum;
+    if (endpos % WordBits != 0) {
+        j = (endpos - 1) / LineBits;
+        bm_uint_t x = m_lines[j].words[((endpos-1)%LineBits / WordBits) * 2 + dimensions];
+        if (!(x & (bm_uint_t(1) << (endpos-1)%WordBits))) return 0;
+        bm_uint_t y = ~(x << (WordBits - endpos%WordBits));
+        size_t clz = fast_clz(y);
+        assert(clz <= endpos%WordBits);
+        assert(clz >= 1);
+        if (clz < endpos%WordBits) {
+            return clz;
+        }
+        k = (endpos-1) % LineBits / WordBits - 1;
+        sum = clz;
+    }
+    else {
+        if (endpos == 0) return 0;
+        j = (endpos - 1) / LineBits;
+        k = (endpos - 1) % LineBits / WordBits;
+        sum = 0;
+    }
+    for (; j != size_t(-1); --j) {
+        for (; k != size_t(-1); --k) {
+            bm_uint_t y = ~m_lines[j].words[k * 2 + dimensions];
+            if (0 == y)
+                sum += WordBits;
+            else
+                return sum + fast_clz(y);
+        }
+        k = 3;
+    }
+    return sum;
+}
+
+template size_t TERARK_DLL_EXPORT rank_select_mixed_xl_256::one_seq_revlen_dx<0>(size_t endpos) const;
+template size_t TERARK_DLL_EXPORT rank_select_mixed_xl_256::one_seq_revlen_dx<1>(size_t endpos) const;
+
+template<size_t dimensions>
+size_t rank_select_mixed_xl_256::zero_seq_revlen_dx(size_t endpos) const {
+    assert(endpos <= m_size[dimensions]);
+    size_t j, k, sum;
+    if (endpos % WordBits != 0) {
+        j = (endpos - 1) / LineBits;
+        bm_uint_t x = m_lines[j].words[((endpos-1)%LineBits / WordBits) * 2 + dimensions];
+		if (x & (bm_uint_t(1) << (endpos-1)%WordBits)) return 0;
+		bm_uint_t y = x << (WordBits - endpos%WordBits);
+		if (y) {
+			return fast_clz(y);
+		}
+        k = (endpos-1) % LineBits / WordBits - 1;
+        sum = endpos%WordBits;
+    }
+    else {
+        if (endpos == 0) return 0;
+        j = (endpos-1) / LineBits;
+        k = (endpos-1) % LineBits / WordBits;
+        sum = 0;
+    }
+    for (; j != size_t(-1); --j) {
+        for (; k != size_t(-1); --k) {
+            bm_uint_t y = m_lines[j].words[k * 2 + dimensions];
+            if (0 == y)
+                sum += WordBits;
+            else
+                return sum + fast_clz(y);
+        }
+        k = 3;
+    }
+    return sum;
+}
+
+template size_t TERARK_DLL_EXPORT rank_select_mixed_xl_256::zero_seq_revlen_dx<0>(size_t endpos) const;
+template size_t TERARK_DLL_EXPORT rank_select_mixed_xl_256::zero_seq_revlen_dx<1>(size_t endpos) const;
 
 template<size_t dimensions>
 size_t rank_select_mixed_xl_256::select0_dx(size_t Rank0) const {

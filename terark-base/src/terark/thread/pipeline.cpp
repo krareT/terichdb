@@ -50,6 +50,15 @@ public:
 	}
 };
 
+struct PipelineStage::ThreadData {
+  std::string m_err_text;
+  thread*  m_thread;
+  volatile size_t m_run; // size_t is a CPU word, should be bool
+
+  ThreadData();
+  ~ThreadData();
+};
+
 PipelineStage::ThreadData::ThreadData() : m_run(false) {
 	m_thread = NULL;
 }
@@ -355,7 +364,7 @@ void PipelineStage::run_step_mid(int threadno)
 	}
 }
 
-namespace {
+namespace pipeline_detail {
 //SAME_NAME_MEMBER_COMPARATOR_EX(plserial_greater, uintptr_t, uintptr_t, .plserial, std::greater<uintptr_t>)
 //SAME_NAME_MEMBER_COMPARATOR_EX(plserial_less   , uintptr_t, uintptr_t, .plserial, std::less   <uintptr_t>)
 
@@ -372,6 +381,7 @@ struct plserial_less {
 	}
 };
 }
+using namespace pipeline_detail;
 
 void PipelineStage::serial_step_do_mid(PipelineQueueItem& item)
 {

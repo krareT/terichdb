@@ -167,9 +167,9 @@ public:
 		return m_pos == m_end;
 	}
 
-	byte readByte() throw(EndOfFileException);
+	byte readByte();
 	int  getByte() throw();
-	void writeByte(byte b) throw(OutOfSpaceException);
+	void writeByte(byte b);
 
 	template<class ByteArray>
 	void readAll(ByteArray& ba) {
@@ -535,7 +535,7 @@ inline void MemIO::ensureWrite(const void* data, size_t length)
 #pragma warning(disable: 4715) // not all control paths return a value
 #endif
 
-inline byte MemIO::readByte() throw(EndOfFileException)
+inline byte MemIO::readByte()
 {
 	if (terark_likely(m_pos < m_end))
 		return *m_pos++;
@@ -549,7 +549,7 @@ inline byte MemIO::readByte() throw(EndOfFileException)
 #pragma warning(pop)
 #endif
 
-inline void MemIO::writeByte(byte b) throw(OutOfSpaceException)
+inline void MemIO::writeByte(byte b)
 {
 	if (terark_likely(m_pos < m_end))
 		*m_pos++ = b;

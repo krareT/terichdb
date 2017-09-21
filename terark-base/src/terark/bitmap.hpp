@@ -387,6 +387,9 @@ public:
 	size_t mem_size() const {
 		return ((m_size + AllocUnitBits-1) & ~(AllocUnitBits-1)) / 8;
 	}
+	static size_t s_mem_size(size_t bits) {
+		return ((bits + AllocUnitBits-1) & ~(AllocUnitBits-1)) / 8;
+	}
 	size_t blsize() const { return (m_size + WordBits -1) / WordBits; }
 	size_t size() const { return m_size; }
 	size_t capacity() const { return m_capacity; }
@@ -396,6 +399,102 @@ public:
 		std::swap(m_words, y.m_words);
 		std::swap(m_size , y.m_size);
 		std::swap(m_capacity, y.m_capacity);
+	}
+
+protected:
+	template<class Uint>
+	void push_uint_tpl(size_t width, Uint val);
+public:
+	void push_uint(size_t width, byte_t val)
+	   { push_uint(width, (uint)(val)); }
+	void push_uint(size_t width, ushort val)
+	   { push_uint(width, (uint)(val)); }
+	void push_uint(size_t width, ulong val) {
+#if (ULONG_MAX == UINT_MAX)
+		push_uint(width, (uint)(val));
+#elif (ULONG_MAX == ULLONG_MAX)
+		push_uint(width, (ullong)(val));
+#else
+		#error "Bad long int type"
+#endif
+	}
+	void push_uint(size_t width, uint  val);
+	void push_uint(size_t width, ullong val);
+
+protected:
+	template<class Uint>
+	void set_uint_tpl(size_t bitpos, size_t width, Uint val);
+public:
+	void set_uint(size_t bitpos, size_t width, byte_t val)
+	   { set_uint(bitpos, width, (uint)(val)); }
+	void set_uint(size_t bitpos, size_t width, ushort val)
+	   { set_uint(bitpos, width, (uint)(val)); }
+	void set_uint(size_t bitpos, size_t width, ulong val) {
+#if (ULONG_MAX == UINT_MAX)
+		set_uint(bitpos, width, (uint)(val));
+#elif (ULONG_MAX == ULLONG_MAX)
+		set_uint(bitpos, width, (ullong)(val));
+#else
+		#error "Bad long int type"
+#endif
+	}
+	void set_uint(size_t bitpos, size_t width, uint val);
+	void set_uint(size_t bitpos, size_t width, ullong val);
+
+protected:
+	template<class Uint>
+	static
+	void s_set_uint_tpl(Uint* base, size_t bitpos, size_t width, Uint val);
+public:
+	static
+	void s_set_uint(byte_t* base, size_t bitpos, size_t width, byte_t val)
+	   { s_set_uint((uint*)base, bitpos, width, (uint)(val)); }
+	static
+	void s_set_uint(ushort* base, size_t bitpos, size_t width, ushort val)
+	   { s_set_uint((uint*)base, bitpos, width, (uint)(val)); }
+	static
+	void s_set_uint(ulong* base, size_t bitpos, size_t width, ulong val) {
+#if (ULONG_MAX == UINT_MAX)
+		s_set_uint((uint*)base, bitpos, width, (uint)(val));
+#elif (ULONG_MAX == ULLONG_MAX)
+		s_set_uint((ullong*)base, bitpos, width, (ullong)(val));
+#else
+		#error "Bad long int type"
+#endif
+	}
+	static
+	void s_set_uint(uint* base, size_t bitpos, size_t width, uint val);
+	static
+	void s_set_uint(ullong* base, size_t bitpos, size_t width, ullong val);
+
+//---------------------------------------------------------------------------
+
+	template<class Uint>
+	static
+	Uint s_get_uint(const Uint* base, size_t bitpos, size_t width) {
+		const Uint UintBits = Uint(sizeof(Uint) * 8);
+		const Uint* p = base + bitpos / UintBits;
+		size_t offset = bitpos % UintBits;
+		Uint mask = ~(Uint(-1) << width);
+		Uint low  = p[0] >> offset;
+		if (offset + width <= UintBits)
+			return mask & low;
+		else
+			return mask & (low | (p[1] << (UintBits - offset)));
+	}
+	template<class Uint>
+	Uint get_uint(size_t bitpos, size_t width) const {
+		assert(bitpos < m_size);
+		assert(bitpos + width <= m_size);
+		return s_get_uint((const Uint*)(m_words), bitpos, width);
+	}
+	template<class Uint>
+	void get2_uints(size_t bitpos, size_t width, Uint vals[2]) const {
+		assert(bitpos < m_size);
+		assert(bitpos + width <= m_size);
+		const Uint* base = (const Uint*)(m_words);
+		vals[0] = s_get_uint(base, bitpos, width);
+		vals[1] = s_get_uint(base, bitpos+width, width);
 	}
 
 	      bm_uint_t* bldata()       { return m_words; }

@@ -6,6 +6,7 @@
 #include <terark/stdtypes.hpp>
 #include <terark/bits_rotate.hpp>
 #include <algorithm>
+#include <functional>
 
 // HSM_ : Hash String Map
 #define HSM_SANITY assert
@@ -117,7 +118,7 @@ template<class Uint, int Bits> const Uint dummy_bucket<Uint, Bits>::tail;
 template<class Uint, int Bits> const Uint dummy_bucket<Uint, Bits>::delmark;
 template<class Uint, int Bits> const Uint dummy_bucket<Uint, Bits>::maxlink;
 
-template<class Key, class Hash, class Equal>
+template<class Key, class Hash = std::hash<Key>, class Equal = std::equal_to<Key> >
 struct hash_and_equal : private Hash, private Equal {
 	size_t hash(const Key& x) const { return Hash::operator()(x); }
 	bool  equal(const Key& x, const Key& y) const {

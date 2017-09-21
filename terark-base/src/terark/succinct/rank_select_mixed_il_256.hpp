@@ -9,6 +9,7 @@ namespace terark {
 class TERARK_DLL_EXPORT rank_select_mixed_il_256 : public RankSelectConstants<256> {
 public:
     typedef boost::mpl::true_ is_mixed;
+    typedef uint32_t index_t;
     rank_select_mixed_il_256();
     rank_select_mixed_il_256(size_t n, bool val0 = false, bool val1 = false);
     rank_select_mixed_il_256(size_t n, valvec_no_init);
@@ -102,6 +103,8 @@ protected:
     template<size_t dimensions> void build_cache_dx(bool speed_select0, bool speed_select1);
     template<size_t dimensions> size_t one_seq_len_dx(size_t bitpos) const;
     template<size_t dimensions> size_t zero_seq_len_dx(size_t bitpos) const;
+    template<size_t dimensions> size_t one_seq_revlen_dx(size_t endpos) const;
+    template<size_t dimensions> size_t zero_seq_revlen_dx(size_t endpos) const;
     template<size_t dimensions> inline size_t rank0_dx(size_t bitpos) const;
     template<size_t dimensions> inline size_t rank1_dx(size_t bitpos) const;
     template<size_t dimensions> size_t select0_dx(size_t id) const;

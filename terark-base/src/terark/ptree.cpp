@@ -744,7 +744,7 @@ obj* php_load_impl(const char* base, const char*& beg, const char* end) {
 				THROW_INPUT_ERROR2("php_load: string.content not found right quote", pp+len+2);
 			if (';' != pp[len+3])
 				THROW_INPUT_ERROR2("php_load: string didn't end with ';'", pp+len+3);
-			std::auto_ptr<obj_string> x(new obj_string);
+			std::unique_ptr<obj_string> x(new obj_string);
 			x->resize(len);
 			x->assign(pp+2, len);
 			beg = pp + len + 4; // s:size:"content";
@@ -761,15 +761,15 @@ obj* php_load_impl(const char* base, const char*& beg, const char* end) {
 		//	fprintf(stderr, "size=%ld\n", len);
 			if (':' != pp[0] || '{' != pp[1])
 				THROW_INPUT_ERROR2("php_load: array.size should followed by ':{'", pp);
-			std::auto_ptr<obj_array> arr(new obj_array);
-			std::auto_ptr<php_array> map;
+			std::unique_ptr<obj_array> arr(new obj_array);
+			std::unique_ptr<php_array> map;
 			arr->resize(2*len);
 			beg = pp + 2;
 			long max_idx = -1;
 			for (long i = 0; i < len; ++i) {
 			//	fprintf(stderr, "loading array[%ld]:\n", i);
 				const char* key_pos = beg;
-				std::auto_ptr<obj> key(php_load_impl(base, beg, end));
+				std::unique_ptr<obj> key(php_load_impl(base, beg, end));
 				if (key.get() == NULL) {
 					THROW_INPUT_ERROR2("php_load: array.key must not be NULL", key_pos);
 				}
@@ -826,18 +826,18 @@ obj* php_load_impl(const char* base, const char*& beg, const char* end) {
 				THROW_INPUT_ERROR2("php_load: Object.namelen expect ':\"' 2", pp);
 			if (pp + 4 + len > end)
 				THROW_INPUT_ERROR2("php_load: Object 3", pp);
-			std::auto_ptr<php_object> tree(new php_object);
+			std::unique_ptr<php_object> tree(new php_object);
 			tree->cls_name.assign(pp + 2, len);
 			long fields = strtol(pp + 4 + len, &pp, 10);
 			if (':' != pp[0] || '{' != pp[1])
 				THROW_INPUT_ERROR2("php_load: Object 4", pp);
 			beg = pp + 2;
 			for (long i = 0; i < fields; ++i) {
-				std::auto_ptr<obj> pname(php_load_impl(base, beg, end));
+				std::unique_ptr<obj> pname(php_load_impl(base, beg, end));
 				obj_string* name = dynamic_cast<obj_string*>(pname.get());
 				if (NULL == name)
 					THROW_INPUT_ERROR("object field name is not a string");
-				std::auto_ptr<obj> value(php_load_impl(base, beg, end));
+				std::unique_ptr<obj> value(php_load_impl(base, beg, end));
 				tree->fields[*name].reset(value.release());
 			}
 			if ('}' != beg[0])

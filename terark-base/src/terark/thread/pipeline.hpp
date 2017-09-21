@@ -69,12 +69,11 @@ public:
 
 class TERARK_DLL_EXPORT PipelineProcessor;
 
-class TERARK_DLL_EXPORT PipelineStage
+class TERARK_DLL_EXPORT PipelineStage : boost::noncopyable
 {
 	friend class PipelineProcessor;
 
 public:
-//	typedef concurrent_queue<std::deque<PipelineQueueItem> > queue_t;
 	class queue_t;
 
 protected:
@@ -83,15 +82,7 @@ protected:
 	PipelineStage *m_prev, *m_next;
 	PipelineProcessor* m_owner;
 
-	struct TERARK_DLL_EXPORT ThreadData
-	{
-		std::string m_err_text;
-		thread*  m_thread;
-		volatile size_t m_run; // size_t is a CPU word, should be bool
-
-		ThreadData();
-		~ThreadData();
-	};
+	struct ThreadData;
 	valvec<ThreadData> m_threads;
 	enum {
 		ple_none,

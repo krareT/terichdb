@@ -46,6 +46,19 @@ struct TERARK_DLL_EXPORT LineBuf : boost::noncopyable {
 	size_t chomp(); // remove all trailing '\r' and '\n', just as chomp in perl
 	///@}
 
+	void push_back(char ch) {
+		if (n + 1 < capacity) {
+			p[n++] = ch;
+			p[n] = '\0';
+		}
+		else {
+			push_back_slow_path(ch);
+		}
+	}
+private:
+	void push_back_slow_path(char ch);
+public:
+
 	operator char*() const { return p; }
 	operator fstring() const { return fstring(p, n); }
 
